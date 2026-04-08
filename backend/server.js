@@ -43,6 +43,9 @@ const PAYLINES = [
 ];
 const TARGET_RTP_MIN = 93.5;
 const TARGET_RTP_MAX = 94.5;
+const BONUS_MULTIPLIER_START = 2;
+const BONUS_MULTIPLIER_CAP = 5;
+const FREE_SPIN_RETRIGGER_AWARD = 5;
 
 const BASELINE_REELS = [
   ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "A", "C", "E", "G"],
@@ -261,11 +264,11 @@ function runSimulationProfile({
     const trigger = scatterTriggers[String(evaluation.scatterCount)];
     if (trigger) {
       if (isFreeSpin) {
-        freeSpinsLeft += 5;
-        bonusMultiplier = Math.min(5, bonusMultiplier + 1);
+        freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
+        bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, bonusMultiplier + 1);
       } else {
         freeSpinsLeft += trigger.free_spins;
-        bonusMultiplier = 2;
+        bonusMultiplier = BONUS_MULTIPLIER_START;
       }
     }
     if (freeSpinsLeft === 0) {
@@ -297,6 +300,83 @@ function runSimulationProfile({
     big_win_20x_count: big20xCount,
     huge_win_50x_count: huge50xCount,
     max_win_x: Number((maxWin / betAmount).toFixed(2))
+  };
+}
+
+
+function createSimulationState() {
+  return {
+    totalWin: 0,
+    paidWager: 0,
+    paidSpins: 0,
+    freeSpinSteps: 0,
+    freeSpinsLeft: 0,
+    bonusMultiplier: 1,
+    hitSpins: 0,
+    big20xCount: 0,
+    huge50xCount: 0,
+    maxWin: 0
+  };
+}
+
+function applySimulationStep(state, config, betAmount) {
+  const isFreeSpin = state.freeSpinsLeft > 0;
+  if (isFreeSpin) {
+    state.freeSpinsLeft -= 1;
+    state.freeSpinSteps += 1;
+  } else {
+    state.paidWager += betAmount;
+    state.paidSpins += 1;
+  }
+
+  let matrix = generateMatrix(config.reels);
+  const chance = isFreeSpin ? config.wildChanceFree : config.wildChanceBase;
+  matrix = maybeApplyExpandingWildWithChance(matrix, chance);
+
+  const activeMultiplier = isFreeSpin ? state.bonusMultiplier : 1;
+  const evaluation = evaluateSpin(matrix, betAmount, activeMultiplier);
+  const win = evaluation.totalWin;
+
+  const trigger = config.scatterTriggers[String(evaluation.scatterCount)];
+  if (trigger) {
+    if (isFreeSpin) {
+      state.freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
+      state.bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, state.bonusMultiplier + 1);
+    } else {
+      state.freeSpinsLeft += trigger.free_spins;
+      state.bonusMultiplier = BONUS_MULTIPLIER_START;
+    }
+  }
+  if (state.freeSpinsLeft === 0) {
+    state.bonusMultiplier = 1;
+  }
+
+  if (win > 0) state.hitSpins += 1;
+  if (win >= betAmount * 20) state.big20xCount += 1;
+  if (win >= betAmount * 50) state.huge50xCount += 1;
+  if (win > state.maxWin) state.maxWin = win;
+  state.totalWin += win;
+}
+
+function finalizeSimulationState(state, steps, betAmount) {
+  const rtpPercent = state.paidWager > 0 ? (state.totalWin / state.paidWager) * 100 : 0;
+  const casinoNet = state.paidWager - state.totalWin;
+  const hitFrequencyPercent = steps > 0 ? (state.hitSpins / steps) * 100 : 0;
+
+  return {
+    steps,
+    bet_amount: betAmount,
+    paid_spins: state.paidSpins,
+    free_spin_steps: state.freeSpinSteps,
+    paid_wager: Number(state.paidWager.toFixed(2)),
+    player_total_win: Number(state.totalWin.toFixed(2)),
+    casino_net: Number(casinoNet.toFixed(2)),
+    rtp_percent: Number(rtpPercent.toFixed(2)),
+    house_edge_percent: Number((100 - rtpPercent).toFixed(2)),
+    hit_frequency_percent: Number(hitFrequencyPercent.toFixed(2)),
+    big_win_20x_count: state.big20xCount,
+    huge_win_50x_count: state.huge50xCount,
+    max_win_x: Number((state.maxWin / betAmount).toFixed(2))
   };
 }
 
@@ -356,6 +436,147 @@ function runSimulationComparison(steps, betAmount) {
   };
 }
 
+function streamSimulationComparison(req, res, steps, betAmount) {
+  const currentConfig = {
+    reels: reelStrips.reels,
+    wildChanceBase: 0.02,
+    wildChanceFree: 0.04,
+    scatterTriggers: paytable.scatter_triggers
+  };
+
+  const baselineConfig = {
+    reels: BASELINE_REELS,
+    wildChanceBase: 0.08,
+    wildChanceFree: 0.12,
+    scatterTriggers: {
+      "3": { free_spins: 10 },
+      "4": { free_spins: 14 },
+      "5": { free_spins: 20 }
+    }
+  };
+
+  const currentState = createSimulationState();
+  const baselineState = createSimulationState();
+  const chunkSize = 2000;
+  let completed = 0;
+  let closed = false;
+
+  req.on("close", () => {
+    closed = true;
+  });
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  res.write("\n");
+
+  const sendEvent = (eventName, payload) => {
+    if (closed) return;
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  sendEvent("progress", {
+    steps_completed: 0,
+    steps_total: steps,
+    progress_percent: 0,
+    current_rtp_percent: 0,
+    current_player_total_win: 0,
+    current_casino_net: 0,
+    current_hit_frequency_percent: 0,
+    current_big_win_20x_count: 0,
+    current_huge_win_50x_count: 0,
+    current_max_win_x: 0,
+    baseline_rtp_percent: 0,
+    baseline_casino_net: 0
+  });
+
+  const tick = () => {
+    if (closed) return;
+    const limit = Math.min(completed + chunkSize, steps);
+    for (let i = completed; i < limit; i += 1) {
+      applySimulationStep(currentState, currentConfig, betAmount);
+      applySimulationStep(baselineState, baselineConfig, betAmount);
+    }
+    completed = limit;
+
+    const liveCurrentRtp =
+      currentState.paidWager > 0
+        ? (currentState.totalWin / currentState.paidWager) * 100
+        : 0;
+    const liveCurrentCasinoNet = currentState.paidWager - currentState.totalWin;
+    const liveCurrentHitFrequency = completed > 0 ? (currentState.hitSpins / completed) * 100 : 0;
+    const liveCurrentMaxWinX = betAmount > 0 ? currentState.maxWin / betAmount : 0;
+    const liveBaselineRtp =
+      baselineState.paidWager > 0
+        ? (baselineState.totalWin / baselineState.paidWager) * 100
+        : 0;
+    const liveBaselineCasinoNet = baselineState.paidWager - baselineState.totalWin;
+
+    sendEvent("progress", {
+      steps_completed: completed,
+      steps_total: steps,
+      progress_percent: Number(((completed / steps) * 100).toFixed(2)),
+      current_rtp_percent: Number(liveCurrentRtp.toFixed(2)),
+      current_player_total_win: Number(currentState.totalWin.toFixed(2)),
+      current_casino_net: Number(liveCurrentCasinoNet.toFixed(2)),
+      current_hit_frequency_percent: Number(liveCurrentHitFrequency.toFixed(2)),
+      current_big_win_20x_count: currentState.big20xCount,
+      current_huge_win_50x_count: currentState.huge50xCount,
+      current_max_win_x: Number(liveCurrentMaxWinX.toFixed(2)),
+      baseline_rtp_percent: Number(liveBaselineRtp.toFixed(2)),
+      baseline_casino_net: Number(liveBaselineCasinoNet.toFixed(2))
+    });
+
+    if (completed < steps) {
+      setImmediate(tick);
+      return;
+    }
+
+    const current = finalizeSimulationState(currentState, steps, betAmount);
+    const baseline = finalizeSimulationState(baselineState, steps, betAmount);
+    const report = {
+      steps,
+      bet_amount: betAmount,
+      target_rtp_band: {
+        min: TARGET_RTP_MIN,
+        max: TARGET_RTP_MAX
+      },
+      baseline,
+      current,
+      diff: {
+        casino_net_current_minus_baseline: Number(
+          (current.casino_net - baseline.casino_net).toFixed(2)
+        ),
+        rtp_percent_current_minus_baseline: Number(
+          (current.rtp_percent - baseline.rtp_percent).toFixed(2)
+        ),
+        hit_frequency_percent_current_minus_baseline: Number(
+          (current.hit_frequency_percent - baseline.hit_frequency_percent).toFixed(2)
+        ),
+        big_win_20x_count_current_minus_baseline:
+          current.big_win_20x_count - baseline.big_win_20x_count,
+        huge_win_50x_count_current_minus_baseline:
+          current.huge_win_50x_count - baseline.huge_win_50x_count
+      },
+      checks: {
+        current_rtp_in_target_band:
+          current.rtp_percent >= TARGET_RTP_MIN &&
+          current.rtp_percent <= TARGET_RTP_MAX,
+        current_casino_profitable: current.casino_net > 0
+      }
+    };
+
+    sendEvent("complete", { report });
+    if (!closed) res.end();
+  };
+
+  tick();
+}
+
 function resolveSpin(session, spinId, betAmount) {
   if (session.spinHistory.has(spinId)) {
     return session.spinHistory.get(spinId);
@@ -376,18 +597,19 @@ function resolveSpin(session, spinId, betAmount) {
   const withFeature = maybeApplyExpandingWild(baseMatrix, isFreeSpin);
   const activeMultiplier = isFreeSpin ? session.bonusMultiplier : 1;
   const evaluation = evaluateSpin(withFeature.matrix, betAmount, activeMultiplier);
+  const totalWin = evaluation.totalWin;
 
   if (evaluation.freeSpinsAwarded > 0) {
     if (isFreeSpin) {
-      session.freeSpinsLeft += 5;
-      session.bonusMultiplier = Math.min(5, session.bonusMultiplier + 1);
+      session.freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
+      session.bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, session.bonusMultiplier + 1);
     } else {
       session.freeSpinsLeft += evaluation.freeSpinsAwarded;
-      session.bonusMultiplier = 2;
+      session.bonusMultiplier = BONUS_MULTIPLIER_START;
     }
   }
 
-  session.balance = Number((session.balance + evaluation.totalWin).toFixed(2));
+  session.balance = Number((session.balance + totalWin).toFixed(2));
   if (session.freeSpinsLeft === 0) {
     session.bonusMultiplier = 1;
   }
@@ -403,7 +625,7 @@ function resolveSpin(session, spinId, betAmount) {
     scatter_win: evaluation.scatterWin,
     free_spins_awarded: evaluation.freeSpinsAwarded,
     free_spins_left: session.freeSpinsLeft,
-    total_win: evaluation.totalWin,
+    total_win: totalWin,
     balance_after: session.balance
   };
 
@@ -455,6 +677,25 @@ function handleApi(req, res, parsedUrl) {
         }
       })
       .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/simulate/stream") {
+    const steps = Number(parsedUrl.searchParams.get("steps"));
+    const betAmount = Number(parsedUrl.searchParams.get("bet_amount"));
+    if (!Number.isInteger(steps) || steps < 1000 || steps > 1000000) {
+      sendJson(res, 400, {
+        error: "INVALID_STEPS",
+        min_steps: 1000,
+        max_steps: 1000000
+      });
+      return;
+    }
+    if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
+      sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
+      return;
+    }
+    streamSimulationComparison(req, res, steps, betAmount);
+    return;
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/v1/simulate") {

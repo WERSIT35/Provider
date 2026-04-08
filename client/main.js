@@ -12,7 +12,25 @@ const resultDumpEl = document.getElementById("resultDump");
 const simulateDumpEl = document.getElementById("simulateDump");
 const lineExamplesEl = document.getElementById("lineExamples");
 const paytableBodyEl = document.getElementById("paytableBody");
+const paytableTitleEl = document.getElementById("paytableTitle");
 const caughtLinesEl = document.getElementById("caughtLines");
+const spinsPlayedEl = document.getElementById("spinsPlayed");
+const winSpinsEl = document.getElementById("winSpins");
+const lossSpinsEl = document.getElementById("lossSpins");
+const sessionWageredEl = document.getElementById("sessionWagered");
+const sessionWonEl = document.getElementById("sessionWon");
+const sessionNetEl = document.getElementById("sessionNet");
+const simProgressBarEl = document.getElementById("simProgressBar");
+const simProgressLabelEl = document.getElementById("simProgressLabel");
+const simLiveRtpEl = document.getElementById("simLiveRtp");
+const simLivePlayerWinEl = document.getElementById("simLivePlayerWin");
+const simLiveCasinoNetEl = document.getElementById("simLiveCasinoNet");
+const simLiveHitRateEl = document.getElementById("simLiveHitRate");
+const simLiveBig20xEl = document.getElementById("simLiveBig20x");
+const simLiveHuge50xEl = document.getElementById("simLiveHuge50x");
+const simLiveMaxWinXEl = document.getElementById("simLiveMaxWinX");
+const simLiveBaselineRtpEl = document.getElementById("simLiveBaselineRtp");
+const simLiveBaselineNetEl = document.getElementById("simLiveBaselineNet");
 
 const ALL_PAYLINES = [
   [1, 1, 1, 1, 1],
@@ -62,15 +80,62 @@ const PAYOUTS = {
   E: { 3: 1.46, 4: 4.39, 5: 10.98 },
   F: { 3: 1.46, 4: 4.39, 5: 10.98 },
   G: { 3: 2.93, 4: 9.15, 5: 21.96 },
-  H: { 3: 3.66, 4: 12.81, 5: 36.6 },
+  H: { 3: 20, 4: 150, 5: 1000 },
   WILD: { 3: 7.32, 4: 27.45, 5: 73.2 },
   SCATTER: { 3: 7.32, 4: 36.6, 5: 183.0 }
 };
 
 let sessionId = null;
+let simulationAbortController = null;
+
+const sessionLiveStats = {
+  spinsPlayed: 0,
+  winSpins: 0,
+  lossSpins: 0,
+  wagered: 0,
+  won: 0
+};
 
 function formatMoney(v) {
   return Number(v).toFixed(2);
+}
+
+function getSelectedBetAmount() {
+  const bet = Number(betSelectEl.value);
+  return Number.isFinite(bet) && bet > 0 ? bet : 1;
+}
+
+function setSignedClass(el, value) {
+  el.classList.remove("positive", "negative");
+  if (value > 0) el.classList.add("positive");
+  if (value < 0) el.classList.add("negative");
+}
+
+function renderSessionLiveStats() {
+  const net = Number((sessionLiveStats.won - sessionLiveStats.wagered).toFixed(2));
+  spinsPlayedEl.textContent = String(sessionLiveStats.spinsPlayed);
+  winSpinsEl.textContent = String(sessionLiveStats.winSpins);
+  lossSpinsEl.textContent = String(sessionLiveStats.lossSpins);
+  sessionWageredEl.textContent = formatMoney(sessionLiveStats.wagered);
+  sessionWonEl.textContent = formatMoney(sessionLiveStats.won);
+  sessionNetEl.textContent = formatMoney(net);
+  setSignedClass(sessionNetEl, net);
+}
+
+function resetSimulationLiveWidgets() {
+  simProgressBarEl.style.width = "0%";
+  simProgressLabelEl.textContent = "Idle";
+  simLiveRtpEl.textContent = "0.00%";
+  simLivePlayerWinEl.textContent = "0.00";
+  simLiveCasinoNetEl.textContent = "0.00";
+  simLiveHitRateEl.textContent = "0.00%";
+  simLiveBig20xEl.textContent = "0";
+  simLiveHuge50xEl.textContent = "0";
+  simLiveMaxWinXEl.textContent = "0.00x";
+  simLiveBaselineRtpEl.textContent = "0.00%";
+  simLiveBaselineNetEl.textContent = "0.00";
+  setSignedClass(simLiveCasinoNetEl, 0);
+  setSignedClass(simLiveBaselineNetEl, 0);
 }
 
 function renderEmptyGrid() {
@@ -132,18 +197,21 @@ function renderPaylineExamples() {
   });
 }
 
-function renderPaytable() {
+function renderPaytable(betAmount = getSelectedBetAmount()) {
+  if (paytableTitleEl) {
+    paytableTitleEl.textContent = `Payout Table (3/4/5) - Bet ${formatMoney(betAmount)}`;
+  }
   paytableBodyEl.innerHTML = "";
   Object.entries(PAYOUTS).forEach(([symbol, values]) => {
     const tr = document.createElement("tr");
     const symbolTd = document.createElement("td");
     symbolTd.textContent = `${SYMBOL_DISPLAY[symbol]} ${symbol}`;
     const td3 = document.createElement("td");
-    td3.textContent = Number(values[3]).toFixed(2);
+    td3.textContent = formatMoney(values[3] * betAmount);
     const td4 = document.createElement("td");
-    td4.textContent = Number(values[4]).toFixed(2);
+    td4.textContent = formatMoney(values[4] * betAmount);
     const td5 = document.createElement("td");
-    td5.textContent = Number(values[5]).toFixed(2);
+    td5.textContent = formatMoney(values[5] * betAmount);
     tr.appendChild(symbolTd);
     tr.appendChild(td3);
     tr.appendChild(td4);
@@ -268,6 +336,60 @@ async function api(path, payload) {
   return json;
 }
 
+async function streamSse(url, onEvent, signal) {
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Accept: "text/event-stream" },
+    signal
+  });
+  if (!res.ok) {
+    throw new Error(`STREAM_HTTP_${res.status}`);
+  }
+  if (!res.body) {
+    throw new Error("STREAM_NO_BODY");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      let eventName = "message";
+      const dataLines = [];
+      rawEvent.split("\n").forEach((line) => {
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+          return;
+        }
+        if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trim());
+        }
+      });
+
+      if (dataLines.length > 0) {
+        let payload = null;
+        try {
+          payload = JSON.parse(dataLines.join("\n"));
+        } catch {
+          payload = null;
+        }
+        onEvent(eventName, payload);
+      }
+
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 async function initSession() {
   const data = await api("/api/v1/session/init", {
     player_id: `player_${Date.now()}`,
@@ -287,6 +409,14 @@ async function initSession() {
   });
   betSelectEl.value = "1";
   betViewEl.textContent = "1.00";
+  renderPaytable(getSelectedBetAmount());
+  sessionLiveStats.spinsPlayed = 0;
+  sessionLiveStats.winSpins = 0;
+  sessionLiveStats.lossSpins = 0;
+  sessionLiveStats.wagered = 0;
+  sessionLiveStats.won = 0;
+  renderSessionLiveStats();
+  resetSimulationLiveWidgets();
 }
 
 async function spin() {
@@ -320,6 +450,17 @@ async function spin() {
     balanceEl.textContent = formatMoney(payload.balance_after);
     lastWinEl.textContent = formatMoney(payload.total_win);
     freeSpinsEl.textContent = String(payload.free_spins_left);
+    sessionLiveStats.spinsPlayed += 1;
+    if (payload.total_win > 0) {
+      sessionLiveStats.winSpins += 1;
+    } else {
+      sessionLiveStats.lossSpins += 1;
+    }
+    if (!payload.is_free_spin) {
+      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + bet).toFixed(2));
+    }
+    sessionLiveStats.won = Number((sessionLiveStats.won + payload.total_win).toFixed(2));
+    renderSessionLiveStats();
     renderCaughtLines(lineWins);
     resultDumpEl.textContent = JSON.stringify(payload, null, 2);
   } catch (err) {
@@ -353,26 +494,139 @@ function formatSimulationSummary(report) {
 
 async function runSimulation() {
   if (!sessionId) return;
+  if (simulationAbortController) {
+    simulationAbortController.abort();
+    simulationAbortController = null;
+  }
   spinBtnEl.disabled = true;
   simulateBtnEl.disabled = true;
-  simulateDumpEl.textContent = "Running 1,000,000 spins... please wait.";
-  try {
-    const bet = Number(betSelectEl.value);
-    const report = await api("/api/v1/simulate", {
-      steps: 1000000,
-      bet_amount: bet
-    });
-    simulateDumpEl.textContent = formatSimulationSummary(report);
-  } catch (err) {
-    simulateDumpEl.textContent = `Simulation failed: ${err.message}`;
-  } finally {
+  simulateDumpEl.textContent = "Running 1,000,000 spins... live stream started.";
+  resetSimulationLiveWidgets();
+  simProgressLabelEl.textContent = "Starting...";
+
+  const bet = Number(betSelectEl.value);
+  const streamUrl = `/api/v1/simulate/stream?steps=1000000&bet_amount=${encodeURIComponent(String(bet))}`;
+  simulationAbortController = new AbortController();
+  let streamCompleted = false;
+  let fallbackStarted = false;
+  let progressEventCount = 0;
+  let lastProgressAt = Date.now();
+  let stallTimer = null;
+
+  const clearStallTimer = () => {
+    if (!stallTimer) return;
+    clearTimeout(stallTimer);
+    stallTimer = null;
+  };
+
+  const releaseButtons = () => {
     spinBtnEl.disabled = false;
     simulateBtnEl.disabled = false;
+  };
+
+  const runFallback = async (label = "Stream failed, retrying fallback...") => {
+    if (fallbackStarted || streamCompleted) return;
+    fallbackStarted = true;
+    clearStallTimer();
+    if (simulationAbortController) {
+      simulationAbortController.abort();
+      simulationAbortController = null;
+    }
+    simProgressLabelEl.textContent = label;
+    try {
+      const report = await api("/api/v1/simulate", {
+        steps: 1000000,
+        bet_amount: bet
+      });
+      simProgressBarEl.style.width = "100%";
+      simProgressLabelEl.textContent = "Completed (Fallback)";
+      simLiveRtpEl.textContent = `${Number(report.current.rtp_percent).toFixed(2)}%`;
+      simLivePlayerWinEl.textContent = formatMoney(report.current.player_total_win);
+      simLiveCasinoNetEl.textContent = formatMoney(report.current.casino_net);
+      setSignedClass(simLiveCasinoNetEl, report.current.casino_net);
+      simLiveHitRateEl.textContent = `${Number(report.current.hit_frequency_percent).toFixed(2)}%`;
+      simLiveBig20xEl.textContent = String(report.current.big_win_20x_count);
+      simLiveHuge50xEl.textContent = String(report.current.huge_win_50x_count);
+      simLiveMaxWinXEl.textContent = `${Number(report.current.max_win_x).toFixed(2)}x`;
+      simLiveBaselineRtpEl.textContent = `${Number(report.baseline.rtp_percent).toFixed(2)}%`;
+      simLiveBaselineNetEl.textContent = formatMoney(report.baseline.casino_net);
+      setSignedClass(simLiveBaselineNetEl, report.baseline.casino_net);
+      simulateDumpEl.textContent = formatSimulationSummary(report);
+    } catch (err) {
+      simProgressLabelEl.textContent = "Failed";
+      simulateDumpEl.textContent = `Simulation failed: ${err.message}`;
+    } finally {
+      releaseButtons();
+    }
+  };
+
+  const scheduleStallFallback = () => {
+    clearStallTimer();
+    stallTimer = setTimeout(() => {
+      if (streamCompleted || fallbackStarted) return;
+      const stalledMs = Date.now() - lastProgressAt;
+      if (progressEventCount === 0 || stalledMs > 5500) {
+        runFallback("Stream stalled, retrying fallback...");
+      }
+    }, 12000);
+  };
+
+  scheduleStallFallback();
+  try {
+    await streamSse(
+      streamUrl,
+      (eventName, payload) => {
+        if (streamCompleted || fallbackStarted || !payload) return;
+        if (eventName === "progress") {
+          progressEventCount += 1;
+          lastProgressAt = Date.now();
+          const progress = Number(payload.progress_percent || 0);
+          simProgressBarEl.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+          simProgressLabelEl.textContent = `${progress.toFixed(2)}% (${payload.steps_completed}/${payload.steps_total})`;
+          simLiveRtpEl.textContent = `${Number(payload.current_rtp_percent || 0).toFixed(2)}%`;
+          simLivePlayerWinEl.textContent = formatMoney(payload.current_player_total_win || 0);
+          const liveCasinoNet = Number(payload.current_casino_net || 0);
+          simLiveCasinoNetEl.textContent = formatMoney(liveCasinoNet);
+          setSignedClass(simLiveCasinoNetEl, liveCasinoNet);
+          simLiveHitRateEl.textContent = `${Number(payload.current_hit_frequency_percent || 0).toFixed(2)}%`;
+          simLiveBig20xEl.textContent = String(payload.current_big_win_20x_count || 0);
+          simLiveHuge50xEl.textContent = String(payload.current_huge_win_50x_count || 0);
+          simLiveMaxWinXEl.textContent = `${Number(payload.current_max_win_x || 0).toFixed(2)}x`;
+          simLiveBaselineRtpEl.textContent = `${Number(payload.baseline_rtp_percent || 0).toFixed(2)}%`;
+          const liveBaselineNet = Number(payload.baseline_casino_net || 0);
+          simLiveBaselineNetEl.textContent = formatMoney(liveBaselineNet);
+          setSignedClass(simLiveBaselineNetEl, liveBaselineNet);
+          scheduleStallFallback();
+          return;
+        }
+        if (eventName === "complete") {
+          streamCompleted = true;
+          clearStallTimer();
+          simProgressBarEl.style.width = "100%";
+          simProgressLabelEl.textContent = "Completed";
+          simulateDumpEl.textContent = formatSimulationSummary(payload.report);
+        }
+      },
+      simulationAbortController.signal
+    );
+
+    if (!streamCompleted && !fallbackStarted) {
+      await runFallback("Stream ended unexpectedly, retrying fallback...");
+    } else if (!fallbackStarted) {
+      releaseButtons();
+    }
+  } catch {
+    await runFallback("Stream unavailable, retrying fallback...");
+  } finally {
+    clearStallTimer();
+    simulationAbortController = null;
   }
 }
 
 betSelectEl.addEventListener("change", () => {
-  betViewEl.textContent = formatMoney(Number(betSelectEl.value));
+  const bet = getSelectedBetAmount();
+  betViewEl.textContent = formatMoney(bet);
+  renderPaytable(bet);
 });
 spinBtnEl.addEventListener("click", spin);
 simulateBtnEl.addEventListener("click", runSimulation);
@@ -381,6 +635,8 @@ renderEmptyGrid();
 renderPaylineExamples();
 renderPaytable();
 winningLinesEl.textContent = "0";
+renderSessionLiveStats();
+resetSimulationLiveWidgets();
 initSession().catch((err) => {
   resultDumpEl.textContent = `Init failed: ${err.message}`;
 });

@@ -2,10 +2,10 @@
   "version": "1.1.0",
   "notes": "Lower-volatility strips with rarer high-value symbols and rarer feature symbols.",
   "reels": [
-    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","SCATTER"],
-    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","H","SCATTER"],
-    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","WILD"],
-    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","H","SCATTER"],
-    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","WILD"]
+    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","H","SCATTER"],
+    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","H","SCATTER"],
+    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","H","WILD"],
+    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","H","SCATTER"],
+    ["A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","A","B","C","D","E","F","G","H","WILD"]
   ]
 }

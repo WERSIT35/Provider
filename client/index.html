@@ -9,8 +9,11 @@
   <body>
     <main class="app">
       <header class="topbar">
-        <h1>Project Khma MVP</h1>
-        <p>Server-authoritative slot prototype</p>
+        <div>
+          <h1>Project Khma MVP</h1>
+          <p>Server-authoritative slot prototype</p>
+        </div>
+        <span class="status-pill">Live Session</span>
       </header>
 
       <section class="stats">
@@ -23,11 +26,59 @@
         <div><span>Free Spins:</span> <strong id="freeSpins">0</strong></div>
       </section>
 
+      <section class="live-stats">
+        <div class="metric-card">
+          <span>Spins Played</span>
+          <strong id="spinsPlayed">0</strong>
+        </div>
+        <div class="metric-card">
+          <span>Winning Spins</span>
+          <strong id="winSpins">0</strong>
+        </div>
+        <div class="metric-card">
+          <span>Losing Spins</span>
+          <strong id="lossSpins">0</strong>
+        </div>
+        <div class="metric-card">
+          <span>Total Wagered</span>
+          <strong id="sessionWagered">0.00</strong>
+        </div>
+        <div class="metric-card">
+          <span>Total Won</span>
+          <strong id="sessionWon">0.00</strong>
+        </div>
+        <div class="metric-card">
+          <span>Net P/L</span>
+          <strong id="sessionNet">0.00</strong>
+        </div>
+      </section>
+
       <section class="controls">
         <label for="betSelect">Bet Amount</label>
         <select id="betSelect"></select>
         <button id="spinBtn">Spin</button>
         <button id="simulateBtn" type="button">Imitate 1M Spins</button>
+      </section>
+
+      <section class="simulate-status">
+        <div class="simulate-head">
+          <h2>Simulation Progress</h2>
+          <span id="simProgressLabel">Idle</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-bar" id="simProgressBar"></div>
+        </div>
+        <div class="sim-live-grid">
+          <div><span>Live RTP</span><strong id="simLiveRtp">0.00%</strong></div>
+          <div><span>Live Player Win</span><strong id="simLivePlayerWin">0.00</strong></div>
+          <div><span>Live Casino Net</span><strong id="simLiveCasinoNet">0.00</strong></div>
+          <div><span>Live Hit Rate</span><strong id="simLiveHitRate">0.00%</strong></div>
+          <div><span>Big Wins >=20x</span><strong id="simLiveBig20x">0</strong></div>
+          <div><span>Huge Wins >=50x</span><strong id="simLiveHuge50x">0</strong></div>
+          <div><span>Max Win X</span><strong id="simLiveMaxWinX">0.00x</strong></div>
+          <div><span>Baseline RTP</span><strong id="simLiveBaselineRtp">0.00%</strong></div>
+          <div><span>Baseline Net</span><strong id="simLiveBaselineNet">0.00</strong></div>
+        </div>
       </section>
 
       <section class="reels" id="reels"></section>
@@ -62,7 +113,7 @@
           <strong>Payout rule:</strong> line symbol payouts are multipliers of
           total bet. Scatter payout is multiplier of total bet.
         </p>
-        <h3>Payout Table (3/4/5)</h3>
+        <h3 id="paytableTitle">Payout Table (3/4/5) - Bet 1.00</h3>
         <div class="table-wrap">
           <table class="paytable" id="paytable">
             <thead>
