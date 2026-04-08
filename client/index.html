@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Khma MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <h1>Project Khma MVP</h1>
+        <p>Server-authoritative slot prototype</p>
+      </header>
+
+      <section class="stats">
+        <div><span>Session:</span> <strong id="sessionId">-</strong></div>
+        <div><span>Balance:</span> <strong id="balance">-</strong></div>
+        <div><span>Bet:</span> <strong id="betView">1.00</strong></div>
+        <div><span>Last Win:</span> <strong id="lastWin">0.00</strong></div>
+        <div><span>Free Spins:</span> <strong id="freeSpins">0</strong></div>
+      </section>
+
+      <section class="controls">
+        <label for="betSelect">Bet Amount</label>
+        <select id="betSelect"></select>
+        <button id="spinBtn">Spin</button>
+      </section>
+
+      <section class="reels" id="reels"></section>
+
+      <section class="result">
+        <h2>Result</h2>
+        <pre id="resultDump">No spin yet.</pre>
+      </section>
+    </main>
+    <script src="/main.js"></script>
+  </body>
+</html>
