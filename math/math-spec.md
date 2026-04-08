@@ -10,10 +10,10 @@ Define a certifiable math package for the first release candidate.
 - `reel-strips-v1.json`
 - Feature rules from `docs/feature-spec.md`
 
-## Target Metrics
+## Target Metrics (Current Tuning Direction)
 
-- RTP (theoretical): 96.00%
-- Hit frequency: 28% to 34%
+- RTP (theoretical target band): 95.00% to 96.50%
+- Hit frequency target: 36% to 40%
 - Bonus frequency: once every 130-220 spins
 - Max win: x7,500
 - Volatility: medium-high

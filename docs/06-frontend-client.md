@@ -13,6 +13,7 @@ Build performant HTML5 slot client integrated with backend outcomes.
    - Loading/session ready
    - Bet controls
    - Spin actions
+   - Reel spinning animation and staggered stops
    - Win display and summary
    - Bonus entry/exit
 3. Reliability:
@@ -37,6 +38,7 @@ Build performant HTML5 slot client integrated with backend outcomes.
 - Client renders outcomes exactly as backend resolves.
 - Critical paths tested on desktop/mobile browsers.
 - Placeholder assets can be swapped without code rewrite.
+- Spin animation runs smoothly and does not desync from backend outcomes.
 
 ## Next
 

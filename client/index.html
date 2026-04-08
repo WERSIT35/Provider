@@ -17,6 +17,8 @@
         <div><span>Session:</span> <strong id="sessionId">-</strong></div>
         <div><span>Balance:</span> <strong id="balance">-</strong></div>
         <div><span>Bet:</span> <strong id="betView">1.00</strong></div>
+        <div><span>Lines:</span> <strong id="lineCount">20</strong></div>
+        <div><span>Winning Lines:</span> <strong id="winningLines">0</strong></div>
         <div><span>Last Win:</span> <strong id="lastWin">0.00</strong></div>
         <div><span>Free Spins:</span> <strong id="freeSpins">0</strong></div>
       </section>
@@ -32,6 +34,47 @@
       <section class="result">
         <h2>Result</h2>
         <pre id="resultDump">No spin yet.</pre>
+        <h3>Caught Lines</h3>
+        <ul id="caughtLines">
+          <li>No winning lines yet.</li>
+        </ul>
+      </section>
+
+      <section class="info">
+        <h2>Game Info</h2>
+        <p><strong>Number of lines:</strong> 20 fixed paylines</p>
+        <p>
+          <strong>How line wins are caught:</strong> symbols must match from reel 1
+          to the right on the same payline. 3, 4, or 5 in a row pay.
+        </p>
+        <p>
+          <strong>Wild:</strong> substitutes regular symbols in line wins.
+          <strong>Scatter:</strong> pays anywhere and triggers free spins on 3+.
+        </p>
+        <p>
+          <strong>Symbol Legend:</strong>
+          🍒 A, 🍋 B, 🍇 C, 🍀 D, 🔔 E, 💎 F, 🪙 G, 👑 H, 🌟 WILD, 🎯 SCATTER
+        </p>
+        <p>
+          <strong>Payout rule:</strong> line symbol payouts are multipliers of
+          line bet. Scatter payout is multiplier of total bet.
+        </p>
+        <h3>Payout Table (3/4/5)</h3>
+        <div class="table-wrap">
+          <table class="paytable" id="paytable">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>3</th>
+                <th>4</th>
+                <th>5</th>
+              </tr>
+            </thead>
+            <tbody id="paytableBody"></tbody>
+          </table>
+        </div>
+        <h3>Sample Line Paths</h3>
+        <ul id="lineExamples"></ul>
       </section>
     </main>
     <script src="/main.js"></script>

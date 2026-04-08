@@ -5,7 +5,8 @@
   "description": "Provider slot MVP with server-authoritative outcomes",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "simulate": "node math/simulate.js"
   },
   "engines": {
     "node": ">=18"

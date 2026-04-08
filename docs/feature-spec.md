@@ -6,6 +6,37 @@ Defines gameplay features for implementation and testing.
 
 ## Base Game Features
 
+0. Symbol Set (Current Theme)
+- Regular symbols:
+  - `A` = 🍒
+  - `B` = 🍋
+  - `C` = 🍇
+  - `D` = 🍀
+  - `E` = 🔔
+  - `F` = 💎
+  - `G` = 🪙
+  - `H` = 👑
+- Special symbols:
+  - `WILD` = 🌟
+  - `SCATTER` = 🎯
+
+0.1 Payout Values (Current Profile)
+- Line symbol payouts use line bet multiplier.
+- Scatter payouts use total bet multiplier.
+
+| Symbol | 3 | 4 | 5 |
+|---|---:|---:|---:|
+| 🍒 `A` | 1.83 | 5.49 | 13.73 |
+| 🍋 `B` | 1.83 | 5.49 | 13.73 |
+| 🍇 `C` | 2.75 | 7.32 | 18.30 |
+| 🍀 `D` | 2.75 | 7.32 | 18.30 |
+| 🔔 `E` | 3.66 | 10.98 | 27.45 |
+| 💎 `F` | 3.66 | 10.98 | 27.45 |
+| 🪙 `G` | 7.32 | 22.88 | 54.90 |
+| 👑 `H` | 9.15 | 32.03 | 91.50 |
+| 🌟 `WILD` | 18.30 | 68.63 | 183.00 |
+| 🎯 `SCATTER` (total bet) | 18.30 | 91.50 | 457.50 |
+
 1. Standard Line Wins
 - Left-to-right line evaluation on 20 fixed lines.
 - Minimum match: 3 of a kind (except special symbols).
