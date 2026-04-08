@@ -53,7 +53,7 @@ function generateMatrix() {
 }
 
 function maybeApplyExpandingWild(matrix, isFreeSpin) {
-  const chance = isFreeSpin ? 0.12 : 0.08;
+  const chance = isFreeSpin ? 0.04 : 0.02;
   if (Math.random() >= chance) return matrix;
   const reel = randomInt(5);
   const next = matrix.map((r) => r.slice());
@@ -112,7 +112,7 @@ for (let i = 0; i < steps; i += 1) {
   let matrix = generateMatrix();
   matrix = maybeApplyExpandingWild(matrix, isFreeSpin);
 
-  const lineBet = bet / PAYLINES.length;
+  const lineBet = bet;
   const activeMultiplier = isFreeSpin ? bonusMultiplier : 1;
   let win = 0;
   for (const payline of PAYLINES) {

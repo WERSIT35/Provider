@@ -7,9 +7,10 @@ Define a fun, clear, and commercially viable slot design before coding.
 
 - Reel setup: 5x3 (initial recommendation)
 - Volatility: Medium-high (initial)
-- RTP target: 96.00% primary build
+- RTP target: 93.50% to 94.50% primary build
 - Max win target: x5,000 to x10,000 (choose after math simulation)
 - Session feel: frequent small reinforcement + occasional meaningful bonus excitement
+- Profitability rule: release candidate must pass repeated 1,000,000-spin checks with positive casino net.
 
 ## Tasks
 

@@ -36,6 +36,14 @@ Example:
 node math/simulate.js 1000000 1
 ```
 
+UI/API comparison simulation:
+
+- UI button: `Imitate 1M Spins`
+- API: `POST /api/v1/simulate` with `{ "steps": 1000000, "bet_amount": 1 }`
+- Current release target:
+  - RTP band: `93.50%` to `94.50%`
+  - Profitability gate: `casino_net > 0` on repeated 1M validation runs
+
 ## What Is Implemented
 
 - Session init API: `POST /api/v1/session/init`

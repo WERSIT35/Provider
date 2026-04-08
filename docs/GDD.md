@@ -39,7 +39,7 @@
     - 🎯 SCATTER
 - Payout communication:
   - show a clear in-game payout table for 3/4/5 matches per symbol
-  - specify that line symbols pay by line bet multiplier
+  - specify that line symbols pay by total bet multiplier
   - specify that scatter pays by total bet multiplier
 
 ## Core Loop
@@ -58,7 +58,7 @@
 
 2. Free Spins Bonus
 - Trigger: 3+ scatters
-- Award: 10 free spins (retrigger allowed)
+- Award: 6 free spins on 3 scatters, 8 on 4, 10 on 5 (retrigger allowed)
 - During free spins, wild multiplier starts at x2 and can increase on retriggers.
 
 3. Big Win Tiers
@@ -66,11 +66,12 @@
 
 ## Economy Targets (Design Intent)
 
-- RTP target: 95.00% to 96.50% (profile dependent)
-- Hit frequency target: ~36% to 40% (higher small-win feedback profile)
+- RTP target: 93.50% to 94.50% (current profile)
+- Hit frequency target: ~33% to 35%
 - Bonus trigger frequency target: every ~130 to 220 spins
 - Volatility target: medium-high
 - Max win target: x7,500
+- Release gate: in repeated 1,000,000-spin checks, current profile must keep `casino_net > 0` each run.
 
 ## UX Rules
 

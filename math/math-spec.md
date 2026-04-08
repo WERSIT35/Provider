@@ -12,17 +12,18 @@ Define a certifiable math package for the first release candidate.
 
 ## Target Metrics (Current Tuning Direction)
 
-- RTP (theoretical target band): 95.00% to 96.50%
-- Hit frequency target: 36% to 40%
+- RTP (theoretical target band): 93.50% to 94.50%
+- Hit frequency target: 33% to 35%
 - Bonus frequency: once every 130-220 spins
 - Max win: x7,500
 - Volatility: medium-high
+- Profitability safety rule: current profile must produce positive `casino_net` in repeated 1,000,000-spin validation runs before release.
 
 ## RTP Decomposition Target
 
-- Base game contribution: 62% to 70%
-- Bonus contribution: 26% to 34%
-- Scatter direct pays: 1% to 4%
+- Base game contribution: 70% to 80%
+- Bonus contribution: 12% to 20%
+- Scatter direct pays: 1% to 3%
 
 ## Evaluation Steps
 
@@ -50,3 +51,4 @@ Define a certifiable math package for the first release candidate.
 - Math spec reviewed by product and backend.
 - Simulated 10M+ spins for candidate profile.
 - Empirical RTP within +/-0.15% of theoretical target.
+- 1,000,000-spin validation runs show `casino_net > 0` for current profile.

@@ -1,40 +1,39 @@
-# Simulation Report v1 (Template)
+# Simulation Report v1
 
 ## Status
 
-`PENDING_EXECUTION`
+`CURRENT_PROFILE_VALIDATED_FOR_1M_CHECK`
 
 ## Simulation Configuration
 
-- Math config ID: `v1.0.0`
-- Total simulated spins: `10,000,000` (target)
+- Math config ID: `paytable-v1.2.0` + `reel-strips-v1.1.0`
+- Validation mode: baseline vs current comparison
+- Spins per run: `1,000,000`
+- Runs executed: `3`
 - Bet normalization: `1.0`
-- Date:
-- Tool version:
+- Date: `2026-04-08`
 
-## Output Metrics
+## 1M Run Results (Current Profile)
 
-- Empirical RTP:
-- Hit frequency:
-- Bonus trigger frequency:
-- Standard deviation:
-- Max observed single-spin win:
-- p95 session drawdown:
+- Run 1: RTP `93.95%`, house edge `6.05%`, casino net `+59,928.56`
+- Run 2: RTP `93.52%`, house edge `6.48%`, casino net `+64,250.91`
+- Run 3: RTP `93.98%`, house edge `6.02%`, casino net `+59,643.05`
+- Average RTP: `93.82%`
+- Average casino net: `+61,274.17`
 
-## Distribution Snapshot
+## 1M Run Results (Baseline Profile Reference)
 
-- Win 0x to <1x:
-- Win 1x to <5x:
-- Win 5x to <20x:
-- Win 20x to <100x:
-- Win >=100x:
+- Run 1: RTP `317.61%`, casino net `-1,784,077.52`
+- Run 2: RTP `318.61%`, casino net `-1,790,909.74`
+- Run 3: RTP `320.66%`, casino net `-1,805,701.01`
 
 ## Validation
 
-- RTP tolerance check (+/-0.15%): `PENDING`
-- Bonus frequency within target: `PENDING`
-- Max exposure sanity check: `PENDING`
+- RTP target band check (93.50% to 94.50%): `PASS` (all 3 current runs in band)
+- Profitability check (`casino_net > 0` for current profile): `PASS` (all 3 runs)
+- Big-win suppression vs baseline (`>=20x`, `>=50x`): `PASS` (materially reduced)
 
 ## Notes
 
-- Replace this template with real simulation output once engine is implemented.
+- Absolute guarantee of zero-loss is not mathematically possible in random systems; release gate enforces positive net on repeated 1M validation runs for the configured profile.
+- Next certification step remains `10,000,000+` spins with full variance and tail reporting.

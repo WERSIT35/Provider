@@ -73,6 +73,11 @@ body {
   background: rgba(0, 0, 0, 0.25);
   border-radius: 12px;
   padding: 10px;
+  transition: box-shadow 0.16s ease;
+}
+
+.reels.reels-spinning {
+  box-shadow: inset 0 0 0 1px rgba(248, 200, 77, 0.2), 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
 .reels.win-pulse {
@@ -96,8 +101,15 @@ body {
 }
 
 .cell.spinning-cell {
-  animation: spinCell 0.14s linear infinite;
-  filter: blur(0.7px) saturate(1.15);
+  animation: spinCell 0.18s linear infinite, spinShine 0.38s linear infinite;
+  filter: blur(0.75px) saturate(1.2) brightness(1.08);
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.28) 48%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  background-size: 100% 240%;
 }
 
 .cell.wild {
@@ -163,13 +175,19 @@ body {
 
 @keyframes spinCell {
   0% {
-    transform: translateY(-2px);
-  }
-  50% {
-    transform: translateY(2px);
+    transform: translateY(-7px) scale(0.99);
   }
   100% {
-    transform: translateY(-2px);
+    transform: translateY(7px) scale(1.01);
+  }
+}
+
+@keyframes spinShine {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
   }
 }
 

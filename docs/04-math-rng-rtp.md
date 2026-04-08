@@ -17,10 +17,11 @@ Profitability comes from **defined house edge at scale**, not from hidden riggin
      - Base RTP contribution
      - Bonus RTP contribution
 2. Define target metrics:
-   - RTP: 96.00% (candidate set can include 94/95/96 where allowed)
+   - RTP: 93.50% to 94.50% for current profile
    - Hit frequency target range
    - Volatility index target
    - Max exposure per spin
+   - Profitability gate: repeated 1,000,000-spin validations must return positive casino net for current profile.
 3. RNG architecture:
    - Server-authoritative RNG
    - Cryptographically secure PRNG source

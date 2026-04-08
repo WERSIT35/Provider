@@ -27,6 +27,7 @@
         <label for="betSelect">Bet Amount</label>
         <select id="betSelect"></select>
         <button id="spinBtn">Spin</button>
+        <button id="simulateBtn" type="button">Imitate 1M Spins</button>
       </section>
 
       <section class="reels" id="reels"></section>
@@ -34,6 +35,8 @@
       <section class="result">
         <h2>Result</h2>
         <pre id="resultDump">No spin yet.</pre>
+        <h3>Simulation (1M)</h3>
+        <pre id="simulateDump">No simulation yet.</pre>
         <h3>Caught Lines</h3>
         <ul id="caughtLines">
           <li>No winning lines yet.</li>
@@ -57,7 +60,7 @@
         </p>
         <p>
           <strong>Payout rule:</strong> line symbol payouts are multipliers of
-          line bet. Scatter payout is multiplier of total bet.
+          total bet. Scatter payout is multiplier of total bet.
         </p>
         <h3>Payout Table (3/4/5)</h3>
         <div class="table-wrap">
