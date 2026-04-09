@@ -8,6 +8,7 @@ const BASE_PORT = Number(process.env.PORT || 3000);
 const ROOT = path.resolve(__dirname, "..");
 const CLIENT_DIR = path.join(ROOT, "client");
 const MATH_DIR = path.join(ROOT, "math");
+const ASSETS_DIR = path.join(CLIENT_DIR, "assets");
 
 const gameRules = JSON.parse(
   fs.readFileSync(path.join(MATH_DIR, "game-rules-v2.json"), "utf8")
@@ -88,6 +89,8 @@ assertGameRulesOrThrow(gameRules);
 
 for (const symbolEntry of gameRules.symbol_payout_display.symbols) {
   const code = String(symbolEntry.symbol || "").toUpperCase().replace(/\s+/g, "_");
+  // Map the symbol to its actual image asset path for the frontend
+  symbolEntry.asset_path = `/assets/symbols/${code.toLowerCase()}.svg`;
   if (!code || code === SCATTER_SYMBOL) continue;
   REGULAR_SYMBOLS.push(code);
   SYMBOL_PAYOUTS.set(code, symbolEntry.payouts || {});
@@ -729,18 +732,24 @@ function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
 }
 
 function contentTypeFor(filePath) {
-  if (filePath.endsWith(".html")) return "text/html; charset=utf-8";
-  if (filePath.endsWith(".js")) return "application/javascript; charset=utf-8";
-  if (filePath.endsWith(".css")) return "text/css; charset=utf-8";
-  if (filePath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (filePath.endsWith(".html")) return "text/html; charset=utf-8"; // HTML files
+  if (filePath.endsWith(".js")) return "application/javascript; charset=utf-8"; // JavaScript files
+  if (filePath.endsWith(".css")) return "text/css; charset=utf-8"; // CSS files
+  if (filePath.endsWith(".json")) return "application/json; charset=utf-8"; // JSON files
+  if (filePath.endsWith(".png")) return "image/png"; // PNG images
+  if (filePath.endsWith(".svg")) return "image/svg+xml"; // SVG images
+  if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg")) return "image/jpeg"; // JPEG images
+  if (filePath.endsWith(".gif")) return "image/gif"; // GIF images
   return "application/octet-stream";
 }
 
 function serveStatic(req, res, parsedUrl) {
   let requested = parsedUrl.pathname;
   if (requested === "/") requested = "/index.html";
-  const filePath = path.normalize(path.join(CLIENT_DIR, requested));
-  if (!filePath.startsWith(CLIENT_DIR)) {
+  const baseDir = CLIENT_DIR;
+
+  const filePath = path.normalize(path.join(baseDir, requested));
+  if (!filePath.startsWith(baseDir)) {
     sendJson(res, 403, { error: "FORBIDDEN" });
     return;
   }
@@ -749,8 +758,14 @@ function serveStatic(req, res, parsedUrl) {
       sendJson(res, 404, { error: "NOT_FOUND" });
       return;
     }
+    // Strip UTF-8 BOM (\ufeff / 0xEF 0xBB 0xBF) if present. 
+    // Browsers often fail to render SVGs in <img> tags if they start with a BOM.
+    let content = data;
+    if (data.length >= 3 && data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf) {
+      content = data.slice(3);
+    }
     res.writeHead(200, { "Content-Type": contentTypeFor(filePath) });
-    res.end(data);
+    res.end(content);
   });
 }
 

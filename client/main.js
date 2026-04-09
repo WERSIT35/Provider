@@ -185,6 +185,9 @@ function applyRuleDrivenDisplay(rules) {
     const code = normalizeSymbolCode(entry.symbol);
     if (!code) return;
     nextText[code] = String(entry.symbol);
+    if (entry.asset_path) {
+      SYMBOL_ASSETS[code] = entry.asset_path;
+    }
     if (code === "SCATTER") {
       nextScatterPayouts = {};
       Object.entries(entry.payouts || {}).forEach(([count, value]) => {
