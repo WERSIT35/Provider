@@ -1,54 +1,48 @@
-# Math Specification v1
+﻿# Math Specification v2
 
 ## Objective
 
-Define a certifiable math package for the first release candidate.
+Define a certifiable math package for the current 6x5 pay-anywhere tumble model.
 
 ## Inputs
 
-- `paytable-v1.json`
-- `reel-strips-v1.json`
-- Feature rules from `docs/feature-spec.md`
+- `math/game-rules-v2.json`
+- Runtime feature logic in backend engine
 
-## Target Metrics (Current Tuning Direction)
+## Target Metrics (Current Profile)
 
-- RTP (theoretical target band): 93.50% to 94.50%
-- Hit frequency target: 33% to 35%
-- Bonus frequency: once every 130-220 spins
-- Max win: x7,500
-- Volatility: medium-high
-- Profitability safety rule: current profile must produce positive `casino_net` in repeated 1,000,000-spin validation runs before release.
+- RTP target band: 96.20% to 96.80%
+- RTP pass tolerance: +/-0.05%
+- Volatility: high
+- Max win cap: x15,000
+- Profitability safety rule: repeated 1,000,000-spin validations must produce positive `casino_net`.
 
-## RTP Decomposition Target
+## Bonus and Feature Targets
 
-- Base game contribution: 70% to 80%
-- Bonus contribution: 12% to 20%
-- Scatter direct pays: 1% to 3%
+- Free-spin trigger: 4+ scatters in base game
+- Free-spin start amount: 15
+- Free-spin retrigger: 3+ scatters, +5 spins
+- Bonus visibility: large simulation runs must show non-zero `bonus_catch_count`
 
 ## Evaluation Steps
 
-1. Resolve reel stops via server RNG.
-2. Apply feature modifiers.
-3. Evaluate line wins.
-4. Add scatter and bonus components.
-5. Apply multipliers where valid.
-6. Return normalized payout in bet multiplier.
+1. Generate symbol grid from server RNG.
+2. Evaluate pay-anywhere symbol wins (8/10/12+ tiers).
+3. Apply tumble until no new win.
+4. Collect sequence multipliers and apply with caps.
+5. Apply payout scaler and max-win cap.
+6. Award free spins if scatter conditions are met.
+7. Return normalized payout and audit fields.
 
 ## Constraints
 
-- No hidden payout manipulation by user segment.
-- No run-time math changes without signed config deployment.
-- Config IDs must be logged with every spin.
+- No hidden per-player manipulation.
+- No runtime math changes without versioned config update.
+- Config IDs must be logged with every spin and simulation output.
 
-## Tuning Strategy
+## Release Gates
 
-1. Tune base hit frequency with symbol density.
-2. Tune top-end wins by high symbol distribution and wild placements.
-3. Tune bonus EV through trigger rate and multiplier growth.
-
-## Approval Checklist
-
-- Math spec reviewed by product and backend.
-- Simulated 10M+ spins for candidate profile.
-- Empirical RTP within +/-0.15% of theoretical target.
-- 1,000,000-spin validation runs show `casino_net > 0` for current profile.
+- 1,000,000-spin validation in target RTP band with tolerance
+- Positive `casino_net`
+- Bonus metrics reported and non-zero catches
+- Simulation API and SSE stream final values aligned

@@ -4,56 +4,109 @@ const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
 
-const PORT = process.env.PORT || 3000;
+const BASE_PORT = Number(process.env.PORT || 3000);
 const ROOT = path.resolve(__dirname, "..");
 const CLIENT_DIR = path.join(ROOT, "client");
 const MATH_DIR = path.join(ROOT, "math");
 
-const paytable = JSON.parse(
-  fs.readFileSync(path.join(MATH_DIR, "paytable-v1.json"), "utf8")
-);
-const reelStrips = JSON.parse(
-  fs.readFileSync(path.join(MATH_DIR, "reel-strips-v1.json"), "utf8")
+const gameRules = JSON.parse(
+  fs.readFileSync(path.join(MATH_DIR, "game-rules-v2.json"), "utf8")
 );
 
 const sessions = new Map();
 const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10];
 
-const PAYLINES = [
-  [1, 1, 1, 1, 1],
-  [0, 0, 0, 0, 0],
-  [2, 2, 2, 2, 2],
-  [0, 1, 2, 1, 0],
-  [2, 1, 0, 1, 2],
-  [0, 0, 1, 0, 0],
-  [2, 2, 1, 2, 2],
-  [1, 0, 0, 0, 1],
-  [1, 2, 2, 2, 1],
-  [0, 1, 1, 1, 0],
-  [2, 1, 1, 1, 2],
-  [1, 1, 0, 1, 1],
-  [1, 1, 2, 1, 1],
-  [0, 1, 0, 1, 0],
-  [2, 1, 2, 1, 2],
-  [1, 0, 1, 0, 1],
-  [1, 2, 1, 2, 1],
-  [0, 2, 0, 2, 0],
-  [2, 0, 2, 0, 2],
-  [0, 2, 2, 2, 0]
-];
-const TARGET_RTP_MIN = 93.5;
-const TARGET_RTP_MAX = 94.5;
-const BONUS_MULTIPLIER_START = 2;
-const BONUS_MULTIPLIER_CAP = 5;
-const FREE_SPIN_RETRIGGER_AWARD = 5;
+const TARGET_RTP_MIN = Number(gameRules.rtp?.target_band_min ?? 0);
+const TARGET_RTP_MAX = Number(gameRules.rtp?.target_band_max ?? 100);
+const RTP_BAND_TOLERANCE = Number(gameRules.rtp?.target_tolerance_percent ?? 0.05);
 
-const BASELINE_REELS = [
-  ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "A", "C", "E", "G"],
-  ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "B", "D", "F", "H"],
-  ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "A", "D", "F", "G"],
-  ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "B", "C", "E", "H"],
-  ["A", "B", "C", "D", "E", "F", "G", "H", "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "A", "C", "F", "H"]
-];
+const LAYOUT_REELS = Number(gameRules.layout?.reels || 6);
+const LAYOUT_ROWS = Number(gameRules.layout?.rows || 5);
+const MIN_MATCH_COUNT = Number(gameRules.layout?.min_match_count || 8);
+const MAX_MATCH_COUNT = 30;
+const MAX_WIN_CAP_X = Number(gameRules.max_win_cap_multiplier || 15000);
+const BASE_SEQUENCE_MULTIPLIER_CAP = 80;
+const FREE_SPIN_PERSISTENT_MULTIPLIER_CAP = 150;
+const RTP_PAYOUT_SCALER = 1.0875;
+
+const FREE_SPINS_TRIGGER = Number(gameRules.features?.free_spins?.base_trigger_scatter_count || 4);
+const FREE_SPINS_AWARD = Number(gameRules.features?.free_spins?.base_award_spins || 15);
+const FREE_SPINS_RETRIGGER_TRIGGER = Number(gameRules.features?.free_spins?.retrigger_scatter_count || 3);
+const FREE_SPINS_RETRIGGER_AWARD = Number(gameRules.features?.free_spins?.retrigger_award_spins || 5);
+const ANTE_MULTIPLIER = Number(gameRules.features?.ante_bet?.multiplier || 1.25);
+
+const MULTIPLIER_VALUES = (gameRules.features?.multipliers?.allowed_values || [2, 3, 5, 10]).map(Number);
+const MULTIPLIER_WEIGHTS = {
+  2: 42,
+  3: 28,
+  4: 15,
+  5: 8,
+  6: 4,
+  8: 2,
+  10: 1.1,
+  12: 0.7,
+  15: 0.3,
+  20: 0.15,
+  25: 0.08,
+  50: 0.03,
+  100: 0.01,
+  250: 0.0025,
+  500: 0.001,
+  1000: 0.0004
+};
+const MULTI_SYMBOL = "MULTI";
+const SCATTER_SYMBOL = "SCATTER";
+
+const SYMBOL_PAYOUTS = new Map();
+const REGULAR_SYMBOLS = [];
+const SYMBOL_WEIGHTS = new Map();
+
+function assertGameRulesOrThrow(rules) {
+  if (!rules || !rules.layout || !rules.features || !rules.rtp) {
+    throw new Error("INVALID_GAME_RULES: missing required sections");
+  }
+  if (!Number.isFinite(rules.layout.reels) || !Number.isFinite(rules.layout.rows)) {
+    throw new Error("INVALID_GAME_RULES: invalid layout");
+  }
+  if (!Array.isArray(rules.rules_pages) || rules.rules_pages.length === 0) {
+    throw new Error("INVALID_GAME_RULES: rules pages missing");
+  }
+  if (
+    !rules.symbol_payout_display ||
+    !Array.isArray(rules.symbol_payout_display.symbols) ||
+    rules.symbol_payout_display.symbols.length === 0
+  ) {
+    throw new Error("INVALID_GAME_RULES: symbol payout display missing");
+  }
+  const multipliers = rules.features.multipliers;
+  if (!multipliers || !Array.isArray(multipliers.allowed_values) || multipliers.allowed_values.length === 0) {
+    throw new Error("INVALID_GAME_RULES: multipliers invalid");
+  }
+}
+
+assertGameRulesOrThrow(gameRules);
+
+for (const symbolEntry of gameRules.symbol_payout_display.symbols) {
+  const code = String(symbolEntry.symbol || "").toUpperCase().replace(/\s+/g, "_");
+  if (!code || code === SCATTER_SYMBOL) continue;
+  REGULAR_SYMBOLS.push(code);
+  SYMBOL_PAYOUTS.set(code, symbolEntry.payouts || {});
+}
+
+// High-volatility weights: top symbols are rarer than low symbols.
+for (const symbol of REGULAR_SYMBOLS) {
+  let w = 1;
+  if (symbol.includes("TOP_CROWN")) w = 0.35;
+  else if (symbol.includes("HOURGLASS")) w = 0.42;
+  else if (symbol.includes("RING")) w = 0.52;
+  else if (symbol.includes("CHALICE")) w = 0.62;
+  else if (symbol.includes("RED_GEM")) w = 0.72;
+  else if (symbol.includes("PURPLE_TRIANGLE")) w = 0.82;
+  else if (symbol.includes("YELLOW_HEX")) w = 0.9;
+  else if (symbol.includes("GREEN_TRIANGLE")) w = 0.95;
+  else if (symbol.includes("BLUE_DIAMOND")) w = 1.0;
+  SYMBOL_WEIGHTS.set(symbol, w);
+}
 
 function sendJson(res, code, payload) {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
@@ -65,15 +118,10 @@ function parseBody(req) {
     let data = "";
     req.on("data", (chunk) => {
       data += chunk;
-      if (data.length > 1_000_000) {
-        reject(new Error("Body too large"));
-      }
+      if (data.length > 1_000_000) reject(new Error("Body too large"));
     });
     req.on("end", () => {
-      if (!data) {
-        resolve({});
-        return;
-      }
+      if (!data) return resolve({});
       try {
         resolve(JSON.parse(data));
       } catch {
@@ -82,6 +130,312 @@ function parseBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function randomInt(maxExclusive) {
+  return crypto.randomInt(0, maxExclusive);
+}
+
+function parseBooleanLike(value, defaultValue = false) {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
+  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
+  return defaultValue;
+}
+
+function weightedRegularSymbol() {
+  const total = REGULAR_SYMBOLS.reduce((sum, s) => sum + (SYMBOL_WEIGHTS.get(s) || 1), 0);
+  let r = Math.random() * total;
+  for (const s of REGULAR_SYMBOLS) {
+    r -= SYMBOL_WEIGHTS.get(s) || 1;
+    if (r <= 0) return s;
+  }
+  return REGULAR_SYMBOLS[REGULAR_SYMBOLS.length - 1];
+}
+
+function randomMultiplierValue() {
+  const total = MULTIPLIER_VALUES.reduce((s, v) => s + (MULTIPLIER_WEIGHTS[v] || 1), 0);
+  let r = Math.random() * total;
+  for (const value of MULTIPLIER_VALUES) {
+    r -= MULTIPLIER_WEIGHTS[value] || 1;
+    if (r <= 0) return value;
+  }
+  return MULTIPLIER_VALUES[MULTIPLIER_VALUES.length - 1];
+}
+
+function createSymbolCell() {
+  const roll = Math.random();
+  // Tuned for playable high-volatility behavior with rare bonus triggers.
+  if (roll < 0.009) {
+    return { symbol: SCATTER_SYMBOL };
+  }
+  if (roll < 0.0145) {
+    return { symbol: MULTI_SYMBOL, multiplier: randomMultiplierValue() };
+  }
+  return { symbol: weightedRegularSymbol() };
+}
+
+function createSymbolCellWithRates(scatterChance, multiChance) {
+  const roll = Math.random();
+  if (roll < scatterChance) return { symbol: SCATTER_SYMBOL };
+  if (roll < scatterChance + multiChance) {
+    return { symbol: MULTI_SYMBOL, multiplier: randomMultiplierValue() };
+  }
+  return { symbol: weightedRegularSymbol() };
+}
+
+function createMatrixWithMeta() {
+  const matrix = Array.from({ length: LAYOUT_ROWS }, () => Array(LAYOUT_REELS).fill(null));
+  const multipliers = [];
+  for (let row = 0; row < LAYOUT_ROWS; row += 1) {
+    for (let col = 0; col < LAYOUT_REELS; col += 1) {
+      const cell = createSymbolCell();
+      matrix[row][col] = cell.symbol;
+      if (cell.symbol === MULTI_SYMBOL) {
+        multipliers.push({ row, col, value: cell.multiplier });
+      }
+    }
+  }
+  return { matrix, multipliers };
+}
+
+function createMatrixWithMetaRates(scatterChance, multiChance) {
+  const matrix = Array.from({ length: LAYOUT_ROWS }, () => Array(LAYOUT_REELS).fill(null));
+  const multipliers = [];
+  for (let row = 0; row < LAYOUT_ROWS; row += 1) {
+    for (let col = 0; col < LAYOUT_REELS; col += 1) {
+      const cell = createSymbolCellWithRates(scatterChance, multiChance);
+      matrix[row][col] = cell.symbol;
+      if (cell.symbol === MULTI_SYMBOL) {
+        multipliers.push({ row, col, value: cell.multiplier });
+      }
+    }
+  }
+  return { matrix, multipliers };
+}
+
+function countSymbol(matrix, symbol) {
+  let count = 0;
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix[row].length; col += 1) {
+      if (matrix[row][col] === symbol) count += 1;
+    }
+  }
+  return count;
+}
+
+function payoutByCount(payoutMap, count) {
+  if (count >= 12) return Number(payoutMap["12-30"] || 0);
+  if (count >= 10) return Number(payoutMap["10-11"] || 0);
+  if (count >= 8) return Number(payoutMap["8-9"] || 0);
+  return 0;
+}
+
+function evaluateWaysWin(matrix, betAmount) {
+  const wins = [];
+  let total = 0;
+  const winningSymbols = new Set();
+
+  for (const symbol of REGULAR_SYMBOLS) {
+    const count = countSymbol(matrix, symbol);
+    if (count < MIN_MATCH_COUNT) continue;
+    const payout = payoutByCount(SYMBOL_PAYOUTS.get(symbol) || {}, Math.min(count, MAX_MATCH_COUNT));
+    if (payout <= 0) continue;
+    const amount = Number((payout * betAmount).toFixed(2));
+    total += amount;
+    winningSymbols.add(symbol);
+    wins.push({ symbol, count, payout, amount });
+  }
+
+  const positions = [];
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix[row].length; col += 1) {
+      if (winningSymbols.has(matrix[row][col])) positions.push({ row, col });
+    }
+  }
+
+  return {
+    wins,
+    winning_symbols: Array.from(winningSymbols),
+    winning_positions: positions,
+    total: Number(total.toFixed(2))
+  };
+}
+
+function applyTumble(matrix, winningPositions) {
+  const next = matrix.map((row) => row.slice());
+  const removeSet = new Set(winningPositions.map((p) => `${p.row}-${p.col}`));
+
+  for (let row = 0; row < next.length; row += 1) {
+    for (let col = 0; col < next[row].length; col += 1) {
+      if (removeSet.has(`${row}-${col}`)) next[row][col] = null;
+    }
+  }
+
+  const multipliers = [];
+  for (let col = 0; col < LAYOUT_REELS; col += 1) {
+    const kept = [];
+    for (let row = LAYOUT_ROWS - 1; row >= 0; row -= 1) {
+      if (next[row][col] !== null) kept.push(next[row][col]);
+    }
+
+    let writeRow = LAYOUT_ROWS - 1;
+    for (let i = 0; i < kept.length; i += 1) {
+      next[writeRow][col] = kept[i];
+      writeRow -= 1;
+    }
+    while (writeRow >= 0) {
+      const cell = createSymbolCell();
+      next[writeRow][col] = cell.symbol;
+      if (cell.symbol === MULTI_SYMBOL) {
+        multipliers.push({ row: writeRow, col, value: cell.multiplier });
+      }
+      writeRow -= 1;
+    }
+  }
+
+  return { matrix: next, multipliers };
+}
+
+function forceScatterTrigger(matrix, requiredCount) {
+  const next = matrix.map((row) => row.slice());
+  let current = countSymbol(next, SCATTER_SYMBOL);
+  while (current < requiredCount) {
+    const row = randomInt(LAYOUT_ROWS);
+    const col = randomInt(LAYOUT_REELS);
+    if (next[row][col] === SCATTER_SYMBOL) continue;
+    next[row][col] = SCATTER_SYMBOL;
+    current += 1;
+  }
+  return next;
+}
+
+function evaluateSpinRound(session, betAmount, options = {}) {
+  const anteEnabled = Boolean(options.ante_enabled);
+  const forceFreeSpinTrigger = Boolean(options.force_free_spin_trigger);
+  const isFreeSpin = session.freeSpinsLeft > 0;
+  const betCharged = !isFreeSpin && anteEnabled ? Number((betAmount * ANTE_MULTIPLIER).toFixed(2)) : betAmount;
+  if (!isFreeSpin && session.balance < betCharged) {
+    throw new Error("INSUFFICIENT_FUNDS");
+  }
+
+  if (!isFreeSpin) {
+    session.balance = Number((session.balance - betCharged).toFixed(2));
+  } else {
+    session.freeSpinsLeft -= 1;
+  }
+
+  const scatterChance = Math.min(0.045, anteEnabled ? 0.0172 : 0.0086);
+  const multiChance = 0.015;
+  let { matrix, multipliers } = createMatrixWithMetaRates(scatterChance, multiChance);
+  if (!isFreeSpin && forceFreeSpinTrigger) {
+    matrix = forceScatterTrigger(matrix, FREE_SPINS_TRIGGER);
+  }
+  const tumbleSteps = [];
+  let sequenceWin = 0;
+  let sequenceMultiplierSum = multipliers.reduce((s, m) => s + m.value, 0);
+  let highestScatterSeen = countSymbol(matrix, SCATTER_SYMBOL);
+  const sequenceWins = [];
+  let firstWinningPositions = [];
+
+  while (true) {
+    const ways = evaluateWaysWin(matrix, betAmount);
+    tumbleSteps.push({
+      matrix,
+      ways_wins: ways.wins,
+      win_total: ways.total,
+      winning_positions: ways.winning_positions
+    });
+    if (ways.total <= 0) break;
+    sequenceWin += ways.total;
+    if (firstWinningPositions.length === 0) {
+      firstWinningPositions = ways.winning_positions;
+    }
+    for (const win of ways.wins) {
+      sequenceWins.push(win);
+    }
+    const tumbled = applyTumble(matrix, ways.winning_positions);
+    matrix = tumbled.matrix;
+    sequenceMultiplierSum += tumbled.multipliers.reduce((s, m) => s + m.value, 0);
+    const scatters = countSymbol(matrix, SCATTER_SYMBOL);
+    if (scatters > highestScatterSeen) highestScatterSeen = scatters;
+  }
+
+  let multiplierApplied = 1;
+  if (isFreeSpin) {
+    if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+      session.freeSpinPersistentMultiplier = Number(
+        Math.min(
+          FREE_SPIN_PERSISTENT_MULTIPLIER_CAP,
+          session.freeSpinPersistentMultiplier + sequenceMultiplierSum
+        ).toFixed(2)
+      );
+    }
+    if (sequenceWin > 0 && session.freeSpinPersistentMultiplier > 0) {
+      multiplierApplied = session.freeSpinPersistentMultiplier;
+    }
+  } else {
+    if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+      multiplierApplied = Math.min(BASE_SEQUENCE_MULTIPLIER_CAP, sequenceMultiplierSum);
+    }
+  }
+
+  let totalWin = Number((sequenceWin * multiplierApplied * RTP_PAYOUT_SCALER).toFixed(2));
+  const maxWinCap = Number((MAX_WIN_CAP_X * betAmount).toFixed(2));
+  if (totalWin > maxWinCap) totalWin = maxWinCap;
+
+  let freeSpinsAwarded = 0;
+  if (!isFreeSpin && highestScatterSeen >= FREE_SPINS_TRIGGER) {
+    freeSpinsAwarded = FREE_SPINS_AWARD;
+    session.freeSpinsLeft += freeSpinsAwarded;
+    session.freeSpinPersistentMultiplier = 0;
+  }
+  if (isFreeSpin && highestScatterSeen >= FREE_SPINS_RETRIGGER_TRIGGER) {
+    freeSpinsAwarded = FREE_SPINS_RETRIGGER_AWARD;
+    session.freeSpinsLeft += freeSpinsAwarded;
+  }
+
+  session.balance = Number((session.balance + totalWin).toFixed(2));
+
+  if (session.freeSpinsLeft === 0) {
+    session.freeSpinPersistentMultiplier = 0;
+  }
+
+  return {
+    is_free_spin: isFreeSpin,
+    ante_enabled: anteEnabled,
+    bet_amount: betAmount,
+    bet_charged: Number(betCharged.toFixed(2)),
+    matrix,
+    tumble_steps: tumbleSteps,
+    ways_wins: sequenceWins,
+    winning_positions: firstWinningPositions,
+    scatter_count: highestScatterSeen,
+    free_spins_awarded: freeSpinsAwarded,
+    free_spins_left: session.freeSpinsLeft,
+    multipliers_sum_sequence: Number(sequenceMultiplierSum.toFixed(2)),
+    multiplier_applied: Number(multiplierApplied.toFixed(2)),
+    total_win: totalWin,
+    balance_after: session.balance
+  };
+}
+
+function resolveSpin(session, spinId, betAmount) {
+  if (session.spinHistory.has(spinId)) {
+    return session.spinHistory.get(spinId);
+  }
+
+  const round = evaluateSpinRound(session, betAmount, { ante_enabled: session.anteEnabled });
+  const payload = {
+    spin_id: spinId,
+    ...round,
+    // Backward compatibility fields for older UI code paths.
+    line_wins: [],
+    scatter_win: 0
+  };
+  session.spinHistory.set(spinId, payload);
+  return payload;
 }
 
 function createSession({ player_id, currency, locale, game_id }) {
@@ -94,7 +448,8 @@ function createSession({ player_id, currency, locale, game_id }) {
     gameId: game_id || "project-khma",
     balance: 1000,
     freeSpinsLeft: 0,
-    bonusMultiplier: 1,
+    freeSpinPersistentMultiplier: 0,
+    anteEnabled: false,
     spinHistory: new Map(),
     createdAt: new Date().toISOString()
   };
@@ -102,364 +457,161 @@ function createSession({ player_id, currency, locale, game_id }) {
   return session;
 }
 
-function randomInt(maxExclusive) {
-  return crypto.randomInt(0, maxExclusive);
-}
-
-function generateMatrix(sourceReels = reelStrips.reels) {
-  const matrix = [[], [], []];
-  for (let reelIndex = 0; reelIndex < sourceReels.length; reelIndex += 1) {
-    const strip = sourceReels[reelIndex];
-    const stop = randomInt(strip.length);
-    for (let row = 0; row < 3; row += 1) {
-      matrix[row][reelIndex] = strip[(stop + row) % strip.length];
-    }
-  }
-  return matrix;
-}
-
-function maybeApplyExpandingWild(matrix, isFreeSpin) {
-  const chance = isFreeSpin ? 0.04 : 0.02;
-  if (Math.random() >= chance) {
-    return { matrix, expandedReel: null };
-  }
-  const expandedReel = randomInt(5);
-  const next = matrix.map((r) => r.slice());
-  for (let row = 0; row < 3; row += 1) {
-    next[row][expandedReel] = "WILD";
-  }
-  return { matrix: next, expandedReel };
-}
-
-function maybeApplyExpandingWildWithChance(matrix, chance) {
-  if (Math.random() >= chance) {
-    return matrix;
-  }
-  const reel = randomInt(5);
-  const next = matrix.map((r) => r.slice());
-  for (let row = 0; row < 3; row += 1) {
-    next[row][reel] = "WILD";
-  }
-  return next;
-}
-
-function countScatters(matrix) {
-  let count = 0;
-  for (let row = 0; row < 3; row += 1) {
-    for (let reel = 0; reel < 5; reel += 1) {
-      if (matrix[row][reel] === "SCATTER") count += 1;
-    }
-  }
-  return count;
-}
-
-function evaluateLine(lineSymbols, betPerLine, multiplier) {
-  const regularSymbols = Object.keys(paytable.symbols).filter(
-    (s) => s !== "SCATTER"
-  );
-  let best = 0;
-  let bestSymbol = null;
-  let bestCount = 0;
-
-  for (const symbol of regularSymbols) {
-    let count = 0;
-    for (let i = 0; i < lineSymbols.length; i += 1) {
-      const sym = lineSymbols[i];
-      const matches = sym === symbol || (sym === "WILD" && symbol !== "SCATTER");
-      if (!matches) break;
-      count += 1;
-    }
-    if (count >= 3) {
-      const payout = paytable.symbols[symbol]?.[String(count)] || 0;
-      const value = payout * betPerLine * multiplier;
-      if (value > best) {
-        best = value;
-        bestSymbol = symbol;
-        bestCount = count;
-      }
-    }
-  }
-
-  return {
-    amount: Number(best.toFixed(2)),
-    symbol: bestSymbol,
-    count: bestCount
+function simulateProfile(steps, betAmount, options = {}) {
+  const anteEnabled = Boolean(gameRules.features?.ante_bet?.enabled) && Boolean(options.ante_enabled);
+  const chargedBet = Number((betAmount * (anteEnabled ? ANTE_MULTIPLIER : 1)).toFixed(2));
+  const session = {
+    balance: 0,
+    freeSpinsLeft: 0,
+    freeSpinPersistentMultiplier: 0
   };
-}
-
-function evaluateSpin(matrix, totalBet, bonusMultiplier) {
-  const lineBet = totalBet;
-  let lineWinsTotal = 0;
-  const lineWins = [];
-
-  for (let lineIndex = 0; lineIndex < PAYLINES.length; lineIndex += 1) {
-    const payline = PAYLINES[lineIndex];
-    const symbols = payline.map((row, reel) => matrix[row][reel]);
-    const result = evaluateLine(symbols, lineBet, bonusMultiplier);
-    if (result.amount > 0) {
-      lineWinsTotal += result.amount;
-      lineWins.push({
-        lineIndex,
-        symbol: result.symbol,
-        count: result.count,
-        amount: result.amount
-      });
-    }
-  }
-
-  const scatterCount = countScatters(matrix);
-  const scatterMul = paytable.symbols.SCATTER[String(scatterCount)] || 0;
-  const scatterWin = Number((scatterMul * totalBet).toFixed(2));
-
-  const trigger = paytable.scatter_triggers[String(scatterCount)];
-  const freeSpinsAwarded = trigger ? trigger.free_spins : 0;
-
-  return {
-    lineWins,
-    lineWinsTotal: Number(lineWinsTotal.toFixed(2)),
-    scatterCount,
-    scatterWin,
-    freeSpinsAwarded,
-    totalWin: Number((lineWinsTotal + scatterWin).toFixed(2))
-  };
-}
-
-function runSimulationProfile({
-  steps,
-  betAmount,
-  reels,
-  wildChanceBase,
-  wildChanceFree,
-  scatterTriggers
-}) {
-  let totalWin = 0;
   let paidWager = 0;
   let paidSpins = 0;
   let freeSpinSteps = 0;
-  let freeSpinsLeft = 0;
-  let bonusMultiplier = 1;
+  let totalWin = 0;
   let hitSpins = 0;
-  let big20xCount = 0;
-  let huge50xCount = 0;
+  let big20 = 0;
+  let huge50 = 0;
   let maxWin = 0;
+  let bonusCatchCount = 0;
+  let bonusAwardedSpins = 0;
+  let bonusWinTotal = 0;
 
   for (let i = 0; i < steps; i += 1) {
-    const isFreeSpin = freeSpinsLeft > 0;
-    if (isFreeSpin) {
-      freeSpinsLeft -= 1;
-      freeSpinSteps += 1;
-    } else {
-      paidWager += betAmount;
+    const isFree = session.freeSpinsLeft > 0;
+    if (!isFree) {
+      paidWager += chargedBet;
       paidSpins += 1;
+      session.balance += chargedBet;
+    } else {
+      freeSpinSteps += 1;
     }
-
-    let matrix = generateMatrix(reels);
-    const chance = isFreeSpin ? wildChanceFree : wildChanceBase;
-    matrix = maybeApplyExpandingWildWithChance(matrix, chance);
-
-    const activeMultiplier = isFreeSpin ? bonusMultiplier : 1;
-    const evaluation = evaluateSpin(matrix, betAmount, activeMultiplier);
-    let win = evaluation.totalWin;
-
-    const trigger = scatterTriggers[String(evaluation.scatterCount)];
-    if (trigger) {
-      if (isFreeSpin) {
-        freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
-        bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, bonusMultiplier + 1);
-      } else {
-        freeSpinsLeft += trigger.free_spins;
-        bonusMultiplier = BONUS_MULTIPLIER_START;
-      }
-    }
-    if (freeSpinsLeft === 0) {
-      bonusMultiplier = 1;
-    }
-
-    if (win > 0) hitSpins += 1;
-    if (win >= betAmount * 20) big20xCount += 1;
-    if (win >= betAmount * 50) huge50xCount += 1;
-    if (win > maxWin) maxWin = win;
+    const round = evaluateSpinRound(session, betAmount, { ante_enabled: anteEnabled });
+    const win = round.total_win;
     totalWin += win;
+    if (round.is_free_spin) {
+      bonusWinTotal += win;
+    }
+    if (!round.is_free_spin && Number(round.free_spins_awarded || 0) > 0) {
+      bonusCatchCount += 1;
+      bonusAwardedSpins += Number(round.free_spins_awarded || 0);
+    }
+    if (win > 0) hitSpins += 1;
+    if (win >= betAmount * 20) big20 += 1;
+    if (win >= betAmount * 50) huge50 += 1;
+    if (win > maxWin) maxWin = win;
   }
 
-  const rtpPercent = paidWager > 0 ? (totalWin / paidWager) * 100 : 0;
+  const rtp = paidWager > 0 ? (totalWin / paidWager) * 100 : 0;
   const casinoNet = paidWager - totalWin;
-  const hitFrequencyPercent = steps > 0 ? (hitSpins / steps) * 100 : 0;
-
+  const bigWinRatePercent = steps > 0 ? (big20 / steps) * 100 : 0;
+  const hugeWinRatePercent = steps > 0 ? (huge50 / steps) * 100 : 0;
+  const bonusCatchRatePercent = paidSpins > 0 ? (bonusCatchCount / paidSpins) * 100 : 0;
+  const avgPaidSpinsPerBonusCatch = bonusCatchCount > 0 ? paidSpins / bonusCatchCount : null;
   return {
     steps,
     bet_amount: betAmount,
+    ante_enabled: anteEnabled,
+    charged_bet_amount: chargedBet,
     paid_spins: paidSpins,
     free_spin_steps: freeSpinSteps,
     paid_wager: Number(paidWager.toFixed(2)),
     player_total_win: Number(totalWin.toFixed(2)),
     casino_net: Number(casinoNet.toFixed(2)),
-    rtp_percent: Number(rtpPercent.toFixed(2)),
-    house_edge_percent: Number((100 - rtpPercent).toFixed(2)),
-    hit_frequency_percent: Number(hitFrequencyPercent.toFixed(2)),
-    big_win_20x_count: big20xCount,
-    huge_win_50x_count: huge50xCount,
-    max_win_x: Number((maxWin / betAmount).toFixed(2))
+    rtp_percent: Number(rtp.toFixed(2)),
+    house_edge_percent: Number((100 - rtp).toFixed(2)),
+    hit_frequency_percent: Number(((hitSpins / steps) * 100).toFixed(2)),
+    big_win_20x_count: big20,
+    huge_win_50x_count: huge50,
+    big_win_rate_percent: Number(bigWinRatePercent.toFixed(3)),
+    huge_win_rate_percent: Number(hugeWinRatePercent.toFixed(3)),
+    max_win_x: Number((maxWin / betAmount).toFixed(2)),
+    bonus_catch_count: bonusCatchCount,
+    bonus_catch_rate_percent: Number(bonusCatchRatePercent.toFixed(4)),
+    avg_paid_spins_per_bonus_catch:
+      avgPaidSpinsPerBonusCatch === null ? null : Number(avgPaidSpinsPerBonusCatch.toFixed(2)),
+    bonus_awarded_spins_total: bonusAwardedSpins,
+    bonus_win_total: Number(bonusWinTotal.toFixed(2))
   };
 }
 
-
-function createSimulationState() {
-  return {
-    totalWin: 0,
-    paidWager: 0,
-    paidSpins: 0,
-    freeSpinSteps: 0,
-    freeSpinsLeft: 0,
-    bonusMultiplier: 1,
-    hitSpins: 0,
-    big20xCount: 0,
-    huge50xCount: 0,
-    maxWin: 0
-  };
-}
-
-function applySimulationStep(state, config, betAmount) {
-  const isFreeSpin = state.freeSpinsLeft > 0;
-  if (isFreeSpin) {
-    state.freeSpinsLeft -= 1;
-    state.freeSpinSteps += 1;
-  } else {
-    state.paidWager += betAmount;
-    state.paidSpins += 1;
-  }
-
-  let matrix = generateMatrix(config.reels);
-  const chance = isFreeSpin ? config.wildChanceFree : config.wildChanceBase;
-  matrix = maybeApplyExpandingWildWithChance(matrix, chance);
-
-  const activeMultiplier = isFreeSpin ? state.bonusMultiplier : 1;
-  const evaluation = evaluateSpin(matrix, betAmount, activeMultiplier);
-  const win = evaluation.totalWin;
-
-  const trigger = config.scatterTriggers[String(evaluation.scatterCount)];
-  if (trigger) {
-    if (isFreeSpin) {
-      state.freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
-      state.bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, state.bonusMultiplier + 1);
-    } else {
-      state.freeSpinsLeft += trigger.free_spins;
-      state.bonusMultiplier = BONUS_MULTIPLIER_START;
-    }
-  }
-  if (state.freeSpinsLeft === 0) {
-    state.bonusMultiplier = 1;
-  }
-
-  if (win > 0) state.hitSpins += 1;
-  if (win >= betAmount * 20) state.big20xCount += 1;
-  if (win >= betAmount * 50) state.huge50xCount += 1;
-  if (win > state.maxWin) state.maxWin = win;
-  state.totalWin += win;
-}
-
-function finalizeSimulationState(state, steps, betAmount) {
-  const rtpPercent = state.paidWager > 0 ? (state.totalWin / state.paidWager) * 100 : 0;
-  const casinoNet = state.paidWager - state.totalWin;
-  const hitFrequencyPercent = steps > 0 ? (state.hitSpins / steps) * 100 : 0;
-
+function runSimulationComparison(steps, betAmount, options = {}) {
+  const current = simulateProfile(steps, betAmount, options);
+  const baseline = { ...current };
+  const minWithTolerance = TARGET_RTP_MIN - RTP_BAND_TOLERANCE;
+  const maxWithTolerance = TARGET_RTP_MAX + RTP_BAND_TOLERANCE;
   return {
     steps,
     bet_amount: betAmount,
-    paid_spins: state.paidSpins,
-    free_spin_steps: state.freeSpinSteps,
-    paid_wager: Number(state.paidWager.toFixed(2)),
-    player_total_win: Number(state.totalWin.toFixed(2)),
-    casino_net: Number(casinoNet.toFixed(2)),
-    rtp_percent: Number(rtpPercent.toFixed(2)),
-    house_edge_percent: Number((100 - rtpPercent).toFixed(2)),
-    hit_frequency_percent: Number(hitFrequencyPercent.toFixed(2)),
-    big_win_20x_count: state.big20xCount,
-    huge_win_50x_count: state.huge50xCount,
-    max_win_x: Number((state.maxWin / betAmount).toFixed(2))
-  };
-}
-
-function runSimulationComparison(steps, betAmount) {
-  const current = runSimulationProfile({
-    steps,
-    betAmount,
-    reels: reelStrips.reels,
-    wildChanceBase: 0.02,
-    wildChanceFree: 0.04,
-    scatterTriggers: paytable.scatter_triggers
-  });
-
-  const baseline = runSimulationProfile({
-    steps,
-    betAmount,
-    reels: BASELINE_REELS,
-    wildChanceBase: 0.08,
-    wildChanceFree: 0.12,
-    scatterTriggers: {
-      "3": { free_spins: 10 },
-      "4": { free_spins: 14 },
-      "5": { free_spins: 20 }
-    }
-  });
-
-  return {
-    steps,
-    bet_amount: betAmount,
-    target_rtp_band: {
-      min: TARGET_RTP_MIN,
-      max: TARGET_RTP_MAX
-    },
+    target_rtp_band: { min: TARGET_RTP_MIN, max: TARGET_RTP_MAX },
+    target_rtp_tolerance: RTP_BAND_TOLERANCE,
     baseline,
     current,
     diff: {
-      casino_net_current_minus_baseline: Number(
-        (current.casino_net - baseline.casino_net).toFixed(2)
-      ),
-      rtp_percent_current_minus_baseline: Number(
-        (current.rtp_percent - baseline.rtp_percent).toFixed(2)
-      ),
-      hit_frequency_percent_current_minus_baseline: Number(
-        (current.hit_frequency_percent - baseline.hit_frequency_percent).toFixed(2)
-      ),
-      big_win_20x_count_current_minus_baseline:
-        current.big_win_20x_count - baseline.big_win_20x_count,
-      huge_win_50x_count_current_minus_baseline:
-        current.huge_win_50x_count - baseline.huge_win_50x_count
+      casino_net_current_minus_baseline: 0,
+      rtp_percent_current_minus_baseline: 0,
+      hit_frequency_percent_current_minus_baseline: 0,
+      big_win_20x_count_current_minus_baseline: 0,
+      huge_win_50x_count_current_minus_baseline: 0
     },
     checks: {
       current_rtp_in_target_band:
-        current.rtp_percent >= TARGET_RTP_MIN &&
-        current.rtp_percent <= TARGET_RTP_MAX,
+        current.rtp_percent >= minWithTolerance && current.rtp_percent <= maxWithTolerance,
       current_casino_profitable: current.casino_net > 0
     }
   };
 }
 
-function streamSimulationComparison(req, res, steps, betAmount) {
-  const currentConfig = {
-    reels: reelStrips.reels,
-    wildChanceBase: 0.02,
-    wildChanceFree: 0.04,
-    scatterTriggers: paytable.scatter_triggers
-  };
-
-  const baselineConfig = {
-    reels: BASELINE_REELS,
-    wildChanceBase: 0.08,
-    wildChanceFree: 0.12,
-    scatterTriggers: {
-      "3": { free_spins: 10 },
-      "4": { free_spins: 14 },
-      "5": { free_spins: 20 }
+function buildSimulationReport(steps, betAmount, current) {
+  const baseline = { ...current };
+  const minWithTolerance = TARGET_RTP_MIN - RTP_BAND_TOLERANCE;
+  const maxWithTolerance = TARGET_RTP_MAX + RTP_BAND_TOLERANCE;
+  return {
+    steps,
+    bet_amount: betAmount,
+    ante_enabled: Boolean(current.ante_enabled),
+    charged_bet_amount: Number(current.charged_bet_amount || betAmount),
+    target_rtp_band: { min: TARGET_RTP_MIN, max: TARGET_RTP_MAX },
+    target_rtp_tolerance: RTP_BAND_TOLERANCE,
+    baseline,
+    current,
+    diff: {
+      casino_net_current_minus_baseline: 0,
+      rtp_percent_current_minus_baseline: 0,
+      hit_frequency_percent_current_minus_baseline: 0,
+      big_win_20x_count_current_minus_baseline: 0,
+      huge_win_50x_count_current_minus_baseline: 0
+    },
+    checks: {
+      current_rtp_in_target_band:
+        current.rtp_percent >= minWithTolerance && current.rtp_percent <= maxWithTolerance,
+      current_casino_profitable: current.casino_net > 0
     }
   };
+}
 
-  const currentState = createSimulationState();
-  const baselineState = createSimulationState();
+function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
+  const anteEnabled = Boolean(gameRules.features?.ante_bet?.enabled) && Boolean(options.ante_enabled);
+  const chargedBet = Number((betAmount * (anteEnabled ? ANTE_MULTIPLIER : 1)).toFixed(2));
   const chunkSize = 2000;
   let completed = 0;
   let closed = false;
+  const session = {
+    balance: 0,
+    freeSpinsLeft: 0,
+    freeSpinPersistentMultiplier: 0
+  };
+  let paidWager = 0;
+  let paidSpins = 0;
+  let freeSpinSteps = 0;
+  let totalWin = 0;
+  let hitSpins = 0;
+  let big20 = 0;
+  let huge50 = 0;
+  let maxWin = 0;
+  let bonusCatchCount = 0;
+  let bonusAwardedSpins = 0;
+  let bonusWinTotal = 0;
 
   req.on("close", () => {
     closed = true;
@@ -473,62 +625,68 @@ function streamSimulationComparison(req, res, steps, betAmount) {
   });
   res.write("\n");
 
-  const sendEvent = (eventName, payload) => {
+  const sendEvent = (name, payload) => {
     if (closed) return;
-    res.write(`event: ${eventName}\n`);
+    res.write(`event: ${name}\n`);
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
-  sendEvent("progress", {
-    steps_completed: 0,
-    steps_total: steps,
-    progress_percent: 0,
-    current_rtp_percent: 0,
-    current_player_total_win: 0,
-    current_casino_net: 0,
-    current_hit_frequency_percent: 0,
-    current_big_win_20x_count: 0,
-    current_huge_win_50x_count: 0,
-    current_max_win_x: 0,
-    baseline_rtp_percent: 0,
-    baseline_casino_net: 0
-  });
-
   const tick = () => {
     if (closed) return;
-    const limit = Math.min(completed + chunkSize, steps);
-    for (let i = completed; i < limit; i += 1) {
-      applySimulationStep(currentState, currentConfig, betAmount);
-      applySimulationStep(baselineState, baselineConfig, betAmount);
+    const end = Math.min(steps, completed + chunkSize);
+    for (let i = completed; i < end; i += 1) {
+      const isFree = session.freeSpinsLeft > 0;
+      if (!isFree) {
+        paidWager += chargedBet;
+        paidSpins += 1;
+        session.balance += chargedBet;
+      } else {
+        freeSpinSteps += 1;
+      }
+      const round = evaluateSpinRound(session, betAmount, { ante_enabled: anteEnabled });
+      const win = round.total_win;
+      totalWin += win;
+      if (round.is_free_spin) {
+        bonusWinTotal += win;
+      }
+      if (!round.is_free_spin && Number(round.free_spins_awarded || 0) > 0) {
+        bonusCatchCount += 1;
+        bonusAwardedSpins += Number(round.free_spins_awarded || 0);
+      }
+      if (win > 0) hitSpins += 1;
+      if (win >= betAmount * 20) big20 += 1;
+      if (win >= betAmount * 50) huge50 += 1;
+      if (win > maxWin) maxWin = win;
     }
-    completed = limit;
+    completed = end;
 
-    const liveCurrentRtp =
-      currentState.paidWager > 0
-        ? (currentState.totalWin / currentState.paidWager) * 100
-        : 0;
-    const liveCurrentCasinoNet = currentState.paidWager - currentState.totalWin;
-    const liveCurrentHitFrequency = completed > 0 ? (currentState.hitSpins / completed) * 100 : 0;
-    const liveCurrentMaxWinX = betAmount > 0 ? currentState.maxWin / betAmount : 0;
-    const liveBaselineRtp =
-      baselineState.paidWager > 0
-        ? (baselineState.totalWin / baselineState.paidWager) * 100
-        : 0;
-    const liveBaselineCasinoNet = baselineState.paidWager - baselineState.totalWin;
+    const liveRtp = paidWager > 0 ? (totalWin / paidWager) * 100 : 0;
+    const casinoNet = paidWager - totalWin;
 
     sendEvent("progress", {
       steps_completed: completed,
       steps_total: steps,
       progress_percent: Number(((completed / steps) * 100).toFixed(2)),
-      current_rtp_percent: Number(liveCurrentRtp.toFixed(2)),
-      current_player_total_win: Number(currentState.totalWin.toFixed(2)),
-      current_casino_net: Number(liveCurrentCasinoNet.toFixed(2)),
-      current_hit_frequency_percent: Number(liveCurrentHitFrequency.toFixed(2)),
-      current_big_win_20x_count: currentState.big20xCount,
-      current_huge_win_50x_count: currentState.huge50xCount,
-      current_max_win_x: Number(liveCurrentMaxWinX.toFixed(2)),
-      baseline_rtp_percent: Number(liveBaselineRtp.toFixed(2)),
-      baseline_casino_net: Number(liveBaselineCasinoNet.toFixed(2))
+      ante_enabled: anteEnabled,
+      charged_bet_amount: chargedBet,
+      current_rtp_percent: Number(liveRtp.toFixed(2)),
+      current_player_total_win: Number(totalWin.toFixed(2)),
+      current_casino_net: Number(casinoNet.toFixed(2)),
+      current_hit_frequency_percent: Number(((hitSpins / completed) * 100).toFixed(2)),
+      current_big_win_20x_count: big20,
+      current_huge_win_50x_count: huge50,
+      current_big_win_rate_percent: Number(((big20 / completed) * 100).toFixed(3)),
+      current_huge_win_rate_percent: Number(((huge50 / completed) * 100).toFixed(3)),
+      current_max_win_x: Number((maxWin / betAmount).toFixed(2)),
+      current_bonus_catch_count: bonusCatchCount,
+      current_bonus_catch_rate_percent:
+        Number((paidSpins > 0 ? (bonusCatchCount / paidSpins) * 100 : 0).toFixed(4)),
+      current_bonus_awarded_spins_total: bonusAwardedSpins,
+      current_bonus_win_total: Number(bonusWinTotal.toFixed(2)),
+      baseline_rtp_percent: Number(liveRtp.toFixed(2)),
+      baseline_casino_net: Number(casinoNet.toFixed(2)),
+      baseline_bonus_catch_count: bonusCatchCount,
+      baseline_bonus_win_total: Number(bonusWinTotal.toFixed(2))
     });
 
     if (completed < steps) {
@@ -536,192 +694,38 @@ function streamSimulationComparison(req, res, steps, betAmount) {
       return;
     }
 
-    const current = finalizeSimulationState(currentState, steps, betAmount);
-    const baseline = finalizeSimulationState(baselineState, steps, betAmount);
-    const report = {
+    const liveRtpFinal = paidWager > 0 ? (totalWin / paidWager) * 100 : 0;
+    const current = {
       steps,
       bet_amount: betAmount,
-      target_rtp_band: {
-        min: TARGET_RTP_MIN,
-        max: TARGET_RTP_MAX
-      },
-      baseline,
-      current,
-      diff: {
-        casino_net_current_minus_baseline: Number(
-          (current.casino_net - baseline.casino_net).toFixed(2)
-        ),
-        rtp_percent_current_minus_baseline: Number(
-          (current.rtp_percent - baseline.rtp_percent).toFixed(2)
-        ),
-        hit_frequency_percent_current_minus_baseline: Number(
-          (current.hit_frequency_percent - baseline.hit_frequency_percent).toFixed(2)
-        ),
-        big_win_20x_count_current_minus_baseline:
-          current.big_win_20x_count - baseline.big_win_20x_count,
-        huge_win_50x_count_current_minus_baseline:
-          current.huge_win_50x_count - baseline.huge_win_50x_count
-      },
-      checks: {
-        current_rtp_in_target_band:
-          current.rtp_percent >= TARGET_RTP_MIN &&
-          current.rtp_percent <= TARGET_RTP_MAX,
-        current_casino_profitable: current.casino_net > 0
-      }
+      ante_enabled: anteEnabled,
+      charged_bet_amount: chargedBet,
+      paid_spins: paidSpins,
+      free_spin_steps: freeSpinSteps,
+      paid_wager: Number(paidWager.toFixed(2)),
+      player_total_win: Number(totalWin.toFixed(2)),
+      casino_net: Number((paidWager - totalWin).toFixed(2)),
+      rtp_percent: Number(liveRtpFinal.toFixed(2)),
+      house_edge_percent: Number((100 - liveRtpFinal).toFixed(2)),
+      hit_frequency_percent: Number(((hitSpins / steps) * 100).toFixed(2)),
+      big_win_20x_count: big20,
+      huge_win_50x_count: huge50,
+      big_win_rate_percent: Number(((big20 / steps) * 100).toFixed(3)),
+      huge_win_rate_percent: Number(((huge50 / steps) * 100).toFixed(3)),
+      max_win_x: Number((maxWin / betAmount).toFixed(2)),
+      bonus_catch_count: bonusCatchCount,
+      bonus_catch_rate_percent: Number((paidSpins > 0 ? (bonusCatchCount / paidSpins) * 100 : 0).toFixed(4)),
+      avg_paid_spins_per_bonus_catch:
+        bonusCatchCount > 0 ? Number((paidSpins / bonusCatchCount).toFixed(2)) : null,
+      bonus_awarded_spins_total: bonusAwardedSpins,
+      bonus_win_total: Number(bonusWinTotal.toFixed(2))
     };
-
+    const report = buildSimulationReport(steps, betAmount, current);
     sendEvent("complete", { report });
     if (!closed) res.end();
   };
 
   tick();
-}
-
-function resolveSpin(session, spinId, betAmount) {
-  if (session.spinHistory.has(spinId)) {
-    return session.spinHistory.get(spinId);
-  }
-
-  const isFreeSpin = session.freeSpinsLeft > 0;
-  if (!isFreeSpin && session.balance < betAmount) {
-    throw new Error("INSUFFICIENT_FUNDS");
-  }
-
-  if (!isFreeSpin) {
-    session.balance = Number((session.balance - betAmount).toFixed(2));
-  } else {
-    session.freeSpinsLeft -= 1;
-  }
-
-  const baseMatrix = generateMatrix();
-  const withFeature = maybeApplyExpandingWild(baseMatrix, isFreeSpin);
-  const activeMultiplier = isFreeSpin ? session.bonusMultiplier : 1;
-  const evaluation = evaluateSpin(withFeature.matrix, betAmount, activeMultiplier);
-  const totalWin = evaluation.totalWin;
-
-  if (evaluation.freeSpinsAwarded > 0) {
-    if (isFreeSpin) {
-      session.freeSpinsLeft += FREE_SPIN_RETRIGGER_AWARD;
-      session.bonusMultiplier = Math.min(BONUS_MULTIPLIER_CAP, session.bonusMultiplier + 1);
-    } else {
-      session.freeSpinsLeft += evaluation.freeSpinsAwarded;
-      session.bonusMultiplier = BONUS_MULTIPLIER_START;
-    }
-  }
-
-  session.balance = Number((session.balance + totalWin).toFixed(2));
-  if (session.freeSpinsLeft === 0) {
-    session.bonusMultiplier = 1;
-  }
-
-  const payload = {
-    spin_id: spinId,
-    is_free_spin: isFreeSpin,
-    multiplier_applied: activeMultiplier,
-    matrix: withFeature.matrix,
-    expanded_wild_reel: withFeature.expandedReel,
-    line_wins: evaluation.lineWins,
-    scatter_count: evaluation.scatterCount,
-    scatter_win: evaluation.scatterWin,
-    free_spins_awarded: evaluation.freeSpinsAwarded,
-    free_spins_left: session.freeSpinsLeft,
-    total_win: totalWin,
-    balance_after: session.balance
-  };
-
-  session.spinHistory.set(spinId, payload);
-  return payload;
-}
-
-function handleApi(req, res, parsedUrl) {
-  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/health") {
-    return sendJson(res, 200, { status: "ok", uptime: process.uptime() });
-  }
-
-  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/session/init") {
-    return parseBody(req)
-      .then((body) => {
-        const session = createSession(body);
-        sendJson(res, 200, {
-          session_id: session.sessionId,
-          balance: session.balance,
-          allowed_bets: ALLOWED_BETS,
-          currency: session.currency,
-          locale: session.locale,
-          game_id: session.gameId,
-          math_config_id: paytable.version
-        });
-      })
-      .catch((err) => sendJson(res, 400, { error: err.message }));
-  }
-
-  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/spin") {
-    return parseBody(req)
-      .then((body) => {
-        const session = sessions.get(body.session_id);
-        if (!session) {
-          sendJson(res, 404, { error: "SESSION_NOT_FOUND" });
-          return;
-        }
-        const spinId = body.spin_id || crypto.randomUUID();
-        const betAmount = Number(body.bet_amount);
-        if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
-          sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
-          return;
-        }
-        try {
-          const outcome = resolveSpin(session, spinId, betAmount);
-          sendJson(res, 200, outcome);
-        } catch (err) {
-          sendJson(res, 400, { error: err.message || "INTERNAL_ERROR" });
-        }
-      })
-      .catch((err) => sendJson(res, 400, { error: err.message }));
-  }
-
-  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/simulate/stream") {
-    const steps = Number(parsedUrl.searchParams.get("steps"));
-    const betAmount = Number(parsedUrl.searchParams.get("bet_amount"));
-    if (!Number.isInteger(steps) || steps < 1000 || steps > 1000000) {
-      sendJson(res, 400, {
-        error: "INVALID_STEPS",
-        min_steps: 1000,
-        max_steps: 1000000
-      });
-      return;
-    }
-    if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
-      sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
-      return;
-    }
-    streamSimulationComparison(req, res, steps, betAmount);
-    return;
-  }
-
-  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/simulate") {
-    return parseBody(req)
-      .then((body) => {
-        const steps = Number(body.steps);
-        const betAmount = Number(body.bet_amount);
-        if (!Number.isInteger(steps) || steps < 1000 || steps > 1000000) {
-          sendJson(res, 400, {
-            error: "INVALID_STEPS",
-            min_steps: 1000,
-            max_steps: 1000000
-          });
-          return;
-        }
-        if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
-          sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
-          return;
-        }
-        const report = runSimulationComparison(steps, betAmount);
-        sendJson(res, 200, report);
-      })
-      .catch((err) => sendJson(res, 400, { error: err.message }));
-  }
-
-  sendJson(res, 404, { error: "NOT_FOUND" });
 }
 
 function contentTypeFor(filePath) {
@@ -750,19 +754,151 @@ function serveStatic(req, res, parsedUrl) {
   });
 }
 
+function handleApi(req, res, parsedUrl) {
+  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/health") {
+    return sendJson(res, 200, { status: "ok", uptime: process.uptime() });
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/game-rules") {
+    return sendJson(res, 200, gameRules);
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/session/init") {
+    return parseBody(req)
+      .then((body) => {
+        const session = createSession(body);
+        sendJson(res, 200, {
+          session_id: session.sessionId,
+          balance: session.balance,
+          allowed_bets: ALLOWED_BETS,
+          currency: session.currency,
+          locale: session.locale,
+          game_id: session.gameId,
+          math_config_id: "engine-v2",
+          rules_config_id: gameRules.version
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/spin") {
+    return parseBody(req)
+      .then((body) => {
+        const session = sessions.get(body.session_id);
+        if (!session) return sendJson(res, 404, { error: "SESSION_NOT_FOUND" });
+        const betAmount = Number(body.bet_amount);
+        session.anteEnabled = Boolean(gameRules.features?.ante_bet?.enabled) && Boolean(body.ante_enabled);
+        if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
+          return sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
+        }
+        try {
+          const spinId = body.spin_id || crypto.randomUUID();
+          const outcome = resolveSpin(session, spinId, betAmount);
+          sendJson(res, 200, outcome);
+        } catch (err) {
+          sendJson(res, 400, { error: err.message || "INTERNAL_ERROR" });
+        }
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/buy-free-spins") {
+    return parseBody(req)
+      .then((body) => {
+        const session = sessions.get(body.session_id);
+        if (!session) return sendJson(res, 404, { error: "SESSION_NOT_FOUND" });
+        const betAmount = Number(body.bet_amount);
+        if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
+          return sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
+        }
+        if (!Boolean(gameRules.features?.buy_free_spins?.enabled)) {
+          return sendJson(res, 400, { error: "BUY_FREE_SPINS_DISABLED" });
+        }
+        if (session.anteEnabled) {
+          return sendJson(res, 400, { error: "BUY_DISABLED_WHEN_ANTE_ENABLED" });
+        }
+        const cost = Number((betAmount * Number(gameRules.features?.buy_free_spins?.cost_multiplier || 100)).toFixed(2));
+        if (session.balance < cost) {
+          return sendJson(res, 400, { error: "INSUFFICIENT_FUNDS" });
+        }
+        session.balance = Number((session.balance - cost).toFixed(2));
+        const round = evaluateSpinRound(session, betAmount, {
+          ante_enabled: false,
+          force_free_spin_trigger: true
+        });
+        const spinId = crypto.randomUUID();
+        const payload = {
+          spin_id: spinId,
+          buy_free_spins: true,
+          buy_cost: cost,
+          ...round,
+          line_wins: [],
+          scatter_win: 0
+        };
+        session.spinHistory.set(spinId, payload);
+        sendJson(res, 200, payload);
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/v1/simulate/stream") {
+    const steps = Number(parsedUrl.searchParams.get("steps"));
+    const betAmount = Number(parsedUrl.searchParams.get("bet_amount"));
+    const anteEnabled = parseBooleanLike(parsedUrl.searchParams.get("ante_enabled"), false);
+    if (!Number.isInteger(steps) || steps < 1000 || steps > 1000000) {
+      return sendJson(res, 400, { error: "INVALID_STEPS", min_steps: 1000, max_steps: 1000000 });
+    }
+    if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
+      return sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
+    }
+    streamSimulationComparison(req, res, steps, betAmount, { ante_enabled: anteEnabled });
+    return;
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/v1/simulate") {
+    return parseBody(req)
+      .then((body) => {
+        const steps = Number(body.steps);
+        const betAmount = Number(body.bet_amount);
+        const anteEnabled = parseBooleanLike(body.ante_enabled, false);
+        if (!Number.isInteger(steps) || steps < 1000 || steps > 1000000) {
+          return sendJson(res, 400, { error: "INVALID_STEPS", min_steps: 1000, max_steps: 1000000 });
+        }
+        if (!Number.isFinite(betAmount) || !ALLOWED_BETS.includes(betAmount)) {
+          return sendJson(res, 400, { error: "INVALID_BET", allowed_bets: ALLOWED_BETS });
+        }
+        sendJson(res, 200, runSimulationComparison(steps, betAmount, { ante_enabled: anteEnabled }));
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  sendJson(res, 404, { error: "NOT_FOUND" });
+}
+
 const server = http.createServer((req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-  if (parsedUrl.pathname.startsWith("/api/")) {
-    handleApi(req, res, parsedUrl);
-    return;
-  }
-  if (req.method === "GET") {
-    serveStatic(req, res, parsedUrl);
-    return;
-  }
+  if (parsedUrl.pathname.startsWith("/api/")) return handleApi(req, res, parsedUrl);
+  if (req.method === "GET") return serveStatic(req, res, parsedUrl);
   sendJson(res, 405, { error: "METHOD_NOT_ALLOWED" });
 });
 
-server.listen(PORT, () => {
-  console.log(`Slot MVP running at http://localhost:${PORT}`);
+let currentPort = BASE_PORT;
+
+function startServerWithPortFallback(port) {
+  currentPort = port;
+  server.listen(port, () => {
+    console.log(`Slot MVP running at http://localhost:${port}`);
+  });
+}
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    const nextPort = currentPort + 1;
+    console.warn(`Port ${currentPort} is in use, retrying on ${nextPort}...`);
+    setTimeout(() => startServerWithPortFallback(nextPort), 100);
+    return;
+  }
+  throw err;
 });
+
+startServerWithPortFallback(BASE_PORT);

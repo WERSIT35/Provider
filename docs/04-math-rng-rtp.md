@@ -1,59 +1,48 @@
-# 04 Math, RNG, RTP, and Fairness
+﻿# 04 Math, RNG, RTP, and Fairness
 
 ## Goal
-Produce a certifiable math model and RNG framework.
+Produce a certifiable math model and RNG framework with stable RTP behavior.
 
 ## Key Principle
 
-Profitability comes from **defined house edge at scale**, not from hidden rigging.
+Profitability comes from defined house edge at scale, not hidden manipulation.
+
+## Targets (Current v2)
+
+- RTP target band: 96.20% to 96.80%
+- RTP band tolerance for pass/fail check: +/-0.05%
+- Profitability gate: repeated 1,000,000-spin validations must return positive casino net
+- Bonus visibility gate: simulation must report non-zero bonus catches over large runs
 
 ## Tasks
 
-1. Define math spec (`math/math-spec.md`):
-   - Paytable
-   - Reel strips / symbol weights
-   - Feature probabilities
-   - RTP decomposition:
-     - Base RTP contribution
-     - Bonus RTP contribution
-2. Define target metrics:
-   - RTP: 93.50% to 94.50% for current profile
-   - Hit frequency target range
-   - Volatility index target
-   - Max exposure per spin
-   - Profitability gate: repeated 1,000,000-spin validations must return positive casino net for current profile.
-3. RNG architecture:
-   - Server-authoritative RNG
-   - Cryptographically secure PRNG source
-   - Seed rotation policy
-   - Entropy health checks
-4. Simulation framework:
-   - Run at least 10M+ spin simulations per config
-   - Validate:
-     - empirical RTP
-     - variance
-     - hit frequency
-     - max observed tails
-5. Fairness and auditability:
-   - Immutable spin logs with hash chaining
-   - Reproducibility mode for internal audit
-6. Model governance:
-   - Sign and version math files
-   - Separate “approved production math” from experimental math
+1. Keep runtime rules in `math/game-rules-v2.json` as source of truth.
+2. Define and enforce:
+- Symbol distribution and payout tiers
+- Multiplier distribution and caps
+- Free-spin trigger/retrigger logic
+3. Simulation framework:
+- API simulation and SSE simulation must report identical final metrics
+- Report RTP, net, hit rate, large-win counts, and bonus metrics
+4. RNG architecture:
+- Server-authoritative RNG only
+- Cryptographic PRNG source
+- Reproducibility mode for internal audit
+5. Governance:
+- Version all math/rules artifacts
+- No production math changes without explicit config version bump
 
 ## Deliverables
 
 - `math/math-spec.md`
-- `math/reel-strips-v1.json`
-- `math/paytable-v1.json`
+- `math/game-rules-v2.json`
 - `math/simulation-report-v1.md`
-- `math/rng-design.md`
 
 ## Exit Criteria
 
-- Simulation results within tolerance of target RTP/volatility.
-- RNG and math artifacts versioned and auditable.
-- Candidate build ready for backend integration.
+- 1,000,000-spin validation in target RTP band (with tolerance)
+- Positive casino net on current profile
+- Bonus catches and bonus win totals present in simulation output
 
 ## Next
 

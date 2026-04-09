@@ -41,7 +41,7 @@ UI/API comparison simulation:
 - UI button: `Imitate 1M Spins`
 - API: `POST /api/v1/simulate` with `{ "steps": 1000000, "bet_amount": 1 }`
 - Current release target:
-  - RTP band: `93.50%` to `94.50%`
+  - RTP band: `96.20%` to `96.80%`
   - Profitability gate: `casino_net > 0` on repeated 1M validation runs
 
 ## What Is Implemented
@@ -55,6 +55,8 @@ UI/API comparison simulation:
 - Expanding wild reel modifier
 - Browser client wired to backend APIs
 - Player-facing symbol theme in UI (emoji symbols + legend)
+- Interactive multi-page Rules modal (`Game Rules` button)
+- Rules API: `GET /api/v1/game-rules` backed by strict config validation
 
 ## Symbol Theme
 

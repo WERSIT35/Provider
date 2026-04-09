@@ -66,7 +66,7 @@
 
 ## Economy Targets (Design Intent)
 
-- RTP target: 93.50% to 94.50% (current profile)
+- RTP target: 96.20% to 96.80% (current profile)
 - Hit frequency target: ~33% to 35%
 - Bonus trigger frequency target: every ~130 to 220 spins
 - Volatility target: medium-high
