@@ -1,4 +1,5 @@
-﻿const sessionIdEl = document.getElementById("sessionId");
+
+const sessionIdEl = document.getElementById("sessionId");
 const balanceEl = document.getElementById("balance");
 const betViewEl = document.getElementById("betView");
 const winningLinesEl = document.getElementById("winningLines");
@@ -563,29 +564,11 @@ function renderCaughtLines(waysWins) {
   });
 }
 
-function randomIndex(maxExclusive) {
-  const arr = new Uint32Array(1);
-  crypto.getRandomValues(arr);
-  return arr[0] % maxExclusive;
-}
-
-function randomSymbol() {
-  return SYMBOL_KEYS[randomIndex(SYMBOL_KEYS.length)];
-}
-
-function stepReelDown(matrix, reel) {
-  const rows = matrix.length;
-  for (let row = rows - 1; row >= 1; row -= 1) {
-    matrix[row][reel] = matrix[row - 1][reel];
-  }
-  matrix[0][reel] = randomSymbol();
-}
-
 function createRandomMatrix(rows = DEFAULT_ROWS, reels = DEFAULT_REELS) {
   const matrix = Array.from({ length: rows }, () => Array(reels).fill(null));
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < reels; col += 1) {
-      matrix[row][col] = randomSymbol();
+      matrix[row][col] = "BLUE_DIAMOND";
     }
   }
   return matrix;
@@ -595,57 +578,42 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function startPendingSpinAnimation(rows = DEFAULT_ROWS, reels = DEFAULT_REELS) {
-  const working = createRandomMatrix(rows, reels);
-  const activeReels = Array.from({ length: reels }, (_, i) => i);
-  reelsEl.classList.add("reels-spinning");
-  renderMatrix(working, [], activeReels);
-
-  const intervalId = setInterval(() => {
-    for (let col = 0; col < reels; col += 1) {
-      stepReelDown(working, col);
+function startPendingSpinAnimation(matrix) {
+  const rows = matrix.length;
+  const reelsCount = matrix[0].length;
+  const dropMap = {};
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < reelsCount; col += 1) {
+      dropMap[`${row}-${col}`] = rows;
     }
-    renderMatrix(working, [], activeReels);
-  }, ANIMATION_TIMING.spinTickMs);
+  }
+
+  renderMatrix(matrix, [], [], dropMap);
+  const fallWindowMs = applyDropPixelOffsets(dropMap);
+  reelsEl.classList.add("reels-spinning", "tumble-prime");
+  void reelsEl.offsetWidth;
+  reelsEl.classList.add("tumble-fall");
+
+  const animationDuration = Math.max(ANIMATION_TIMING.tumbleDropMs, fallWindowMs);
+  const completionPromise = sleep(animationDuration).then(() => {
+    reelsEl.classList.remove("tumble-fall", "tumble-prime");
+  });
 
   return {
-    working,
+    completionPromise,
     stop() {
-      clearInterval(intervalId);
+      reelsEl.classList.remove("reels-spinning", "tumble-fall", "tumble-prime");
     }
   };
 }
 
-async function settleReelsToResult(working, finalMatrix, winningPositions) {
-  const reels = finalMatrix[0]?.length || DEFAULT_REELS;
-  const rows = finalMatrix.length || DEFAULT_ROWS;
-  const hasWin = (winningPositions || []).length > 0;
-  const settleTickMs = hasWin ? ANIMATION_TIMING.settleTickWinMs : ANIMATION_TIMING.settleTickNoWinMs;
-  const settleLockMs = hasWin ? ANIMATION_TIMING.settleLockWinMs : ANIMATION_TIMING.settleLockNoWinMs;
-  for (let reel = 0; reel < reels; reel += 1) {
-    const ticks = 2 + reel;
-    for (let tick = 0; tick < ticks; tick += 1) {
-      for (let next = reel; next < reels; next += 1) {
-        stepReelDown(working, next);
-      }
-      const activeReels = [];
-      for (let next = reel; next < reels; next += 1) activeReels.push(next);
-      renderMatrix(working, [], activeReels);
-      await sleep(settleTickMs);
-    }
-
-    for (let row = 0; row < rows; row += 1) {
-      working[row][reel] = finalMatrix[row][reel];
-    }
-    const activeReels = [];
-    for (let next = reel + 1; next < reels; next += 1) activeReels.push(next);
-    renderMatrix(working, [], activeReels);
-    await sleep(settleLockMs);
-  }
-
+async function settleReelsToResult(finalMatrix, winningPositions) {
   renderMatrix(finalMatrix, winningPositions);
   reelsEl.classList.remove("reels-spinning");
+  const hasWin = (winningPositions || []).length > 0;
+
   if (hasWin) {
+    await sleep(100);
     reelsEl.classList.add("win-pulse");
     setTimeout(() => reelsEl.classList.remove("win-pulse"), ANIMATION_TIMING.winPulseMs);
   }
@@ -785,9 +753,8 @@ async function spin() {
   spinBtnEl.disabled = true;
   buyFreeBtnEl.disabled = true;
   simulateBtnEl.disabled = true;
-  const rows = Number(rulesConfig?.layout?.rows || DEFAULT_ROWS);
-  const reels = Number(rulesConfig?.layout?.reels || DEFAULT_REELS);
-  const pendingSpin = startPendingSpinAnimation(rows, reels);
+  let pendingSpin = null;
+
   try {
     const spinStart = performance.now();
     const bet = Number(betSelectEl.value);
@@ -802,18 +769,20 @@ async function spin() {
       ante_enabled: Boolean(anteToggleEl.checked)
     });
 
+    const tumbleSteps = payload.tumble_steps || [];
+    const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
+    pendingSpin = startPendingSpinAnimation(firstMatrix);
+    await pendingSpin.completionPromise;
+
     const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
     const elapsed = performance.now() - spinStart;
     if (elapsed < minSpinDurationMs) {
       await sleep(minSpinDurationMs - elapsed);
     }
 
-    pendingSpin.stop();
     const waysWins = payload.ways_wins || [];
-    const tumbleSteps = payload.tumble_steps || [];
     const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
-    const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
-    await settleReelsToResult(pendingSpin.working, firstMatrix, winningPositions);
+    await settleReelsToResult(firstMatrix, winningPositions);
     await animateTumbleSequence(tumbleSteps);
     winningLinesEl.textContent = String(waysWins.length);
     balanceEl.textContent = formatMoney(payload.balance_after);
@@ -834,9 +803,8 @@ async function spin() {
     renderCaughtLines(waysWins);
     resultDumpEl.textContent = JSON.stringify(payload, null, 2);
   } catch (err) {
-    pendingSpin.stop();
-    reelsEl.classList.remove("reels-spinning");
-    renderMatrix(pendingSpin.working);
+    if (pendingSpin) pendingSpin.stop();
+    renderMatrix(createRandomMatrix());
     resultDumpEl.textContent = `Error: ${err.message}`;
   } finally {
     spinBtnEl.disabled = false;
@@ -854,19 +822,30 @@ async function buyFreeSpins() {
   spinBtnEl.disabled = true;
   buyFreeBtnEl.disabled = true;
   simulateBtnEl.disabled = true;
+  let pendingSpin = null;
   try {
+    const spinStart = performance.now();
     const bet = Number(betSelectEl.value);
     const payload = await api("/api/v1/buy-free-spins", {
       session_id: sessionId,
       bet_amount: bet
     });
-    const waysWins = payload.ways_wins || [];
+
     const tumbleSteps = payload.tumble_steps || [];
     const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
+    pendingSpin = startPendingSpinAnimation(firstMatrix);
+    await pendingSpin.completionPromise;
+
+    const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
+    const elapsed = performance.now() - spinStart;
+    if (elapsed < minSpinDurationMs) {
+      await sleep(minSpinDurationMs - elapsed);
+    }
+
+    const waysWins = payload.ways_wins || [];
     const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
-    renderMatrix(firstMatrix, winningPositions);
+    await settleReelsToResult(firstMatrix, winningPositions);
     await animateTumbleSequence(tumbleSteps);
-    reelsEl.classList.remove("reels-spinning");
     winningLinesEl.textContent = String(waysWins.length);
     balanceEl.textContent = formatMoney(payload.balance_after);
     lastWinEl.textContent = formatMoney(payload.total_win);
@@ -884,6 +863,7 @@ async function buyFreeSpins() {
     renderCaughtLines(waysWins);
     resultDumpEl.textContent = JSON.stringify(payload, null, 2);
   } catch (err) {
+    if (pendingSpin) pendingSpin.stop();
     resultDumpEl.textContent = `Error: ${err.message}`;
   } finally {
     spinBtnEl.disabled = false;
@@ -1025,7 +1005,7 @@ async function runSimulation() {
           simLiveBig20xEl.textContent = String(payload.current_big_win_20x_count || 0);
           simLiveHuge50xEl.textContent = String(payload.current_huge_win_50x_count || 0);
           simLiveBigRateEl.textContent = `${Number(payload.current_big_win_rate_percent || 0).toFixed(3)}%`;
-          simLiveHugeRateEl.textContent = `${Number(payload.current_huge_win_rate_percent || 0).toFixed(3)}%`;
+          simLiveHugeRateEl.textContent = `${Number(report.current.huge_win_rate_percent || 0).toFixed(3)}%`;
           simLiveMaxWinXEl.textContent = `${Number(payload.current_max_win_x || 0).toFixed(2)}x`;
           simLiveBonusCatchesEl.textContent = String(payload.current_bonus_catch_count || 0);
           simLiveBonusCatchRateEl.textContent = `${Number(payload.current_bonus_catch_rate_percent || 0).toFixed(4)}%`;
