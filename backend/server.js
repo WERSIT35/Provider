@@ -28,7 +28,7 @@ const MAX_MATCH_COUNT = 30;
 const MAX_WIN_CAP_X = Number(gameRules.max_win_cap_multiplier || 15000);
 const BASE_SEQUENCE_MULTIPLIER_CAP = 80;
 const FREE_SPIN_PERSISTENT_MULTIPLIER_CAP = 150;
-const RTP_PAYOUT_SCALER = 1.0875;
+const RTP_PAYOUT_SCALER = 1.5;
 
 const FREE_SPINS_TRIGGER = Number(gameRules.features?.free_spins?.base_trigger_scatter_count || 4);
 const FREE_SPINS_AWARD = Number(gameRules.features?.free_spins?.base_award_spins || 15);
@@ -173,7 +173,7 @@ function createSymbolCell() {
   if (roll < 0.009) {
     return { symbol: SCATTER_SYMBOL };
   }
-  if (roll < 0.0145) {
+  if (roll < 0.0115) {
     return { symbol: MULTI_SYMBOL, multiplier: randomMultiplierValue() };
   }
   return { symbol: weightedRegularSymbol() };
@@ -266,7 +266,7 @@ function evaluateWaysWin(matrix, betAmount) {
   };
 }
 
-function applyTumble(matrix, winningPositions) {
+function applyTumble(matrix, winningPositions, scatterChance, multiChance) {
   const next = matrix.map((row) => row.slice());
   const removeSet = new Set(winningPositions.map((p) => `${p.row}-${p.col}`));
 
@@ -289,7 +289,7 @@ function applyTumble(matrix, winningPositions) {
       writeRow -= 1;
     }
     while (writeRow >= 0) {
-      const cell = createSymbolCell();
+      const cell = createSymbolCellWithRates(scatterChance, multiChance);
       next[writeRow][col] = cell.symbol;
       if (cell.symbol === MULTI_SYMBOL) {
         multipliers.push({ row: writeRow, col, value: cell.multiplier });
@@ -330,7 +330,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   }
 
   const scatterChance = Math.min(0.045, anteEnabled ? 0.0172 : 0.0086);
-  const multiChance = 0.015;
+  const multiChance = isFreeSpin ? 0.014 : anteEnabled ? 0.0072 : 0.0042;
   let { matrix, multipliers } = createMatrixWithMetaRates(scatterChance, multiChance);
   if (!isFreeSpin && forceFreeSpinTrigger) {
     matrix = forceScatterTrigger(matrix, FREE_SPINS_TRIGGER);
@@ -346,6 +346,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     const ways = evaluateWaysWin(matrix, betAmount);
     tumbleSteps.push({
       matrix,
+      multipliers,
       ways_wins: ways.wins,
       win_total: ways.total,
       winning_positions: ways.winning_positions
@@ -358,8 +359,9 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     for (const win of ways.wins) {
       sequenceWins.push(win);
     }
-    const tumbled = applyTumble(matrix, ways.winning_positions);
+    const tumbled = applyTumble(matrix, ways.winning_positions, scatterChance, multiChance);
     matrix = tumbled.matrix;
+    multipliers = tumbled.multipliers;
     sequenceMultiplierSum += tumbled.multipliers.reduce((s, m) => s + m.value, 0);
     const scatters = countSymbol(matrix, SCATTER_SYMBOL);
     if (scatters > highestScatterSeen) highestScatterSeen = scatters;
@@ -411,6 +413,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     bet_amount: betAmount,
     bet_charged: Number(betCharged.toFixed(2)),
     matrix,
+    multipliers,
     tumble_steps: tumbleSteps,
     ways_wins: sequenceWins,
     winning_positions: firstWinningPositions,

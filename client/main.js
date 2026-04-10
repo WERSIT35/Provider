@@ -51,6 +51,15 @@ const rulesCloseBtnEl = document.getElementById("rulesCloseBtn");
 const lineCountEl = document.getElementById("lineCount");
 const symbolLegendEl = document.getElementById("symbolLegend");
 const payoutRuleTextEl = document.getElementById("payoutRuleText");
+const winCalloutEl = document.getElementById("winCallout");
+const winCalloutLabelEl = document.getElementById("winCalloutLabel");
+const winCalloutAmountEl = document.getElementById("winCalloutAmount");
+const featureScreenEl = document.getElementById("featureScreen");
+const featureScreenKickerEl = document.getElementById("featureScreenKicker");
+const featureScreenTitleEl = document.getElementById("featureScreenTitle");
+const featureScreenCopyEl = document.getElementById("featureScreenCopy");
+const eventBannerEl = document.getElementById("eventBanner");
+const eventBannerTextEl = document.getElementById("eventBannerText");
 
 const DEFAULT_SYMBOL_DISPLAY = {
   TOP_CROWN: "👑",
@@ -118,6 +127,10 @@ let sessionId = null;
 let simulationAbortController = null;
 let rulesConfig = null;
 let rulesPageIndex = 0;
+let bonusAutoplayActive = false;
+let winCalloutTimer = null;
+let featureScreenResolver = null;
+let eventBannerTimer = null;
 const DEFAULT_ROWS = 5;
 const DEFAULT_REELS = 6;
 const ANIMATION_TIMING = {
@@ -128,10 +141,10 @@ const ANIMATION_TIMING = {
   settleTickWinMs: 62,
   settleLockNoWinMs: 46,
   settleLockWinMs: 84,
-  preTumbleHoldMs: 170,
+  preTumbleHoldMs: 200,
   winVanishMs: 90,
   tumbleFlashMs: 120,
-  tumbleDropMs: 520,
+  tumbleDropMs: 660,
   winPulseMs: 1200
 };
 
@@ -249,8 +262,69 @@ function syncBuyButtonState() {
   buyFreeBtnEl.title = "";
 }
 
+function setRoundControlsDisabled(disabled) {
+  spinBtnEl.disabled = disabled;
+  simulateBtnEl.disabled = disabled;
+  betSelectEl.disabled = disabled;
+  if (Boolean(rulesConfig?.features?.ante_bet?.enabled)) {
+    anteToggleEl.disabled = disabled;
+  }
+  if (disabled) {
+    buyFreeBtnEl.disabled = true;
+  } else {
+    syncBuyButtonState();
+  }
+}
+
 function formatMoney(v) {
   return Number(v).toFixed(2);
+}
+
+function animateValue(el, from, to, formatter, durationMs = 820) {
+  if (!el) return;
+  if (el._countFrame) {
+    cancelAnimationFrame(el._countFrame);
+    el._countFrame = null;
+  }
+  const start = performance.now();
+  const render = (now) => {
+    const progress = Math.min(1, (now - start) / durationMs);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = from + (to - from) * eased;
+    el.textContent = formatter(value);
+    if (progress < 1) {
+      el._countFrame = requestAnimationFrame(render);
+    } else {
+      el.textContent = formatter(to);
+      el._countFrame = null;
+    }
+  };
+  el._countFrame = requestAnimationFrame(render);
+}
+
+function pulseElement(el, className = "ui-bump", durationMs = 520) {
+  if (!el) return;
+  if (el._pulseTimer) {
+    clearTimeout(el._pulseTimer);
+    el._pulseTimer = null;
+  }
+  el.classList.remove(className);
+  void el.offsetWidth;
+  el.classList.add(className);
+  el._pulseTimer = setTimeout(() => {
+    el.classList.remove(className);
+    el._pulseTimer = null;
+  }, durationMs);
+}
+
+function setTextWithPulse(el, nextText, className = "ui-bump") {
+  if (!el) return;
+  if (el.textContent === nextText) {
+    el.textContent = nextText;
+    return;
+  }
+  el.textContent = nextText;
+  pulseElement(el, className);
 }
 
 function getSelectedBetAmount() {
@@ -266,12 +340,12 @@ function setSignedClass(el, value) {
 
 function renderSessionLiveStats() {
   const net = Number((sessionLiveStats.won - sessionLiveStats.wagered).toFixed(2));
-  spinsPlayedEl.textContent = String(sessionLiveStats.spinsPlayed);
-  winSpinsEl.textContent = String(sessionLiveStats.winSpins);
-  lossSpinsEl.textContent = String(sessionLiveStats.lossSpins);
-  sessionWageredEl.textContent = formatMoney(sessionLiveStats.wagered);
-  sessionWonEl.textContent = formatMoney(sessionLiveStats.won);
-  sessionNetEl.textContent = formatMoney(net);
+  setTextWithPulse(spinsPlayedEl, String(sessionLiveStats.spinsPlayed));
+  setTextWithPulse(winSpinsEl, String(sessionLiveStats.winSpins));
+  setTextWithPulse(lossSpinsEl, String(sessionLiveStats.lossSpins));
+  setTextWithPulse(sessionWageredEl, formatMoney(sessionLiveStats.wagered));
+  setTextWithPulse(sessionWonEl, formatMoney(sessionLiveStats.won));
+  setTextWithPulse(sessionNetEl, formatMoney(net));
   setSignedClass(sessionNetEl, net);
 }
 
@@ -299,6 +373,104 @@ function resetSimulationLiveWidgets() {
 function setRulesModalVisible(visible) {
   rulesModalEl.classList.toggle("hidden", !visible);
   rulesModalEl.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
+function setFeatureScreenVisible(visible) {
+  featureScreenEl.classList.toggle("hidden", !visible);
+  featureScreenEl.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
+function getWinCelebration(totalWin, betAmount) {
+  const baseBet = Math.max(0.01, Number(betAmount) || getSelectedBetAmount());
+  const winRatio = Number(totalWin || 0) / baseBet;
+  if (winRatio >= 50) {
+    return { label: "Huge Win", durationMs: 2100 };
+  }
+  if (winRatio >= 20) {
+    return { label: "Mega Win", durationMs: 1850 };
+  }
+  if (winRatio >= 10) {
+    return { label: "Big Win", durationMs: 1650 };
+  }
+  return null;
+}
+
+function showWinCallout(winText, amount) {
+  if (!winCalloutEl || !winText) return Promise.resolve();
+  if (winCalloutTimer) {
+    clearTimeout(winCalloutTimer);
+    winCalloutTimer = null;
+  }
+  winCalloutLabelEl.textContent = winText.label;
+  setTextWithPulse(winCalloutAmountEl, formatMoney(amount), "callout-bump");
+  winCalloutEl.classList.remove("hidden");
+  void winCalloutEl.offsetWidth;
+  winCalloutEl.classList.add("active");
+  return new Promise((resolve) => {
+    winCalloutTimer = window.setTimeout(() => {
+      winCalloutEl.classList.remove("active");
+      winCalloutTimer = window.setTimeout(() => {
+        winCalloutEl.classList.add("hidden");
+        winCalloutTimer = null;
+        resolve();
+      }, 240);
+    }, winText.durationMs);
+  });
+}
+
+function showFeatureScreen({ kicker, title, copy }) {
+  if (!featureScreenEl) return Promise.resolve();
+  if (featureScreenResolver) {
+    featureScreenResolver();
+    featureScreenResolver = null;
+  }
+  featureScreenKickerEl.textContent = kicker;
+  featureScreenTitleEl.textContent = title;
+  featureScreenCopyEl.textContent = copy;
+  setFeatureScreenVisible(true);
+  return new Promise((resolve) => {
+    featureScreenResolver = () => {
+      featureScreenResolver = null;
+      setFeatureScreenVisible(false);
+      resolve();
+    };
+  });
+}
+
+function dismissFeatureScreen() {
+  if (!featureScreenResolver) return;
+  const resolve = featureScreenResolver;
+  featureScreenResolver = null;
+  setFeatureScreenVisible(false);
+  resolve();
+}
+
+function showEventBanner(message, tone = "neutral", durationMs = 2200) {
+  if (!eventBannerEl || !eventBannerTextEl || !message) return;
+  if (eventBannerTimer) {
+    clearTimeout(eventBannerTimer);
+    eventBannerTimer = null;
+  }
+  eventBannerEl.classList.remove("hidden", "tone-neutral", "tone-excited", "tone-bonus");
+  eventBannerEl.classList.add(`tone-${tone}`);
+  eventBannerTextEl.textContent = message;
+  void eventBannerEl.offsetWidth;
+  eventBannerEl.classList.add("active");
+  eventBannerTimer = setTimeout(() => {
+    eventBannerEl.classList.remove("active");
+    eventBannerTimer = setTimeout(() => {
+      eventBannerEl.classList.add("hidden");
+      eventBannerTimer = null;
+    }, 220);
+  }, durationMs);
+}
+
+function getFreeSpinRules() {
+  return {
+    triggerCount: Number(rulesConfig?.features?.free_spins?.base_trigger_scatter_count || 4),
+    baseAward: Number(rulesConfig?.features?.free_spins?.base_award_spins || 15),
+    retriggerAward: Number(rulesConfig?.features?.free_spins?.retrigger_award_spins || 5)
+  };
 }
 
 function renderRulesPage() {
@@ -382,10 +554,23 @@ function getWinningCells(winningPositions = []) {
   return highlightedCells;
 }
 
-function renderMatrix(matrix, winningPositions = [], spinningReels = [], fallingMap = null) {
+function buildMultiplierMap(multipliers = []) {
+  const values = new Map();
+  if (!Array.isArray(multipliers)) return values;
+  multipliers.forEach((entry) => {
+    if (!Number.isInteger(entry?.row) || !Number.isInteger(entry?.col)) return;
+    const value = Number(entry?.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    values.set(`${entry.row}-${entry.col}`, value);
+  });
+  return values;
+}
+
+function renderMatrix(matrix, winningPositions = [], spinningReels = [], fallingMap = null, multipliers = []) {
   const highlightedCells = getWinningCells(winningPositions);
   const spinningReelSet = new Set(spinningReels);
   const activeFallingMap = fallingMap && typeof fallingMap === "object" ? fallingMap : null;
+  const multiplierMap = buildMultiplierMap(multipliers);
   const rows = matrix.length || DEFAULT_ROWS;
   const reels = matrix[0]?.length || DEFAULT_REELS;
   reelsEl.style.gridTemplateColumns = `repeat(${reels}, 1fr)`;
@@ -418,7 +603,18 @@ function renderMatrix(matrix, winningPositions = [], spinningReels = [], falling
       } else {
         cell.textContent = symbolFace(symbol);
       }
-      cell.title = symbol;
+      let cellTitle = symbol;
+      if (symbol === "MULTI") {
+        const multiplierValue = multiplierMap.get(`${row}-${col}`);
+        if (multiplierValue) {
+          const badge = document.createElement("span");
+          badge.className = "multiplier-value";
+          badge.textContent = `${Number(multiplierValue).toFixed(Number.isInteger(multiplierValue) ? 0 : 1)}x`;
+          cell.appendChild(badge);
+          cellTitle = `${symbolText(symbol)} ${badge.textContent}`;
+        }
+      }
+      cell.title = cellTitle;
       cell.style.setProperty("--row", String(row));
       cell.style.setProperty("--col", String(col));
       reelsEl.appendChild(cell);
@@ -482,10 +678,23 @@ function applyDropPixelOffsets(dropMap) {
     const dropCells = Number(dropMap[`${row}-${col}`] || 0);
     if (dropCells > 0) {
       cell.style.setProperty("--drop-px", `${(dropCells * stepPx).toFixed(2)}px`);
-      const durationMs = Math.min(820, 280 + dropCells * 84);
-      const delayMs = Math.max(0, col * 10 + row * 2);
+      const jitterSeed = ((row + 1) * 17 + (col + 1) * 29 + dropCells * 13) % 11;
+      const durationMs = Math.min(980, 420 + dropCells * 96 + jitterSeed * 12);
+      const delayMs = Math.max(0, col * 14 + row * 8 + jitterSeed * 7 - (col % 3 === 0 ? 12 : 0));
+      const swayPx = (((col % 2 === 0 ? -1 : 1) * (2 + jitterSeed * 0.35))).toFixed(2);
+      const tiltDeg = (((row % 2 === 0 ? 1 : -1) * (0.3 + jitterSeed * 0.08))).toFixed(2);
+      const impactDepth = Math.min(12, 5 + dropCells * 1.5 + jitterSeed * 0.25).toFixed(2);
+      const reboundLift = Math.min(6.5, 2.5 + dropCells * 0.65 + jitterSeed * 0.12).toFixed(2);
+      const impactSquashX = Math.min(1.06, 1.018 + dropCells * 0.007 + jitterSeed * 0.0015).toFixed(3);
+      const impactSquashY = Math.max(0.92, 0.986 - dropCells * 0.01 - jitterSeed * 0.002).toFixed(3);
       cell.style.setProperty("--drop-duration", `${durationMs}ms`);
       cell.style.setProperty("--drop-delay", `${delayMs}ms`);
+      cell.style.setProperty("--drop-sway", `${swayPx}px`);
+      cell.style.setProperty("--drop-tilt", `${tiltDeg}deg`);
+      cell.style.setProperty("--impact-depth", `${impactDepth}px`);
+      cell.style.setProperty("--rebound-lift", `${reboundLift}px`);
+      cell.style.setProperty("--impact-squash-x", impactSquashX);
+      cell.style.setProperty("--impact-squash-y", impactSquashY);
       const totalWindow = durationMs + delayMs;
       if (totalWindow > maxWindowMs) maxWindowMs = totalWindow;
     }
@@ -588,8 +797,9 @@ function startPendingSpinAnimation(matrix) {
     }
   }
 
-  renderMatrix(matrix, [], [], dropMap);
+  renderMatrix(matrix, [], [], dropMap, []);
   const fallWindowMs = applyDropPixelOffsets(dropMap);
+  pulseElement(spinBtnEl, "button-thump", 420);
   reelsEl.classList.add("reels-spinning", "tumble-prime");
   void reelsEl.offsetWidth;
   reelsEl.classList.add("tumble-fall");
@@ -607,8 +817,8 @@ function startPendingSpinAnimation(matrix) {
   };
 }
 
-async function settleReelsToResult(finalMatrix, winningPositions) {
-  renderMatrix(finalMatrix, winningPositions);
+async function settleReelsToResult(finalMatrix, winningPositions, multipliers = []) {
+  renderMatrix(finalMatrix, winningPositions, [], null, multipliers);
   reelsEl.classList.remove("reels-spinning");
   const hasWin = (winningPositions || []).length > 0;
 
@@ -629,7 +839,7 @@ async function animateTumbleSequence(tumbleSteps = []) {
     if (winTotal <= 0 || winning.length === 0) continue;
     const dropMap = buildTumbleDropMap(step.matrix, winning);
 
-    renderMatrix(step.matrix, winning);
+    renderMatrix(step.matrix, winning, [], null, step.multipliers || []);
     await sleep(ANIMATION_TIMING.preTumbleHoldMs);
     reelsEl.querySelectorAll(".cell.win-cell").forEach((cell) => cell.classList.add("win-vanish"));
     if (ANIMATION_TIMING.tumbleFlashMs > 0) {
@@ -638,7 +848,7 @@ async function animateTumbleSequence(tumbleSteps = []) {
       reelsEl.classList.remove("tumble-flash");
     }
     await sleep(ANIMATION_TIMING.winVanishMs);
-    renderMatrix(next.matrix, next.winning_positions || [], [], dropMap);
+    renderMatrix(next.matrix, next.winning_positions || [], [], dropMap, next.multipliers || []);
     const fallWindowMs = applyDropPixelOffsets(dropMap);
     reelsEl.classList.add("tumble-prime");
     void reelsEl.offsetWidth;
@@ -650,7 +860,104 @@ async function animateTumbleSequence(tumbleSteps = []) {
 
   const last = tumbleSteps[tumbleSteps.length - 1];
   if (last?.matrix) {
-    renderMatrix(last.matrix, last.winning_positions || []);
+    renderMatrix(last.matrix, last.winning_positions || [], [], null, last.multipliers || []);
+  }
+}
+
+async function playRoundPresentation(payload, fallbackBet, options = {}) {
+  const tumbleSteps = payload.tumble_steps || [];
+  const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
+  const firstMultipliers = tumbleSteps[0]?.multipliers || payload.multipliers || [];
+  const pendingSpin = startPendingSpinAnimation(firstMatrix);
+  try {
+    await pendingSpin.completionPromise;
+
+    const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
+    const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
+    renderMatrix(firstMatrix, winningPositions, [], null, firstMultipliers);
+    await settleReelsToResult(firstMatrix, winningPositions, firstMultipliers);
+    await animateTumbleSequence(tumbleSteps);
+
+    const waysWins = payload.ways_wins || [];
+    setTextWithPulse(winningLinesEl, String(waysWins.length));
+    const previousBalance = Number(balanceEl.textContent || 0) || 0;
+    const previousWin = Number(lastWinEl.textContent || 0) || 0;
+    animateValue(balanceEl, previousBalance, Number(payload.balance_after || 0), formatMoney, 920);
+    animateValue(lastWinEl, previousWin, Number(payload.total_win || 0), formatMoney, 760);
+    pulseElement(balanceEl);
+    pulseElement(lastWinEl);
+    setTextWithPulse(freeSpinsEl, String(payload.free_spins_left));
+    sessionLiveStats.spinsPlayed += 1;
+    if (payload.total_win > 0) {
+      sessionLiveStats.winSpins += 1;
+    } else {
+      sessionLiveStats.lossSpins += 1;
+    }
+
+    if (Number.isFinite(options.wagerAmountOverride)) {
+      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + options.wagerAmountOverride).toFixed(2));
+    } else if (!payload.is_free_spin) {
+      const chargedBet = Number(payload.bet_charged || fallbackBet);
+      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + chargedBet).toFixed(2));
+    }
+
+    sessionLiveStats.won = Number((sessionLiveStats.won + Number(payload.total_win || 0)).toFixed(2));
+    renderSessionLiveStats();
+    renderCaughtLines(waysWins);
+    resultDumpEl.textContent = JSON.stringify(payload, null, 2);
+
+    const winText = getWinCelebration(payload.total_win, payload.bet_charged || payload.bet_amount || fallbackBet);
+    if (winText) {
+      await showWinCallout(winText, payload.total_win);
+    }
+
+    const freeSpinRules = getFreeSpinRules();
+    const scatterCount = Number(payload.scatter_count || 0);
+    if (!payload.is_free_spin && !Number(payload.free_spins_awarded || 0) && scatterCount === freeSpinRules.triggerCount - 1) {
+      showEventBanner(
+        `${scatterCount} scatters landed. 1 more for ${freeSpinRules.baseAward} free spins.`,
+        "excited",
+        2600
+      );
+    } else if (payload.is_free_spin && Number(payload.free_spins_awarded || 0) > 0) {
+      showEventBanner(
+        `Retrigger! +${Number(payload.free_spins_awarded || freeSpinRules.retriggerAward)} free spins added.`,
+        "bonus",
+        2600
+      );
+    }
+
+    const hasBonusEntry = Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin;
+    return {
+      hasBonusEntry,
+      awardedFreeSpins: Number(payload.free_spins_awarded || 0),
+      minSpinDurationMs
+    };
+  } catch (error) {
+    pendingSpin.stop();
+    throw error;
+  }
+}
+
+async function autoplayBonusRounds() {
+  if (bonusAutoplayActive) return;
+  bonusAutoplayActive = true;
+  let bonusTotalWin = 0;
+  setRoundControlsDisabled(true);
+  try {
+    while (Number(freeSpinsEl.textContent || "0") > 0) {
+      const roundResult = await spin({ triggeredByAutoplay: true });
+      bonusTotalWin = Number((bonusTotalWin + Number(roundResult?.totalWin || 0)).toFixed(2));
+      await sleep(180);
+    }
+    await showFeatureScreen({
+      kicker: "Feature Complete",
+      title: `Bonus Win ${formatMoney(bonusTotalWin)}`,
+      copy: "Press anywhere to continue."
+    });
+  } finally {
+    bonusAutoplayActive = false;
+    setRoundControlsDisabled(false);
   }
 }
 
@@ -748,17 +1055,17 @@ async function initSession() {
   resetSimulationLiveWidgets();
 }
 
-async function spin() {
+async function spin(options = {}) {
   if (!sessionId) return;
-  spinBtnEl.disabled = true;
-  buyFreeBtnEl.disabled = true;
-  simulateBtnEl.disabled = true;
-  let pendingSpin = null;
+  if (bonusAutoplayActive && !options.triggeredByAutoplay) return;
+  setRoundControlsDisabled(true);
 
   try {
     const spinStart = performance.now();
     const bet = Number(betSelectEl.value);
-    betViewEl.textContent = formatMoney(bet);
+    if (!options.triggeredByAutoplay) {
+      betViewEl.textContent = formatMoney(bet);
+    }
     renderCaughtLines([]);
     winningLinesEl.textContent = "0";
 
@@ -769,47 +1076,32 @@ async function spin() {
       ante_enabled: Boolean(anteToggleEl.checked)
     });
 
-    const tumbleSteps = payload.tumble_steps || [];
-    const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
-    pendingSpin = startPendingSpinAnimation(firstMatrix);
-    await pendingSpin.completionPromise;
-
-    const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
     const elapsed = performance.now() - spinStart;
-    if (elapsed < minSpinDurationMs) {
-      await sleep(minSpinDurationMs - elapsed);
+    const round = await playRoundPresentation(payload, bet);
+    if (elapsed < round.minSpinDurationMs) {
+      await sleep(round.minSpinDurationMs - elapsed);
     }
-
-    const waysWins = payload.ways_wins || [];
-    const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
-    await settleReelsToResult(firstMatrix, winningPositions);
-    await animateTumbleSequence(tumbleSteps);
-    winningLinesEl.textContent = String(waysWins.length);
-    balanceEl.textContent = formatMoney(payload.balance_after);
-    lastWinEl.textContent = formatMoney(payload.total_win);
-    freeSpinsEl.textContent = String(payload.free_spins_left);
-    sessionLiveStats.spinsPlayed += 1;
-    if (payload.total_win > 0) {
-      sessionLiveStats.winSpins += 1;
-    } else {
-      sessionLiveStats.lossSpins += 1;
+    if (round.hasBonusEntry) {
+      await showFeatureScreen({
+        kicker: "Congratulations",
+        title: `You won ${round.awardedFreeSpins} Free Spins`,
+        copy: "Autoplay starts as soon as you continue."
+      });
+      await autoplayBonusRounds();
     }
-    if (!payload.is_free_spin) {
-      const chargedBet = Number(payload.bet_charged || bet);
-      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + chargedBet).toFixed(2));
-    }
-    sessionLiveStats.won = Number((sessionLiveStats.won + payload.total_win).toFixed(2));
-    renderSessionLiveStats();
-    renderCaughtLines(waysWins);
-    resultDumpEl.textContent = JSON.stringify(payload, null, 2);
+    return {
+      totalWin: Number(payload.total_win || 0),
+      isFreeSpin: Boolean(payload.is_free_spin),
+      freeSpinsLeft: Number(payload.free_spins_left || 0)
+    };
   } catch (err) {
-    if (pendingSpin) pendingSpin.stop();
     renderMatrix(createRandomMatrix());
     resultDumpEl.textContent = `Error: ${err.message}`;
+    return null;
   } finally {
-    spinBtnEl.disabled = false;
-    syncBuyButtonState();
-    simulateBtnEl.disabled = false;
+    if (!bonusAutoplayActive) {
+      setRoundControlsDisabled(false);
+    }
   }
 }
 
@@ -819,10 +1111,8 @@ async function buyFreeSpins() {
     resultDumpEl.textContent = "Buy Free Spins is disabled while Ante Bet is enabled.";
     return;
   }
-  spinBtnEl.disabled = true;
-  buyFreeBtnEl.disabled = true;
-  simulateBtnEl.disabled = true;
-  let pendingSpin = null;
+  if (bonusAutoplayActive) return;
+  setRoundControlsDisabled(true);
   try {
     const spinStart = performance.now();
     const bet = Number(betSelectEl.value);
@@ -831,44 +1121,26 @@ async function buyFreeSpins() {
       bet_amount: bet
     });
 
-    const tumbleSteps = payload.tumble_steps || [];
-    const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
-    pendingSpin = startPendingSpinAnimation(firstMatrix);
-    await pendingSpin.completionPromise;
-
-    const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
     const elapsed = performance.now() - spinStart;
-    if (elapsed < minSpinDurationMs) {
-      await sleep(minSpinDurationMs - elapsed);
-    }
-
-    const waysWins = payload.ways_wins || [];
-    const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
-    await settleReelsToResult(firstMatrix, winningPositions);
-    await animateTumbleSequence(tumbleSteps);
-    winningLinesEl.textContent = String(waysWins.length);
-    balanceEl.textContent = formatMoney(payload.balance_after);
-    lastWinEl.textContent = formatMoney(payload.total_win);
-    freeSpinsEl.textContent = String(payload.free_spins_left);
-    sessionLiveStats.spinsPlayed += 1;
-    if (payload.total_win > 0) {
-      sessionLiveStats.winSpins += 1;
-    } else {
-      sessionLiveStats.lossSpins += 1;
-    }
     const buyCost = Number(payload.buy_cost || 0);
-    sessionLiveStats.wagered = Number((sessionLiveStats.wagered + buyCost).toFixed(2));
-    sessionLiveStats.won = Number((sessionLiveStats.won + payload.total_win).toFixed(2));
-    renderSessionLiveStats();
-    renderCaughtLines(waysWins);
-    resultDumpEl.textContent = JSON.stringify(payload, null, 2);
+    const round = await playRoundPresentation(payload, bet, { wagerAmountOverride: buyCost });
+    if (elapsed < round.minSpinDurationMs) {
+      await sleep(round.minSpinDurationMs - elapsed);
+    }
+    if (round.hasBonusEntry) {
+      await showFeatureScreen({
+        kicker: "Feature Unlocked",
+        title: `You won ${round.awardedFreeSpins} Free Spins`,
+        copy: "Autoplay starts as soon as you continue."
+      });
+      await autoplayBonusRounds();
+    }
   } catch (err) {
-    if (pendingSpin) pendingSpin.stop();
     resultDumpEl.textContent = `Error: ${err.message}`;
   } finally {
-    spinBtnEl.disabled = false;
-    syncBuyButtonState();
-    simulateBtnEl.disabled = false;
+    if (!bonusAutoplayActive) {
+      setRoundControlsDisabled(false);
+    }
   }
 }
 
@@ -1065,6 +1337,7 @@ resetSimulationLiveWidgets();
 if (symbolLegendEl) symbolLegendEl.textContent = buildLegendText();
 if (payoutRuleTextEl) payoutRuleTextEl.textContent = "Symbol payouts are multipliers of base bet. Scatter pays on any position.";
 syncBuyButtonState();
+requestAnimationFrame(() => document.body.classList.add("app-ready"));
 initSession().catch((err) => {
   resultDumpEl.textContent = `Init failed: ${err.message}`;
 });
@@ -1087,7 +1360,29 @@ rulesNextBtnEl.addEventListener("click", () => {
 rulesModalEl.addEventListener("click", (e) => {
   if (e.target === rulesModalEl) closeRulesModal();
 });
+featureScreenEl.addEventListener("click", dismissFeatureScreen);
 window.addEventListener("keydown", (e) => {
+  if (!featureScreenEl.classList.contains("hidden")) {
+    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+      e.preventDefault();
+      dismissFeatureScreen();
+      return;
+    }
+  }
+  const targetTag = e.target?.tagName;
+  const isTypingTarget =
+    e.target?.isContentEditable ||
+    targetTag === "INPUT" ||
+    targetTag === "TEXTAREA" ||
+    targetTag === "SELECT" ||
+    targetTag === "BUTTON";
+  if ((e.key === " " || e.key === "Spacebar") && !isTypingTarget) {
+    e.preventDefault();
+    if (rulesModalEl.classList.contains("hidden") && !spinBtnEl.disabled) {
+      spin();
+    }
+    return;
+  }
   if (e.key === "Escape" && !rulesModalEl.classList.contains("hidden")) {
     closeRulesModal();
   }
