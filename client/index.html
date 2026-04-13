@@ -1,152 +1,192 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Project Khma MVP</title>
+    <title>Project Khma</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app">
-      <section class="main-stage">
-        <header class="topbar">
-          <div>
-            <h1>Project Khma MVP</h1>
-            <p>Server-authoritative slot prototype</p>
+    <main class="sanctum">
+      <section class="altar">
+        <div class="altar-top">
+          <div class="title-cluster">
+            <span class="title-kicker">Project Khma</span>
+            <h1>Sigil Vault</h1>
           </div>
-          <span class="status-pill">Live Session</span>
-        </header>
-
-        <section class="game-hud">
-          <div class="game-meters">
-            <div class="game-meter"><span>Balance</span><strong id="balance">-</strong></div>
-            <div class="game-meter"><span>Bet</span><strong id="betView">1.00</strong></div>
-            <div class="game-meter"><span>Win</span><strong id="lastWin">0.00</strong></div>
-            <div class="game-meter"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
+          <div class="status-ribbon">
+            <div class="status-ribbon-item">
+              <span>Session</span>
+              <strong id="sessionId">-</strong>
+            </div>
+            <div class="status-ribbon-item">
+              <span>Ways</span>
+              <strong id="lineCount">Pay Anywhere</strong>
+            </div>
+            <div class="status-ribbon-item">
+              <span>Winning Symbols</span>
+              <strong id="winningLines">0</strong>
+            </div>
+            <button id="rulesBtn" type="button">Rules</button>
           </div>
-          <div class="game-controls">
-            <label class="bet-picker" for="betSelect">
-              <span>Bet</span>
-              <select id="betSelect"></select>
-            </label>
-            <button id="buyFreeBtn" type="button">Buy Free Spins (100x)</button>
-            <button id="spinBtn">Spin</button>
-          </div>
-        </section>
-
-        <section class="board">
-          <section class="reels" id="reels"></section>
-          <div class="win-callout hidden" id="winCallout" aria-live="polite">
-            <div class="win-callout-label" id="winCalloutLabel">Big Win</div>
-            <div class="win-callout-amount" id="winCalloutAmount">0.00</div>
-          </div>
-        </section>
-
-        <div class="event-banner hidden" id="eventBanner" aria-live="polite">
-          <span id="eventBannerText">3 scatters landed. 1 more for free spins.</span>
         </div>
 
-        <section class="stage-bar">
-          <section class="stats">
-            <div><span>Session</span><strong id="sessionId">-</strong></div>
-            <div><span>Ways</span><strong id="lineCount">Pay Anywhere</strong></div>
-            <div><span>Winning Symbols</span><strong id="winningLines">0</strong></div>
+        <section class="altar-core">
+          <aside class="oracle-panel" aria-label="Live stats and logs">
+            <section class="oracle-band">
+              <h2>Vault State</h2>
+              <div class="meter-pair">
+                <div class="meter-node"><span>Balance</span><strong id="balance">-</strong></div>
+                <div class="meter-node"><span>Bet</span><strong id="betView">1.00</strong></div>
+                <div class="meter-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
+                <div class="meter-node"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
+                <div class="meter-node meter-node-multi"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
+              </div>
+            </section>
+
+            <section class="oracle-band">
+              <div class="band-head">
+                <h2>Last 10 Spins</h2>
+                <span id="spinLogStatus">Waiting for spins...</span>
+              </div>
+              <ul id="spinLogList" class="spin-log-list">
+                <li>No spins yet.</li>
+              </ul>
+            </section>
+
+            <section class="oracle-band">
+              <div class="band-head">
+                <h2>Session Totals</h2>
+              </div>
+              <div class="summary-grid">
+                <div><span>Spins</span><strong id="spinsPlayed">0</strong></div>
+                <div><span>Wins</span><strong id="winSpins">0</strong></div>
+                <div><span>Losses</span><strong id="lossSpins">0</strong></div>
+                <div><span>Wagered</span><strong id="sessionWagered">0.00</strong></div>
+                <div><span>Won</span><strong id="sessionWon">0.00</strong></div>
+                <div><span>Net</span><strong id="sessionNet">0.00</strong></div>
+              </div>
+            </section>
+          </aside>
+
+          <section class="vault-shell">
+            <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
+              <span id="eventBannerText">Ready</span>
+            </div>
+
+            <div class="vault-window">
+              <div class="vault-aura"></div>
+              <section class="reels" id="reels" aria-live="polite"></section>
+              <div class="win-callout hidden" id="winCallout" aria-live="polite">
+                <div class="win-callout-label" id="winCalloutLabel">Big Win</div>
+                <div class="win-callout-amount" id="winCalloutAmount">0.00</div>
+              </div>
+              <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
+                <div class="feature-screen-panel">
+                  <p class="feature-screen-kicker" id="featureScreenKicker">Feature</p>
+                  <h2 id="featureScreenTitle">You won 15 Free Spins</h2>
+                  <p class="feature-screen-copy" id="featureScreenCopy">Press anywhere to continue.</p>
+                  <p class="feature-screen-hint">Tap the sanctum to continue</p>
+                </div>
+              </section>
+            </div>
+
+            <section class="ritual-deck" aria-label="Controls">
+              <label class="ritual-module" for="betSelect">
+                <span>Bet Size</span>
+                <select id="betSelect"></select>
+              </label>
+              <label class="ritual-toggle" for="anteToggle">
+                <input id="anteToggle" type="checkbox" />
+                <span>Ante Bet 1.25x</span>
+              </label>
+              <button id="spinBtn" type="button">Invoke Spin</button>
+              <button id="buyFreeBtn" type="button">Buy Free Spins</button>
+              <button id="simulateBtn" type="button">Imitate 1M Spins</button>
+            </section>
           </section>
 
-          <section class="controls">
-            <label for="anteToggle"><input id="anteToggle" type="checkbox" /> Ante Bet 1.25x</label>
-            <button id="simulateBtn" type="button">Imitate 1M Spins</button>
-            <button id="rulesBtn" type="button">Game Rules</button>
+          <aside class="archive-panel" aria-label="Simulation and outputs">
+            <section class="archive-band">
+              <div class="band-head">
+                <h2>1M Simulation</h2>
+                <span id="simProgressLabel">Idle</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-bar" id="simProgressBar"></div>
+              </div>
+              <div class="sim-grid">
+                <div><span>Live RTP</span><strong id="simLiveRtp">0.00%</strong></div>
+                <div><span>Player Win</span><strong id="simLivePlayerWin">0.00</strong></div>
+                <div><span>Casino Net</span><strong id="simLiveCasinoNet">0.00</strong></div>
+                <div><span>Hit Rate</span><strong id="simLiveHitRate">0.00%</strong></div>
+                <div><span>Big >=20x</span><strong id="simLiveBig20x">0</strong></div>
+                <div><span>Huge >=50x</span><strong id="simLiveHuge50x">0</strong></div>
+                <div><span>Big Rate</span><strong id="simLiveBigRate">0.000%</strong></div>
+                <div><span>Huge Rate</span><strong id="simLiveHugeRate">0.000%</strong></div>
+                <div><span>Max Win X</span><strong id="simLiveMaxWinX">0.00x</strong></div>
+                <div><span>Bonus Catches</span><strong id="simLiveBonusCatches">0</strong></div>
+                <div><span>Bonus Catch Rate</span><strong id="simLiveBonusCatchRate">0.0000%</strong></div>
+                <div><span>Bonus Win</span><strong id="simLiveBonusWin">0.00</strong></div>
+                <div><span>Baseline RTP</span><strong id="simLiveBaselineRtp">0.00%</strong></div>
+                <div><span>Baseline Net</span><strong id="simLiveBaselineNet">0.00</strong></div>
+              </div>
+            </section>
+
+            <section class="archive-band">
+              <div class="band-head">
+                <h2>Caught Wins</h2>
+              </div>
+              <ul id="caughtLines">
+                <li>No winning symbols yet.</li>
+              </ul>
+            </section>
+
+            <section class="archive-band">
+              <div class="band-head">
+                <h2>Round Output</h2>
+              </div>
+              <pre id="resultDump">No spin yet.</pre>
+              <pre id="simulateDump">No simulation yet.</pre>
+            </section>
+          </aside>
+        </section>
+
+        <section class="codex-strip">
+          <section class="codex-band">
+            <div class="band-head">
+              <h2>Game Information</h2>
+            </div>
+            <p><strong>Symbol Legend:</strong> <span id="symbolLegend">Loading...</span></p>
+            <p><strong>Payout Rule:</strong> <span id="payoutRuleText">Loading...</span></p>
           </section>
-        </section>
-      </section>
 
-      <section class="dashboard">
-        <section class="live-stats">
-          <div class="metric-card">
-            <span>Spins Played</span>
-            <strong id="spinsPlayed">0</strong>
-          </div>
-          <div class="metric-card">
-            <span>Winning Spins</span>
-            <strong id="winSpins">0</strong>
-          </div>
-          <div class="metric-card">
-            <span>Losing Spins</span>
-            <strong id="lossSpins">0</strong>
-          </div>
-          <div class="metric-card">
-            <span>Total Wagered</span>
-            <strong id="sessionWagered">0.00</strong>
-          </div>
-          <div class="metric-card">
-            <span>Total Won</span>
-            <strong id="sessionWon">0.00</strong>
-          </div>
-          <div class="metric-card">
-            <span>Net P/L</span>
-            <strong id="sessionNet">0.00</strong>
-          </div>
-        </section>
+          <section class="codex-band">
+            <div class="band-head">
+              <h2>Paytable</h2>
+            </div>
+            <h3 id="paytableTitle">Payout Table</h3>
+            <div class="table-wrap">
+              <table class="paytable" id="paytable">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th id="payoutGroup1">8-9</th>
+                    <th id="payoutGroup2">10-11</th>
+                    <th id="payoutGroup3">12-30</th>
+                  </tr>
+                </thead>
+                <tbody id="paytableBody"></tbody>
+              </table>
+            </div>
+          </section>
 
-        <section class="simulate-status">
-          <div class="simulate-head">
-            <h2>Simulation Progress</h2>
-            <span id="simProgressLabel">Idle</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-bar" id="simProgressBar"></div>
-          </div>
-          <div class="sim-live-grid">
-            <div><span>Live RTP</span><strong id="simLiveRtp">0.00%</strong></div>
-            <div><span>Live Player Win</span><strong id="simLivePlayerWin">0.00</strong></div>
-            <div><span>Live Casino Net</span><strong id="simLiveCasinoNet">0.00</strong></div>
-            <div><span>Live Hit Rate</span><strong id="simLiveHitRate">0.00%</strong></div>
-            <div><span>Big Wins >=20x</span><strong id="simLiveBig20x">0</strong></div>
-            <div><span>Huge Wins >=50x</span><strong id="simLiveHuge50x">0</strong></div>
-            <div><span>Big Win Rate</span><strong id="simLiveBigRate">0.000%</strong></div>
-            <div><span>Huge Win Rate</span><strong id="simLiveHugeRate">0.000%</strong></div>
-            <div><span>Max Win X</span><strong id="simLiveMaxWinX">0.00x</strong></div>
-            <div><span>Bonus Catches</span><strong id="simLiveBonusCatches">0</strong></div>
-            <div><span>Bonus Catch Rate</span><strong id="simLiveBonusCatchRate">0.0000%</strong></div>
-            <div><span>Bonus Win Total</span><strong id="simLiveBonusWin">0.00</strong></div>
-            <div><span>Baseline RTP</span><strong id="simLiveBaselineRtp">0.00%</strong></div>
-            <div><span>Baseline Net</span><strong id="simLiveBaselineNet">0.00</strong></div>
-          </div>
-        </section>
-
-        <section class="result">
-          <h2>Result</h2>
-          <pre id="resultDump">No spin yet.</pre>
-          <h3>Simulation (1M)</h3>
-          <pre id="simulateDump">No simulation yet.</pre>
-          <h3>Caught Wins</h3>
-          <ul id="caughtLines">
-            <li>No winning symbols yet.</li>
-          </ul>
-        </section>
-
-        <section class="info">
-          <h2>Game Info</h2>
-          <p><strong>Rules Source:</strong> Use <strong>Game Rules</strong> for full pages.</p>
-          <p><strong>Symbol Legend:</strong> <span id="symbolLegend">Loading...</span></p>
-          <p><strong>Payout rule:</strong> <span id="payoutRuleText">Loading...</span></p>
-          <h3 id="paytableTitle">Payout Table (8-9 / 10-11 / 12-30) - Bet 1.00</h3>
-          <div class="table-wrap">
-            <table class="paytable" id="paytable">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th id="payoutGroup1">8-9</th>
-                  <th id="payoutGroup2">10-11</th>
-                  <th id="payoutGroup3">12-30</th>
-                </tr>
-              </thead>
-              <tbody id="paytableBody"></tbody>
-            </table>
-          </div>
-          <h3>Win Model</h3>
-          <ul id="lineExamples"></ul>
+          <section class="codex-band">
+            <div class="band-head">
+              <h2>Win Model</h2>
+            </div>
+            <ul id="lineExamples"></ul>
+          </section>
         </section>
       </section>
     </main>
@@ -155,7 +195,7 @@
       <div class="rules-dialog">
         <div class="rules-header">
           <h2 id="rulesTitle">Game Rules</h2>
-          <button id="rulesCloseBtn" type="button" class="rules-close">X</button>
+          <button id="rulesCloseBtn" type="button" class="rules-close">Close</button>
         </div>
         <div class="rules-meta" id="rulesMeta">Loading rules...</div>
         <ul class="rules-list" id="rulesList"></ul>
@@ -167,14 +207,6 @@
       </div>
     </section>
 
-    <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
-      <div class="feature-screen-panel">
-        <p class="feature-screen-kicker" id="featureScreenKicker">Congratulations</p>
-        <h2 id="featureScreenTitle">You won 15 Free Spins</h2>
-        <p class="feature-screen-copy" id="featureScreenCopy">Press anywhere to continue.</p>
-        <p class="feature-screen-hint">Press anywhere to continue</p>
-      </div>
-    </section>
     <script src="/main.js"></script>
   </body>
 </html>

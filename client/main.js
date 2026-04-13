@@ -1,81 +1,99 @@
+const $ = (id) => document.getElementById(id);
 
-const sessionIdEl = document.getElementById("sessionId");
-const balanceEl = document.getElementById("balance");
-const betViewEl = document.getElementById("betView");
-const winningLinesEl = document.getElementById("winningLines");
-const lastWinEl = document.getElementById("lastWin");
-const freeSpinsEl = document.getElementById("freeSpins");
-const betSelectEl = document.getElementById("betSelect");
-const spinBtnEl = document.getElementById("spinBtn");
-const simulateBtnEl = document.getElementById("simulateBtn");
-const buyFreeBtnEl = document.getElementById("buyFreeBtn");
-const anteToggleEl = document.getElementById("anteToggle");
-const reelsEl = document.getElementById("reels");
-const resultDumpEl = document.getElementById("resultDump");
-const simulateDumpEl = document.getElementById("simulateDump");
-const lineExamplesEl = document.getElementById("lineExamples");
-const paytableBodyEl = document.getElementById("paytableBody");
-const paytableTitleEl = document.getElementById("paytableTitle");
-const caughtLinesEl = document.getElementById("caughtLines");
-const spinsPlayedEl = document.getElementById("spinsPlayed");
-const winSpinsEl = document.getElementById("winSpins");
-const lossSpinsEl = document.getElementById("lossSpins");
-const sessionWageredEl = document.getElementById("sessionWagered");
-const sessionWonEl = document.getElementById("sessionWon");
-const sessionNetEl = document.getElementById("sessionNet");
-const simProgressBarEl = document.getElementById("simProgressBar");
-const simProgressLabelEl = document.getElementById("simProgressLabel");
-const simLiveRtpEl = document.getElementById("simLiveRtp");
-const simLivePlayerWinEl = document.getElementById("simLivePlayerWin");
-const simLiveCasinoNetEl = document.getElementById("simLiveCasinoNet");
-const simLiveHitRateEl = document.getElementById("simLiveHitRate");
-const simLiveBig20xEl = document.getElementById("simLiveBig20x");
-const simLiveHuge50xEl = document.getElementById("simLiveHuge50x");
-const simLiveBigRateEl = document.getElementById("simLiveBigRate");
-const simLiveHugeRateEl = document.getElementById("simLiveHugeRate");
-const simLiveMaxWinXEl = document.getElementById("simLiveMaxWinX");
-const simLiveBonusCatchesEl = document.getElementById("simLiveBonusCatches");
-const simLiveBonusCatchRateEl = document.getElementById("simLiveBonusCatchRate");
-const simLiveBonusWinEl = document.getElementById("simLiveBonusWin");
-const simLiveBaselineRtpEl = document.getElementById("simLiveBaselineRtp");
-const simLiveBaselineNetEl = document.getElementById("simLiveBaselineNet");
-const rulesBtnEl = document.getElementById("rulesBtn");
-const rulesModalEl = document.getElementById("rulesModal");
-const rulesTitleEl = document.getElementById("rulesTitle");
-const rulesMetaEl = document.getElementById("rulesMeta");
-const rulesListEl = document.getElementById("rulesList");
-const rulesPrevBtnEl = document.getElementById("rulesPrevBtn");
-const rulesNextBtnEl = document.getElementById("rulesNextBtn");
-const rulesPageLabelEl = document.getElementById("rulesPageLabel");
-const rulesCloseBtnEl = document.getElementById("rulesCloseBtn");
-const lineCountEl = document.getElementById("lineCount");
-const symbolLegendEl = document.getElementById("symbolLegend");
-const payoutRuleTextEl = document.getElementById("payoutRuleText");
-const winCalloutEl = document.getElementById("winCallout");
-const winCalloutLabelEl = document.getElementById("winCalloutLabel");
-const winCalloutAmountEl = document.getElementById("winCalloutAmount");
-const featureScreenEl = document.getElementById("featureScreen");
-const featureScreenKickerEl = document.getElementById("featureScreenKicker");
-const featureScreenTitleEl = document.getElementById("featureScreenTitle");
-const featureScreenCopyEl = document.getElementById("featureScreenCopy");
-const eventBannerEl = document.getElementById("eventBanner");
-const eventBannerTextEl = document.getElementById("eventBannerText");
-
-const DEFAULT_SYMBOL_DISPLAY = {
-  TOP_CROWN: "👑",
-  HOURGLASS: "⏳",
-  RING: "💍",
-  CHALICE: "🏆",
-  RED_GEM: "🟥",
-  PURPLE_TRIANGLE: "🔻",
-  YELLOW_HEX: "🟡",
-  GREEN_TRIANGLE: "🔺",
-  BLUE_DIAMOND: "🔷",
-  MULTI: "✨",
-  SCATTER: "⚡"
+const el = {
+  sessionId: $("sessionId"),
+  balance: $("balance"),
+  betView: $("betView"),
+  winningLines: $("winningLines"),
+  lastWin: $("lastWin"),
+  freeSpins: $("freeSpins"),
+  activeMultiplier: $("activeMultiplier"),
+  betSelect: $("betSelect"),
+  spinBtn: $("spinBtn"),
+  simulateBtn: $("simulateBtn"),
+  buyFreeBtn: $("buyFreeBtn"),
+  anteToggle: $("anteToggle"),
+  reels: $("reels"),
+  resultDump: $("resultDump"),
+  simulateDump: $("simulateDump"),
+  spinLogList: $("spinLogList"),
+  spinLogStatus: $("spinLogStatus"),
+  lineExamples: $("lineExamples"),
+  paytableBody: $("paytableBody"),
+  paytableTitle: $("paytableTitle"),
+  caughtLines: $("caughtLines"),
+  spinsPlayed: $("spinsPlayed"),
+  winSpins: $("winSpins"),
+  lossSpins: $("lossSpins"),
+  sessionWagered: $("sessionWagered"),
+  sessionWon: $("sessionWon"),
+  sessionNet: $("sessionNet"),
+  simProgressBar: $("simProgressBar"),
+  simProgressLabel: $("simProgressLabel"),
+  simLiveRtp: $("simLiveRtp"),
+  simLivePlayerWin: $("simLivePlayerWin"),
+  simLiveCasinoNet: $("simLiveCasinoNet"),
+  simLiveHitRate: $("simLiveHitRate"),
+  simLiveBig20x: $("simLiveBig20x"),
+  simLiveHuge50x: $("simLiveHuge50x"),
+  simLiveBigRate: $("simLiveBigRate"),
+  simLiveHugeRate: $("simLiveHugeRate"),
+  simLiveMaxWinX: $("simLiveMaxWinX"),
+  simLiveBonusCatches: $("simLiveBonusCatches"),
+  simLiveBonusCatchRate: $("simLiveBonusCatchRate"),
+  simLiveBonusWin: $("simLiveBonusWin"),
+  simLiveBaselineRtp: $("simLiveBaselineRtp"),
+  simLiveBaselineNet: $("simLiveBaselineNet"),
+  rulesBtn: $("rulesBtn"),
+  rulesModal: $("rulesModal"),
+  rulesTitle: $("rulesTitle"),
+  rulesMeta: $("rulesMeta"),
+  rulesList: $("rulesList"),
+  rulesPrevBtn: $("rulesPrevBtn"),
+  rulesNextBtn: $("rulesNextBtn"),
+  rulesPageLabel: $("rulesPageLabel"),
+  rulesCloseBtn: $("rulesCloseBtn"),
+  lineCount: $("lineCount"),
+  symbolLegend: $("symbolLegend"),
+  payoutRuleText: $("payoutRuleText"),
+  winCallout: $("winCallout"),
+  winCalloutLabel: $("winCalloutLabel"),
+  winCalloutAmount: $("winCalloutAmount"),
+  featureScreen: $("featureScreen"),
+  featureScreenKicker: $("featureScreenKicker"),
+  featureScreenTitle: $("featureScreenTitle"),
+  featureScreenCopy: $("featureScreenCopy"),
+  eventBanner: $("eventBanner"),
+  eventBannerText: $("eventBannerText")
 };
 
-const SYMBOL_ASSETS = {
+const state = {
+  sessionId: null,
+  rules: null,
+  rulesPageIndex: 0,
+  bonusAutoplay: false,
+  simulationAbort: null,
+  featureResolver: null,
+  spinLog: []
+};
+
+const rows = 5;
+const cols = 6;
+const payoutGroups = ["8-9", "10-11", "12-30"];
+const payouts = {
+  TOP_CROWN: { "8-9": 20, "10-11": 50, "12-30": 100 },
+  HOURGLASS: { "8-9": 5, "10-11": 20, "12-30": 50 },
+  RING: { "8-9": 4, "10-11": 10, "12-30": 30 },
+  CHALICE: { "8-9": 3, "10-11": 4, "12-30": 24 },
+  RED_GEM: { "8-9": 2, "10-11": 3, "12-30": 20 },
+  PURPLE_TRIANGLE: { "8-9": 1.6, "10-11": 2.4, "12-30": 16 },
+  YELLOW_HEX: { "8-9": 1, "10-11": 2, "12-30": 10 },
+  GREEN_TRIANGLE: { "8-9": 0.8, "10-11": 1.8, "12-30": 8 },
+  BLUE_DIAMOND: { "8-9": 0.5, "10-11": 1.5, "12-30": 4 }
+};
+const scatterPayouts = { 4: 6, 5: 10, 6: 200 };
+
+const symbolAssets = {
   TOP_CROWN: "/assets/symbols/top_crown.svg",
   HOURGLASS: "/assets/symbols/hourglass.svg",
   RING: "/assets/symbols/ring.svg",
@@ -89,875 +107,180 @@ const SYMBOL_ASSETS = {
   SCATTER: "/assets/symbols/scatter.svg"
 };
 
-const SYMBOL_TEXT = {
-  TOP_CROWN: "Top Crown",
-  HOURGLASS: "Hourglass",
-  RING: "Ring",
-  CHALICE: "Chalice",
-  RED_GEM: "Red Gem",
-  PURPLE_TRIANGLE: "Purple Triangle",
-  YELLOW_HEX: "Yellow Hex",
-  GREEN_TRIANGLE: "Green Triangle",
-  BLUE_DIAMOND: "Blue Diamond",
-  MULTI: "Multiplier",
-  SCATTER: "Scatter"
-};
+const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0 };
+const fmt = (v) => Number(v || 0).toFixed(2);
+const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const DEFAULT_PAYOUTS = {
-  TOP_CROWN: { "8-9": 20, "10-11": 50, "12-30": 100 },
-  HOURGLASS: { "8-9": 5, "10-11": 20, "12-30": 50 },
-  RING: { "8-9": 4, "10-11": 10, "12-30": 30 },
-  CHALICE: { "8-9": 3, "10-11": 4, "12-30": 24 },
-  RED_GEM: { "8-9": 2, "10-11": 3, "12-30": 20 },
-  PURPLE_TRIANGLE: { "8-9": 1.6, "10-11": 2.4, "12-30": 16 },
-  YELLOW_HEX: { "8-9": 1, "10-11": 2, "12-30": 10 },
-  GREEN_TRIANGLE: { "8-9": 0.8, "10-11": 1.8, "12-30": 8 },
-  BLUE_DIAMOND: { "8-9": 0.5, "10-11": 1.5, "12-30": 4 }
-};
-
-const DEFAULT_SCATTER_PAYOUTS = { 4: 6, 5: 10, 6: 200 };
-
-let SYMBOL_DISPLAY = { ...DEFAULT_SYMBOL_DISPLAY };
-let PAYOUTS = { ...DEFAULT_PAYOUTS };
-let SCATTER_PAYOUTS = { ...DEFAULT_SCATTER_PAYOUTS };
-let SYMBOL_KEYS = Object.keys(SYMBOL_DISPLAY);
-let PAYOUT_GROUP_LABELS = ["8-9", "10-11", "12-30"];
-
-let sessionId = null;
-let simulationAbortController = null;
-let rulesConfig = null;
-let rulesPageIndex = 0;
-let bonusAutoplayActive = false;
-let winCalloutTimer = null;
-let featureScreenResolver = null;
-let eventBannerTimer = null;
-const DEFAULT_ROWS = 5;
-const DEFAULT_REELS = 6;
-const ANIMATION_TIMING = {
-  spinTickMs: 52,
-  minSpinNoWinMs: 380,
-  minSpinWinMs: 880,
-  settleTickNoWinMs: 36,
-  settleTickWinMs: 62,
-  settleLockNoWinMs: 46,
-  settleLockWinMs: 84,
-  preTumbleHoldMs: 200,
-  winVanishMs: 90,
-  tumbleFlashMs: 120,
-  tumbleDropMs: 660,
-  winPulseMs: 1200
-};
-
-const sessionLiveStats = {
-  spinsPlayed: 0,
-  winSpins: 0,
-  lossSpins: 0,
-  wagered: 0,
-  won: 0
-};
-
-function normalizeSymbolCode(raw) {
-  return String(raw || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+function setSigned(target, value) {
+  target.classList.remove("positive", "negative");
+  if (value > 0) target.classList.add("positive");
+  if (value < 0) target.classList.add("negative");
 }
 
-function symbolText(symbol) {
-  return SYMBOL_TEXT[symbol] || symbol;
-}
-
-function symbolFace(symbol) {
-  return SYMBOL_DISPLAY[symbol] || "🔹";
-}
-
-function buildLegendText() {
-  return SYMBOL_KEYS.map((symbol) => `${symbolFace(symbol)} ${symbolText(symbol)}`).join(", ");
-}
-
-function applyRuleDrivenDisplay(rules) {
-  if (!rules) return;
-
-  const payoutGroups = Array.isArray(rules.symbol_payout_display?.groups)
-    ? rules.symbol_payout_display.groups
-    : [];
-  PAYOUT_GROUP_LABELS = payoutGroups.length > 0
-    ? payoutGroups.map((group) => String(group.label))
-    : ["8-9", "10-11", "12-30"];
-
-  const symbols = Array.isArray(rules.symbol_payout_display?.symbols)
-    ? rules.symbol_payout_display.symbols
-    : [];
-
-  const nextPayouts = {};
-  const nextDisplay = { ...DEFAULT_SYMBOL_DISPLAY };
-  const nextText = { ...SYMBOL_TEXT };
-  let nextScatterPayouts = { ...DEFAULT_SCATTER_PAYOUTS };
-
-  symbols.forEach((entry) => {
-    const code = normalizeSymbolCode(entry.symbol);
-    if (!code) return;
-    nextText[code] = String(entry.symbol);
-    if (entry.asset_path) {
-      SYMBOL_ASSETS[code] = entry.asset_path;
-    }
-    if (code === "SCATTER") {
-      nextScatterPayouts = {};
-      Object.entries(entry.payouts || {}).forEach(([count, value]) => {
-        nextScatterPayouts[count] = Number(value);
-      });
-      return;
-    }
-    nextPayouts[code] = { ...(entry.payouts || {}) };
-  });
-
-  PAYOUTS = Object.keys(nextPayouts).length > 0 ? nextPayouts : { ...DEFAULT_PAYOUTS };
-  SCATTER_PAYOUTS = nextScatterPayouts;
-  SYMBOL_DISPLAY = nextDisplay;
-  Object.assign(SYMBOL_TEXT, nextText);
-  SYMBOL_KEYS = [...Object.keys(PAYOUTS), "MULTI", "SCATTER"];
-
-  if (symbolLegendEl) symbolLegendEl.textContent = buildLegendText();
-  if (payoutRuleTextEl) {
-    payoutRuleTextEl.textContent = "Symbol payouts are multipliers of base bet. Scatter pays on any position.";
-  }
-  const group1El = document.getElementById("payoutGroup1");
-  const group2El = document.getElementById("payoutGroup2");
-  const group3El = document.getElementById("payoutGroup3");
-  if (group1El) group1El.textContent = PAYOUT_GROUP_LABELS[0] || "8-9";
-  if (group2El) group2El.textContent = PAYOUT_GROUP_LABELS[1] || "10-11";
-  if (group3El) group3El.textContent = PAYOUT_GROUP_LABELS[2] || "12-30";
-
-  const anteEnabled = Boolean(rules.features?.ante_bet?.enabled);
-  const anteMultiplier = Number(rules.features?.ante_bet?.multiplier || 1.25).toFixed(2);
-  anteToggleEl.checked = false;
-  anteToggleEl.disabled = !anteEnabled;
-  const anteLabelEl = anteToggleEl.closest("label");
-  if (anteLabelEl) {
-    anteLabelEl.style.opacity = anteEnabled ? "1" : "0.55";
-    anteLabelEl.title = anteEnabled ? "" : "Ante Bet is disabled by rules";
-    const trailingText = Array.from(anteLabelEl.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
-    if (trailingText) trailingText.nodeValue = ` Ante Bet ${anteMultiplier}x`;
-  }
-
-  const buyEnabled = Boolean(rules.features?.buy_free_spins?.enabled);
-  const buyCost = Number(rules.features?.buy_free_spins?.cost_multiplier || 100);
-  buyFreeBtnEl.textContent = `Buy Free Spins (${buyCost}x)`;
-  syncBuyButtonState();
-}
-
-function syncBuyButtonState() {
-  const buyEnabled = Boolean(rulesConfig?.features?.buy_free_spins?.enabled);
-  const blockedByAnte = Boolean(anteToggleEl.checked);
-  buyFreeBtnEl.disabled = !buyEnabled || blockedByAnte;
-  if (!buyEnabled) {
-    buyFreeBtnEl.title = "Buy Free Spins is disabled by rules";
-    return;
-  }
-  if (blockedByAnte) {
-    buyFreeBtnEl.title = "Disable Ante Bet to use Buy Free Spins";
-    return;
-  }
-  buyFreeBtnEl.title = "";
-}
-
-function setRoundControlsDisabled(disabled) {
-  spinBtnEl.disabled = disabled;
-  simulateBtnEl.disabled = disabled;
-  betSelectEl.disabled = disabled;
-  if (Boolean(rulesConfig?.features?.ante_bet?.enabled)) {
-    anteToggleEl.disabled = disabled;
-  }
-  if (disabled) {
-    buyFreeBtnEl.disabled = true;
-  } else {
-    syncBuyButtonState();
-  }
-}
-
-function formatMoney(v) {
-  return Number(v).toFixed(2);
-}
-
-function animateValue(el, from, to, formatter, durationMs = 820) {
-  if (!el) return;
-  if (el._countFrame) {
-    cancelAnimationFrame(el._countFrame);
-    el._countFrame = null;
-  }
-  const start = performance.now();
-  const render = (now) => {
-    const progress = Math.min(1, (now - start) / durationMs);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const value = from + (to - from) * eased;
-    el.textContent = formatter(value);
-    if (progress < 1) {
-      el._countFrame = requestAnimationFrame(render);
-    } else {
-      el.textContent = formatter(to);
-      el._countFrame = null;
-    }
-  };
-  el._countFrame = requestAnimationFrame(render);
-}
-
-function pulseElement(el, className = "ui-bump", durationMs = 520) {
-  if (!el) return;
-  if (el._pulseTimer) {
-    clearTimeout(el._pulseTimer);
-    el._pulseTimer = null;
-  }
-  el.classList.remove(className);
-  void el.offsetWidth;
-  el.classList.add(className);
-  el._pulseTimer = setTimeout(() => {
-    el.classList.remove(className);
-    el._pulseTimer = null;
-  }, durationMs);
-}
-
-function setTextWithPulse(el, nextText, className = "ui-bump") {
-  if (!el) return;
-  if (el.textContent === nextText) {
-    el.textContent = nextText;
-    return;
-  }
-  el.textContent = nextText;
-  pulseElement(el, className);
-}
-
-function getSelectedBetAmount() {
-  const bet = Number(betSelectEl.value);
-  return Number.isFinite(bet) && bet > 0 ? bet : 1;
-}
-
-function setSignedClass(el, value) {
-  el.classList.remove("positive", "negative");
-  if (value > 0) el.classList.add("positive");
-  if (value < 0) el.classList.add("negative");
-}
-
-function renderSessionLiveStats() {
-  const net = Number((sessionLiveStats.won - sessionLiveStats.wagered).toFixed(2));
-  setTextWithPulse(spinsPlayedEl, String(sessionLiveStats.spinsPlayed));
-  setTextWithPulse(winSpinsEl, String(sessionLiveStats.winSpins));
-  setTextWithPulse(lossSpinsEl, String(sessionLiveStats.lossSpins));
-  setTextWithPulse(sessionWageredEl, formatMoney(sessionLiveStats.wagered));
-  setTextWithPulse(sessionWonEl, formatMoney(sessionLiveStats.won));
-  setTextWithPulse(sessionNetEl, formatMoney(net));
-  setSignedClass(sessionNetEl, net);
-}
-
-function resetSimulationLiveWidgets() {
-  simProgressBarEl.style.width = "0%";
-  simProgressLabelEl.textContent = "Idle";
-  simLiveRtpEl.textContent = "0.00%";
-  simLivePlayerWinEl.textContent = "0.00";
-  simLiveCasinoNetEl.textContent = "0.00";
-  simLiveHitRateEl.textContent = "0.00%";
-  simLiveBig20xEl.textContent = "0";
-  simLiveHuge50xEl.textContent = "0";
-  simLiveBigRateEl.textContent = "0.000%";
-  simLiveHugeRateEl.textContent = "0.000%";
-  simLiveMaxWinXEl.textContent = "0.00x";
-  simLiveBonusCatchesEl.textContent = "0";
-  simLiveBonusCatchRateEl.textContent = "0.0000%";
-  simLiveBonusWinEl.textContent = "0.00";
-  simLiveBaselineRtpEl.textContent = "0.00%";
-  simLiveBaselineNetEl.textContent = "0.00";
-  setSignedClass(simLiveCasinoNetEl, 0);
-  setSignedClass(simLiveBaselineNetEl, 0);
-}
-
-function setRulesModalVisible(visible) {
-  rulesModalEl.classList.toggle("hidden", !visible);
-  rulesModalEl.setAttribute("aria-hidden", visible ? "false" : "true");
-}
-
-function setFeatureScreenVisible(visible) {
-  featureScreenEl.classList.toggle("hidden", !visible);
-  featureScreenEl.setAttribute("aria-hidden", visible ? "false" : "true");
-}
-
-function getWinCelebration(totalWin, betAmount) {
-  const baseBet = Math.max(0.01, Number(betAmount) || getSelectedBetAmount());
-  const winRatio = Number(totalWin || 0) / baseBet;
-  if (winRatio >= 50) {
-    return { label: "Huge Win", durationMs: 2100 };
-  }
-  if (winRatio >= 20) {
-    return { label: "Mega Win", durationMs: 1850 };
-  }
-  if (winRatio >= 10) {
-    return { label: "Big Win", durationMs: 1650 };
-  }
-  return null;
-}
-
-function showWinCallout(winText, amount) {
-  if (!winCalloutEl || !winText) return Promise.resolve();
-  if (winCalloutTimer) {
-    clearTimeout(winCalloutTimer);
-    winCalloutTimer = null;
-  }
-  winCalloutLabelEl.textContent = winText.label;
-  setTextWithPulse(winCalloutAmountEl, formatMoney(amount), "callout-bump");
-  winCalloutEl.classList.remove("hidden");
-  void winCalloutEl.offsetWidth;
-  winCalloutEl.classList.add("active");
-  return new Promise((resolve) => {
-    winCalloutTimer = window.setTimeout(() => {
-      winCalloutEl.classList.remove("active");
-      winCalloutTimer = window.setTimeout(() => {
-        winCalloutEl.classList.add("hidden");
-        winCalloutTimer = null;
-        resolve();
-      }, 240);
-    }, winText.durationMs);
-  });
-}
-
-function showFeatureScreen({ kicker, title, copy }) {
-  if (!featureScreenEl) return Promise.resolve();
-  if (featureScreenResolver) {
-    featureScreenResolver();
-    featureScreenResolver = null;
-  }
-  featureScreenKickerEl.textContent = kicker;
-  featureScreenTitleEl.textContent = title;
-  featureScreenCopyEl.textContent = copy;
-  setFeatureScreenVisible(true);
-  return new Promise((resolve) => {
-    featureScreenResolver = () => {
-      featureScreenResolver = null;
-      setFeatureScreenVisible(false);
-      resolve();
-    };
-  });
-}
-
-function dismissFeatureScreen() {
-  if (!featureScreenResolver) return;
-  const resolve = featureScreenResolver;
-  featureScreenResolver = null;
-  setFeatureScreenVisible(false);
-  resolve();
-}
-
-function showEventBanner(message, tone = "neutral", durationMs = 2200) {
-  if (!eventBannerEl || !eventBannerTextEl || !message) return;
-  if (eventBannerTimer) {
-    clearTimeout(eventBannerTimer);
-    eventBannerTimer = null;
-  }
-  eventBannerEl.classList.remove("hidden", "tone-neutral", "tone-excited", "tone-bonus");
-  eventBannerEl.classList.add(`tone-${tone}`);
-  eventBannerTextEl.textContent = message;
-  void eventBannerEl.offsetWidth;
-  eventBannerEl.classList.add("active");
-  eventBannerTimer = setTimeout(() => {
-    eventBannerEl.classList.remove("active");
-    eventBannerTimer = setTimeout(() => {
-      eventBannerEl.classList.add("hidden");
-      eventBannerTimer = null;
-    }, 220);
-  }, durationMs);
-}
-
-function getFreeSpinRules() {
-  return {
-    triggerCount: Number(rulesConfig?.features?.free_spins?.base_trigger_scatter_count || 4),
-    baseAward: Number(rulesConfig?.features?.free_spins?.base_award_spins || 15),
-    retriggerAward: Number(rulesConfig?.features?.free_spins?.retrigger_award_spins || 5)
-  };
-}
-
-function renderRulesPage() {
-  if (!rulesConfig || !Array.isArray(rulesConfig.rules_pages) || rulesConfig.rules_pages.length === 0) {
-    rulesTitleEl.textContent = "Game Rules";
-    rulesMetaEl.textContent = "Rules are not available.";
-    rulesListEl.innerHTML = "";
-    rulesPageLabelEl.textContent = "Page 0/0";
-    rulesPrevBtnEl.disabled = true;
-    rulesNextBtnEl.disabled = true;
-    return;
-  }
-
-  const pages = rulesConfig.rules_pages;
-  const page = pages[rulesPageIndex];
-  rulesTitleEl.textContent = page.title || "Game Rules";
-  rulesMetaEl.textContent = `RTP ${Number(rulesConfig.rtp.theoretical_percent).toFixed(2)}% | Volatility ${String(rulesConfig.volatility || "").toUpperCase()} | Mode ${rulesConfig.mode}`;
-  rulesListEl.innerHTML = "";
-  (page.points || []).forEach((point) => {
-    const li = document.createElement("li");
-    li.textContent = point;
-    rulesListEl.appendChild(li);
-  });
-  rulesPageLabelEl.textContent = `Page ${rulesPageIndex + 1}/${pages.length}`;
-  rulesPrevBtnEl.disabled = rulesPageIndex === 0;
-  rulesNextBtnEl.disabled = rulesPageIndex === pages.length - 1;
-}
-
-function openRulesModal() {
-  setRulesModalVisible(true);
-  renderRulesPage();
-}
-
-function closeRulesModal() {
-  setRulesModalVisible(false);
-}
-
-async function loadGameRules() {
-  try {
-    const rules = await fetch("/api/v1/game-rules").then((r) => {
-      if (!r.ok) throw new Error(`HTTP_${r.status}`);
-      return r.json();
-    });
-    rulesConfig = rules;
-    rulesPageIndex = 0;
-    applyRuleDrivenDisplay(rules);
-    const paysText = String(rules.layout?.pays || "symbols_pay_anywhere").replaceAll("_", " ");
-    if (lineCountEl) lineCountEl.textContent = paysText;
-    if (Number.isFinite(Number(rules.layout?.reels))) {
-      reelsEl.style.gridTemplateColumns = `repeat(${Number(rules.layout.reels)}, 1fr)`;
-    }
-    renderRulesPage();
-  } catch {
-    rulesConfig = null;
-    rulesPageIndex = 0;
-    if (symbolLegendEl) symbolLegendEl.textContent = buildLegendText();
-    if (payoutRuleTextEl) payoutRuleTextEl.textContent = "Symbol payouts are multipliers of base bet. Scatter pays on any position.";
-    renderRulesPage();
-  }
-}
-
-function renderEmptyGrid() {
-  reelsEl.style.gridTemplateColumns = `repeat(${DEFAULT_REELS}, 1fr)`;
-  reelsEl.innerHTML = "";
-  for (let row = 0; row < DEFAULT_ROWS; row += 1) {
-    for (let col = 0; col < DEFAULT_REELS; col += 1) {
-      const cell = document.createElement("div");
-      cell.className = "cell";
-      cell.textContent = "-";
-      reelsEl.appendChild(cell);
-    }
-  }
-}
-
-function getWinningCells(winningPositions = []) {
-  const highlightedCells = new Set();
-  winningPositions.forEach((pos) => {
-    if (!Number.isInteger(pos?.row) || !Number.isInteger(pos?.col)) return;
-    highlightedCells.add(`${pos.row}-${pos.col}`);
-  });
-  return highlightedCells;
-}
-
-function buildMultiplierMap(multipliers = []) {
-  const values = new Map();
-  if (!Array.isArray(multipliers)) return values;
-  multipliers.forEach((entry) => {
-    if (!Number.isInteger(entry?.row) || !Number.isInteger(entry?.col)) return;
-    const value = Number(entry?.value);
-    if (!Number.isFinite(value) || value <= 0) return;
-    values.set(`${entry.row}-${entry.col}`, value);
-  });
-  return values;
-}
-
-function renderMatrix(matrix, winningPositions = [], spinningReels = [], fallingMap = null, multipliers = []) {
-  const highlightedCells = getWinningCells(winningPositions);
-  const spinningReelSet = new Set(spinningReels);
-  const activeFallingMap = fallingMap && typeof fallingMap === "object" ? fallingMap : null;
-  const multiplierMap = buildMultiplierMap(multipliers);
-  const rows = matrix.length || DEFAULT_ROWS;
-  const reels = matrix[0]?.length || DEFAULT_REELS;
-  reelsEl.style.gridTemplateColumns = `repeat(${reels}, 1fr)`;
-
-  reelsEl.innerHTML = "";
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < reels; col += 1) {
-      const symbol = matrix[row]?.[col] || "-";
-      const cell = document.createElement("div");
-      cell.className = "cell";
-      cell.dataset.row = String(row);
-      cell.dataset.col = String(col);
-      if (spinningReelSet.has(col)) cell.classList.add("spinning-cell");
-      const dropCells = activeFallingMap ? Number(activeFallingMap[`${row}-${col}`] || 0) : 0;
-      if (dropCells > 0) {
-        cell.classList.add("falling-cell");
-        cell.style.setProperty("--drop-cells", String(dropCells));
+function renderMatrix(
+  matrix,
+  { winning = [], multipliers = [], showHighlight = true, fallingMap = null, spinDrop = false } = {}
+) {
+  const winSet = new Set(winning.map((p) => `${p.row}-${p.col}`));
+  const multiMap = new Map(multipliers.map((m) => [`${m.row}-${m.col}`, Number(m.value || 1)]));
+  const frag = document.createDocumentFragment();
+  const reelCount = matrix[0]?.length || cols;
+  for (let c = 0; c < reelCount; c += 1) {
+    const chamber = document.createElement("section");
+    chamber.className = "relic-column";
+    chamber.dataset.col = String(c);
+    const spine = document.createElement("div");
+    spine.className = "relic-spine";
+    chamber.appendChild(spine);
+    const crown = document.createElement("div");
+    crown.className = "relic-crown";
+    chamber.appendChild(crown);
+    const stack = document.createElement("div");
+    stack.className = "sigil-stack";
+    chamber.appendChild(stack);
+    for (let r = 0; r < matrix.length; r += 1) {
+      const sym = matrix[r][c] || "-";
+      const sigil = document.createElement("article");
+      sigil.className = "sigil";
+      sigil.dataset.row = String(r);
+      sigil.dataset.col = String(c);
+      if (fallingMap && Number(fallingMap[`${r}-${c}`] || 0) > 0) {
+        sigil.classList.add("falling-sigil");
+        if (spinDrop) sigil.classList.add("spin-drop-sigil");
       }
-      if (highlightedCells.has(`${row}-${col}`)) cell.classList.add("win-cell");
-      if (symbol === "MULTI") cell.classList.add("wild");
-      if (symbol === "SCATTER") cell.classList.add("scatter");
-      const icon = SYMBOL_ASSETS[symbol];
+      if (showHighlight && winSet.has(`${r}-${c}`)) sigil.classList.add("win-sigil");
+      if (sym === "MULTI") sigil.classList.add("wild");
+      if (sym === "SCATTER") sigil.classList.add("scatter");
+      const chain = document.createElement("div");
+      chain.className = "sigil-chain";
+      const medallion = document.createElement("div");
+      medallion.className = "sigil-medallion";
+      const icon = symbolAssets[sym];
       if (icon) {
         const img = document.createElement("img");
         img.className = "symbol-icon";
         img.src = icon;
-        img.alt = symbolText(symbol);
+        img.alt = sym;
         img.draggable = false;
-        cell.appendChild(img);
+        medallion.appendChild(img);
       } else {
-        cell.textContent = symbolFace(symbol);
+        medallion.textContent = sym;
       }
-      let cellTitle = symbol;
-      if (symbol === "MULTI") {
-        const multiplierValue = multiplierMap.get(`${row}-${col}`);
-        if (multiplierValue) {
-          const badge = document.createElement("span");
-          badge.className = "multiplier-value";
-          badge.textContent = `${Number(multiplierValue).toFixed(Number.isInteger(multiplierValue) ? 0 : 1)}x`;
-          cell.appendChild(badge);
-          cellTitle = `${symbolText(symbol)} ${badge.textContent}`;
-        }
+      if (sym === "MULTI") {
+        const badge = document.createElement("span");
+        badge.className = "multiplier-value";
+        badge.textContent = mfmt(multiMap.get(`${r}-${c}`) || 1);
+        medallion.appendChild(badge);
       }
-      cell.title = cellTitle;
-      cell.style.setProperty("--row", String(row));
-      cell.style.setProperty("--col", String(col));
-      reelsEl.appendChild(cell);
+      sigil.appendChild(chain);
+      sigil.appendChild(medallion);
+      stack.appendChild(sigil);
     }
+    frag.appendChild(chamber);
   }
+  el.reels.innerHTML = "";
+  el.reels.appendChild(frag);
 }
 
-function buildTumbleDropMap(stepMatrix, winningPositions) {
-  const rows = stepMatrix.length || DEFAULT_ROWS;
-  const reels = stepMatrix[0]?.length || DEFAULT_REELS;
-  const byColumn = new Map();
-  winningPositions.forEach((pos) => {
-    if (!Number.isInteger(pos?.row) || !Number.isInteger(pos?.col)) return;
-    if (!byColumn.has(pos.col)) byColumn.set(pos.col, new Set());
-    byColumn.get(pos.col).add(pos.row);
+function randomMatrix() {
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => "BLUE_DIAMOND"));
+}
+
+function buildDropMap(stepMatrix, winningPositions = []) {
+  const byCol = new Map();
+  winningPositions.forEach((p) => {
+    if (!Number.isInteger(p?.row) || !Number.isInteger(p?.col)) return;
+    if (!byCol.has(p.col)) byCol.set(p.col, new Set());
+    byCol.get(p.col).add(p.row);
   });
 
-  const dropMap = {};
-  for (let col = 0; col < reels; col += 1) {
-    const removedRows = byColumn.get(col);
-    if (!removedRows || removedRows.size === 0) continue;
+  const map = {};
+  for (let col = 0; col < (stepMatrix?.[0]?.length || cols); col += 1) {
+    const removed = byCol.get(col);
+    if (!removed || removed.size === 0) continue;
     const survivors = [];
-    for (let row = 0; row < rows; row += 1) {
-      if (!removedRows.has(row)) {
-        survivors.push({ fromRow: row });
-      }
+    for (let row = 0; row < (stepMatrix?.length || rows); row += 1) {
+      if (!removed.has(row)) survivors.push({ from: row });
     }
-    const removedCount = removedRows.size;
-    for (let row = 0; row < rows; row += 1) {
+    const removedCount = removed.size;
+    for (let row = 0; row < (stepMatrix?.length || rows); row += 1) {
       let dropCells = 0;
       if (row < removedCount) {
-        // New symbols spawn above the grid and fall in.
         dropCells = removedCount + 1;
       } else {
-        const survivor = survivors[row - removedCount];
-        if (survivor) {
-          dropCells = Math.max(0, row - survivor.fromRow);
-        }
+        const s = survivors[row - removedCount];
+        if (s) dropCells = Math.max(0, row - s.from);
       }
-      if (dropCells > 0) {
-        dropMap[`${row}-${col}`] = dropCells;
-      }
+      if (dropCells > 0) map[`${row}-${col}`] = dropCells;
     }
   }
-  return dropMap;
+  return map;
 }
 
-function applyDropPixelOffsets(dropMap) {
+function applyDropOffsets(dropMap) {
   if (!dropMap || Object.keys(dropMap).length === 0) return 0;
-  const firstCell = reelsEl.querySelector(".cell");
-  if (!firstCell) return 0;
-  const styles = window.getComputedStyle(reelsEl);
-  const rowGap = Number.parseFloat(styles.rowGap || styles.gap || "10") || 10;
-  const cellHeight = firstCell.getBoundingClientRect().height || 84;
-  const stepPx = cellHeight + rowGap;
-  let maxWindowMs = 0;
+  const firstSigil = el.reels.querySelector(".sigil");
+  if (!firstSigil) return 0;
+  const style = window.getComputedStyle(el.reels);
+  const gap = Number.parseFloat(style.gap || style.rowGap || "8") || 8;
+  const height = firstSigil.getBoundingClientRect().height || 80;
+  const stepPx = height + gap;
+  let maxWindow = 0;
 
-  reelsEl.querySelectorAll(".cell.falling-cell").forEach((cell) => {
-    const row = Number(cell.dataset.row);
-    const col = Number(cell.dataset.col);
-    const dropCells = Number(dropMap[`${row}-${col}`] || 0);
-    if (dropCells > 0) {
-      cell.style.setProperty("--drop-px", `${(dropCells * stepPx).toFixed(2)}px`);
-      const jitterSeed = ((row + 1) * 17 + (col + 1) * 29 + dropCells * 13) % 11;
-      const durationMs = Math.min(980, 420 + dropCells * 96 + jitterSeed * 12);
-      const delayMs = Math.max(0, col * 14 + row * 8 + jitterSeed * 7 - (col % 3 === 0 ? 12 : 0));
-      const swayPx = (((col % 2 === 0 ? -1 : 1) * (2 + jitterSeed * 0.35))).toFixed(2);
-      const tiltDeg = (((row % 2 === 0 ? 1 : -1) * (0.3 + jitterSeed * 0.08))).toFixed(2);
-      const impactDepth = Math.min(12, 5 + dropCells * 1.5 + jitterSeed * 0.25).toFixed(2);
-      const reboundLift = Math.min(6.5, 2.5 + dropCells * 0.65 + jitterSeed * 0.12).toFixed(2);
-      const impactSquashX = Math.min(1.06, 1.018 + dropCells * 0.007 + jitterSeed * 0.0015).toFixed(3);
-      const impactSquashY = Math.max(0.92, 0.986 - dropCells * 0.01 - jitterSeed * 0.002).toFixed(3);
-      cell.style.setProperty("--drop-duration", `${durationMs}ms`);
-      cell.style.setProperty("--drop-delay", `${delayMs}ms`);
-      cell.style.setProperty("--drop-sway", `${swayPx}px`);
-      cell.style.setProperty("--drop-tilt", `${tiltDeg}deg`);
-      cell.style.setProperty("--impact-depth", `${impactDepth}px`);
-      cell.style.setProperty("--rebound-lift", `${reboundLift}px`);
-      cell.style.setProperty("--impact-squash-x", impactSquashX);
-      cell.style.setProperty("--impact-squash-y", impactSquashY);
-      const totalWindow = durationMs + delayMs;
-      if (totalWindow > maxWindowMs) maxWindowMs = totalWindow;
-    }
-  });
-  return maxWindowMs;
-}
+  el.reels.querySelectorAll(".sigil.falling-sigil").forEach((sigil) => {
+    const r = Number(sigil.dataset.row);
+    const c = Number(sigil.dataset.col);
+    const dropCells = Number(dropMap[`${r}-${c}`] || 0);
+    if (dropCells <= 0) return;
 
-function renderPaylineExamples() {
-  lineExamplesEl.innerHTML = "";
-  const bullets = [
-    "Grid: 6 reels x 5 rows",
-    "Symbols pay anywhere on the screen",
-    "Minimum 8 matching symbols for a symbol win",
-    "Tumble continues while wins keep appearing",
-    "Multiplier symbols (2x..1000x) can appear during spin and tumbles"
-  ];
-  bullets.forEach((text) => {
-    const li = document.createElement("li");
-    li.textContent = text;
-    lineExamplesEl.appendChild(li);
-  });
-}
-
-function renderPaytable(betAmount = getSelectedBetAmount()) {
-  const [g1, g2, g3] = PAYOUT_GROUP_LABELS;
-  if (paytableTitleEl) {
-    paytableTitleEl.textContent = `Payout Table (${g1} / ${g2} / ${g3}) - Bet ${formatMoney(betAmount)}`;
-  }
-  paytableBodyEl.innerHTML = "";
-  Object.entries(PAYOUTS).forEach(([symbol, values]) => {
-    const tr = document.createElement("tr");
-    const symbolTd = document.createElement("td");
-    symbolTd.textContent = `${symbolFace(symbol)} ${symbolText(symbol)}`;
-    const td3 = document.createElement("td");
-    td3.textContent = formatMoney((values[g1] || 0) * betAmount);
-    const td4 = document.createElement("td");
-    td4.textContent = formatMoney((values[g2] || 0) * betAmount);
-    const td5 = document.createElement("td");
-    td5.textContent = formatMoney((values[g3] || 0) * betAmount);
-    tr.appendChild(symbolTd);
-    tr.appendChild(td3);
-    tr.appendChild(td4);
-    tr.appendChild(td5);
-    paytableBodyEl.appendChild(tr);
+    const seed = ((r + 1) * 13 + (c + 1) * 23 + dropCells * 11) % 9;
+    const duration = Math.min(1480, 640 + dropCells * 120 + seed * 18);
+    const delay = Math.max(0, c * 28 + r * 12 + seed * 8);
+    sigil.style.setProperty("--drop-px", `${(dropCells * stepPx * 1.2).toFixed(2)}px`);
+    sigil.style.setProperty("--drop-duration", `${duration}ms`);
+    sigil.style.setProperty("--drop-delay", `${delay}ms`);
+    sigil.style.setProperty("--drop-sway", `${((c % 2 === 0 ? -1 : 1) * (2.1 + seed * 0.24)).toFixed(2)}px`);
+    sigil.style.setProperty("--drop-tilt", `${((r % 2 === 0 ? 1 : -1) * (0.5 + seed * 0.08)).toFixed(2)}deg`);
+    sigil.style.setProperty("--impact-depth", `${Math.min(9, 3 + dropCells * 0.72 + seed * 0.16).toFixed(2)}px`);
+    sigil.style.setProperty("--rebound-lift", `${Math.min(5, 1.2 + dropCells * 0.28 + seed * 0.06).toFixed(2)}px`);
+    sigil.style.setProperty("--drop-blur", `${Math.min(0.26, 0.04 + dropCells * 0.03 + seed * 0.005).toFixed(2)}px`);
+    maxWindow = Math.max(maxWindow, duration + delay);
   });
 
-  const scatterTr = document.createElement("tr");
-  const scatterSymbol = document.createElement("td");
-  scatterSymbol.textContent = `${symbolFace("SCATTER")} ${symbolText("SCATTER")}`;
-  const s4 = document.createElement("td");
-  s4.textContent = `4: ${formatMoney((SCATTER_PAYOUTS[4] || 0) * betAmount)}`;
-  const s5 = document.createElement("td");
-  s5.textContent = `5: ${formatMoney((SCATTER_PAYOUTS[5] || 0) * betAmount)}`;
-  const s6 = document.createElement("td");
-  s6.textContent = `6: ${formatMoney((SCATTER_PAYOUTS[6] || 0) * betAmount)}`;
-  scatterTr.appendChild(scatterSymbol);
-  scatterTr.appendChild(s4);
-  scatterTr.appendChild(s5);
-  scatterTr.appendChild(s6);
-  paytableBodyEl.appendChild(scatterTr);
+  return maxWindow;
 }
 
-function renderCaughtLines(waysWins) {
-  caughtLinesEl.innerHTML = "";
-  if (!waysWins || waysWins.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "No winning symbols in this spin.";
-    caughtLinesEl.appendChild(li);
-    return;
-  }
-
-  waysWins.forEach((win) => {
-    const li = document.createElement("li");
-    li.textContent = `${symbolFace(win.symbol)} ${symbolText(win.symbol)} | count ${win.count} | payout x${Number(win.payout || 0).toFixed(2)} => ${formatMoney(win.amount)}`;
-    caughtLinesEl.appendChild(li);
+function winTier(waysWins = [], bet = 1) {
+  let maxCount = 0;
+  let maxPayoutX = 0;
+  waysWins.forEach((w) => {
+    const count = Number(w?.count || 0);
+    const payout = Number(w?.payout || 0);
+    const amount = Number(w?.amount || 0);
+    const byAmount = bet > 0 ? amount / bet : 0;
+    maxCount = Math.max(maxCount, count);
+    maxPayoutX = Math.max(maxPayoutX, payout, byAmount);
   });
+  const score = maxPayoutX + (maxCount >= 12 ? 8 : maxCount >= 10 ? 4 : 0) + (maxCount >= 8 ? 2 : 0);
+  if (maxCount >= 12 || score >= 24) return "blast-great";
+  if (maxCount >= 10 || score >= 10) return "blast-medium";
+  return "blast-small";
 }
 
-function createRandomMatrix(rows = DEFAULT_ROWS, reels = DEFAULT_REELS) {
-  const matrix = Array.from({ length: rows }, () => Array(reels).fill(null));
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < reels; col += 1) {
-      matrix[row][col] = "BLUE_DIAMOND";
-    }
-  }
-  return matrix;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function startPendingSpinAnimation(matrix) {
-  const rows = matrix.length;
-  const reelsCount = matrix[0].length;
-  const dropMap = {};
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < reelsCount; col += 1) {
-      dropMap[`${row}-${col}`] = rows;
-    }
-  }
-
-  renderMatrix(matrix, [], [], dropMap, []);
-  const fallWindowMs = applyDropPixelOffsets(dropMap);
-  pulseElement(spinBtnEl, "button-thump", 420);
-  reelsEl.classList.add("reels-spinning", "tumble-prime");
-  void reelsEl.offsetWidth;
-  reelsEl.classList.add("tumble-fall");
-
-  const animationDuration = Math.max(ANIMATION_TIMING.tumbleDropMs, fallWindowMs);
-  const completionPromise = sleep(animationDuration).then(() => {
-    reelsEl.classList.remove("tumble-fall", "tumble-prime");
-  });
-
-  return {
-    completionPromise,
-    stop() {
-      reelsEl.classList.remove("reels-spinning", "tumble-fall", "tumble-prime");
-    }
-  };
-}
-
-async function settleReelsToResult(finalMatrix, winningPositions, multipliers = []) {
-  renderMatrix(finalMatrix, winningPositions, [], null, multipliers);
-  reelsEl.classList.remove("reels-spinning");
-  const hasWin = (winningPositions || []).length > 0;
-
-  if (hasWin) {
-    await sleep(100);
-    reelsEl.classList.add("win-pulse");
-    setTimeout(() => reelsEl.classList.remove("win-pulse"), ANIMATION_TIMING.winPulseMs);
-  }
-}
-
-async function animateTumbleSequence(tumbleSteps = []) {
-  if (!Array.isArray(tumbleSteps) || tumbleSteps.length < 2) return;
-  for (let i = 0; i < tumbleSteps.length - 1; i += 1) {
-    const step = tumbleSteps[i];
-    const next = tumbleSteps[i + 1];
-    const winTotal = Number(step?.win_total || 0);
-    const winning = Array.isArray(step?.winning_positions) ? step.winning_positions : [];
-    if (winTotal <= 0 || winning.length === 0) continue;
-    const dropMap = buildTumbleDropMap(step.matrix, winning);
-
-    renderMatrix(step.matrix, winning, [], null, step.multipliers || []);
-    await sleep(ANIMATION_TIMING.preTumbleHoldMs);
-    reelsEl.querySelectorAll(".cell.win-cell").forEach((cell) => cell.classList.add("win-vanish"));
-    if (ANIMATION_TIMING.tumbleFlashMs > 0) {
-      reelsEl.classList.add("tumble-flash");
-      await sleep(ANIMATION_TIMING.tumbleFlashMs);
-      reelsEl.classList.remove("tumble-flash");
-    }
-    await sleep(ANIMATION_TIMING.winVanishMs);
-    renderMatrix(next.matrix, next.winning_positions || [], [], dropMap, next.multipliers || []);
-    const fallWindowMs = applyDropPixelOffsets(dropMap);
-    reelsEl.classList.add("tumble-prime");
-    void reelsEl.offsetWidth;
-    reelsEl.classList.add("tumble-fall");
-    await sleep(Math.max(ANIMATION_TIMING.tumbleDropMs, fallWindowMs));
-    reelsEl.classList.remove("tumble-fall");
-    reelsEl.classList.remove("tumble-prime");
-  }
-
-  const last = tumbleSteps[tumbleSteps.length - 1];
-  if (last?.matrix) {
-    renderMatrix(last.matrix, last.winning_positions || [], [], null, last.multipliers || []);
-  }
-}
-
-async function playRoundPresentation(payload, fallbackBet, options = {}) {
-  const tumbleSteps = payload.tumble_steps || [];
-  const firstMatrix = tumbleSteps[0]?.matrix || payload.matrix;
-  const firstMultipliers = tumbleSteps[0]?.multipliers || payload.multipliers || [];
-  const pendingSpin = startPendingSpinAnimation(firstMatrix);
-  try {
-    await pendingSpin.completionPromise;
-
-    const minSpinDurationMs = payload.total_win > 0 ? ANIMATION_TIMING.minSpinWinMs : ANIMATION_TIMING.minSpinNoWinMs;
-    const winningPositions = tumbleSteps[0]?.winning_positions || payload.winning_positions || [];
-    renderMatrix(firstMatrix, winningPositions, [], null, firstMultipliers);
-    await settleReelsToResult(firstMatrix, winningPositions, firstMultipliers);
-    await animateTumbleSequence(tumbleSteps);
-
-    const waysWins = payload.ways_wins || [];
-    setTextWithPulse(winningLinesEl, String(waysWins.length));
-    const previousBalance = Number(balanceEl.textContent || 0) || 0;
-    const previousWin = Number(lastWinEl.textContent || 0) || 0;
-    animateValue(balanceEl, previousBalance, Number(payload.balance_after || 0), formatMoney, 920);
-    animateValue(lastWinEl, previousWin, Number(payload.total_win || 0), formatMoney, 760);
-    pulseElement(balanceEl);
-    pulseElement(lastWinEl);
-    setTextWithPulse(freeSpinsEl, String(payload.free_spins_left));
-    sessionLiveStats.spinsPlayed += 1;
-    if (payload.total_win > 0) {
-      sessionLiveStats.winSpins += 1;
-    } else {
-      sessionLiveStats.lossSpins += 1;
-    }
-
-    if (Number.isFinite(options.wagerAmountOverride)) {
-      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + options.wagerAmountOverride).toFixed(2));
-    } else if (!payload.is_free_spin) {
-      const chargedBet = Number(payload.bet_charged || fallbackBet);
-      sessionLiveStats.wagered = Number((sessionLiveStats.wagered + chargedBet).toFixed(2));
-    }
-
-    sessionLiveStats.won = Number((sessionLiveStats.won + Number(payload.total_win || 0)).toFixed(2));
-    renderSessionLiveStats();
-    renderCaughtLines(waysWins);
-    resultDumpEl.textContent = JSON.stringify(payload, null, 2);
-
-    const winText = getWinCelebration(payload.total_win, payload.bet_charged || payload.bet_amount || fallbackBet);
-    if (winText) {
-      await showWinCallout(winText, payload.total_win);
-    }
-
-    const freeSpinRules = getFreeSpinRules();
-    const scatterCount = Number(payload.scatter_count || 0);
-    if (!payload.is_free_spin && !Number(payload.free_spins_awarded || 0) && scatterCount === freeSpinRules.triggerCount - 1) {
-      showEventBanner(
-        `${scatterCount} scatters landed. 1 more for ${freeSpinRules.baseAward} free spins.`,
-        "excited",
-        2600
-      );
-    } else if (payload.is_free_spin && Number(payload.free_spins_awarded || 0) > 0) {
-      showEventBanner(
-        `Retrigger! +${Number(payload.free_spins_awarded || freeSpinRules.retriggerAward)} free spins added.`,
-        "bonus",
-        2600
-      );
-    }
-
-    const hasBonusEntry = Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin;
-    return {
-      hasBonusEntry,
-      awardedFreeSpins: Number(payload.free_spins_awarded || 0),
-      minSpinDurationMs
-    };
-  } catch (error) {
-    pendingSpin.stop();
-    throw error;
-  }
-}
-
-async function autoplayBonusRounds() {
-  if (bonusAutoplayActive) return;
-  bonusAutoplayActive = true;
-  let bonusTotalWin = 0;
-  setRoundControlsDisabled(true);
-  try {
-    while (Number(freeSpinsEl.textContent || "0") > 0) {
-      const roundResult = await spin({ triggeredByAutoplay: true });
-      bonusTotalWin = Number((bonusTotalWin + Number(roundResult?.totalWin || 0)).toFixed(2));
-      await sleep(180);
-    }
-    await showFeatureScreen({
-      kicker: "Feature Complete",
-      title: `Bonus Win ${formatMoney(bonusTotalWin)}`,
-      copy: "Press anywhere to continue."
+function decorateStepCells(step, bet) {
+  const winPositions = Array.isArray(step?.winning_positions) ? step.winning_positions : [];
+  if (winPositions.length > 0) {
+    const tier = winTier(step?.ways_wins || [], bet);
+    el.reels.querySelectorAll(".sigil.win-sigil").forEach((sigil) => {
+      sigil.classList.add("strike-sigil", tier);
     });
-  } finally {
-    bonusAutoplayActive = false;
-    setRoundControlsDisabled(false);
+  }
+  const scatterCount = step?.matrix?.flat?.().filter((s) => s === "SCATTER").length || 0;
+  if (scatterCount >= 3) {
+    el.reels.querySelectorAll(".sigil.scatter").forEach((sigil) => {
+      sigil.classList.add("scatter-special");
+    });
   }
 }
 
@@ -972,418 +295,491 @@ async function api(path, payload) {
   return json;
 }
 
-async function streamSse(url, onEvent, signal) {
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "text/event-stream" },
-    signal
+function setControls(disabled) {
+  el.spinBtn.disabled = disabled;
+  el.simulateBtn.disabled = disabled;
+  el.betSelect.disabled = disabled;
+  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
+  el.anteToggle.disabled = disabled;
+}
+
+function renderExamples() {
+  el.lineExamples.innerHTML = "";
+  [
+    "Grid: 6 reels x 5 rows",
+    "Symbols pay anywhere",
+    "Minimum 8 matching symbols for a win",
+    "Tumble continues while wins keep appearing",
+    "Multipliers can appear in base and bonus rounds"
+  ].forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    el.lineExamples.appendChild(li);
   });
-  if (!res.ok) {
-    throw new Error(`STREAM_HTTP_${res.status}`);
+}
+
+function renderPaytable(bet = Number(el.betSelect.value || 1)) {
+  const [g1, g2, g3] = payoutGroups;
+  el.paytableTitle.textContent = `Payout Table (${g1} / ${g2} / ${g3}) - Bet ${fmt(bet)}`;
+  el.paytableBody.innerHTML = "";
+
+  Object.entries(payouts).forEach(([symbol, values]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${symbol}</td><td>${fmt((values[g1] || 0) * bet)}</td><td>${fmt((values[g2] || 0) * bet)}</td><td>${fmt((values[g3] || 0) * bet)}</td>`;
+    el.paytableBody.appendChild(tr);
+  });
+
+  const scatterTr = document.createElement("tr");
+  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
+  el.paytableBody.appendChild(scatterTr);
+}
+
+function renderCaughtLines(wins = []) {
+  el.caughtLines.innerHTML = "";
+  if (!wins.length) {
+    const li = document.createElement("li");
+    li.textContent = "No winning symbols in this spin.";
+    el.caughtLines.appendChild(li);
+    return;
   }
-  if (!res.body) {
-    throw new Error("STREAM_NO_BODY");
+  wins.forEach((w) => {
+    const li = document.createElement("li");
+    li.textContent = `${w.symbol} | count ${w.count} | x${Number(w.payout || 0).toFixed(2)} => ${fmt(w.amount)}`;
+    el.caughtLines.appendChild(li);
+  });
+}
+
+function summarizeSpin(payload, bet) {
+  const tumbleSteps = Array.isArray(payload.tumble_steps) ? payload.tumble_steps : [];
+  const tumbleCount = Math.max(0, tumbleSteps.length - 1);
+  const allWins = Array.isArray(payload.ways_wins) ? payload.ways_wins : [];
+  const winsText = allWins.length
+    ? allWins.map((w) => `${w.symbol}(${Number(w.count || 0)})`).slice(0, 4).join(", ")
+    : "none";
+
+  const multipliersByPos = new Map();
+  tumbleSteps.forEach((step) => {
+    (step.multipliers || []).forEach((m) => {
+      if (!Number.isInteger(m?.row) || !Number.isInteger(m?.col)) return;
+      const v = Number(m.value || 0);
+      if (!Number.isFinite(v) || v <= 0) return;
+      multipliersByPos.set(`${m.row}-${m.col}`, v);
+    });
+  });
+  const multiCount = multipliersByPos.size;
+  const multiSum = Number(Array.from(multipliersByPos.values()).reduce((s, v) => s + v, 0).toFixed(2));
+  const rawWin = Number(
+    tumbleSteps.reduce((sum, step) => sum + Number(step?.win_total || 0), 0).toFixed(2)
+  );
+  const applied = Number(payload.multiplier_applied || 1);
+  const mode = payload.is_free_spin ? "bonus" : "base";
+  return {
+    id: crypto.randomUUID(),
+    mode,
+    bet: Number(bet || payload.bet_amount || 0),
+    tumbling: tumbleCount > 0,
+    tumbleCount,
+    winsText,
+    multiCount,
+    multiSum,
+    applied,
+    rawWin,
+    totalWin: Number(payload.total_win || 0)
+  };
+}
+
+function renderSpinLog() {
+  if (!el.spinLogList) return;
+  el.spinLogList.innerHTML = "";
+  if (!state.spinLog.length) {
+    const li = document.createElement("li");
+    li.textContent = "No spins yet.";
+    el.spinLogList.appendChild(li);
+    if (el.spinLogStatus) el.spinLogStatus.textContent = "Waiting for spins...";
+    return;
   }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const rawEvent = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-
-      let eventName = "message";
-      const dataLines = [];
-      rawEvent.split("\n").forEach((line) => {
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim();
-          return;
-        }
-        if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trim());
-        }
-      });
-
-      if (dataLines.length > 0) {
-        let payload = null;
-        try {
-          payload = JSON.parse(dataLines.join("\n"));
-        } catch {
-          payload = null;
-        }
-        onEvent(eventName, payload);
-      }
-
-      boundary = buffer.indexOf("\n\n");
-    }
+  state.spinLog.forEach((entry, idx) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>#${state.spinLog.length - idx}</strong> ${entry.mode.toUpperCase()} | Bet ${fmt(entry.bet)} | Wins: ${entry.winsText} | Tumble: ${entry.tumbling ? `${entry.tumbleCount}x` : "no"} | Multi caught: ${entry.multiCount} (sum ${mfmt(entry.multiSum)}) | Applied: ${mfmt(entry.applied)} | ${fmt(entry.rawWin)} -> ${fmt(entry.totalWin)}`;
+    el.spinLogList.appendChild(li);
+  });
+  if (el.spinLogStatus) {
+    const latest = state.spinLog[0];
+    el.spinLogStatus.textContent = `${latest.mode.toUpperCase()} | last win ${fmt(latest.totalWin)}`;
   }
 }
 
-async function initSession() {
-  const data = await api("/api/v1/session/init", {
-    player_id: `player_${Date.now()}`,
-    currency: "GEL",
-    locale: "en",
-    game_id: "project-khma"
+function pushSpinLog(payload, bet) {
+  const item = summarizeSpin(payload, bet);
+  state.spinLog.unshift(item);
+  if (state.spinLog.length > 10) state.spinLog = state.spinLog.slice(0, 10);
+  renderSpinLog();
+}
+
+function applyRoundStats(payload, bet, wagerOverride) {
+  stats.spins += 1;
+  if (Number(payload.total_win || 0) > 0) stats.wins += 1;
+  else stats.losses += 1;
+  if (Number.isFinite(wagerOverride)) stats.wagered += wagerOverride;
+  else if (!payload.is_free_spin) stats.wagered += Number(payload.bet_charged || bet);
+  stats.won += Number(payload.total_win || 0);
+
+  el.spinsPlayed.textContent = String(stats.spins);
+  el.winSpins.textContent = String(stats.wins);
+  el.lossSpins.textContent = String(stats.losses);
+  el.sessionWagered.textContent = fmt(stats.wagered);
+  el.sessionWon.textContent = fmt(stats.won);
+  const net = Number((stats.won - stats.wagered).toFixed(2));
+  el.sessionNet.textContent = fmt(net);
+  setSigned(el.sessionNet, net);
+}
+
+async function animateRound(payload, bet, wagerOverride) {
+  const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
+    ? payload.tumble_steps
+    : [{ matrix: payload.matrix, multipliers: payload.multipliers || [], winning_positions: payload.winning_positions || [], ways_wins: payload.ways_wins || [], win_total: payload.total_win || 0 }];
+
+  const introMap = {};
+  for (let r = 0; r < (steps[0]?.matrix?.length || rows); r += 1) {
+    for (let c = 0; c < (steps[0]?.matrix?.[0]?.length || cols); c += 1) {
+      introMap[`${r}-${c}`] = rows;
+    }
+  }
+  renderMatrix(steps[0].matrix, {
+    multipliers: steps[0].multipliers || [],
+    showHighlight: false,
+    fallingMap: introMap,
+    spinDrop: true
   });
-  sessionId = data.session_id;
-  sessionIdEl.textContent = sessionId.slice(0, 8);
-  balanceEl.textContent = formatMoney(data.balance);
-  betSelectEl.innerHTML = "";
-  data.allowed_bets.forEach((bet) => {
-    const option = document.createElement("option");
-    option.value = String(bet);
-    option.textContent = formatMoney(bet);
-    betSelectEl.appendChild(option);
-  });
-  betSelectEl.value = "1";
-  betViewEl.textContent = "1.00";
-  renderPaytable(getSelectedBetAmount());
-  sessionLiveStats.spinsPlayed = 0;
-  sessionLiveStats.winSpins = 0;
-  sessionLiveStats.lossSpins = 0;
-  sessionLiveStats.wagered = 0;
-  sessionLiveStats.won = 0;
-  renderSessionLiveStats();
-  resetSimulationLiveWidgets();
+  const introWindow = applyDropOffsets(introMap);
+  el.reels.classList.add("reels-spinning", "spin-prime");
+  await sleep(16);
+  el.reels.classList.add("spin-drop");
+  await sleep(Math.max(980, introWindow));
+  el.reels.classList.remove("spin-drop", "spin-prime", "reels-spinning");
+
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (i > 0) {
+      const prev = steps[i - 1];
+      const prevWinning = Array.isArray(prev?.winning_positions) ? prev.winning_positions : [];
+      const prevWinTotal = Number(prev?.win_total || 0);
+      if (prevWinning.length > 0 && prevWinTotal > 0) {
+        await sleep(140);
+        el.reels.querySelectorAll(".sigil.win-sigil").forEach((sigil) => sigil.classList.add("explode-out"));
+        await sleep(380);
+        const dropMap = buildDropMap(prev.matrix, prevWinning);
+        renderMatrix(step.matrix, { multipliers: step.multipliers || [], showHighlight: false, fallingMap: dropMap });
+        const windowMs = applyDropOffsets(dropMap);
+        el.reels.classList.add("tumble-prime");
+        await sleep(16);
+        el.reels.classList.add("tumble-fall");
+        await sleep(Math.max(980, windowMs));
+        el.reels.classList.remove("tumble-fall", "tumble-prime");
+      }
+    }
+    renderMatrix(step.matrix, { winning: step.winning_positions || [], multipliers: step.multipliers || [], showHighlight: true });
+    decorateStepCells(step, bet);
+    if ((step.winning_positions || []).length) {
+      await sleep(420);
+    }
+  }
+
+  el.balance.textContent = fmt(payload.balance_after || 0);
+  el.lastWin.textContent = fmt(payload.total_win || 0);
+  el.freeSpins.textContent = String(payload.free_spins_left || 0);
+  el.activeMultiplier.textContent = mfmt(payload.is_free_spin ? payload.free_spin_multiplier_current : payload.multiplier_applied || 1);
+  el.winningLines.textContent = String((payload.ways_wins || []).length);
+  renderCaughtLines(payload.ways_wins || []);
+  pushSpinLog(payload, bet);
+  el.resultDump.textContent = JSON.stringify(payload, null, 2);
+  applyRoundStats(payload, bet, wagerOverride);
 }
 
 async function spin(options = {}) {
-  if (!sessionId) return;
-  if (bonusAutoplayActive && !options.triggeredByAutoplay) return;
-  setRoundControlsDisabled(true);
-
+  if (!state.sessionId) return;
+  if (state.bonusAutoplay && !options.autoplay) return;
+  setControls(true);
   try {
-    const spinStart = performance.now();
-    const bet = Number(betSelectEl.value);
-    if (!options.triggeredByAutoplay) {
-      betViewEl.textContent = formatMoney(bet);
-    }
-    renderCaughtLines([]);
-    winningLinesEl.textContent = "0";
-
+    const bet = Number(el.betSelect.value || 1);
+    el.betView.textContent = fmt(bet);
     const payload = await api("/api/v1/spin", {
-      session_id: sessionId,
+      session_id: state.sessionId,
       spin_id: crypto.randomUUID(),
       bet_amount: bet,
-      ante_enabled: Boolean(anteToggleEl.checked)
+      ante_enabled: Boolean(el.anteToggle.checked)
     });
-
-    const elapsed = performance.now() - spinStart;
-    const round = await playRoundPresentation(payload, bet);
-    if (elapsed < round.minSpinDurationMs) {
-      await sleep(round.minSpinDurationMs - elapsed);
+    await animateRound(payload, bet);
+    if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
+      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
+      await autoplayBonus();
     }
-    if (round.hasBonusEntry) {
-      await showFeatureScreen({
-        kicker: "Congratulations",
-        title: `You won ${round.awardedFreeSpins} Free Spins`,
-        copy: "Autoplay starts as soon as you continue."
-      });
-      await autoplayBonusRounds();
-    }
-    return {
-      totalWin: Number(payload.total_win || 0),
-      isFreeSpin: Boolean(payload.is_free_spin),
-      freeSpinsLeft: Number(payload.free_spins_left || 0)
-    };
+    return payload;
   } catch (err) {
-    renderMatrix(createRandomMatrix());
-    resultDumpEl.textContent = `Error: ${err.message}`;
-    return null;
+    renderMatrix(randomMatrix());
+    el.resultDump.textContent = `Error: ${err.message}`;
   } finally {
-    if (!bonusAutoplayActive) {
-      setRoundControlsDisabled(false);
+    if (!state.bonusAutoplay) setControls(false);
+  }
+}
+
+async function autoplayBonus() {
+  if (state.bonusAutoplay) return;
+  state.bonusAutoplay = true;
+  setControls(true);
+  let total = 0;
+  try {
+    while (Number(el.freeSpins.textContent || "0") > 0) {
+      const payload = await spin({ autoplay: true });
+      total += Number(payload?.total_win || 0);
+      await sleep(120);
     }
+    await showFeature(`Bonus Win ${fmt(total)}`, "Press anywhere to continue.");
+  } finally {
+    state.bonusAutoplay = false;
+    setControls(false);
   }
 }
 
 async function buyFreeSpins() {
-  if (!sessionId) return;
-  if (anteToggleEl.checked) {
-    resultDumpEl.textContent = "Buy Free Spins is disabled while Ante Bet is enabled.";
-    return;
-  }
-  if (bonusAutoplayActive) return;
-  setRoundControlsDisabled(true);
+  if (!state.sessionId || state.bonusAutoplay) return;
+  if (el.anteToggle.checked) return;
+  setControls(true);
   try {
-    const spinStart = performance.now();
-    const bet = Number(betSelectEl.value);
-    const payload = await api("/api/v1/buy-free-spins", {
-      session_id: sessionId,
-      bet_amount: bet
-    });
-
-    const elapsed = performance.now() - spinStart;
-    const buyCost = Number(payload.buy_cost || 0);
-    const round = await playRoundPresentation(payload, bet, { wagerAmountOverride: buyCost });
-    if (elapsed < round.minSpinDurationMs) {
-      await sleep(round.minSpinDurationMs - elapsed);
-    }
-    if (round.hasBonusEntry) {
-      await showFeatureScreen({
-        kicker: "Feature Unlocked",
-        title: `You won ${round.awardedFreeSpins} Free Spins`,
-        copy: "Autoplay starts as soon as you continue."
-      });
-      await autoplayBonusRounds();
+    const bet = Number(el.betSelect.value || 1);
+    const payload = await api("/api/v1/buy-free-spins", { session_id: state.sessionId, bet_amount: bet });
+    await animateRound(payload, bet, Number(payload.buy_cost || 0));
+    if (Number(payload.free_spins_awarded || 0) > 0) {
+      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
+      await autoplayBonus();
     }
   } catch (err) {
-    resultDumpEl.textContent = `Error: ${err.message}`;
+    el.resultDump.textContent = `Error: ${err.message}`;
   } finally {
-    if (!bonusAutoplayActive) {
-      setRoundControlsDisabled(false);
-    }
+    if (!state.bonusAutoplay) setControls(false);
   }
 }
 
-function formatSimulationSummary(report) {
-  return [
-    `Steps: ${report.steps} | Bet: ${formatMoney(report.bet_amount)} | Ante: ${report.ante_enabled ? "ON" : "OFF"} | Charged Bet: ${formatMoney(report.charged_bet_amount || report.bet_amount)}`,
-    `RTP target band: ${report.target_rtp_band.min}% - ${report.target_rtp_band.max}% (tolerance ±${Number(report.target_rtp_tolerance || 0).toFixed(2)}%)`,
-    "",
-    `Baseline casino net: ${formatMoney(report.baseline.casino_net)}`,
-    `Current casino net: ${formatMoney(report.current.casino_net)}`,
-    `Diff (current - baseline): ${formatMoney(report.diff.casino_net_current_minus_baseline)}`,
-    "",
-    `Baseline RTP: ${report.baseline.rtp_percent}%`,
-    `Current RTP: ${report.current.rtp_percent}%`,
-    `RTP in target band: ${report.checks.current_rtp_in_target_band ? "YES" : "NO"}`,
-    `Casino profitable (current): ${report.checks.current_casino_profitable ? "YES" : "NO"}`,
-    `Big wins >=20x (baseline -> current): ${report.baseline.big_win_20x_count} -> ${report.current.big_win_20x_count}`,
-    `Huge wins >=50x (baseline -> current): ${report.baseline.huge_win_50x_count} -> ${report.current.huge_win_50x_count}`,
-    `Big win rate (baseline -> current): ${Number(report.baseline.big_win_rate_percent || 0).toFixed(3)}% -> ${Number(report.current.big_win_rate_percent || 0).toFixed(3)}%`,
-    `Huge win rate (baseline -> current): ${Number(report.baseline.huge_win_rate_percent || 0).toFixed(3)}% -> ${Number(report.current.huge_win_rate_percent || 0).toFixed(3)}%`,
-    `Bonus catches (baseline -> current): ${report.baseline.bonus_catch_count || 0} -> ${report.current.bonus_catch_count || 0}`,
-    `Bonus catch rate (baseline -> current): ${Number(report.baseline.bonus_catch_rate_percent || 0).toFixed(4)}% -> ${Number(report.current.bonus_catch_rate_percent || 0).toFixed(4)}%`,
-    `Avg paid spins per bonus catch (current): ${report.current.avg_paid_spins_per_bonus_catch ?? "N/A"}`,
-    `Bonus win total (baseline -> current): ${formatMoney(report.baseline.bonus_win_total || 0)} -> ${formatMoney(report.current.bonus_win_total || 0)}`
-  ].join("\n");
+function showFeature(title, copy) {
+  if (state.featureResolver) state.featureResolver();
+  el.featureScreenKicker.textContent = "Feature";
+  el.featureScreenTitle.textContent = title;
+  el.featureScreenCopy.textContent = copy;
+  el.featureScreen.classList.remove("hidden");
+  return new Promise((resolve) => {
+    state.featureResolver = () => {
+      el.featureScreen.classList.add("hidden");
+      state.featureResolver = null;
+      resolve();
+    };
+  });
+}
+
+function dismissFeature() {
+  if (state.featureResolver) state.featureResolver();
+}
+
+async function streamSse(url, onEvent, signal) {
+  const res = await fetch(url, { method: "GET", headers: { Accept: "text/event-stream" }, signal });
+  if (!res.ok || !res.body) throw new Error("STREAM_UNAVAILABLE");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx = buffer.search(/\r?\n\r?\n/);
+    while (idx >= 0) {
+      const raw = buffer.slice(0, idx);
+      const sepMatch = buffer.slice(idx).match(/^\r?\n\r?\n/);
+      buffer = buffer.slice(idx + (sepMatch ? sepMatch[0].length : 2));
+      let event = "message";
+      const lines = [];
+      raw.split(/\r?\n/).forEach((line) => {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) lines.push(line.slice(5).trim());
+      });
+      if (lines.length) {
+        try { onEvent(event, JSON.parse(lines.join("\n"))); } catch {}
+      }
+      idx = buffer.search(/\r?\n\r?\n/);
+    }
+  }
 }
 
 async function runSimulation() {
-  if (!sessionId) return;
-  if (simulationAbortController) {
-    simulationAbortController.abort();
-    simulationAbortController = null;
-  }
-  spinBtnEl.disabled = true;
-  buyFreeBtnEl.disabled = true;
-  simulateBtnEl.disabled = true;
-  simulateDumpEl.textContent = "Running 1,000,000 spins... live stream started.";
-  resetSimulationLiveWidgets();
-  simProgressLabelEl.textContent = "Starting...";
+  if (!state.sessionId) return;
+  setControls(true);
+  const bet = Number(el.betSelect.value || 1);
+  const ante = Boolean(el.anteToggle.checked);
+  const streamUrl = `/api/v1/simulate/stream?steps=1000000&bet_amount=${encodeURIComponent(String(bet))}&ante_enabled=${encodeURIComponent(String(ante))}`;
 
-  const bet = Number(betSelectEl.value);
-  const anteEnabled = Boolean(anteToggleEl.checked);
-  const streamUrl = `/api/v1/simulate/stream?steps=1000000&bet_amount=${encodeURIComponent(String(bet))}&ante_enabled=${encodeURIComponent(String(anteEnabled))}`;
-  simulationAbortController = new AbortController();
-  let streamCompleted = false;
-  let fallbackStarted = false;
-  let progressEventCount = 0;
-  let lastProgressAt = Date.now();
-  let stallTimer = null;
+  el.simProgressBar.style.width = "0%";
+  el.simProgressLabel.textContent = "Starting...";
+  el.simulateDump.textContent = "Running live stream...";
+  let fallbackTicker = null;
 
-  const clearStallTimer = () => {
-    if (!stallTimer) return;
-    clearTimeout(stallTimer);
-    stallTimer = null;
+  let complete = false;
+  const applyProgress = (p) => {
+    const progress = Number(p.progress_percent || 0);
+    el.simProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    el.simProgressLabel.textContent = `${progress.toFixed(2)}% (${p.steps_completed}/${p.steps_total})`;
+    el.simLiveRtp.textContent = `${Number(p.current_rtp_percent || 0).toFixed(2)}%`;
+    el.simLivePlayerWin.textContent = fmt(p.current_player_total_win || 0);
+    const net = Number(p.current_casino_net || 0);
+    el.simLiveCasinoNet.textContent = fmt(net);
+    setSigned(el.simLiveCasinoNet, net);
+    el.simLiveHitRate.textContent = `${Number(p.current_hit_frequency_percent || 0).toFixed(2)}%`;
+    el.simLiveBig20x.textContent = String(p.current_big_win_20x_count || 0);
+    el.simLiveHuge50x.textContent = String(p.current_huge_win_50x_count || 0);
+    el.simLiveBigRate.textContent = `${Number(p.current_big_win_rate_percent || 0).toFixed(3)}%`;
+    el.simLiveHugeRate.textContent = `${Number(p.current_huge_win_rate_percent || 0).toFixed(3)}%`;
+    el.simLiveMaxWinX.textContent = `${Number(p.current_max_win_x || 0).toFixed(2)}x`;
+    el.simLiveBonusCatches.textContent = String(p.current_bonus_catch_count || 0);
+    el.simLiveBonusCatchRate.textContent = `${Number(p.current_bonus_catch_rate_percent || 0).toFixed(4)}%`;
+    el.simLiveBonusWin.textContent = fmt(p.current_bonus_win_total || 0);
+    el.simLiveBaselineRtp.textContent = `${Number(p.baseline_rtp_percent || 0).toFixed(2)}%`;
+    const baselineNet = Number(p.baseline_casino_net || 0);
+    el.simLiveBaselineNet.textContent = fmt(baselineNet);
+    setSigned(el.simLiveBaselineNet, baselineNet);
   };
 
-  const releaseButtons = () => {
-    spinBtnEl.disabled = false;
-    syncBuyButtonState();
-    simulateBtnEl.disabled = false;
-  };
-
-  const runFallback = async (label = "Stream failed, retrying fallback...") => {
-    if (fallbackStarted || streamCompleted) return;
-    fallbackStarted = true;
-    clearStallTimer();
-    if (simulationAbortController) {
-      simulationAbortController.abort();
-      simulationAbortController = null;
-    }
-    simProgressLabelEl.textContent = label;
-    try {
-      const report = await api("/api/v1/simulate", {
-        steps: 1000000,
-        bet_amount: bet,
-        ante_enabled: anteEnabled
-      });
-      simProgressBarEl.style.width = "100%";
-      simProgressLabelEl.textContent = "Completed (Fallback)";
-      simLiveRtpEl.textContent = `${Number(report.current.rtp_percent).toFixed(2)}%`;
-      simLivePlayerWinEl.textContent = formatMoney(report.current.player_total_win);
-      simLiveCasinoNetEl.textContent = formatMoney(report.current.casino_net);
-      setSignedClass(simLiveCasinoNetEl, report.current.casino_net);
-      simLiveHitRateEl.textContent = `${Number(report.current.hit_frequency_percent).toFixed(2)}%`;
-      simLiveBig20xEl.textContent = String(report.current.big_win_20x_count);
-      simLiveHuge50xEl.textContent = String(report.current.huge_win_50x_count);
-      simLiveBigRateEl.textContent = `${Number(report.current.big_win_rate_percent || 0).toFixed(3)}%`;
-      simLiveHugeRateEl.textContent = `${Number(report.current.huge_win_rate_percent || 0).toFixed(3)}%`;
-      simLiveMaxWinXEl.textContent = `${Number(report.current.max_win_x).toFixed(2)}x`;
-      simLiveBonusCatchesEl.textContent = String(report.current.bonus_catch_count || 0);
-      simLiveBonusCatchRateEl.textContent = `${Number(report.current.bonus_catch_rate_percent || 0).toFixed(4)}%`;
-      simLiveBonusWinEl.textContent = formatMoney(report.current.bonus_win_total || 0);
-      simLiveBaselineRtpEl.textContent = `${Number(report.baseline.rtp_percent).toFixed(2)}%`;
-      simLiveBaselineNetEl.textContent = formatMoney(report.baseline.casino_net);
-      setSignedClass(simLiveBaselineNetEl, report.baseline.casino_net);
-      simulateDumpEl.textContent = formatSimulationSummary(report);
-    } catch (err) {
-      simProgressLabelEl.textContent = "Failed";
-      simulateDumpEl.textContent = `Simulation failed: ${err.message}`;
-    } finally {
-      releaseButtons();
-    }
-  };
-
-  const scheduleStallFallback = () => {
-    clearStallTimer();
-    stallTimer = setTimeout(() => {
-      if (streamCompleted || fallbackStarted) return;
-      const stalledMs = Date.now() - lastProgressAt;
-      if (progressEventCount === 0 || stalledMs > 5500) {
-        runFallback("Stream stalled, retrying fallback...");
-      }
-    }, 12000);
-  };
-
-  scheduleStallFallback();
   try {
-    await streamSse(
-      streamUrl,
-      (eventName, payload) => {
-        if (streamCompleted || fallbackStarted || !payload) return;
-        if (eventName === "progress") {
-          progressEventCount += 1;
-          lastProgressAt = Date.now();
-          const progress = Number(payload.progress_percent || 0);
-          simProgressBarEl.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-          simProgressLabelEl.textContent = `${progress.toFixed(2)}% (${payload.steps_completed}/${payload.steps_total})`;
-          simLiveRtpEl.textContent = `${Number(payload.current_rtp_percent || 0).toFixed(2)}%`;
-          simLivePlayerWinEl.textContent = formatMoney(payload.current_player_total_win || 0);
-          const liveCasinoNet = Number(payload.current_casino_net || 0);
-          simLiveCasinoNetEl.textContent = formatMoney(liveCasinoNet);
-          setSignedClass(simLiveCasinoNetEl, liveCasinoNet);
-          simLiveHitRateEl.textContent = `${Number(payload.current_hit_frequency_percent || 0).toFixed(2)}%`;
-          simLiveBig20xEl.textContent = String(payload.current_big_win_20x_count || 0);
-          simLiveHuge50xEl.textContent = String(payload.current_huge_win_50x_count || 0);
-          simLiveBigRateEl.textContent = `${Number(payload.current_big_win_rate_percent || 0).toFixed(3)}%`;
-          simLiveHugeRateEl.textContent = `${Number(report.current.huge_win_rate_percent || 0).toFixed(3)}%`;
-          simLiveMaxWinXEl.textContent = `${Number(payload.current_max_win_x || 0).toFixed(2)}x`;
-          simLiveBonusCatchesEl.textContent = String(payload.current_bonus_catch_count || 0);
-          simLiveBonusCatchRateEl.textContent = `${Number(payload.current_bonus_catch_rate_percent || 0).toFixed(4)}%`;
-          simLiveBonusWinEl.textContent = formatMoney(payload.current_bonus_win_total || 0);
-          simLiveBaselineRtpEl.textContent = `${Number(payload.baseline_rtp_percent || 0).toFixed(2)}%`;
-          const liveBaselineNet = Number(payload.baseline_casino_net || 0);
-          simLiveBaselineNetEl.textContent = formatMoney(liveBaselineNet);
-          setSignedClass(simLiveBaselineNetEl, liveBaselineNet);
-          scheduleStallFallback();
-          return;
-        }
-        if (eventName === "complete") {
-          streamCompleted = true;
-          clearStallTimer();
-          simProgressBarEl.style.width = "100%";
-          simProgressLabelEl.textContent = "Completed";
-          simulateDumpEl.textContent = formatSimulationSummary(payload.report);
-        }
-      },
-      simulationAbortController.signal
-    );
-
-    if (!streamCompleted && !fallbackStarted) {
-      await runFallback("Stream ended unexpectedly, retrying fallback...");
-    } else if (!fallbackStarted) {
-      releaseButtons();
-    }
+    state.simulationAbort = new AbortController();
+    await streamSse(streamUrl, (event, payload) => {
+      if (!payload) return;
+      if (event === "progress") applyProgress(payload);
+      if (event === "complete") {
+        complete = true;
+        el.simProgressBar.style.width = "100%";
+        el.simProgressLabel.textContent = "Completed";
+        el.simulateDump.textContent = JSON.stringify(payload.report, null, 2);
+      }
+    }, state.simulationAbort.signal);
   } catch {
-    await runFallback("Stream unavailable, retrying fallback...");
+    el.simulateDump.textContent = "Stream unavailable, retrying fallback...";
+    let pseudo = 0;
+    fallbackTicker = setInterval(() => {
+      if (complete) return;
+      pseudo = Math.min(95, pseudo + (pseudo < 65 ? 2.4 : 0.8));
+      el.simProgressBar.style.width = `${pseudo.toFixed(1)}%`;
+      el.simProgressLabel.textContent = `Fallback running... ${pseudo.toFixed(1)}%`;
+    }, 180);
+    const report = await api("/api/v1/simulate", { steps: 1000000, bet_amount: bet, ante_enabled: ante });
+    if (fallbackTicker) {
+      clearInterval(fallbackTicker);
+      fallbackTicker = null;
+    }
+    el.simProgressBar.style.width = "100%";
+    el.simProgressLabel.textContent = "Completed (Fallback)";
+    el.simulateDump.textContent = JSON.stringify(report, null, 2);
   } finally {
-    clearStallTimer();
-    simulationAbortController = null;
+    if (fallbackTicker) {
+      clearInterval(fallbackTicker);
+      fallbackTicker = null;
+    }
+    state.simulationAbort = null;
+    if (!state.bonusAutoplay) setControls(false);
+    if (!complete && el.simProgressLabel.textContent !== "Completed (Fallback)") {
+      el.simProgressLabel.textContent = "Completed";
+    }
   }
 }
 
-betSelectEl.addEventListener("change", () => {
-  const bet = getSelectedBetAmount();
-  betViewEl.textContent = formatMoney(bet);
-  renderPaytable(bet);
-});
-anteToggleEl.addEventListener("change", () => {
-  syncBuyButtonState();
-  if (anteToggleEl.checked) {
-    resultDumpEl.textContent = "Ante Bet enabled. Buy Free Spins is disabled by rules.";
-  }
-});
-spinBtnEl.addEventListener("click", spin);
-buyFreeBtnEl.addEventListener("click", buyFreeSpins);
-simulateBtnEl.addEventListener("click", runSimulation);
+async function loadRules() {
+  try {
+    const rules = await fetch("/api/v1/game-rules").then((r) => r.json());
+    state.rules = rules;
+    el.lineCount.textContent = String(rules.layout?.pays || "symbols_pay_anywhere").replaceAll("_", " ");
+    renderRulesPage();
+  } catch {}
+}
 
-renderEmptyGrid();
-renderPaylineExamples();
-renderPaytable();
-winningLinesEl.textContent = "0";
-renderSessionLiveStats();
-resetSimulationLiveWidgets();
-if (symbolLegendEl) symbolLegendEl.textContent = buildLegendText();
-if (payoutRuleTextEl) payoutRuleTextEl.textContent = "Symbol payouts are multipliers of base bet. Scatter pays on any position.";
-syncBuyButtonState();
-requestAnimationFrame(() => document.body.classList.add("app-ready"));
-initSession().catch((err) => {
-  resultDumpEl.textContent = `Init failed: ${err.message}`;
-});
-loadGameRules();
-
-rulesBtnEl.addEventListener("click", openRulesModal);
-rulesCloseBtnEl.addEventListener("click", closeRulesModal);
-rulesPrevBtnEl.addEventListener("click", () => {
-  if (!rulesConfig || rulesPageIndex <= 0) return;
-  rulesPageIndex -= 1;
-  renderRulesPage();
-});
-rulesNextBtnEl.addEventListener("click", () => {
-  if (!rulesConfig) return;
-  const max = (rulesConfig.rules_pages || []).length - 1;
-  if (rulesPageIndex >= max) return;
-  rulesPageIndex += 1;
-  renderRulesPage();
-});
-rulesModalEl.addEventListener("click", (e) => {
-  if (e.target === rulesModalEl) closeRulesModal();
-});
-featureScreenEl.addEventListener("click", dismissFeatureScreen);
-window.addEventListener("keydown", (e) => {
-  if (!featureScreenEl.classList.contains("hidden")) {
-    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-      e.preventDefault();
-      dismissFeatureScreen();
-      return;
-    }
-  }
-  const targetTag = e.target?.tagName;
-  const isTypingTarget =
-    e.target?.isContentEditable ||
-    targetTag === "INPUT" ||
-    targetTag === "TEXTAREA" ||
-    targetTag === "SELECT" ||
-    targetTag === "BUTTON";
-  if ((e.key === " " || e.key === "Spacebar") && !isTypingTarget) {
-    e.preventDefault();
-    if (rulesModalEl.classList.contains("hidden") && !spinBtnEl.disabled) {
-      spin();
-    }
+function renderRulesPage() {
+  const pages = state.rules?.rules_pages;
+  if (!Array.isArray(pages) || pages.length === 0) {
+    el.rulesTitle.textContent = "Game Rules";
+    el.rulesMeta.textContent = "Rules are not available.";
+    el.rulesList.innerHTML = "";
+    el.rulesPageLabel.textContent = "Page 0/0";
+    el.rulesPrevBtn.disabled = true;
+    el.rulesNextBtn.disabled = true;
     return;
   }
-  if (e.key === "Escape" && !rulesModalEl.classList.contains("hidden")) {
-    closeRulesModal();
+
+  const page = pages[state.rulesPageIndex];
+  el.rulesTitle.textContent = page?.title || "Game Rules";
+  el.rulesMeta.textContent = `RTP ${Number(state.rules.rtp?.theoretical_percent || 0).toFixed(2)}% | Volatility ${(state.rules.volatility || "").toUpperCase()}`;
+  el.rulesList.innerHTML = "";
+  (page?.points || []).forEach((point) => {
+    const li = document.createElement("li");
+    li.textContent = point;
+    el.rulesList.appendChild(li);
+  });
+  el.rulesPageLabel.textContent = `Page ${state.rulesPageIndex + 1}/${pages.length}`;
+  el.rulesPrevBtn.disabled = state.rulesPageIndex === 0;
+  el.rulesNextBtn.disabled = state.rulesPageIndex === pages.length - 1;
+}
+
+async function initSession() {
+  const payload = await api("/api/v1/session/init", { player_id: `player_${Date.now()}`, currency: "GEL", locale: "en", game_id: "project-khma" });
+  state.sessionId = payload.session_id;
+  el.sessionId.textContent = state.sessionId.slice(0, 8);
+  el.balance.textContent = fmt(payload.balance);
+  el.betSelect.innerHTML = "";
+  (payload.allowed_bets || []).forEach((b) => {
+    const option = document.createElement("option");
+    option.value = String(b);
+    option.textContent = fmt(b);
+    el.betSelect.appendChild(option);
+  });
+  el.betSelect.value = "1";
+  el.betView.textContent = "1.00";
+  renderPaytable(1);
+}
+
+el.betSelect.addEventListener("change", () => {
+  el.betView.textContent = fmt(el.betSelect.value);
+  renderPaytable(Number(el.betSelect.value || 1));
+});
+el.spinBtn.addEventListener("click", spin);
+el.buyFreeBtn.addEventListener("click", buyFreeSpins);
+el.simulateBtn.addEventListener("click", runSimulation);
+el.featureScreen.addEventListener("click", dismissFeature);
+el.rulesBtn.addEventListener("click", () => {
+  el.rulesModal.classList.remove("hidden");
+  renderRulesPage();
+});
+el.rulesCloseBtn.addEventListener("click", () => el.rulesModal.classList.add("hidden"));
+el.rulesPrevBtn.addEventListener("click", () => {
+  if (!state.rules || state.rulesPageIndex <= 0) return;
+  state.rulesPageIndex -= 1;
+  renderRulesPage();
+});
+el.rulesNextBtn.addEventListener("click", () => {
+  const max = (state.rules?.rules_pages || []).length - 1;
+  if (state.rulesPageIndex >= max) return;
+  state.rulesPageIndex += 1;
+  renderRulesPage();
+});
+el.rulesModal.addEventListener("click", (e) => { if (e.target === el.rulesModal) el.rulesModal.classList.add("hidden"); });
+
+window.addEventListener("keydown", (e) => {
+  const tag = e.target?.tagName;
+  const typing = e.target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON";
+  if ((e.key === " " || e.key === "Spacebar") && !typing && !el.spinBtn.disabled) {
+    e.preventDefault();
+    spin();
   }
 });
+
+renderMatrix(randomMatrix());
+renderExamples();
+renderSpinLog();
+el.symbolLegend.textContent = "Top Crown, Hourglass, Ring, Chalice, Red Gem, Purple Triangle, Yellow Hex, Green Triangle, Blue Diamond, Multiplier, Scatter";
+el.payoutRuleText.textContent = "Symbol payouts are multipliers of base bet. Scatter pays on any position.";
+el.activeMultiplier.textContent = "1x";
+requestAnimationFrame(() => document.body.classList.add("app-ready"));
+initSession().catch((err) => { el.resultDump.textContent = `Init failed: ${err.message}`; });
+loadRules();

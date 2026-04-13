@@ -57,6 +57,17 @@ UI/API comparison simulation:
 - Player-facing symbol theme in UI (emoji symbols + legend)
 - Interactive multi-page Rules modal (`Game Rules` button)
 - Rules API: `GET /api/v1/game-rules` backed by strict config validation
+- Tumble reveal pipeline with delayed post-drop highlight (no pre-drop spoiler highlights)
+- Tiered blast animations (`small` / `medium` / `great`) by win strength
+- Scatter-specific special animation
+- Persistent multiplier badges that always show explicit `Nx` values
+
+## Rebuild Guides
+
+- Styling rebuild: `docs/styling-guide.md`
+- Animation rebuild: `docs/animation-guide.md`
+- Multiplier rules: `docs/multiplier-rules.md`
+- Simulation streaming notes: `docs/simulation-streaming.md`
 
 ## Symbol Theme
 

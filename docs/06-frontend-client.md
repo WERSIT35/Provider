@@ -32,6 +32,8 @@ Build performant HTML5 slot client integrated with backend outcomes.
 - State machine doc (`client/state-machine.md`)
 - Client implementation (`client/`)
 - Integration test notes (`client/integration-tests.md`)
+- Animation rebuild guide (`docs/animation-guide.md`)
+- Styling rebuild guide (`docs/styling-guide.md`)
 
 ## Exit Criteria
 

@@ -218,6 +218,31 @@ function createMatrixWithMetaRates(scatterChance, multiChance) {
   return { matrix, multipliers };
 }
 
+function sanitizeMultipliersForMatrix(matrix, multipliers = []) {
+  const byPos = new Map();
+  if (Array.isArray(multipliers)) {
+    for (const entry of multipliers) {
+      if (!Number.isInteger(entry?.row) || !Number.isInteger(entry?.col)) continue;
+      const value = Number(entry?.value);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      byPos.set(`${entry.row}-${entry.col}`, value);
+    }
+  }
+  const sanitized = [];
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix[row].length; col += 1) {
+      if (matrix[row][col] !== MULTI_SYMBOL) continue;
+      const value = byPos.get(`${row}-${col}`);
+      sanitized.push({
+        row,
+        col,
+        value: Number.isFinite(value) && value > 0 ? value : randomMultiplierValue()
+      });
+    }
+  }
+  return sanitized;
+}
+
 function countSymbol(matrix, symbol) {
   let count = 0;
   for (let row = 0; row < matrix.length; row += 1) {
@@ -266,9 +291,13 @@ function evaluateWaysWin(matrix, betAmount) {
   };
 }
 
-function applyTumble(matrix, winningPositions, scatterChance, multiChance) {
+function applyTumble(matrix, existingMultipliers, winningPositions, scatterChance, multiChance) {
   const next = matrix.map((row) => row.slice());
   const removeSet = new Set(winningPositions.map((p) => `${p.row}-${p.col}`));
+  const multiplierByPos = new Map();
+  for (const entry of sanitizeMultipliersForMatrix(matrix, existingMultipliers)) {
+    multiplierByPos.set(`${entry.row}-${entry.col}`, Number(entry.value));
+  }
 
   for (let row = 0; row < next.length; row += 1) {
     for (let col = 0; col < next[row].length; col += 1) {
@@ -280,12 +309,25 @@ function applyTumble(matrix, winningPositions, scatterChance, multiChance) {
   for (let col = 0; col < LAYOUT_REELS; col += 1) {
     const kept = [];
     for (let row = LAYOUT_ROWS - 1; row >= 0; row -= 1) {
-      if (next[row][col] !== null) kept.push(next[row][col]);
+      if (next[row][col] !== null) {
+        const symbol = next[row][col];
+        const multiplier = symbol === MULTI_SYMBOL ? multiplierByPos.get(`${row}-${col}`) : null;
+        kept.push({ symbol, multiplier });
+      }
     }
 
     let writeRow = LAYOUT_ROWS - 1;
     for (let i = 0; i < kept.length; i += 1) {
-      next[writeRow][col] = kept[i];
+      next[writeRow][col] = kept[i].symbol;
+      if (kept[i].symbol === MULTI_SYMBOL) {
+        multipliers.push({
+          row: writeRow,
+          col,
+          value: Number.isFinite(kept[i].multiplier) && kept[i].multiplier > 0
+            ? Number(kept[i].multiplier)
+            : randomMultiplierValue()
+        });
+      }
       writeRow -= 1;
     }
     while (writeRow >= 0) {
@@ -335,9 +377,10 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   if (!isFreeSpin && forceFreeSpinTrigger) {
     matrix = forceScatterTrigger(matrix, FREE_SPINS_TRIGGER);
   }
+  multipliers = sanitizeMultipliersForMatrix(matrix, multipliers);
   const tumbleSteps = [];
   let sequenceWin = 0;
-  let sequenceMultiplierSum = multipliers.reduce((s, m) => s + m.value, 0);
+  let sequenceMultiplierSum = 0;
   let highestScatterSeen = countSymbol(matrix, SCATTER_SYMBOL);
   const sequenceWins = [];
   let firstWinningPositions = [];
@@ -353,27 +396,31 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     });
     if (ways.total <= 0) break;
     sequenceWin += ways.total;
+    sequenceMultiplierSum += multipliers.reduce((s, m) => s + Number(m.value || 0), 0);
     if (firstWinningPositions.length === 0) {
       firstWinningPositions = ways.winning_positions;
     }
     for (const win of ways.wins) {
       sequenceWins.push(win);
     }
-    const tumbled = applyTumble(matrix, ways.winning_positions, scatterChance, multiChance);
+    const tumbled = applyTumble(matrix, multipliers, ways.winning_positions, scatterChance, multiChance);
     matrix = tumbled.matrix;
-    multipliers = tumbled.multipliers;
-    sequenceMultiplierSum += tumbled.multipliers.reduce((s, m) => s + m.value, 0);
+    multipliers = sanitizeMultipliersForMatrix(matrix, tumbled.multipliers);
     const scatters = countSymbol(matrix, SCATTER_SYMBOL);
     if (scatters > highestScatterSeen) highestScatterSeen = scatters;
   }
 
   let multiplierApplied = 1;
+  let multiplierGainApplied = 0;
+  if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+    multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
+  }
   if (isFreeSpin) {
-    if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+    if (sequenceWin > 0 && multiplierGainApplied > 0) {
       session.freeSpinPersistentMultiplier = Number(
         Math.min(
           FREE_SPIN_PERSISTENT_MULTIPLIER_CAP,
-          session.freeSpinPersistentMultiplier + sequenceMultiplierSum
+          session.freeSpinPersistentMultiplier + multiplierGainApplied
         ).toFixed(2)
       );
     }
@@ -381,8 +428,8 @@ function evaluateSpinRound(session, betAmount, options = {}) {
       multiplierApplied = session.freeSpinPersistentMultiplier;
     }
   } else {
-    if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
-      multiplierApplied = Math.min(BASE_SEQUENCE_MULTIPLIER_CAP, sequenceMultiplierSum);
+    if (sequenceWin > 0 && multiplierGainApplied > 0) {
+      multiplierApplied = Math.min(BASE_SEQUENCE_MULTIPLIER_CAP, 1 + multiplierGainApplied);
     }
   }
 
@@ -394,7 +441,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   if (!isFreeSpin && highestScatterSeen >= FREE_SPINS_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_AWARD;
     session.freeSpinsLeft += freeSpinsAwarded;
-    session.freeSpinPersistentMultiplier = 0;
+    session.freeSpinPersistentMultiplier = 1;
   }
   if (isFreeSpin && highestScatterSeen >= FREE_SPINS_RETRIGGER_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_RETRIGGER_AWARD;
@@ -404,7 +451,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   session.balance = Number((session.balance + totalWin).toFixed(2));
 
   if (session.freeSpinsLeft === 0) {
-    session.freeSpinPersistentMultiplier = 0;
+    session.freeSpinPersistentMultiplier = 1;
   }
 
   return {
@@ -421,7 +468,9 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     free_spins_awarded: freeSpinsAwarded,
     free_spins_left: session.freeSpinsLeft,
     multipliers_sum_sequence: Number(sequenceMultiplierSum.toFixed(2)),
+    multiplier_gain_applied: Number(multiplierGainApplied.toFixed(2)),
     multiplier_applied: Number(multiplierApplied.toFixed(2)),
+    free_spin_multiplier_current: Number(session.freeSpinPersistentMultiplier.toFixed(2)),
     total_win: totalWin,
     balance_after: session.balance
   };
@@ -454,7 +503,7 @@ function createSession({ player_id, currency, locale, game_id }) {
     gameId: game_id || "project-khma",
     balance: 1000,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 0,
+    freeSpinPersistentMultiplier: 1,
     anteEnabled: false,
     spinHistory: new Map(),
     createdAt: new Date().toISOString()
@@ -469,7 +518,7 @@ function simulateProfile(steps, betAmount, options = {}) {
   const session = {
     balance: 0,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 0
+    freeSpinPersistentMultiplier: 1
   };
   let paidWager = 0;
   let paidSpins = 0;
@@ -599,13 +648,13 @@ function buildSimulationReport(steps, betAmount, current) {
 function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
   const anteEnabled = Boolean(gameRules.features?.ante_bet?.enabled) && Boolean(options.ante_enabled);
   const chargedBet = Number((betAmount * (anteEnabled ? ANTE_MULTIPLIER : 1)).toFixed(2));
-  const chunkSize = 2000;
+  const chunkSize = 1000;
   let completed = 0;
   let closed = false;
   const session = {
     balance: 0,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 0
+    freeSpinPersistentMultiplier: 1
   };
   let paidWager = 0;
   let paidSpins = 0;
@@ -629,6 +678,12 @@ function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
     Connection: "keep-alive",
     "X-Accel-Buffering": "no"
   });
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+  if (res.socket && typeof res.socket.setNoDelay === "function") {
+    res.socket.setNoDelay(true);
+  }
   res.write("\n");
 
   const sendEvent = (name, payload) => {
@@ -696,7 +751,7 @@ function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
     });
 
     if (completed < steps) {
-      setImmediate(tick);
+      setTimeout(tick, 8);
       return;
     }
 
