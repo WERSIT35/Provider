@@ -1,88 +1,76 @@
-# Feature Specification v1
+﻿# Feature Specification v2
 
 ## Scope
 
-Defines gameplay features for implementation and testing.
+Defines gameplay features for implementation and testing of the current Banana X profile build.
 
 ## Base Game Features
 
-0. Symbol Set (Current Theme)
+1. Layout and Win Model
+- Grid: `5x4`
+- Win model: symbols pay anywhere
+- Minimum match count: `8`
+- Payout groups: `8-9`, `10-11`, `12-30`
+
+2. Symbol Set
 - Regular symbols:
-  - `A` = 🍒
-  - `B` = 🍋
-  - `C` = 🍇
-  - `D` = 🍀
-  - `E` = 🔔
-  - `F` = 💎
-  - `G` = 🪙
-  - `H` = 👑
+  - `TOP_CROWN`
+  - `HOURGLASS`
+  - `RING`
+  - `CHALICE`
+  - `RED_GEM`
+  - `PURPLE_TRIANGLE`
+  - `YELLOW_HEX`
+  - `GREEN_TRIANGLE`
+  - `BLUE_DIAMOND`
 - Special symbols:
-  - `WILD` = 🌟
-  - `SCATTER` = 🎯
+  - `MULTI` (wild multiplier)
+  - `SCATTER`
 
-0.1 Payout Values (Current Profile)
-- Line symbol payouts use line bet multiplier.
-- Scatter payouts use total bet multiplier.
+3. Tumble Sequence
+- Winning symbols are removed.
+- Remaining symbols collapse downward.
+- Empty cells refill from top.
+- Sequence continues until no new win forms.
 
-| Symbol | 3 | 4 | 5 |
-|---|---:|---:|---:|
-| 🍒 `A` | 1.83 | 5.49 | 13.73 |
-| 🍋 `B` | 1.83 | 5.49 | 13.73 |
-| 🍇 `C` | 2.75 | 7.32 | 18.30 |
-| 🍀 `D` | 2.75 | 7.32 | 18.30 |
-| 🔔 `E` | 3.66 | 10.98 | 27.45 |
-| 💎 `F` | 3.66 | 10.98 | 27.45 |
-| 🪙 `G` | 7.32 | 22.88 | 54.90 |
-| 👑 `H` | 9.15 | 32.03 | 91.50 |
-| 🌟 `WILD` | 18.30 | 68.63 | 183.00 |
-| 🎯 `SCATTER` (total bet) | 18.30 | 91.50 | 457.50 |
+4. Multiplier Behavior
+- `MULTI` symbols can appear in base and bonus rounds.
+- Allowed values are config-driven in rules payload.
+- Sequence multiplier accumulation must count each multiplier symbol once.
 
-1. Standard Line Wins
-- Left-to-right line evaluation on 20 fixed lines.
-- Minimum match: 3 of a kind (except special symbols).
-
-2. Wild Symbol
-- Substitutes all regular symbols.
-- Does not substitute scatter.
-
-3. Expanding Wild Reel (Random Modifier)
-- Chance to trigger per base spin (math-controlled).
-- One randomly selected reel expands to full wild.
-- Applies before line evaluation.
-
-## Bonus Feature
+## Bonus Features
 
 1. Free Spins
-- Trigger condition: 3, 4, or 5 scatters on paid spin.
-- Awards:
-  - 3 scatters: 10 free spins
-  - 4 scatters: 14 free spins
-  - 5 scatters: 20 free spins
+- Trigger condition: `4+` scatters in base game.
+- Base award: `15` spins.
 
-2. Free Spin Multiplier
-- Global multiplier starts at x2 for free spin session.
-- On retrigger, increase multiplier by +1 (max x5).
-- Multiplier applies to line wins and wild wins.
+2. Free Spin Retrigger
+- Trigger condition during free spins: `3+` scatters.
+- Retrigger award: `+5` spins.
 
-3. Retrigger Rules
-- 3+ scatters during free spins awards +5 spins.
+3. Persistent Bonus Multiplier
+- In free spins, winning multipliers can accumulate persistently.
+- Session caps are enforced by backend risk controls.
 
-## Payout UX Categories
+## RTP and Economy Profiles
 
-- Normal Win: < 10x bet
-- Big Win: >= 10x and < 25x
-- Mega Win: >= 25x and < 75x
-- Ultra Win: >= 75x
+- `bananax`: `96.38%`
+- `bananax_94`: `94.40%`
+- `bananax_92`: `92.38%`
+- Volatility: high
+- Max win cap: `20000x`
 
-## Configuration Flags
+## UX Categories
 
-- `feature.expandingWild.enabled`
-- `feature.freeSpins.enabled`
-- `feature.buyFeature.enabled` (default: `false`)
+- Win-tier visual classes are determined by sequence strength (`small` / `medium` / `great`).
+- Last 10 Spins panel displays both resolved spins and event messages.
 
-## Out of Scope for v1
+## Configuration Source
 
-- Bonus buy
+- Runtime source of truth: `math/game-rules-v2.json`
+
+## Out of Scope
+
 - Persistent missions
 - Progressive jackpots
 - Tournament mode

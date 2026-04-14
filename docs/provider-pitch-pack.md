@@ -1,40 +1,45 @@
-# Provider Pitch Pack v1
+﻿# Provider Pitch Pack v2
 
 ## 1. One-Line Positioning
 
-A provider-ready 5x3 video slot designed for strong engagement, transparent math, and compliance-first deployment.
+A provider-ready high-volatility `5x4` slot profile with transparent rules, profile-driven RTP modes, and server-authoritative outcomes.
 
 ## 2. Product Snapshot
 
-- Game: `Project Khma` (working title)
-- RTP profile: 96.00% primary
+- Game: `Banana X` profile build
+- Game IDs:
+  - `bananax`
+  - `bananax_94`
+  - `bananax_92`
+- RTP modes: `96.38% / 94.40% / 92.38%`
 - Feature set:
-  - Expanding wild reel modifier
-  - Free spins with retrigger and multiplier progression
-- Max win target: x7,500
+  - Tumble sequence
+  - Wild multipliers
+  - Free spins with retrigger and persistent bonus multiplier progression
+- Max win cap: `20000x`
 
 ## 3. Technical Readiness
 
-- Server-authoritative outcomes
-- Idempotent wallet settlement model
-- Integration API docs available
-- Sandbox validation package available
+- Server-authoritative outcome resolution
+- Idempotent spin handling per session/spin id
+- Rules-config driven runtime behavior
+- Simulation API + SSE streaming for verification
 
 ## 4. Compliance and Certification Readiness
 
-- Rules draft
-- Math spec and RNG design
-- Security control matrix
-- Certification package index
+- Rules and math config under versioned control
+- Backend startup validation for rules payload
+- Security/control matrix docs
+- QA and certification package index in repository
 
 ## 5. Commercial Ask
 
-- Onboard into provider sandbox
-- Complete technical certification handshake
-- Negotiate distribution and revenue terms
+- Onboard profile variants into sandbox
+- Validate integration handshake for profile-aware game IDs
+- Proceed to certification readiness and distribution talks
 
-## 6. Contact Block (Placeholder)
+## 6. Contact Block
 
-- Business owner:
-- Technical owner:
-- Support contact:
+- Business owner: TBD
+- Technical owner: TBD
+- Support contact: TBD

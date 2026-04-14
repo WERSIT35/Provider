@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Project Khma</title>
+    <title>Banana X</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,8 +11,8 @@
       <section class="altar">
         <div class="altar-top">
           <div class="title-cluster">
-            <span class="title-kicker">Project Khma</span>
-            <h1>Sigil Vault</h1>
+            <span class="title-kicker">Fantasma Games</span>
+            <h1>Banana X</h1>
           </div>
           <div class="status-ribbon">
             <div class="status-ribbon-item">
@@ -70,13 +70,14 @@
           </aside>
 
           <section class="vault-shell">
-            <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
-              <span id="eventBannerText">Ready</span>
-            </div>
-
             <div class="vault-window">
+              <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
+                <span id="eventBannerText">Ready</span>
+              </div>
               <div class="vault-aura"></div>
-              <section class="reels" id="reels" aria-live="polite"></section>
+              <div class="reels-stage" aria-live="polite">
+                <canvas class="reels-canvas" id="reels" aria-label="Game reels canvas"></canvas>
+              </div>
               <div class="win-callout hidden" id="winCallout" aria-live="polite">
                 <div class="win-callout-label" id="winCalloutLabel">Big Win</div>
                 <div class="win-callout-amount" id="winCalloutAmount">0.00</div>
@@ -103,6 +104,7 @@
               <button id="spinBtn" type="button">Invoke Spin</button>
               <button id="buyFreeBtn" type="button">Buy Free Spins</button>
               <button id="simulateBtn" type="button">Imitate 1M Spins</button>
+              <button id="simulateBonusBtn" type="button">Imitate 1M Bonus Rounds</button>
             </section>
           </section>
 
@@ -142,6 +144,20 @@
               </ul>
             </section>
 
+            <section class="archive-band" id="fxTestLab">
+              <div class="band-head">
+                <h2>FX Test Lab</h2>
+              </div>
+              <p class="test-lab-copy">Use tests below, or lock a multiplier. Locked value is forced every spin until you click it again.</p>
+              <div class="test-actions">
+                <button id="testDropBtn" type="button">Test Drop</button>
+                <button id="testExplodeBtn" type="button">Test Explosion</button>
+                <button id="testCatchBtn" type="button">Test Catch FX</button>
+              </div>
+              <div class="test-multi-head">Trigger Multiplier</div>
+              <div class="test-multi-grid" id="testMultiButtons"></div>
+            </section>
+
             <section class="archive-band">
               <div class="band-head">
                 <h2>Round Output</h2>
@@ -159,6 +175,7 @@
             </div>
             <p><strong>Symbol Legend:</strong> <span id="symbolLegend">Loading...</span></p>
             <p><strong>Payout Rule:</strong> <span id="payoutRuleText">Loading...</span></p>
+            <p><strong>Multipliers:</strong> <span id="multiplierInfo">Loading...</span></p>
           </section>
 
           <section class="codex-band">

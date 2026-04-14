@@ -1,7 +1,9 @@
 {
-  "version": "2.1.0",
-  "game_title": "Gates Style Rulebook (Reference)",
-  "mode": "rules_reference",
+  "version": "3.0.0",
+  "game_title": "Banana X",
+  "provider": "Fantasma Games",
+  "release_date": "2026-04-14",
+  "mode": "production_profile",
   "layout": {
     "reels": 6,
     "rows": 5,
@@ -9,19 +11,79 @@
     "min_match_count": 8
   },
   "rtp": {
-    "theoretical_percent": 96.5,
-    "ante_bet_percent": 96.5,
-    "buy_free_spins_percent": 96.49,
+    "theoretical_percent": 96.38,
+    "ante_bet_percent": 96.38,
+    "buy_free_spins_percent": 96.38,
+    "payout_scaler": 1.49,
     "target_band_min": 96.2,
-    "target_band_max": 96.8,
+    "target_band_max": 96.55,
     "target_tolerance_percent": 0.05
   },
+  "rtp_profiles": [
+    {
+      "key": "96",
+      "game_id": "bananax",
+      "slug": "banana_x_fantasma",
+      "theoretical_percent": 96.38,
+      "ante_bet_percent": 96.38,
+      "buy_free_spins_percent": 96.38,
+      "payout_scaler": 1.49,
+      "base_payout_scaler": 1.629,
+      "free_spin_payout_scaler": 1.115,
+      "target_band_min": 96.2,
+      "target_band_max": 96.55,
+      "target_tolerance_percent": 0.05
+    },
+    {
+      "key": "94",
+      "game_id": "bananax_94",
+      "slug": "banana_x_94_fantasma",
+      "theoretical_percent": 94.4,
+      "ante_bet_percent": 94.4,
+      "buy_free_spins_percent": 94.4,
+      "payout_scaler": 1.46,
+      "base_payout_scaler": 1.595,
+      "free_spin_payout_scaler": 1.092,
+      "target_band_min": 94.2,
+      "target_band_max": 94.6,
+      "target_tolerance_percent": 0.05
+    },
+    {
+      "key": "92",
+      "game_id": "bananax_92",
+      "slug": "banana_x92_fantasma",
+      "theoretical_percent": 92.38,
+      "ante_bet_percent": 92.38,
+      "buy_free_spins_percent": 92.38,
+      "payout_scaler": 1.426,
+      "base_payout_scaler": 1.561,
+      "free_spin_payout_scaler": 1.068,
+      "target_band_min": 92.2,
+      "target_band_max": 92.55,
+      "target_tolerance_percent": 0.05
+    }
+  ],
   "volatility": "high",
   "bet_limits": {
     "min_total_bet": 0.2,
     "max_total_bet": 125.0
   },
-  "max_win_cap_multiplier": 15000,
+  "max_win_cap_multiplier": 20000,
+  "markets": [
+    "Brazil",
+    "Bulgaria",
+    "Denmark",
+    "Estonia",
+    "Latvia",
+    "Malta",
+    "Ontario",
+    "Portugal",
+    "Romania",
+    "Sweden",
+    "US (Connecticut)",
+    "United Kingdom"
+  ],
+  "markets_coming_soon": ["Greece", "Peru"],
   "simulation_acceptance": {
     "steps": 1000000,
     "casino_net_must_be_positive": true,
@@ -30,7 +92,7 @@
   "features": {
     "tumble": {
       "enabled": true,
-      "description": "After every spin, winning combinations are paid and all winning symbols disappear. Remaining symbols fall and empty positions are replaced from above. Tumble continues until no new win appears."
+      "description": "Winning symbols are removed, remaining symbols collapse, and new symbols drop in until no new win appears."
     },
     "multipliers": {
       "enabled": true,
@@ -38,7 +100,8 @@
       "range_max": 1000,
       "allowed_values": [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100, 250, 500, 1000],
       "base_game_apply_mode": "sum_sequence_end",
-      "free_spins_apply_mode": "persistent_round_total"
+      "free_spins_apply_mode": "persistent_round_total",
+      "apex_wild_enabled": true
     },
     "free_spins": {
       "base_trigger_scatter_count": 4,
@@ -49,13 +112,13 @@
     "ante_bet": {
       "enabled": true,
       "multiplier": 1.25,
-      "description": "Chance to win free spins naturally is doubled. More SCATTER symbols are present. BUY FREE SPINS is disabled when this mode is active."
+      "description": "Increases feature frequency and disables Buy Free Spins while active."
     },
     "buy_free_spins": {
       "enabled": true,
       "cost_multiplier": 100,
       "guaranteed_trigger_scatter_count": 4,
-      "description": "FREE SPINS round can be instantly triggered from base game by buying it for 100x current total bet."
+      "description": "Instantly triggers Free Spins."
     }
   },
   "symbol_payout_display": {
@@ -82,85 +145,55 @@
     "quick_spin": true,
     "turbo_spin": true,
     "settings_menu": true,
-    "rules_pages": 7
+    "rules_pages": 6
   },
   "rules_pages": [
     {
-      "title": "GAME RULES",
+      "title": "BANANA X",
       "points": [
-        "Symbols pay anywhere on the screen.",
-        "The total number of the same symbol on screen at spin end determines the win.",
-        "SCATTER symbol is present on all reels and pays on any position.",
-        "All values are shown as actual wins in coins."
+        "Enter Banana X where a viral monkey ramps up chaos every spin.",
+        "Grid layout is 5 reels x 4 rows.",
+        "Symbols pay anywhere on screen with minimum 8 matching symbols."
       ]
     },
     {
-      "title": "TUMBLE FEATURE",
+      "title": "CORE FEATURES",
       "points": [
-        "After every spin, winning combinations are paid and all winning symbols disappear.",
-        "Remaining symbols fall to the bottom and empty positions are replaced from above.",
-        "Tumbling continues until no more winning combinations appear.",
-        "Multiplier symbols are present on all reels and can hit during spins and tumbles.",
-        "When a multiplier symbol hits, it takes a random value from 2x to 1000x.",
-        "At sequence end, multiplier values are added and total sequence win is multiplied by the final value."
+        "Wild multipliers can appear in base spins and tumbles.",
+        "Apex Wild behavior increases upside during feature flow.",
+        "Tumble continues while new wins appear."
       ]
     },
     {
-      "title": "FREE SPINS RULES",
+      "title": "FREE SPINS",
       "points": [
-        "FREE SPINS feature is awarded when 4 or more SCATTER symbols hit anywhere.",
-        "The round starts with 15 free spins.",
-        "In FREE SPINS, when a multiplier symbol hits and spin results in a win, value is added to total multiplier.",
-        "For the full duration of FREE SPINS, new multiplier hits that result in a win keep adding to total multiplier value.",
-        "Whenever 3 or more SCATTER symbols hit during FREE SPINS, 5 additional free spins are awarded.",
-        "Special reels are in play during FREE SPINS."
+        "4+ Scatter symbols trigger 15 Free Spins.",
+        "3+ Scatters during Free Spins retrigger +5 spins.",
+        "Free Spin multipliers can persist and stack through the round."
       ]
     },
     {
-      "title": "GAME RULES",
+      "title": "RTP MODES",
+      "points": [
+        "bananax / banana_x_fantasma: 96.38% RTP.",
+        "bananax_94 / banana_x_94_fantasma: 94.40% RTP.",
+        "bananax_92 / banana_x92_fantasma: 92.38% RTP."
+      ]
+    },
+    {
+      "title": "GAME PARAMETERS",
       "points": [
         "Volatility: High.",
-        "High volatility pays less often on average, but chance for big short-term wins is higher.",
-        "Symbols pay anywhere.",
-        "All wins are multiplied by base bet.",
-        "When winning with multiple symbols, all wins are added to total win.",
-        "The theoretical RTP of this game is 96.50%.",
-        "RTP using ANTE BET is 96.50%.",
-        "RTP using BUY FREE SPINS is 96.49%.",
-        "MINIMUM BET: $0.20.",
-        "MAXIMUM BET: $125.00.",
+        "Max win cap: 20000x bet.",
+        "Minimum bet: 0.20. Maximum bet: 125.00."
+      ]
+    },
+    {
+      "title": "MARKETS",
+      "points": [
+        "Live markets: Brazil, Bulgaria, Denmark, Estonia, Latvia, Malta, Ontario, Portugal, Romania, Sweden, US (Connecticut), United Kingdom.",
+        "Coming soon: Greece, Peru.",
         "Malfunction voids all pays and plays."
-      ]
-    },
-    {
-      "title": "HOW TO PLAY",
-      "points": [
-        "Use plus/minus controls to change bet value and open bet menu.",
-        "Press SPIN button to play.",
-        "Settings menu controls gameplay settings.",
-        "Spin speed cycles through normal, quick spin and turbo spin.",
-        "Sound and music can be toggled on/off.",
-        "Information page opens in-game rules pages.",
-        "Autoplay button opens automatic play menu and can be pressed again to stop."
-      ]
-    },
-    {
-      "title": "SETTINGS MENU",
-      "points": [
-        "Intro screen toggle.",
-        "Ambient music toggle.",
-        "Sound FX toggle.",
-        "Game history page access.",
-        "Information screen page navigation and close controls.",
-        "Bet menu shows bet multiplier and total bet in coins/cash.",
-        "Maximum win amount is limited to 15000x bet; if reached, round ends and remaining features are forfeited."
-      ]
-    },
-    {
-      "title": "AUTOPLAY",
-      "points": [
-        "Click button showing number of possible auto-spins to start Autoplay.",
-        "Skip Screens option auto-skips feature introduction and end screens after a short period."
       ]
     }
   ]
