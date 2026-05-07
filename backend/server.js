@@ -1,4 +1,4 @@
-const http = require("http");
+﻿const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -54,6 +54,7 @@ const MULTI_SYMBOL = "MULTI";
 const SCATTER_SYMBOL = "SCATTER";
 
 const SYMBOL_PAYOUTS = new Map();
+const SCATTER_PAYOUTS = {};
 const REGULAR_SYMBOLS = [];
 const SYMBOL_WEIGHTS = new Map();
 let multiplierNonce = 0;
@@ -117,7 +118,11 @@ for (const symbolEntry of gameRules.symbol_payout_display.symbols) {
   const code = String(symbolEntry.symbol || "").toUpperCase().replace(/\s+/g, "_");
   // Map the symbol to its actual image asset path for the frontend
   symbolEntry.asset_path = `/assets/symbols/${code.toLowerCase()}.svg`;
-  if (!code || code === SCATTER_SYMBOL) continue;
+  if (!code) continue;
+  if (code === SCATTER_SYMBOL) {
+    Object.assign(SCATTER_PAYOUTS, symbolEntry.payouts || {});
+    continue;
+  }
   REGULAR_SYMBOLS.push(code);
   SYMBOL_PAYOUTS.set(code, symbolEntry.payouts || {});
 }
@@ -275,7 +280,8 @@ function toPublicMultipliers(multipliers = []) {
   return (multipliers || []).map((m) => ({
     row: Number(m.row),
     col: Number(m.col),
-    value: Number(m.value)
+    value: Number(m.value),
+    id: String(m.id || "")
   }));
 }
 
@@ -294,6 +300,10 @@ function payoutByCount(payoutMap, count) {
   if (count >= 10) return Number(payoutMap["10-11"] || 0);
   if (count >= 8) return Number(payoutMap["8-9"] || 0);
   return 0;
+}
+
+function scatterPayoutByCount(count) {
+  return Number(SCATTER_PAYOUTS[String(count)] || 0);
 }
 
 function evaluateWaysWin(matrix, betAmount) {
@@ -423,15 +433,18 @@ function injectForcedMultiplier(matrix, multipliers, forcedValue) {
 function evaluateSpinRound(session, betAmount, options = {}) {
   const rtpProfile = options.rtp_profile || getRtpProfileByGameId(options.game_id || session?.gameId);
   const basePayoutScaler = Number(
-    rtpProfile?.base_payout_scaler ?? rtpProfile?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
+    rtpProfile?.payout_scaler ?? rtpProfile?.base_payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
   );
   const freeSpinPayoutScaler = Number(
     rtpProfile?.free_spin_payout_scaler ?? rtpProfile?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
   );
   const anteEnabled = Boolean(options.ante_enabled);
   const forceFreeSpinTrigger = Boolean(options.force_free_spin_trigger);
+  const skipBetCharge = Boolean(options.skip_bet_charge);
   const isFreeSpin = session.freeSpinsLeft > 0;
-  const betCharged = !isFreeSpin && anteEnabled ? Number((betAmount * ANTE_MULTIPLIER).toFixed(2)) : betAmount;
+  const betCharged = skipBetCharge
+    ? 0
+    : (!isFreeSpin && anteEnabled ? Number((betAmount * ANTE_MULTIPLIER).toFixed(2)) : betAmount);
   if (!isFreeSpin && session.balance < betCharged) {
     throw new Error("INSUFFICIENT_FUNDS");
   }
@@ -471,7 +484,19 @@ function evaluateSpinRound(session, betAmount, options = {}) {
       win_total: ways.total,
       winning_positions: ways.winning_positions
     });
-    if (ways.total <= 0) break;
+    if (ways.total <= 0) {
+      // If a tumble chain already produced wins, count multipliers that
+      // landed on the final (non-winning) board too.
+      if (sequenceWin > 0) {
+        for (const m of multipliers) {
+          const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
+          if (countedMultiplierIds.has(id)) continue;
+          countedMultiplierIds.add(id);
+          sequenceMultiplierSum += Number(m.value || 0);
+        }
+      }
+      break;
+    }
     sequenceWin += ways.total;
     for (const m of multipliers) {
       const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
@@ -492,40 +517,48 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     if (scatters > highestScatterSeen) highestScatterSeen = scatters;
   }
 
+  // Safety: derive scatter peak from recorded tumble snapshots too, so
+  // retrigger checks remain correct even if future loop flow changes.
+  const scatterPeakFromSteps = tumbleSteps.reduce((maxSeen, step) => {
+    const c = countSymbol(step?.matrix || [], SCATTER_SYMBOL);
+    return c > maxSeen ? c : maxSeen;
+  }, 0);
+  const scatterPeak = Math.max(highestScatterSeen, scatterPeakFromSteps);
+
+  const payoutScaler = isFreeSpin ? freeSpinPayoutScaler : basePayoutScaler;
+  const scaledSequenceWin = Number((sequenceWin * payoutScaler).toFixed(2));
+  const scatterWin = Number((scatterPayoutByCount(scatterPeak) * betAmount * payoutScaler).toFixed(2));
+  const preMultiplierWin = Number((scaledSequenceWin + scatterWin).toFixed(2));
+
   let multiplierApplied = 1;
   let multiplierGainApplied = 0;
   if (isFreeSpin) {
-    // Free-spin behavior: caught multipliers PERSIST across the whole bonus
-    // round. session.freeSpinPersistentMultiplier accumulates every catch and
-    // is applied to every spin until the bonus ends.
-    const prevPersistent = Number(session.freeSpinPersistentMultiplier || 0);
+    const prevPersistent = Number(session.freeSpinPersistentMultiplier || 1);
     if (sequenceWin > 0) {
-      multiplierGainApplied = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
-      multiplierApplied = Math.max(1, multiplierGainApplied);
-      session.freeSpinPersistentMultiplier = multiplierGainApplied;
+      multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
+      const nextPersistent = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
+      session.freeSpinPersistentMultiplier = nextPersistent;
+      multiplierApplied = Math.max(1, nextPersistent);
     } else {
-      multiplierGainApplied = prevPersistent;
+      multiplierGainApplied = 0;
       multiplierApplied = Math.max(1, prevPersistent);
     }
   } else if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
-    // Base spins: caught multipliers apply only to this spin (no persistence).
     multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
-    multiplierApplied = multiplierGainApplied;
+    multiplierApplied = Number(sequenceMultiplierSum.toFixed(2));
   }
 
-  // Pay literal: line win × caught multiplier. No hidden RTP scaler.
-  let totalWin = Number((sequenceWin * multiplierApplied).toFixed(2));
+  let totalWin = Number((preMultiplierWin * multiplierApplied).toFixed(2));
   const maxWinCap = Number((MAX_WIN_CAP_X * betAmount).toFixed(2));
   if (totalWin > maxWinCap) totalWin = maxWinCap;
 
   let freeSpinsAwarded = 0;
-  if (!isFreeSpin && highestScatterSeen >= FREE_SPINS_TRIGGER) {
+  if (!isFreeSpin && scatterPeak >= FREE_SPINS_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_AWARD;
     session.freeSpinsLeft += freeSpinsAwarded;
-    // Bonus starts fresh — no carry-over from a prior round.
-    session.freeSpinPersistentMultiplier = 0;
+    session.freeSpinPersistentMultiplier = 1;
   }
-  if (isFreeSpin && highestScatterSeen >= FREE_SPINS_RETRIGGER_TRIGGER) {
+  if (isFreeSpin && scatterPeak >= FREE_SPINS_RETRIGGER_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_RETRIGGER_AWARD;
     session.freeSpinsLeft += freeSpinsAwarded;
   }
@@ -546,7 +579,8 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     tumble_steps: tumbleSteps,
     ways_wins: sequenceWins,
     winning_positions: firstWinningPositions,
-    scatter_count: highestScatterSeen,
+    scatter_count: scatterPeak,
+    scatter_win: scatterWin,
     free_spins_awarded: freeSpinsAwarded,
     free_spins_left: session.freeSpinsLeft,
     multipliers_count_sequence: countedMultiplierIds.size,
@@ -558,7 +592,6 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     balance_after: session.balance
   };
 }
-
 function simulateOneBonusRound(betAmount, options = {}) {
   const session = {
     balance: 0,
@@ -1107,6 +1140,7 @@ function handleApi(req, res, parsedUrl) {
         const round = evaluateSpinRound(session, betAmount, {
           ante_enabled: false,
           force_free_spin_trigger: true,
+          skip_bet_charge: true,
           game_id: session.gameId,
           rtp_profile: session.rtpProfile
         });
@@ -1209,3 +1243,4 @@ server.on("error", (err) => {
 });
 
 startServerWithPortFallback(BASE_PORT);
+

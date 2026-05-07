@@ -105,7 +105,9 @@ const state = {
   forcedMultiplierLock: null,
   spinFlownSouls: new Set(),
   spinMultDisplay: 1,
-  spinCelebratedMultis: new Set()
+  spinCelebratedMultis: new Set(),
+  bonusMultiplierCarry: 1,
+  roundAnimating: false
 };
 
 const rows = 5;
@@ -162,6 +164,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
+
+async function animateWinMeter(from, to, duration = 260) {
+  const start = Number(from || 0);
+  const end = Number(to || 0);
+  if (!el.lastWin) return;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || duration <= 0 || Math.abs(end - start) < 0.01) {
+    el.lastWin.textContent = fmt(end);
+    return;
+  }
+  const t0 = performance.now();
+  const span = Math.max(80, duration);
+  while (true) {
+    const t = clamp((performance.now() - t0) / span, 0, 1);
+    const eased = 1 - (1 - t) ** 3;
+    el.lastWin.textContent = fmt(lerp(start, end, eased));
+    if (t >= 1) break;
+    await sleep(16);
+  }
+  el.lastWin.textContent = fmt(end);
+}
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeOutQuint = (t) => 1 - (1 - t) ** 5;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -252,6 +274,7 @@ class ReelCanvasRenderer {
       struckKeys: new Set(),
       lightning: []
     };
+    this.multiplierDecoyById = new Map();
     this.particles = [];
     this.time = 0;
     this.lastTick = performance.now();
@@ -436,6 +459,23 @@ class ReelCanvasRenderer {
   resetHeavyBangs() {
     this.fx.bangedKeys = new Set();
     this.fx.struckKeys = new Set();
+    this.multiplierDecoyById = new Map();
+  }
+
+  pickStableMultiplierDecoy(multiplierId, forbiddenSymbols = [], salt = "") {
+    const blocked = new Set((forbiddenSymbols || []).filter(Boolean));
+    const regularSymbols = Object.keys(payouts);
+    const pool = regularSymbols.filter((s) => !blocked.has(s));
+    const pickPool = pool.length ? pool : regularSymbols;
+    if (!pickPool.length) return "BLUE_DIAMOND";
+    const seed = `${String(multiplierId || "anon")}|${String(salt || "")}`;
+    let hash = 2166136261;
+    for (let i = 0; i < seed.length; i += 1) {
+      hash ^= seed.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+      hash >>>= 0;
+    }
+    return pickPool[hash % pickPool.length] || pickPool[0];
   }
 
   // Spawns a tier-scaled lightning strike at the given cell. Used both
@@ -520,15 +560,17 @@ class ReelCanvasRenderer {
       const v = Number(m?.value || 0);
       if (!Number.isInteger(m?.row) || !Number.isInteger(m?.col) || v <= 0) return;
       const tier = getMultiplierTier(v);
-      const k = `${m.row}-${m.col}-${v}`;
+      // Track by stable multiplier id when available so a multiplier that drops
+      // during tumbles stays the same logical object (no re-conceal/re-reveal).
+      const k = m?.id ? `id:${m.id}` : `${m.row}-${m.col}-${v}`;
       if (this.fx.struckKeys.has(k)) return; // already struck this spin
       const isHeavyEligible =
         tier.key !== "common" && !alreadyBanged && heavyCells.size === 0;
       if (isHeavyEligible) {
-        heavyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k });
+        heavyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k, id: m?.id || "" });
         if (v > peakValue) { peakValue = v; peakTier = tier; }
       } else {
-        lightOnlyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k });
+        lightOnlyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k, id: m?.id || "" });
       }
       this.fx.struckKeys.add(k);
     });
@@ -538,6 +580,13 @@ class ReelCanvasRenderer {
       ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
       : duration;
 
+    // Clear any stale reveal leftovers from the previous tumble step so
+    // decoy state cannot leak and briefly show an old symbol on this step.
+    this.fx.heavyReveals = new Map();
+
+    const previousBoard = Array.isArray(this.board.matrix)
+      ? this.board.matrix.map((row) => (Array.isArray(row) ? row.slice() : []))
+      : [];
     this.setBoard(matrix, { multipliers });
     this.fx.drop = { start: performance.now(), duration: dropDuration, map: dropMap, heavy: heavyCells };
     if (peakTier && heavyKeyMatchesDropMap) {
@@ -558,19 +607,31 @@ class ReelCanvasRenderer {
     // Schedule landing impacts and conceal each heavy cell's symbol until it
     // BANGs into place — the player should not see the multiplier value mid-air.
     const startTime = performance.now();
+    // Lightning/impact should be visible before the multiplier icon appears.
+    const heavyRevealLeadMs = 260;
+    const lightRevealLeadMs = 320;
+    const revealLeadMaxMs = Math.max(heavyRevealLeadMs, lightRevealLeadMs);
     heavyCells.forEach((info, key) => {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
       const land = this.dropDelay(r, c, count) + dropDuration;
       // Mark this cell concealed; render skips its icon until revealAt.
-      // Pick a regular symbol as the "decoy" the player sees falling. The
-      // multiplier visually replaces it on impact, so the cell is never empty
-      // mid-air.
-      const regulars = Object.keys(payouts);
-      const decoy = regulars[Math.floor(Math.random() * regulars.length)];
+      // Show a real symbol as decoy during fall (picked once per cell and
+      // kept stable for the full drop), then reveal multiplier on landing.
+      const prevSymbol = previousBoard?.[r]?.[c];
+      const sourceRow = r - count;
+      const sourceSymbol = Number.isInteger(sourceRow) && sourceRow >= 0 ? previousBoard?.[sourceRow]?.[c] : null;
+      const blockedColSymbols = (previousBoard || [])
+        .map((rowArr) => (Array.isArray(rowArr) ? rowArr[c] : null))
+        .filter(Boolean);
+      const decoy = this.pickStableMultiplierDecoy(
+        info.id,
+        [prevSymbol, sourceSymbol, "MULTI", "SCATTER", ...blockedColSymbols],
+        `${r}-${c}-${count}-heavy`
+      );
       this.fx.heavyReveals.set(key, {
-        revealAt: startTime + land,
+        revealAt: startTime + land + heavyRevealLeadMs,
         revealDuration: 320,
         tier: info.tier,
         value: info.value,
@@ -584,11 +645,10 @@ class ReelCanvasRenderer {
     // but reveal on a tier-scaled lightning strike instead of a BANG. The
     // player sees a regular decoy symbol fall, then the lightning hits and
     // the multiplier pops in. No BANG, no shake, no shockwaves.
-    const regulars = Object.keys(payouts);
     lightOnlyCells.forEach((info, key) => {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
-      if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+      if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
       const land = this.dropDelay(r, c, count) + dropDuration;
       // Tier-scaled reveal pop — common is quick, escalates with rank.
       const revealDuration = info.tier.key === "mythic" ? 320
@@ -596,17 +656,27 @@ class ReelCanvasRenderer {
         : info.tier.key === "epic" ? 280
         : info.tier.key === "rare" ? 250
         : 220; // common
+      const prevSymbol = previousBoard?.[r]?.[c];
+      const sourceRow = r - count;
+      const sourceSymbol = Number.isInteger(sourceRow) && sourceRow >= 0 ? previousBoard?.[sourceRow]?.[c] : null;
+      const blockedColSymbols = (previousBoard || [])
+        .map((rowArr) => (Array.isArray(rowArr) ? rowArr[c] : null))
+        .filter(Boolean);
       this.fx.heavyReveals.set(key, {
-        revealAt: startTime + land,
+        revealAt: startTime + land + lightRevealLeadMs,
         revealDuration,
         tier: info.tier,
         value: info.value,
-        decoy: regulars[Math.floor(Math.random() * regulars.length)]
+        decoy: this.pickStableMultiplierDecoy(
+          info.id,
+          [prevSymbol, sourceSymbol, "MULTI", "SCATTER", ...blockedColSymbols],
+          `${r}-${c}-${count}-light`
+        )
       });
       setTimeout(() => this.spawnLightningStrike(r, c, info.tier), Math.max(0, land));
     });
 
-    await sleep(dropDuration + maxDelay + 90);
+    await sleep(dropDuration + maxDelay + revealLeadMaxMs + 90);
     this.fx.drop = null;
     this.fx.heavyDrop = null;
   }
@@ -834,6 +904,43 @@ class ReelCanvasRenderer {
     };
     await sleep(duration);
     this.fx.jackpotFlash = null;
+  }
+
+  isVisuallyBusy() {
+    const now = performance.now();
+    const timedFxActive =
+      (this.fx.drop && now < this.fx.drop.start + this.fx.drop.duration + 120) ||
+      (this.fx.pulse && now < this.fx.pulse.start + this.fx.pulse.duration + 80) ||
+      (this.fx.blast && now < this.fx.blast.start + this.fx.blast.duration + 100) ||
+      (this.fx.spinBurst && now < this.fx.spinBurst.start + this.fx.spinBurst.duration + 80) ||
+      (this.fx.multiCatch && now < this.fx.multiCatch.start + this.fx.multiCatch.duration + 120) ||
+      (this.fx.reelSlam && now < this.fx.reelSlam.start + this.fx.reelSlam.duration + 120) ||
+      (this.fx.jackpotFlash && now < this.fx.jackpotFlash.start + this.fx.jackpotFlash.duration + 120) ||
+      (this.fx.charge && now < this.fx.charge.start + this.fx.charge.duration + 120) ||
+      (this.fx.spotlight && now < this.fx.spotlight.start + this.fx.spotlight.duration + 120) ||
+      (this.fx.heavyDrop && now < this.fx.heavyDrop.start + this.fx.heavyDrop.duration + 140);
+    return Boolean(
+      timedFxActive ||
+      this.fx.heavyReveals.size ||
+      this.fx.shockwaves.length ||
+      this.fx.lightning.length ||
+      this.fx.impacts.length ||
+      this.fx.bangs.length ||
+      this.fx.rays.length ||
+      this.particles.length
+    );
+  }
+
+  async waitForIdle({ timeout = 4200, stableMs = 160, pollMs = 16 } = {}) {
+    const start = performance.now();
+    let stableFor = 0;
+    while (performance.now() - start < timeout) {
+      const busy = this.isVisuallyBusy();
+      if (busy) stableFor = 0;
+      else stableFor += pollMs;
+      if (!busy && stableFor >= stableMs) return;
+      await sleep(pollMs);
+    }
   }
 
   loop() {
@@ -1571,6 +1678,47 @@ function buildDropMap(stepMatrix, winningPositions = []) {
   return map;
 }
 
+function normalizeStepMultiplierIds(steps = []) {
+  if (!Array.isArray(steps) || !steps.length) return;
+  let seq = 0;
+  let prevTracked = [];
+  steps.forEach((step) => {
+    const source = Array.isArray(step?.multipliers) ? step.multipliers : [];
+    const current = source.map((m) => ({ ...m }));
+    const usedPrev = new Set();
+    current.forEach((m) => {
+      if (typeof m?.id === "string" && m.id) return;
+      const value = Number(m?.value || 0);
+      if (!Number.isFinite(value) || !Number.isInteger(m?.row) || !Number.isInteger(m?.col)) {
+        m.id = `local_m_${seq += 1}`;
+        return;
+      }
+      let bestIdx = -1;
+      let bestScore = Infinity;
+      for (let i = 0; i < prevTracked.length; i += 1) {
+        if (usedPrev.has(i)) continue;
+        const p = prevTracked[i];
+        if (Number(p.value) !== value) continue;
+        const score = (p.col === m.col ? 0 : 4) + Math.abs(p.col - m.col) * 2 + Math.abs(p.row - m.row);
+        if (score < bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0 && bestScore <= 8) {
+        m.id = prevTracked[bestIdx].id;
+        usedPrev.add(bestIdx);
+      } else {
+        m.id = `local_m_${seq += 1}`;
+      }
+    });
+    step.multipliers = current;
+    prevTracked = current
+      .filter((m) => Number.isInteger(m?.row) && Number.isInteger(m?.col) && Number.isFinite(Number(m?.value)))
+      .map((m) => ({ id: String(m.id), row: Number(m.row), col: Number(m.col), value: Number(m.value) }));
+  });
+}
+
 const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCount: cols });
 
 function winTier(waysWins = [], bet = 1) {
@@ -1782,7 +1930,7 @@ function flyMultiplierSouls(multipliers = []) {
   // through multiple tumble steps.
   const valid = [];
   for (const m of all) {
-    const key = `${m.row}-${m.col}-${m.value}`;
+    const key = m?.id ? `id:${m.id}` : `${m.row}-${m.col}-${m.value}`;
     if (state.spinFlownSouls.has(key)) continue;
     state.spinFlownSouls.add(key);
     valid.push(m);
@@ -2399,13 +2547,18 @@ function applyRoundStats(payload, bet, wagerOverride) {
 }
 
 async function animateRound(payload, bet, wagerOverride) {
+  state.roundAnimating = true;
+  try {
   const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
     ? payload.tumble_steps
     : [{ matrix: payload.matrix, multipliers: payload.multipliers || [], winning_positions: payload.winning_positions || [], ways_wins: payload.ways_wins || [], win_total: payload.total_win || 0 }];
+  normalizeStepMultiplierIds(steps);
 
   state.spinFlownSouls = new Set();
   state.spinCelebratedMultis = new Set();
   state.spinMultDisplay = parseFloat(el.activeMultiplier.textContent) || 1;
+  let liveRawWin = 0;
+  el.lastWin.textContent = "0.00";
   reelRenderer.resetHeavyBangs();
   if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
@@ -2433,6 +2586,8 @@ async function animateRound(payload, bet, wagerOverride) {
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);
     if ((step.winning_positions || []).length && stepWin > 0) {
+      liveRawWin = Number((liveRawWin + stepWin).toFixed(2));
+      await animateWinMeter(Number(el.lastWin.textContent || 0), liveRawWin, 220);
       const winX = bet > 0 ? stepWin / bet : 0;
       const label = winX >= 100
         ? "Epic Win"
@@ -2461,7 +2616,7 @@ async function animateRound(payload, bet, wagerOverride) {
         // cascades that drag the same multipliers through don't re-fire the
         // catch animation, banner, callout, shake, or flash.
         const fresh = step.multipliers.filter((m) => {
-          const k = `${m?.row}-${m?.col}-${Number(m?.value || 0)}`;
+          const k = m?.id ? `id:${m.id}` : `${m?.row}-${m?.col}-${Number(m?.value || 0)}`;
           if (state.spinCelebratedMultis.has(k)) return false;
           state.spinCelebratedMultis.add(k);
           return true;
@@ -2503,22 +2658,47 @@ async function animateRound(payload, bet, wagerOverride) {
   // the raw win and the multiplier together visually and reveal the total.
   const appliedMult = Number(payload.multiplier_applied || 1);
   const totalWinAmt = Number(payload.total_win || 0);
+  const meterBeforeFinal = Number(el.lastWin.textContent || 0);
+  if (totalWinAmt > meterBeforeFinal + 0.009) {
+    pulseBanner(`Multiplier Applied ${mfmt(appliedMult)}`, "bonus", 760);
+    await animateWinMeter(meterBeforeFinal, totalWinAmt, appliedMult > 1 ? 520 : 260);
+  }
   if (appliedMult >= 50 && totalWinAmt > 0) {
     const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
     await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
   }
 
   if (Number(payload.free_spins_awarded || 0) > 0) {
-    pulseBanner(`Bonus Triggered: +${payload.free_spins_awarded} Free Spins`, "bonus", 1400);
-    showWinCallout(payload.total_win || 0, "Bonus Trigger", 1400);
+    if (payload.is_free_spin) {
+      pulseBanner(`Retrigger +${payload.free_spins_awarded} Free Spins`, "bonus", 1300);
+      showWinCallout(payload.free_spins_awarded || 0, "Retrigger", 1200);
+      shakeVault("normal");
+      await sleep(760);
+    }
     pushGameMessage(`Bonus triggered: +${payload.free_spins_awarded} free spins.`, "bonus");
-    shakeVault("strong");
   } else if (Number(payload.total_win || 0) <= 0) {
     // No on-screen "No Win" banner — silence is fine, the player can see it.
     pushGameMessage("No win this spin.", "info");
   } else {
     const totalWinX = bet > 0 ? Number(payload.total_win || 0) / bet : 0;
-    if (totalWinX >= 12) {
+    if (payload.is_free_spin) {
+      const bonusLabel = totalWinX >= 50
+        ? "Sensational Win"
+        : totalWinX >= 25
+          ? "Huge Win"
+          : totalWinX >= 10
+            ? "Big Win"
+            : "";
+      if (bonusLabel) {
+        showWinCallout(payload.total_win || 0, bonusLabel, totalWinX >= 50 ? 1300 : 1100);
+        pulseBanner(`${bonusLabel} ${fmt(payload.total_win || 0)}`, "win", totalWinX >= 50 ? 1200 : 1000);
+        // Hold the round slightly longer on notable bonus wins so the player
+        // can actually read and feel the moment before the next spin starts.
+        await sleep(totalWinX >= 50 ? 1200 : totalWinX >= 25 ? 900 : 700);
+      } else if (totalWinX >= 12) {
+        pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
+      }
+    } else if (totalWinX >= 12) {
       pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
     }
     pushGameMessage(`Total spin win: ${fmt(payload.total_win || 0)}.`, "win");
@@ -2527,18 +2707,33 @@ async function animateRound(payload, bet, wagerOverride) {
   el.balance.textContent = fmt(payload.balance_after || 0);
   el.lastWin.textContent = fmt(payload.total_win || 0);
   el.freeSpins.textContent = String(payload.free_spins_left || 0);
-  el.activeMultiplier.textContent = mfmt(payload.is_free_spin ? payload.free_spin_multiplier_current : payload.multiplier_applied || 1);
+  if (payload.is_free_spin) {
+    const reportedBonusMult = Number(payload.free_spin_multiplier_current);
+    const appliedMult = Number(payload.multiplier_applied || 1);
+    const safeReported = Number.isFinite(reportedBonusMult) && reportedBonusMult > 0 ? reportedBonusMult : 1;
+    const safeApplied = Number.isFinite(appliedMult) && appliedMult > 0 ? appliedMult : 1;
+    state.bonusMultiplierCarry = Math.max(state.bonusMultiplierCarry || 1, safeReported, safeApplied);
+    el.activeMultiplier.textContent = mfmt(state.bonusMultiplierCarry);
+  } else {
+    state.bonusMultiplierCarry = 1;
+    el.activeMultiplier.textContent = mfmt(payload.multiplier_applied || 1);
+  }
   el.winningLines.textContent = String((payload.ways_wins || []).length);
   const finalStep = steps[steps.length - 1] || {};
   renderCaughtLines(payload.ways_wins || [], finalStep.multipliers || payload.multipliers || []);
   pushSpinLog(payload, bet);
   el.resultDump.textContent = JSON.stringify(payload, null, 2);
   applyRoundStats(payload, bet, wagerOverride);
+  await reelRenderer.waitForIdle();
+  } finally {
+    state.roundAnimating = false;
+  }
 }
 
 async function spin(options = {}) {
   if (!state.sessionId) return;
   if (state.bonusAutoplay && !options.autoplay) return;
+  if (state.roundAnimating) return;
   setControls(true);
   try {
     const bet = Number(el.betSelect.value || 1);
