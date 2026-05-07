@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"^const \\\\$ = \\\\|^const el = \" c:/Users/OTO/Documents/Web-Projects/Provider/client/main.js)"
+    ]
+  }
+}

@@ -15,7 +15,7 @@
             <h1>Banana X</h1>
           </div>
           <div class="status-ribbon">
-            <div class="status-ribbon-item">
+            <div class="status-ribbon-item admin-only" id="sessionIdItem">
               <span>Session</span>
               <strong id="sessionId">-</strong>
             </div>
@@ -32,18 +32,7 @@
         </div>
 
         <section class="altar-core">
-          <aside class="oracle-panel" aria-label="Live stats and logs">
-            <section class="oracle-band">
-              <h2>Vault State</h2>
-              <div class="meter-pair">
-                <div class="meter-node"><span>Balance</span><strong id="balance">-</strong></div>
-                <div class="meter-node"><span>Bet</span><strong id="betView">1.00</strong></div>
-                <div class="meter-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
-                <div class="meter-node"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
-                <div class="meter-node meter-node-multi"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
-              </div>
-            </section>
-
+          <aside class="oracle-panel admin-only" aria-label="Live stats and logs">
             <section class="oracle-band">
               <div class="band-head">
                 <h2>Last 10 Spins</h2>
@@ -60,16 +49,26 @@
               </div>
               <div class="summary-grid">
                 <div><span>Spins</span><strong id="spinsPlayed">0</strong></div>
-                <div><span>Wins</span><strong id="winSpins">0</strong></div>
-                <div><span>Losses</span><strong id="lossSpins">0</strong></div>
+                <div class="admin-only"><span>Hit Rate</span><strong id="sessionHitRate">0.00%</strong></div>
                 <div><span>Wagered</span><strong id="sessionWagered">0.00</strong></div>
                 <div><span>Won</span><strong id="sessionWon">0.00</strong></div>
                 <div><span>Net</span><strong id="sessionNet">0.00</strong></div>
+                <div class="admin-only"><span>Session RTP</span><strong id="sessionRtp">—</strong></div>
+                <div><span>Best Win ×</span><strong id="sessionMaxWinX">0.00x</strong></div>
+                <div><span>Bonus Hits</span><strong id="sessionBonusHits">0</strong></div>
+                <div class="admin-only"><span>Wins / Losses</span><strong id="sessionWinLoss">0 / 0</strong></div>
               </div>
             </section>
           </aside>
 
           <section class="vault-shell">
+            <div class="hud-bar">
+              <div class="hud-node"><span>Balance</span><strong id="balance">-</strong></div>
+              <div class="hud-node"><span>Bet</span><strong id="betView">1.00</strong></div>
+              <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
+              <div class="hud-node"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
+              <div class="hud-node hud-node-multi"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
+            </div>
             <div class="vault-window">
               <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
                 <span id="eventBannerText">Ready</span>
@@ -93,22 +92,32 @@
             </div>
 
             <section class="ritual-deck" aria-label="Controls">
-              <label class="ritual-module" for="betSelect">
-                <span>Bet Size</span>
-                <select id="betSelect"></select>
-              </label>
-              <label class="ritual-toggle" for="anteToggle">
-                <input id="anteToggle" type="checkbox" />
-                <span>Ante Bet 1.25x</span>
-              </label>
-              <button id="spinBtn" type="button">Invoke Spin</button>
-              <button id="buyFreeBtn" type="button">Buy Free Spins</button>
-              <button id="simulateBtn" type="button">Imitate 1M Spins</button>
-              <button id="simulateBonusBtn" type="button">Imitate 1M Bonus Rounds</button>
+              <div class="deck-left">
+                <div class="bet-stepper" role="group" aria-label="Bet Size">
+                  <button type="button" class="bet-step bet-step-down" id="betDownBtn" aria-label="Decrease bet">−</button>
+                  <span class="bet-display" id="betDisplay">1.00</span>
+                  <button type="button" class="bet-step bet-step-up" id="betUpBtn" aria-label="Increase bet">+</button>
+                  <select id="betSelect" class="bet-select-hidden" aria-hidden="true" tabindex="-1"></select>
+                </div>
+                <label class="ante-toggle" for="anteToggle">
+                  <input id="anteToggle" type="checkbox" />
+                  <img class="ante-toggle-img" id="anteToggleImg" src="/assets/symbols/ANTE_INACTIVE-removebg-preview.png" alt="Ante Bet 1.25x" />
+                </label>
+              </div>
+              <button id="spinBtn" type="button" class="img-btn img-btn-spin" aria-label="Spin">
+                <img src="/assets/symbols/SPIN.png" alt="Spin" />
+              </button>
+              <div class="deck-right">
+                <button id="buyFreeBtn" type="button" class="img-btn img-btn-buy" aria-label="Buy Free Spins">
+                  <img src="/assets/symbols/BUY_FEATURE-removebg-preview.png" alt="Buy Free Spins" />
+                </button>
+                <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
+                <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
+              </div>
             </section>
           </section>
 
-          <aside class="archive-panel" aria-label="Simulation and outputs">
+          <aside class="archive-panel admin-only" aria-label="Simulation and outputs">
             <section class="archive-band">
               <div class="band-head">
                 <h2>1M Simulation</h2>
@@ -168,7 +177,7 @@
           </aside>
         </section>
 
-        <section class="codex-strip">
+        <section class="codex-strip admin-only">
           <section class="codex-band">
             <div class="band-head">
               <h2>Game Information</h2>
@@ -207,6 +216,22 @@
         </section>
       </section>
     </main>
+
+    <section class="confirm-modal hidden" id="buyConfirmModal" aria-hidden="true" aria-modal="true" role="dialog">
+      <div class="confirm-dialog">
+        <h2 class="confirm-title">Buy Feature?</h2>
+        <p class="confirm-copy">Trigger Free Spins immediately for</p>
+        <div class="confirm-cost">
+          <span class="confirm-cost-amount" id="buyCostAmount">0.00</span>
+          <span class="confirm-cost-currency" id="buyCostCurrency">GEL</span>
+        </div>
+        <p class="confirm-meta" id="buyCostMeta">100× your current bet</p>
+        <div class="confirm-actions">
+          <button type="button" id="buyCancelBtn" class="confirm-btn confirm-btn-cancel">Cancel</button>
+          <button type="button" id="buyConfirmBtn" class="confirm-btn confirm-btn-confirm">Buy</button>
+        </div>
+      </div>
+    </section>
 
     <section class="rules-modal hidden" id="rulesModal" aria-hidden="true">
       <div class="rules-dialog">

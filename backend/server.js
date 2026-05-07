@@ -494,16 +494,27 @@ function evaluateSpinRound(session, betAmount, options = {}) {
 
   let multiplierApplied = 1;
   let multiplierGainApplied = 0;
-  if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+  if (isFreeSpin) {
+    // Free-spin behavior: caught multipliers PERSIST across the whole bonus
+    // round. session.freeSpinPersistentMultiplier accumulates every catch and
+    // is applied to every spin until the bonus ends.
+    const prevPersistent = Number(session.freeSpinPersistentMultiplier || 0);
+    if (sequenceWin > 0) {
+      multiplierGainApplied = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
+      multiplierApplied = Math.max(1, multiplierGainApplied);
+      session.freeSpinPersistentMultiplier = multiplierGainApplied;
+    } else {
+      multiplierGainApplied = prevPersistent;
+      multiplierApplied = Math.max(1, prevPersistent);
+    }
+  } else if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
+    // Base spins: caught multipliers apply only to this spin (no persistence).
     multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
-  }
-  if (sequenceWin > 0 && multiplierGainApplied > 0) {
-    // Direct multiplier behavior: caught multipliers apply as-is to the spin win.
     multiplierApplied = multiplierGainApplied;
   }
 
-  const roundPayoutScaler = isFreeSpin ? freeSpinPayoutScaler : basePayoutScaler;
-  let totalWin = Number((sequenceWin * multiplierApplied * roundPayoutScaler).toFixed(2));
+  // Pay literal: line win × caught multiplier. No hidden RTP scaler.
+  let totalWin = Number((sequenceWin * multiplierApplied).toFixed(2));
   const maxWinCap = Number((MAX_WIN_CAP_X * betAmount).toFixed(2));
   if (totalWin > maxWinCap) totalWin = maxWinCap;
 
@@ -511,7 +522,8 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   if (!isFreeSpin && highestScatterSeen >= FREE_SPINS_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_AWARD;
     session.freeSpinsLeft += freeSpinsAwarded;
-    session.freeSpinPersistentMultiplier = 1;
+    // Bonus starts fresh — no carry-over from a prior round.
+    session.freeSpinPersistentMultiplier = 0;
   }
   if (isFreeSpin && highestScatterSeen >= FREE_SPINS_RETRIGGER_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_RETRIGGER_AWARD;

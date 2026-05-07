@@ -1,5 +1,13 @@
 const $ = (id) => document.getElementById(id);
 
+// Public/admin mode — default is public (player view). Add `?admin=1` to the
+// URL (or set window.__adminMode = true before scripts load) for the dev view.
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const isAdmin = params.has("admin") || Boolean(window.__adminMode);
+  document.body.classList.add(isAdmin ? "admin-mode" : "public-mode");
+})();
+
 const el = {
   sessionId: $("sessionId"),
   balance: $("balance"),
@@ -9,6 +17,9 @@ const el = {
   freeSpins: $("freeSpins"),
   activeMultiplier: $("activeMultiplier"),
   betSelect: $("betSelect"),
+  betDisplay: $("betDisplay"),
+  betDownBtn: $("betDownBtn"),
+  betUpBtn: $("betUpBtn"),
   spinBtn: $("spinBtn"),
   simulateBtn: $("simulateBtn"),
   simulateBonusBtn: $("simulateBonusBtn"),
@@ -24,11 +35,14 @@ const el = {
   paytableTitle: $("paytableTitle"),
   caughtLines: $("caughtLines"),
   spinsPlayed: $("spinsPlayed"),
-  winSpins: $("winSpins"),
-  lossSpins: $("lossSpins"),
   sessionWagered: $("sessionWagered"),
   sessionWon: $("sessionWon"),
   sessionNet: $("sessionNet"),
+  sessionRtp: $("sessionRtp"),
+  sessionHitRate: $("sessionHitRate"),
+  sessionMaxWinX: $("sessionMaxWinX"),
+  sessionBonusHits: $("sessionBonusHits"),
+  sessionWinLoss: $("sessionWinLoss"),
   simProgressBar: $("simProgressBar"),
   simProgressLabel: $("simProgressLabel"),
   simLiveRtp: $("simLiveRtp"),
@@ -88,7 +102,10 @@ const state = {
   bannerTimer: null,
   calloutTimer: null,
   testBusy: false,
-  forcedMultiplierLock: null
+  forcedMultiplierLock: null,
+  spinFlownSouls: new Set(),
+  spinMultDisplay: 1,
+  spinCelebratedMultis: new Set()
 };
 
 const rows = 5;
@@ -108,26 +125,62 @@ const payouts = {
 const scatterPayouts = { 4: 6, 5: 10, 6: 200 };
 
 const symbolAssets = {
-  TOP_CROWN: "/assets/symbols/top_crown.svg",
-  HOURGLASS: "/assets/symbols/hourglass.svg",
-  RING: "/assets/symbols/ring.svg",
-  CHALICE: "/assets/symbols/chalice.svg",
-  RED_GEM: "/assets/symbols/red_gem.svg",
-  PURPLE_TRIANGLE: "/assets/symbols/purple_triangle.svg",
-  YELLOW_HEX: "/assets/symbols/yellow_hex.svg",
-  GREEN_TRIANGLE: "/assets/symbols/green_triangle.svg",
-  BLUE_DIAMOND: "/assets/symbols/blue_diamond.svg",
+  TOP_CROWN: "/assets/symbols/TOP_CROWN-removebg-preview.png",
+  HOURGLASS: "/assets/symbols/HOURGLASS-removebg-preview.png",
+  RING: "/assets/symbols/RING-removebg-preview.png",
+  CHALICE: "/assets/symbols/CHALICE-removebg-preview.png",
+  RED_GEM: "/assets/symbols/RED_GEM-removebg-preview.png",
+  PURPLE_TRIANGLE: "/assets/symbols/PURPLE_TRIANGLE-removebg-preview.png",
+  YELLOW_HEX: "/assets/symbols/YELLOW_HEX-removebg-preview.png",
+  GREEN_TRIANGLE: "/assets/symbols/GREEN_TRIANGLE-removebg-preview.png",
+  BLUE_DIAMOND: "/assets/symbols/BLUE_DIAMOND-removebg-preview.png",
+  REEL: "/assets/symbols/REEL.png",
   MULTI: "/assets/symbols/multi.svg",
-  SCATTER: "/assets/symbols/scatter.svg"
+  MULTI2: "/assets/symbols/MULTI2-removebg-preview.png",
+  MULTI3: "/assets/symbols/MULTI3-removebg-preview.png",
+  MULTI4: "/assets/symbols/MULTI4-removebg-preview.png",
+  MULTI5: "/assets/symbols/MULTI5-removebg-preview.png",
+  MULTI6: "/assets/symbols/MULTI6-removebg-preview.png",
+  MULTI8: "/assets/symbols/MULTI8-removebg-preview.png",
+  MULTI10: "/assets/symbols/MULTI10-removebg-preview.png",
+  MULTI12: "/assets/symbols/MULTI12-removebg-preview.png",
+  MULTI15: "/assets/symbols/MULTI15-removebg-preview.png",
+  MULTI20: "/assets/symbols/MULTI20-removebg-preview.png",
+  MULTI25: "/assets/symbols/MULTI25-removebg-preview.png",
+  MULTI50: "/assets/symbols/MULTI50-removebg-preview.png",
+  MULTI100: "/assets/symbols/MULTI100-removebg-preview.png",
+  MULTI250: "/assets/symbols/MULTI250-removebg-preview.png",
+  MULTI500: "/assets/symbols/MULTI500-removebg-preview.png",
+  MULTI1000: "/assets/symbols/MULTI1000-removebg-preview.png",
+  SCATTER: "/assets/symbols/SCATTER.png"
 };
 
-const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0 };
+const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
+const easeOutCubic = (t) => 1 - (1 - t) ** 3;
+const easeOutQuint = (t) => 1 - (1 - t) ** 5;
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - 2 ** (-10 * t));
+const easeOutElastic = (t) => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const c4 = (2 * Math.PI) / 3;
+  return 2 ** (-10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+};
+const easeOutBounce = (t) => {
+  const n1 = 7.5625;
+  const d1 = 2.75;
+  if (t < 1 / d1) return n1 * t * t;
+  if (t < 2 / d1) { const u = t - 1.5 / d1; return n1 * u * u + 0.75; }
+  if (t < 2.5 / d1) { const u = t - 2.25 / d1; return n1 * u * u + 0.9375; }
+  const u = t - 2.625 / d1;
+  return n1 * u * u + 0.984375;
+};
 
 function setSigned(target, value) {
   target.classList.remove("positive", "negative");
@@ -183,11 +236,21 @@ class ReelCanvasRenderer {
       drop: null,
       pulse: null,
       blast: null,
+      charge: null,
       spinBurst: null,
       multiCatch: null,
       shockwaves: [],
       reelSlam: null,
-      jackpotFlash: null
+      jackpotFlash: null,
+      spotlight: null,
+      heavyDrop: null,
+      impacts: [],
+      rays: [],
+      heavyReveals: new Map(),
+      bangs: [],
+      bangedKeys: new Set(),
+      struckKeys: new Set(),
+      lightning: []
     };
     this.particles = [];
     this.time = 0;
@@ -233,21 +296,75 @@ class ReelCanvasRenderer {
     };
   }
 
-  spawnExplosionParticles(winning = [], strength = "medium") {
+  spawnExplosionParticles(winning = [], strength = "medium", delays = null) {
     if (!winning.length) return;
-    const perCell = strength === "great" ? 28 : strength === "small" ? 14 : 20;
-    const speed = strength === "great" ? 1.5 : strength === "small" ? 0.95 : 1.2;
+    const perCell = strength === "great" ? 56 : strength === "small" ? 16 : 28;
+    const speed = strength === "great" ? 2.15 : strength === "small" ? 0.95 : 1.4;
     winning.forEach((p) => {
       if (!Number.isInteger(p?.row) || !Number.isInteger(p?.col)) return;
+      const key = `${p.row}-${p.col}`;
+      const onset = delays?.get?.(key) || 0;
+      const fire = () => this.emitCellExplosion(p, strength, perCell, speed);
+      if (onset > 0) setTimeout(fire, onset);
+      else fire();
+    });
+  }
+
+  emitCellExplosion(p, strength, perCell, speed) {
       const center = this.cellCenter(p.row, p.col);
       const tone = symbolTone[this.board.matrix?.[p.row]?.[p.col] || "BLUE_DIAMOND"] || symbolTone.BLUE_DIAMOND;
+      const now = performance.now();
       this.fx.shockwaves.push({
         x: center.x,
         y: center.y,
-        born: performance.now(),
-        life: strength === "great" ? 820 : 620,
+        born: now,
+        life: strength === "great" ? 920 : strength === "small" ? 480 : 640,
         color: tone[0]
       });
+      if (strength === "great") {
+        // Triple-ring shockwave: bright core, gold afterburn, big white rim.
+        this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 90, life: 740, color: "rgba(255, 240, 196, 0.9)" });
+        this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 180, life: 1080, color: "rgba(255, 255, 255, 0.85)" });
+      } else if (strength === "medium") {
+        this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 70, life: 540, color: "rgba(220, 235, 255, 0.8)" });
+      }
+      // Radial light rays burst from each cell — the visual equivalent of the
+      // crack/boom you'd hear on impact.
+      if (strength !== "small") {
+        const rayCount = strength === "great" ? 10 : 6;
+        const rayLife = strength === "great" ? 540 : 380;
+        const rayLen = strength === "great" ? 4.6 : 3.0;
+        for (let i = 0; i < rayCount; i += 1) {
+          this.fx.rays.push({
+            x: center.x,
+            y: center.y,
+            angle: (Math.PI * 2 * i) / rayCount + Math.random() * 0.18,
+            born: now + Math.random() * 40,
+            life: rayLife,
+            len: rayLen,
+            color: tone[0]
+          });
+        }
+      }
+      // Embers: lightweight, slow, drifting upward — leftover heat after the
+      // burst. Skipped for small wins.
+      if (strength !== "small") {
+        const emberCount = strength === "great" ? 14 : 7;
+        for (let i = 0; i < emberCount; i += 1) {
+          this.particles.push({
+            x: center.x + (Math.random() - 0.5) * 14,
+            y: center.y + (Math.random() - 0.5) * 8,
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: -0.4 - Math.random() * 0.7,
+            life: 900 + Math.random() * 700,
+            born: now + 80 + Math.random() * 120,
+            size: 0.9 + Math.random() * 1.1,
+            colorA: tone[0],
+            colorB: "#fff2c8",
+            mode: "ember"
+          });
+        }
+      }
       for (let i = 0; i < perCell; i += 1) {
         const a = Math.random() * Math.PI * 2;
         const v = (1.8 + Math.random() * 2.7) * speed;
@@ -266,7 +383,6 @@ class ReelCanvasRenderer {
           spin: (Math.random() - 0.5) * 0.22
         });
       }
-    });
   }
 
   spawnMultiplierCatchParticles(multipliers = []) {
@@ -275,9 +391,11 @@ class ReelCanvasRenderer {
       const center = this.cellCenter(m.row, m.col);
       const valueNum = Number(m.value || 2);
       const tier = getMultiplierTier(valueNum);
-      for (let i = 0; i < 26; i += 1) {
-        const a = (Math.PI * 2 * i) / 26 + Math.random() * 0.2;
-        const outward = 1.1 + Math.random() * 1.7;
+      const tierBoost = tier.key === "mythic" ? 3.2 : tier.key === "legendary" ? 2.4 : tier.key === "epic" ? 1.7 : tier.key === "rare" ? 1.25 : 1;
+      const count = Math.round(26 * tierBoost);
+      for (let i = 0; i < count; i += 1) {
+        const a = (Math.PI * 2 * i) / count + Math.random() * 0.2;
+        const outward = (1.1 + Math.random() * 1.7) * Math.sqrt(tierBoost);
         this.particles.push({
           x: center.x,
           y: center.y,
@@ -315,31 +433,314 @@ class ReelCanvasRenderer {
     return this.drop(matrix, multipliers, introMap, 1120);
   }
 
+  resetHeavyBangs() {
+    this.fx.bangedKeys = new Set();
+    this.fx.struckKeys = new Set();
+  }
+
+  // Spawns a tier-scaled lightning strike at the given cell. Used both
+  // standalone (for common/rare without the BANG) and inside spawnHeavyImpact.
+  spawnLightningStrike(row, col, tier) {
+    const center = this.cellCenter(row, col);
+    const layout = this.getLayout();
+    const now = performance.now();
+
+    // Tier-scaled lightning parameters: small for common, escalating up.
+    const params = {
+      common:    { heaviness: 0.55, life: 360, forks: 0, jitter: 0.30, thick: 0.045 },
+      rare:      { heaviness: 0.85, life: 520, forks: 1, jitter: 0.42, thick: 0.065 },
+      epic:      { heaviness: 1.15, life: 640, forks: 2, jitter: 0.50, thick: 0.080 },
+      legendary: { heaviness: 1.35, life: 720, forks: 2, jitter: 0.55, thick: 0.090 },
+      mythic:    { heaviness: 1.60, life: 800, forks: 3, jitter: 0.62, thick: 0.105 }
+    };
+    const p = params[tier.key] || params.common;
+
+    const buildBolt = (sx, sy, ex, ey, jitter) => {
+      const segs = 7 + Math.floor(Math.random() * 4);
+      const points = [{ x: sx, y: sy }];
+      for (let i = 1; i < segs; i += 1) {
+        const t = i / segs;
+        const baseX = sx + (ex - sx) * t;
+        const baseY = sy + (ey - sy) * t;
+        const off = (Math.random() - 0.5) * jitter * (1 - Math.abs(t - 0.5) * 0.6);
+        points.push({ x: baseX + off, y: baseY });
+      }
+      points.push({ x: ex, y: ey });
+      return points;
+    };
+
+    const skyY = -8;
+    const mainPoints = buildBolt(
+      center.x + (Math.random() - 0.5) * 24,
+      skyY,
+      center.x,
+      center.y,
+      layout.laneW * p.jitter
+    );
+    this.fx.lightning.push({
+      points: mainPoints,
+      born: now - 20,
+      life: p.life,
+      thickness: Math.max(1.2, layout.radius * p.thick) * p.heaviness,
+      color: tier.accent,
+      glow: tier.glow
+    });
+
+    for (let f = 0; f < p.forks; f += 1) {
+      const branchIdx = 2 + Math.floor(Math.random() * (mainPoints.length - 4));
+      const branch = mainPoints[branchIdx];
+      if (!branch) continue;
+      const ex = branch.x + (Math.random() - 0.5) * layout.laneW * 1.4;
+      const ey = branch.y + 30 + Math.random() * 60;
+      this.fx.lightning.push({
+        points: buildBolt(branch.x, branch.y, ex, ey, layout.laneW * 0.35),
+        born: now - 20 + Math.random() * 30,
+        life: Math.round(p.life * 0.8),
+        thickness: Math.max(1, layout.radius * (p.thick * 0.55)) * p.heaviness,
+        color: tier.accent,
+        glow: tier.glow
+      });
+    }
+    return p; // used by spawnHeavyImpact for shockwave scaling
+  }
+
   async drop(matrix, multipliers = [], dropMap = {}, duration = 960) {
+    // Two flows for incoming multipliers:
+    //  • heavyCells: get the full BANG / conceal / reveal-pop treatment.
+    //    Only ONE per spin (first non-common); subsequent tumbles skip the BANG.
+    //  • lightOnlyCells: get just a tier-scaled lightning strike on landing.
+    //    Used for common tier and for any non-common multipliers after the
+    //    first BANG has already fired this spin.
+    const heavyCells = new Map();
+    const lightOnlyCells = new Map();
+    let peakTier = null;
+    let peakValue = 0;
+    const alreadyBanged = this.fx.bangedKeys.size > 0;
+    (multipliers || []).forEach((m) => {
+      const v = Number(m?.value || 0);
+      if (!Number.isInteger(m?.row) || !Number.isInteger(m?.col) || v <= 0) return;
+      const tier = getMultiplierTier(v);
+      const k = `${m.row}-${m.col}-${v}`;
+      if (this.fx.struckKeys.has(k)) return; // already struck this spin
+      const isHeavyEligible =
+        tier.key !== "common" && !alreadyBanged && heavyCells.size === 0;
+      if (isHeavyEligible) {
+        heavyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k });
+        if (v > peakValue) { peakValue = v; peakTier = tier; }
+      } else {
+        lightOnlyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k });
+      }
+      this.fx.struckKeys.add(k);
+    });
+    const heavyKeyMatchesDropMap = Array.from(heavyCells.keys()).some((k) => Object.prototype.hasOwnProperty.call(dropMap || {}, k));
+    // Snappier drop slow-down — the previous values dragged the moment out.
+    const dropDuration = (peakTier && heavyKeyMatchesDropMap)
+      ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
+      : duration;
+
     this.setBoard(matrix, { multipliers });
-    this.fx.drop = { start: performance.now(), duration, map: dropMap };
+    this.fx.drop = { start: performance.now(), duration: dropDuration, map: dropMap, heavy: heavyCells };
+    if (peakTier && heavyKeyMatchesDropMap) {
+      this.fx.heavyDrop = {
+        start: performance.now(),
+        duration: dropDuration,
+        cells: heavyCells,
+        peakTier,
+        map: dropMap
+      };
+    }
     const maxDelay = Object.entries(dropMap || {}).reduce((acc, [key, count]) => {
       const [row, col] = key.split("-").map((n) => Number(n));
       if (!Number.isFinite(row) || !Number.isFinite(col)) return acc;
       return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
     }, 0);
-    await sleep(duration + maxDelay + 70);
+
+    // Schedule landing impacts and conceal each heavy cell's symbol until it
+    // BANGs into place — the player should not see the multiplier value mid-air.
+    const startTime = performance.now();
+    heavyCells.forEach((info, key) => {
+      const [r, c] = key.split("-").map(Number);
+      const count = Number(dropMap?.[key] || 0);
+      if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
+      const land = this.dropDelay(r, c, count) + dropDuration;
+      // Mark this cell concealed; render skips its icon until revealAt.
+      // Pick a regular symbol as the "decoy" the player sees falling. The
+      // multiplier visually replaces it on impact, so the cell is never empty
+      // mid-air.
+      const regulars = Object.keys(payouts);
+      const decoy = regulars[Math.floor(Math.random() * regulars.length)];
+      this.fx.heavyReveals.set(key, {
+        revealAt: startTime + land,
+        revealDuration: 320,
+        tier: info.tier,
+        value: info.value,
+        decoy
+      });
+      this.fx.bangedKeys.add(info.dedupeKey);
+      setTimeout(() => this.spawnHeavyImpact(r, c, info.tier, info.value), land);
+    });
+
+    // Light-only multipliers: still concealed during fall like the heavy ones,
+    // but reveal on a tier-scaled lightning strike instead of a BANG. The
+    // player sees a regular decoy symbol fall, then the lightning hits and
+    // the multiplier pops in. No BANG, no shake, no shockwaves.
+    const regulars = Object.keys(payouts);
+    lightOnlyCells.forEach((info, key) => {
+      const [r, c] = key.split("-").map(Number);
+      const count = Number(dropMap?.[key] || 0);
+      if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+      const land = this.dropDelay(r, c, count) + dropDuration;
+      // Tier-scaled reveal pop — common is quick, escalates with rank.
+      const revealDuration = info.tier.key === "mythic" ? 320
+        : info.tier.key === "legendary" ? 300
+        : info.tier.key === "epic" ? 280
+        : info.tier.key === "rare" ? 250
+        : 220; // common
+      this.fx.heavyReveals.set(key, {
+        revealAt: startTime + land,
+        revealDuration,
+        tier: info.tier,
+        value: info.value,
+        decoy: regulars[Math.floor(Math.random() * regulars.length)]
+      });
+      setTimeout(() => this.spawnLightningStrike(r, c, info.tier), Math.max(0, land));
+    });
+
+    await sleep(dropDuration + maxDelay + 90);
     this.fx.drop = null;
+    this.fx.heavyDrop = null;
+  }
+
+  spawnHeavyImpact(row, col, tier, value) {
+    const center = this.cellCenter(row, col);
+    const now = performance.now();
+    const heaviness = tier.key === "mythic" ? 1.6 : tier.key === "legendary" ? 1.35 : tier.key === "epic" ? 1.15 : 1.0;
+    // Triple ground shockwave — fast bright ring, slower wide ring, slow afterburn.
+    this.fx.shockwaves.push({ x: center.x, y: center.y, born: now, life: 480, color: tier.accent });
+    this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 60, life: 720 * heaviness, color: tier.accent });
+    this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 140, life: 980 * heaviness, color: "rgba(255, 255, 255, 0.85)" });
+    // Dust dome — particles spraying outward and downward.
+    const dustCount = Math.round(28 * heaviness);
+    for (let i = 0; i < dustCount; i += 1) {
+      const a = -Math.PI + Math.random() * Math.PI; // lower hemisphere bias
+      const v = (1.3 + Math.random() * 2.2) * heaviness;
+      this.particles.push({
+        x: center.x + (Math.random() - 0.5) * 8,
+        y: center.y + 4,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v * 0.6 - 0.4,
+        life: 520 + Math.random() * 360,
+        born: now,
+        size: 1.6 + Math.random() * 2.4,
+        colorA: tier.accent,
+        colorB: "#fff8e8",
+        mode: "shard",
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.18
+      });
+    }
+    // Cell-anchored impact record drives a brief vertical squash + ground ring.
+    this.fx.impacts.push({
+      row, col, x: center.x, y: center.y,
+      born: now, life: 520 * heaviness,
+      tier, value, heaviness
+    });
+    // Lightning strike — delegated to the shared tier-scaled method.
+    this.spawnLightningStrike(row, col, tier);
+
+    // BANG: full-screen tier-colored radial flash centered on the impact.
+    // Short and punchy — long flashes feel laggy.
+    this.fx.bangs.push({
+      x: center.x,
+      y: center.y,
+      born: now,
+      life: 240 + 60 * heaviness,
+      tier,
+      heaviness
+    });
+    // Extra concentric ray burst on landing for legendary+.
+    if (tier.key === "legendary" || tier.key === "mythic") {
+      const rayN = tier.key === "mythic" ? 16 : 12;
+      for (let i = 0; i < rayN; i += 1) {
+        this.fx.rays.push({
+          x: center.x,
+          y: center.y,
+          angle: (Math.PI * 2 * i) / rayN,
+          born: now,
+          life: 620,
+          len: tier.key === "mythic" ? 6.0 : 4.8,
+          color: tier.accent
+        });
+      }
+    }
+    // Vault shake on landing — ramps with tier weight.
+    try {
+      shakeVault(tier.key === "mythic" || tier.key === "legendary" ? "strong" : "normal");
+    } catch (_) { /* shakeVault may not be in scope at construction; ignore */ }
   }
 
   async explode(winning = [], duration = 380, tier = "medium") {
     if (!winning.length) return;
+    const strength = tier === "blast-great" ? "great" : tier === "blast-small" ? "small" : "medium";
+    // Anticipation charge: cells brighten and "inhale" before they pop. Length
+    // scales with tier — small wins get none, big wins get a real beat.
+    const chargeMs = strength === "great" ? 260 : strength === "medium" ? 110 : 0;
+    const keys = winning.map((p) => `${p.row}-${p.col}`);
+    if (chargeMs > 0) {
+      this.fx.charge = {
+        start: performance.now(),
+        duration: chargeMs,
+        set: new Set(keys)
+      };
+      // Spotlight dim for great wins so the eye locks onto the action.
+      if (strength === "great") {
+        this.fx.spotlight = {
+          start: performance.now(),
+          duration: chargeMs + duration + 220,
+          set: new Set(keys),
+          intensity: 0.55
+        };
+      }
+      await sleep(chargeMs);
+      this.fx.charge = null;
+    }
+
+    // Per-cell stagger — great wins ripple outward column-by-column instead of
+    // all popping at once, which reads as "bigger" without extra particles.
+    const delays = new Map();
+    if (strength === "great") {
+      const sorted = winning
+        .slice()
+        .sort((a, b) => (a.col - b.col) * 1000 + (a.row - b.row));
+      sorted.forEach((p, idx) => {
+        delays.set(`${p.row}-${p.col}`, idx * 28);
+      });
+    } else if (strength === "medium") {
+      winning.forEach((p, idx) => {
+        delays.set(`${p.row}-${p.col}`, (idx % 4) * 18);
+      });
+    }
+    const maxDelay = Math.max(0, ...delays.values());
+
     this.fx.blast = {
       start: performance.now(),
-      duration,
-      set: new Set(winning.map((p) => `${p.row}-${p.col}`))
+      duration: duration + maxDelay,
+      cellDuration: duration,
+      set: new Set(keys),
+      delays
     };
-    this.spawnExplosionParticles(winning, tier === "blast-great" ? "great" : tier === "blast-small" ? "small" : "medium");
-    await sleep(duration);
+    this.spawnExplosionParticles(winning, strength, delays);
+    await sleep(duration + maxDelay + 40);
     this.fx.blast = null;
+    if (this.fx.spotlight) {
+      // Let it fade naturally; just clear the reference once expired.
+      const left = this.fx.spotlight.start + this.fx.spotlight.duration - performance.now();
+      if (left > 0) setTimeout(() => { this.fx.spotlight = null; }, left);
+      else this.fx.spotlight = null;
+    }
   }
 
-  async highlight(matrix, { winning = [], multipliers = [] } = {}, duration = 420) {
+  async highlight(matrix, { winning = [], multipliers = [] } = {}, duration = 560) {
     this.setBoard(matrix, { winning, multipliers });
     if (!winning.length) return;
     this.fx.pulse = {
@@ -350,7 +751,7 @@ class ReelCanvasRenderer {
     this.fx.pulse = null;
   }
 
-  async multiplierCatch(multipliers = [], duration = 460) {
+  async multiplierCatch(multipliers = [], duration = 620) {
     if (!Array.isArray(multipliers) || multipliers.length === 0) return;
     const catchSet = new Set(
       multipliers
@@ -358,14 +759,44 @@ class ReelCanvasRenderer {
         .map((m) => `${m.row}-${m.col}`)
     );
     if (!catchSet.size) return;
+    const peakValue = multipliers.reduce((acc, m) => Math.max(acc, Number(m?.value || 0)), 0);
+    const peakTier = getMultiplierTier(peakValue).key;
+    // Anticipation buildup: charge each multiplier symbol before it pops.
+    // Higher-tier catches get longer, more dramatic wind-up.
+    const chargeMs = peakTier === "mythic" ? 520
+      : peakTier === "legendary" ? 380
+      : peakTier === "epic" ? 240
+      : peakTier === "rare" ? 140
+      : 80;
+    this.fx.charge = {
+      start: performance.now(),
+      duration: chargeMs,
+      set: catchSet
+    };
+    if (peakTier === "mythic" || peakTier === "legendary") {
+      this.fx.spotlight = {
+        start: performance.now(),
+        duration: chargeMs + duration + 240,
+        set: catchSet,
+        intensity: peakTier === "mythic" ? 0.7 : 0.55
+      };
+    }
+    await sleep(chargeMs);
+    this.fx.charge = null;
     this.fx.multiCatch = {
       start: performance.now(),
       duration,
-      set: catchSet
+      set: catchSet,
+      tier: peakTier
     };
     this.spawnMultiplierCatchParticles(multipliers);
     await sleep(duration);
     this.fx.multiCatch = null;
+    if (this.fx.spotlight) {
+      const left = this.fx.spotlight.start + this.fx.spotlight.duration - performance.now();
+      if (left > 0) setTimeout(() => { this.fx.spotlight = null; }, left);
+      else this.fx.spotlight = null;
+    }
   }
 
   async reelSlam(columns = [], {
@@ -427,7 +858,7 @@ class ReelCanvasRenderer {
   }
 
   dropDelay(row, col, count) {
-    return Math.max(0, col * 62 + row * 24 + Math.max(0, count - 1) * 26);
+    return Math.max(0, col * 48 + row * 18 + Math.max(0, count - 1) * 22);
   }
 
   cellOffset(row, col, rowStep) {
@@ -437,9 +868,14 @@ class ReelCanvasRenderer {
     if (count <= 0) return 0;
     const delay = this.dropDelay(row, col, count);
     const progress = clamp((performance.now() - drop.start - delay) / drop.duration, 0, 1);
-    const eased = easeOutBack(progress);
+    // Fall fast, then settle with a soft bounce on landing.
+    const fallT = easeOutQuint(progress);
     const distance = count * rowStep * 1.2;
-    return lerp(-distance, 0, eased);
+    const fallY = lerp(-distance, 0, fallT);
+    if (progress < 0.78) return fallY;
+    const settleT = (progress - 0.78) / 0.22;
+    const settle = Math.sin(settleT * Math.PI * 2) * (1 - settleT) * rowStep * 0.09;
+    return settle;
   }
 
   roundedRectPath(ctx, x, y, w, h, r) {
@@ -566,10 +1002,22 @@ class ReelCanvasRenderer {
       ctx.fillRect(nx, ny, 1, 1);
     }
 
+    // Reel back panel — REEL.png drawn once per column behind the symbols.
+    const reelBack = this.images.get("REEL");
+    const reelBackReady = Boolean(reelBack?.complete && reelBack?.naturalWidth);
+
     for (let c = 0; c < this.cols; c += 1) {
       const x = padX + laneW * (c + 0.5);
       const spineTop = top * 0.5;
       const spineBottom = top + rowStep * (this.rows - 0.1);
+
+      if (reelBackReady) {
+        const reelW = laneW * 0.96;
+        const reelH = rowStep * this.rows + Math.min(28, rowStep * 0.3);
+        const reelX = padX + laneW * c + (laneW - reelW) / 2;
+        const reelY = top - Math.min(14, rowStep * 0.15);
+        ctx.drawImage(reelBack, reelX, reelY, reelW, reelH);
+      }
 
       const laneGlow = ctx.createLinearGradient(x, top * 0.22, x, height);
       laneGlow.addColorStop(0, "rgba(172, 214, 255, 0.05)");
@@ -617,14 +1065,22 @@ class ReelCanvasRenderer {
     const pulse = this.fx.pulse
       ? clamp((performance.now() - this.fx.pulse.start) / this.fx.pulse.duration, 0, 1)
       : 0;
-    const pulseGlow = this.fx.pulse ? Math.sin(pulse * Math.PI) : 0;
+    // Sharper attack, longer glow tail — feels punchier than a symmetric sine.
+    const pulseGlow = this.fx.pulse
+      ? (pulse < 0.28 ? easeOutCubic(pulse / 0.28) : 1 - easeInOutCubic((pulse - 0.28) / 0.72))
+      : 0;
     const blast = this.fx.blast
       ? clamp((performance.now() - this.fx.blast.start) / this.fx.blast.duration, 0, 1)
       : 0;
     const multiCatch = this.fx.multiCatch
       ? clamp((performance.now() - this.fx.multiCatch.start) / this.fx.multiCatch.duration, 0, 1)
       : 0;
-    const multiCatchPulse = this.fx.multiCatch ? Math.sin(multiCatch * Math.PI) : 0;
+    // Elastic overshoot for multiplier catch — feels like a snap-grab.
+    const multiCatchPulse = this.fx.multiCatch
+      ? (multiCatch < 0.45
+          ? easeOutElastic(multiCatch / 0.45)
+          : 1 - easeOutCubic((multiCatch - 0.45) / 0.55))
+      : 0;
     const reelSlamProgress = this.fx.reelSlam
       ? clamp((performance.now() - this.fx.reelSlam.start) / this.fx.reelSlam.duration, 0, 1)
       : 0;
@@ -644,6 +1100,129 @@ class ReelCanvasRenderer {
         ctx.beginPath();
         ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
         ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Spotlight dim — draws a darkening overlay during epic+ events so the
+    // active cells visually pop. The envelope fades in then out over the
+    // spotlight's full duration.
+    let spotlightAlpha = 0;
+    if (this.fx.spotlight) {
+      const t = clamp((performance.now() - this.fx.spotlight.start) / this.fx.spotlight.duration, 0, 1);
+      const env = t < 0.2 ? t / 0.2 : t > 0.85 ? (1 - t) / 0.15 : 1;
+      spotlightAlpha = clamp(env * (this.fx.spotlight.intensity || 0.5), 0, 0.9);
+      if (spotlightAlpha > 0) {
+        ctx.fillStyle = `rgba(2, 5, 12, ${spotlightAlpha.toFixed(3)})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+
+    // Heavy-drop falls completely silent — no beam, no comet, no glow. The
+    // player gets no telegraph that a big multiplier is incoming; the symbol
+    // is concealed during descent and the BANG on landing is the reveal.
+
+    // Heavy-impact ground rings — drawn as hard flashing rings on top of
+    // shockwaves at the landing cell with a ground-flash ellipse.
+    if (this.fx.impacts.length) {
+      const now = performance.now();
+      this.fx.impacts = this.fx.impacts.filter((im) => now - im.born < im.life);
+      this.fx.impacts.forEach((im) => {
+        const t = clamp((now - im.born) / im.life, 0, 1);
+        const ringR = radius * (0.5 + t * 3.0 * im.heaviness);
+        ctx.globalAlpha = (1 - t) * 0.6;
+        ctx.strokeStyle = im.tier.accent;
+        ctx.lineWidth = Math.max(2, radius * 0.12 * (1 - t * 0.7));
+        ctx.beginPath();
+        ctx.arc(im.x, im.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        // Ground flash ellipse — short-lived.
+        if (t < 0.35) {
+          const fT = t / 0.35;
+          ctx.globalAlpha = (1 - fT) * 0.42;
+          const flashGrad = ctx.createRadialGradient(im.x, im.y, 0, im.x, im.y, radius * 1.8);
+          flashGrad.addColorStop(0, "rgba(255, 255, 255, 1)");
+          flashGrad.addColorStop(0.4, im.tier.accent);
+          flashGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = flashGrad;
+          ctx.beginPath();
+          ctx.ellipse(im.x, im.y + radius * 0.5, radius * 1.7, radius * 0.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Lightning bolts — jagged tier-colored strikes from the top of the
+    // playfield arriving at impact cells right before the BANG.
+    if (this.fx.lightning.length) {
+      const now = performance.now();
+      this.fx.lightning = this.fx.lightning.filter((b) => now - b.born < b.life);
+      this.fx.lightning.forEach((b) => {
+        const age = now - b.born;
+        if (age < 0) return;
+        const t = clamp(age / b.life, 0, 1);
+        // Brightness envelope: stays hot for most of the life, then fades.
+        // A subtle flicker keeps it feeling electric rather than static.
+        const flicker = 0.85 + 0.15 * Math.sin(age * 0.06 + b.points[0].x);
+        const a = (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3) * flicker;
+        // Outer glow halo.
+        ctx.globalAlpha = a * 0.55;
+        ctx.strokeStyle = b.glow;
+        ctx.lineWidth = b.thickness * 4;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        b.points.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+        // Mid layer — tier-accent.
+        ctx.globalAlpha = a * 0.85;
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = b.thickness * 2;
+        ctx.beginPath();
+        b.points.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+        // White-hot core.
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+        ctx.lineWidth = b.thickness;
+        ctx.beginPath();
+        b.points.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // BANG flashes — short, intense, tier-colored radial bursts on impact.
+    if (this.fx.bangs.length) {
+      const now = performance.now();
+      this.fx.bangs = this.fx.bangs.filter((b) => now - b.born < b.life);
+      this.fx.bangs.forEach((b) => {
+        const t = clamp((now - b.born) / b.life, 0, 1);
+        const env = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
+        const a = clamp(env, 0, 1);
+        // Full-frame white-hot punch.
+        ctx.globalAlpha = a * 0.55;
+        ctx.fillStyle = "rgba(255, 255, 255, 1)";
+        ctx.fillRect(0, 0, width, height);
+        // Tier-colored radial bloom centered on impact.
+        const reach = Math.max(width, height);
+        const bloom = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, reach * 0.7);
+        bloom.addColorStop(0, b.tier.accent);
+        bloom.addColorStop(0.25, b.tier.glow);
+        bloom.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.globalAlpha = a * 0.85;
+        ctx.fillStyle = bloom;
+        ctx.fillRect(0, 0, width, height);
       });
       ctx.globalAlpha = 1;
     }
@@ -670,33 +1249,103 @@ class ReelCanvasRenderer {
         const isSlamColumn = Boolean(this.fx.reelSlam?.columns?.has(c));
         const slamOffset = isSlamColumn ? reelSlamWave * radius * 0.46 : 0;
         const y = yBase + this.cellOffset(r, c, rowStep) + slamOffset;
-        const tone = symbolTone[symbol] || symbolTone.BLUE_DIAMOND;
         const isWinner = this.board.winningSet.has(key);
         const isBlast = this.fx.blast?.set?.has(key);
-        const blastFade = isBlast ? 1 - blast : 1;
+        // Per-cell blast progress — staggered across cells so big wins ripple
+        // outward instead of all popping at the same instant.
+        let cellBlast = 0;
+        if (isBlast) {
+          const cellDelay = this.fx.blast.delays?.get(key) || 0;
+          const cellDur = this.fx.blast.cellDuration || this.fx.blast.duration;
+          cellBlast = clamp((performance.now() - this.fx.blast.start - cellDelay) / cellDur, 0, 1);
+        }
+        const blastFade = isBlast ? 1 - cellBlast : 1;
+        // Charge: anticipation phase before pop. Cell shrinks slightly and
+        // brightens — the visual "inhale" before the burst.
+        const isCharging = Boolean(this.fx.charge?.set?.has(key));
+        let chargeT = 0;
+        let chargeShrink = 1;
+        let chargeGlow = 0;
+        if (isCharging) {
+          chargeT = clamp((performance.now() - this.fx.charge.start) / this.fx.charge.duration, 0, 1);
+          chargeShrink = 1 - easeOutCubic(chargeT) * 0.08;
+          chargeGlow = easeOutCubic(chargeT);
+        }
+        const isSpotlit = Boolean(this.fx.spotlight?.set?.has(key));
         const floatOffset = Math.sin(this.time * 0.0016 + r * 0.5 + c * 0.7) * radius * 0.05;
         const yFloat = y + floatOffset;
         const idlePulse = 1 + Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
-        const pulseScale = isWinner ? 1 + pulseGlow * 0.08 : 1;
+        const pulseScale = isWinner ? 1 + pulseGlow * 0.16 : 1;
         const isMultiCaught = symbol === "MULTI" && Boolean(this.fx.multiCatch?.set?.has(key));
-        const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.18 : 1;
-        const ringR = radius * 1.16 * pulseScale * idlePulse;
-        const coreR = radius * 0.92 * pulseScale * catchScale * idlePulse;
+        const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.26 : 1;
+        // Vertical squash if a heavy impact just landed on this cell.
+        let squashY = 1;
+        let squashX = 1;
+        const impact = this.fx.impacts.find((im) => im.row === r && im.col === c);
+        if (impact) {
+          const it = clamp((performance.now() - impact.born) / 240, 0, 1);
+          if (it < 1) {
+            const env = Math.sin(it * Math.PI);
+            squashY = 1 - 0.18 * env * impact.heaviness;
+            squashX = 1 + 0.12 * env * impact.heaviness;
+          }
+        }
+        const baseScale = pulseScale * catchScale * idlePulse * chargeShrink;
+        // Heavy-drop concealment: while a high-tier multiplier is falling,
+        // hide its symbol entirely so the player only sees the descending
+        // beam and BANG impact. After landing, the symbol pops in.
+        const reveal = this.fx.heavyReveals.get(key);
+        let concealIcon = false;
+        let revealScale = 1;
+        let revealAlpha = 1;
+        if (reveal) {
+          const nowMs = performance.now();
+          if (nowMs < reveal.revealAt) {
+            concealIcon = true;
+          } else {
+            const rt = clamp((nowMs - reveal.revealAt) / reveal.revealDuration, 0, 1);
+            // Pop-in: overshoot scale, alpha ramp.
+            revealScale = rt < 0.4
+              ? 0.2 + easeOutBack(rt / 0.4) * 1.05
+              : 1.25 - easeOutCubic((rt - 0.4) / 0.6) * 0.25;
+            revealAlpha = clamp(rt * 2, 0, 1);
+            if (rt >= 1) this.fx.heavyReveals.delete(key);
+          }
+        }
+        const ringR = radius * 1.05 * baseScale * revealScale;
+        const coreR = radius * 1.05 * baseScale * revealScale;
+        const scatterSizeBoost = symbol === "SCATTER" ? 1.22 : 1;
+        const iconBase = radius * 2.25 * baseScale * scatterSizeBoost * revealScale;
+        const iconW = iconBase * squashX;
+        const iconH = iconBase * squashY;
 
-        ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
-        ctx.beginPath();
-        ctx.ellipse(x, yFloat + ringR * 0.94, ringR * 0.86, ringR * 0.28, 0, 0, Math.PI * 2);
-        ctx.fill();
+        // Spotlight halo: brighten cells on the spotlight set during big
+        // events, working with the dim overlay to draw the eye in.
+        if (isSpotlit && spotlightAlpha > 0.05) {
+          const sp = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 2.4);
+          sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
+          sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
+          sp.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = sp;
+          ctx.beginPath();
+          ctx.arc(x, yFloat, coreR * 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
-        ctx.strokeStyle = "rgba(214, 235, 255, 0.32)";
-        ctx.lineWidth = 1.3;
-        ctx.beginPath();
-        ctx.moveTo(x, yFloat - radius * 1.72);
-        ctx.lineTo(x, yFloat - radius * 1.06);
-        ctx.stroke();
+        if (isCharging) {
+          // Building glow during the wind-up.
+          const cg = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 1.9);
+          cg.addColorStop(0, `rgba(255, 245, 215, ${(0.55 * chargeGlow).toFixed(3)})`);
+          cg.addColorStop(0.5, `rgba(255, 210, 150, ${(0.25 * chargeGlow).toFixed(3)})`);
+          cg.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = cg;
+          ctx.beginPath();
+          ctx.arc(x, yFloat, coreR * 1.9, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
         if (isWinner) {
-          const halo = ctx.createRadialGradient(x, yFloat, coreR * 0.34, x, yFloat, ringR * 1.52);
+          const halo = ctx.createRadialGradient(x, yFloat, coreR * 0.28, x, yFloat, ringR * 1.55);
           halo.addColorStop(0, `rgba(215, 236, 255, ${0.6 * blastFade})`);
           halo.addColorStop(0.35, `rgba(150, 188, 255, ${0.24 * blastFade})`);
           halo.addColorStop(1, "rgba(150, 188, 255, 0)");
@@ -718,58 +1367,20 @@ class ReelCanvasRenderer {
           ctx.globalAlpha = 1;
         }
 
-        const rimOuter = ctx.createRadialGradient(x, yFloat - coreR * 0.64, coreR * 0.08, x, yFloat, ringR * 1.03);
-        rimOuter.addColorStop(0, "rgba(228, 241, 255, 0.66)");
-        rimOuter.addColorStop(0.3, tone[0]);
-        rimOuter.addColorStop(0.75, tone[1]);
-        rimOuter.addColorStop(1, "rgba(10, 14, 26, 0.9)");
-        const shell = rimOuter;
-        ctx.fillStyle = shell;
-        ctx.globalAlpha = blastFade;
-        ctx.beginPath();
-        ctx.arc(x, yFloat, ringR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = "rgba(206, 231, 255, 0.42)";
-        ctx.lineWidth = 1.1;
-        ctx.beginPath();
-        ctx.arc(x, yFloat, ringR * 0.96, 0, Math.PI * 2);
-        ctx.stroke();
-
-        const innerGlass = ctx.createRadialGradient(x, yFloat - coreR * 0.76, coreR * 0.18, x, yFloat, coreR * 1.18);
-        innerGlass.addColorStop(0, "rgba(255, 255, 255, 0.22)");
-        innerGlass.addColorStop(0.25, "rgba(20, 29, 48, 0.95)");
-        innerGlass.addColorStop(1, "rgba(7, 11, 21, 0.99)");
-        ctx.fillStyle = innerGlass;
-        ctx.beginPath();
-        ctx.arc(x, yFloat, coreR, 0, Math.PI * 2);
-        ctx.fill();
-
-        const sheen = ctx.createLinearGradient(x - coreR, yFloat - coreR, x + coreR, yFloat + coreR);
-        sheen.addColorStop(0, "rgba(255,255,255,0.22)");
-        sheen.addColorStop(0.35, "rgba(255,255,255,0.04)");
-        sheen.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = sheen;
-        ctx.beginPath();
-        ctx.arc(x, yFloat, coreR * 0.98, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = "rgba(200, 226, 255, 0.46)";
-        ctx.lineWidth = 1.25;
-        ctx.beginPath();
-        ctx.arc(x, yFloat, coreR * 0.96, 0, Math.PI * 2);
-        ctx.stroke();
-
-        const img = this.images.get(symbol);
-        if (img?.complete && img.naturalWidth) {
-          const size = coreR * 1.28;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(x, yFloat, coreR * 0.84, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.globalAlpha = blastFade;
-          ctx.drawImage(img, x - size / 2, yFloat - size / 2, size, size);
-          ctx.restore();
+        const multiValueNum = symbol === "MULTI" ? Number(this.board.multiMap.get(key) || 1) : null;
+        const multiImageKey = symbol === "MULTI" ? `MULTI${multiValueNum}` : null;
+        const img = (multiImageKey && this.images.get(multiImageKey)) || this.images.get(symbol);
+        if (concealIcon) {
+          // Show the decoy regular symbol falling in this cell. It gets
+          // visually "replaced" by the multiplier on the BANG impact.
+          const decoyImg = reveal?.decoy ? this.images.get(reveal.decoy) : null;
+          if (decoyImg?.complete && decoyImg.naturalWidth) {
+            ctx.globalAlpha = blastFade;
+            ctx.drawImage(decoyImg, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
+          }
+        } else if (img?.complete && img.naturalWidth) {
+          ctx.globalAlpha = blastFade * revealAlpha;
+          ctx.drawImage(img, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
         } else {
           ctx.fillStyle = "rgba(255, 238, 200, 0.9)";
           ctx.font = `${Math.max(10, coreR * 0.22)}px Trebuchet MS, sans-serif`;
@@ -778,7 +1389,7 @@ class ReelCanvasRenderer {
           ctx.fillText(symbol.slice(0, 2), x, yFloat);
         }
 
-        if (symbol === "TOP_CROWN" || symbol === "MULTI") {
+        if (symbol === "TOP_CROWN") {
           const crownGlow = ctx.createRadialGradient(x, yFloat - coreR * 0.36, 0, x, yFloat - coreR * 0.36, coreR * 0.75);
           crownGlow.addColorStop(0, "rgba(185, 218, 255, 0.26)");
           crownGlow.addColorStop(1, "rgba(185, 218, 255, 0)");
@@ -788,67 +1399,37 @@ class ReelCanvasRenderer {
           ctx.fill();
         }
 
-        if (symbol === "MULTI") {
-          const valueNum = Number(this.board.multiMap.get(key) || 1);
+        if (symbol === "MULTI" && !concealIcon) {
+          const valueNum = multiValueNum;
           const value = `${valueNum}x`;
-          const tier = getMultiplierTier(valueNum);
+          const hasDedicatedMultiImage = Boolean(this.images.get(multiImageKey)?.complete && this.images.get(multiImageKey)?.naturalWidth);
 
-          const tierGlow = ctx.createRadialGradient(x, yFloat, coreR * 0.12, x, yFloat, coreR * 1.22);
-          tierGlow.addColorStop(0, tier.glow);
-          tierGlow.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.globalAlpha = 0.72;
-          ctx.fillStyle = tierGlow;
-          ctx.beginPath();
-          ctx.arc(x, yFloat, coreR * 1.22, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1;
+          if (!hasDedicatedMultiImage) {
+            const tier = getMultiplierTier(valueNum);
+            ctx.fillStyle = tier.accent;
+            ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
+            ctx.lineWidth = Math.max(2.4, coreR * 0.1);
+            ctx.strokeText(value, x, yFloat + coreR * 0.02);
+            ctx.fillText(value, x, yFloat + coreR * 0.02);
 
-          if (isMultiCaught) {
-            for (let b = 0; b < 3; b += 1) {
-              const beamWobble = Math.sin(this.time * 0.01 + b * 1.8) * coreR * 0.24;
-              const beam = ctx.createLinearGradient(x + beamWobble, yFloat - coreR * 1.5, x, yFloat);
-              beam.addColorStop(0, "rgba(230, 244, 255, 0)");
-              beam.addColorStop(0.4, `${tier.accent}66`);
-              beam.addColorStop(1, `${tier.accent}22`);
-              ctx.strokeStyle = beam;
-              ctx.lineWidth = Math.max(1.5, coreR * 0.06);
-              ctx.beginPath();
-              ctx.moveTo(x + beamWobble, yFloat - coreR * (1.8 + b * 0.2));
-              ctx.lineTo(x, yFloat - coreR * 0.12);
-              ctx.stroke();
-            }
+            const tagW = Math.max(46, coreR * 1.15);
+            const tagH = Math.max(14, coreR * 0.28);
+            const tagX = x - tagW / 2;
+            const tagY = yFloat + coreR * 0.5;
+            ctx.fillStyle = "rgba(8, 16, 30, 0.86)";
+            ctx.fillRect(tagX, tagY, tagW, tagH);
             ctx.strokeStyle = tier.accent;
-            ctx.globalAlpha = 0.8 * (1 - multiCatch * 0.5);
-            ctx.lineWidth = Math.max(1.8, coreR * 0.07);
-            ctx.beginPath();
-            ctx.arc(x, yFloat, ringR * (1.03 + multiCatch * 0.34), 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(tagX, tagY, tagW, tagH);
+            ctx.fillStyle = "#e8f2ff";
+            ctx.font = `800 ${Math.max(7, coreR * 0.13)}px Trebuchet MS, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(tier.label.toUpperCase(), x, tagY + tagH / 2);
           }
-
-          ctx.fillStyle = tier.accent;
-          ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
-          ctx.lineWidth = Math.max(2.4, coreR * 0.1);
-          ctx.strokeText(value, x, yFloat + coreR * 0.02);
-          ctx.fillText(value, x, yFloat + coreR * 0.02);
-
-          const tagW = Math.max(46, coreR * 1.15);
-          const tagH = Math.max(14, coreR * 0.28);
-          const tagX = x - tagW / 2;
-          const tagY = yFloat + coreR * 0.5;
-          ctx.fillStyle = "rgba(8, 16, 30, 0.86)";
-          ctx.fillRect(tagX, tagY, tagW, tagH);
-          ctx.strokeStyle = tier.accent;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(tagX, tagY, tagW, tagH);
-          ctx.fillStyle = "#e8f2ff";
-          ctx.font = `800 ${Math.max(7, coreR * 0.13)}px Trebuchet MS, sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(tier.label.toUpperCase(), x, tagY + tagH / 2);
         }
 
         if (symbol === "SCATTER") {
@@ -868,15 +1449,48 @@ class ReelCanvasRenderer {
       }
     }
 
+    // Radial light rays from explosion centers — fast-growing, fading streaks
+    // that telegraph an audible "crack" on the upcoming sound layer.
+    if (this.fx.rays.length) {
+      const now = performance.now();
+      this.fx.rays = this.fx.rays.filter((ray) => now - ray.born < ray.life);
+      this.fx.rays.forEach((ray) => {
+        const age = now - ray.born;
+        if (age < 0) return;
+        const t = clamp(age / ray.life, 0, 1);
+        const reach = radius * ray.len * easeOutQuint(t);
+        const ex = ray.x + Math.cos(ray.angle) * reach;
+        const ey = ray.y + Math.sin(ray.angle) * reach;
+        const grad = ctx.createLinearGradient(ray.x, ray.y, ex, ey);
+        grad.addColorStop(0, `rgba(255, 255, 255, ${(0.85 * (1 - t)).toFixed(3)})`);
+        grad.addColorStop(0.4, ray.color);
+        grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = Math.max(1.4, radius * 0.06 * (1 - t * 0.6));
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.moveTo(ray.x, ray.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+
     if (this.particles.length) {
       const now = performance.now();
       this.particles = this.particles.filter((p) => now - p.born < p.life);
       this.particles.forEach((p) => {
         const age = now - p.born;
+        if (age < 0) return; // not yet born
         const t = clamp(age / p.life, 0, 1);
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += p.mode === "orb" ? 0.015 : 0.05;
+        if (p.mode === "ember") {
+          p.vy += -0.004; // gentle upward drift
+          p.vx *= 0.985;
+        } else {
+          p.vy += p.mode === "orb" ? 0.015 : 0.05;
+        }
         p.rot = (p.rot || 0) + (p.spin || 0);
         const alpha = 1 - t;
         const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 3.2);
@@ -900,6 +1514,14 @@ class ReelCanvasRenderer {
           ctx.closePath();
           ctx.fill();
           ctx.restore();
+        } else if (p.mode === "ember") {
+          // Soft hot-coal twinkle that fades slowly.
+          const flicker = 0.6 + 0.4 * Math.sin(age * 0.02 + p.x * 0.13);
+          ctx.globalAlpha = alpha * flicker;
+          ctx.fillStyle = p.colorB;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
         } else {
           ctx.globalAlpha = alpha;
           ctx.fillStyle = p.colorB;
@@ -952,19 +1574,17 @@ function buildDropMap(stepMatrix, winningPositions = []) {
 const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCount: cols });
 
 function winTier(waysWins = [], bet = 1) {
+  let totalAmount = 0;
   let maxCount = 0;
-  let maxPayoutX = 0;
   waysWins.forEach((w) => {
-    const count = Number(w?.count || 0);
-    const payout = Number(w?.payout || 0);
-    const amount = Number(w?.amount || 0);
-    const byAmount = bet > 0 ? amount / bet : 0;
-    maxCount = Math.max(maxCount, count);
-    maxPayoutX = Math.max(maxPayoutX, payout, byAmount);
+    totalAmount += Number(w?.amount || 0);
+    maxCount = Math.max(maxCount, Number(w?.count || 0));
   });
-  const score = maxPayoutX + (maxCount >= 12 ? 8 : maxCount >= 10 ? 4 : 0) + (maxCount >= 8 ? 2 : 0);
-  if (maxCount >= 12 || score >= 24) return "blast-great";
-  if (maxCount >= 10 || score >= 10) return "blast-medium";
+  const winX = bet > 0 ? totalAmount / bet : 0;
+  // Tier on actual payout magnitude (× bet), not symbol count. A 10-of-a-kind
+  // that only pays 4× is still a small win; "big" should mean it feels big.
+  if (winX >= 50 || (maxCount >= 12 && winX >= 25)) return "blast-great";
+  if (winX >= 12) return "blast-medium";
   return "blast-small";
 }
 
@@ -1088,7 +1708,10 @@ async function runVisualTest(action) {
       ];
       multipliers.forEach((m) => { matrix[m.row][m.col] = "MULTI"; });
       reelRenderer.setBoard(matrix, { multipliers });
-      await reelRenderer.multiplierCatch(multipliers, 800);
+      await Promise.all([
+        reelRenderer.multiplierCatch(multipliers, 800),
+        flyMultiplierSouls(multipliers)
+      ]);
       pushGameMessage("FX test: multiplier catch animation.", "info");
     }
   } finally {
@@ -1138,6 +1761,280 @@ function renderTestPanel() {
   updateArmedMultiplierUi();
 }
 
+function ensureSoulLayer() {
+  let layer = document.getElementById("soulLayer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "soulLayer";
+    layer.className = "soul-layer";
+    document.body.appendChild(layer);
+  }
+  return layer;
+}
+
+function flyMultiplierSouls(multipliers = []) {
+  const all = (multipliers || []).filter(
+    (m) => Number.isInteger(m?.row) && Number.isInteger(m?.col) && Number(m?.value) > 0
+  );
+  if (!all.length) return Promise.resolve();
+  // Dedupe across tumble cascades within the same spin: each multiplier
+  // captured on the board only sends its soul once, even if it persists
+  // through multiple tumble steps.
+  const valid = [];
+  for (const m of all) {
+    const key = `${m.row}-${m.col}-${m.value}`;
+    if (state.spinFlownSouls.has(key)) continue;
+    state.spinFlownSouls.add(key);
+    valid.push(m);
+  }
+  if (!valid.length) return Promise.resolve();
+  const target = el.activeMultiplier;
+  const meterNode = target?.closest(".hud-node-multi, .meter-node-multi");
+  if (!target || !meterNode) return Promise.resolve();
+  const layer = ensureSoulLayer();
+  const canvasRect = el.reels.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const tx = targetRect.left + targetRect.width / 2;
+  const ty = targetRect.top + targetRect.height / 2;
+
+  const canvasW = el.reels.clientWidth || canvasRect.width;
+  const canvasH = el.reels.clientHeight || canvasRect.height;
+  const scaleX = canvasRect.width / Math.max(1, canvasW);
+  const scaleY = canvasRect.height / Math.max(1, canvasH);
+
+  const promises = valid.map((m, idx) => {
+    const cell = reelRenderer.cellCenter(m.row, m.col);
+    const sx = canvasRect.left + cell.x * scaleX;
+    const sy = canvasRect.top + cell.y * scaleY;
+    const tier = getMultiplierTier(Number(m.value));
+    const delay = idx * 80;
+    const duration = 620 + Math.min(280, idx * 40);
+    return animateSoul({
+      sx, sy, tx, ty,
+      value: Number(m.value),
+      tier,
+      delay,
+      duration,
+      layer,
+      meterNode,
+      target
+    });
+  });
+  return Promise.all(promises);
+}
+
+function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, meterNode, target }) {
+  return new Promise((resolve) => {
+    const orb = document.createElement("div");
+    orb.className = "soul-orb";
+    orb.textContent = `${value}x`;
+    orb.style.setProperty("--soul-color", tier.accent);
+    orb.style.setProperty("--soul-glow", tier.glow);
+    orb.style.opacity = "0";
+    orb.style.transform = `translate3d(${sx}px, ${sy}px, 0) scale(0.4)`;
+    layer.appendChild(orb);
+
+    // Curved arc: control point biased upward and slightly toward target.
+    const midX = (sx + tx) / 2 + (Math.random() - 0.5) * 80;
+    const arcLift = Math.min(220, Math.max(120, Math.abs(tx - sx) * 0.35 + Math.abs(ty - sy) * 0.25));
+    const midY = Math.min(sy, ty) - arcLift;
+
+    const trails = [];
+    const startTime = performance.now() + delay;
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      if (elapsed < 0) {
+        orb.style.opacity = "0";
+        requestAnimationFrame(tick);
+        return;
+      }
+      const tRaw = clamp(elapsed / duration, 0, 1);
+      // Ease in then accelerate at end for "pulled-in" feel.
+      const t = tRaw < 0.6 ? easeOutCubic(tRaw / 0.6) * 0.7 : 0.7 + easeOutQuint((tRaw - 0.6) / 0.4) * 0.3;
+      const u = 1 - t;
+      const x = u * u * sx + 2 * u * t * midX + t * t * tx;
+      const y = u * u * sy + 2 * u * t * midY + t * t * ty;
+      const scale = lerp(0.85, 0.35, easeInOutCubic(tRaw));
+      const fadeIn = clamp(elapsed / 120, 0, 1);
+      const fadeOut = tRaw > 0.85 ? 1 - (tRaw - 0.85) / 0.15 : 1;
+      orb.style.opacity = String(fadeIn * fadeOut);
+      orb.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale.toFixed(3)})`;
+
+      if (tRaw < 0.95 && Math.random() < 0.55) {
+        const trail = document.createElement("div");
+        trail.className = "soul-trail";
+        trail.style.setProperty("--soul-color", tier.accent);
+        trail.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${(0.6 + Math.random() * 0.6).toFixed(2)})`;
+        layer.appendChild(trail);
+        const born = now;
+        const tlife = 360;
+        trails.push({ el: trail, born, life: tlife });
+      }
+
+      const stillAlive = [];
+      for (const tr of trails) {
+        const age = now - tr.born;
+        if (age >= tr.life) {
+          tr.el.remove();
+        } else {
+          tr.el.style.opacity = String(1 - age / tr.life);
+          stillAlive.push(tr);
+        }
+      }
+      trails.length = 0;
+      trails.push(...stillAlive);
+
+      if (tRaw < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        orb.remove();
+        trails.forEach((tr) => tr.el.remove());
+        onSoulArrive({ tx, ty, value, tier, layer, meterNode, target });
+        resolve();
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
+  // Increment the displayed multiplier as each soul lands. If the meter is
+  // sitting at the 1x base (no catches yet this spin), replace it; otherwise
+  // sum onto the running total. The authoritative server value will overwrite
+  // this at the end of the spin.
+  const current = Number(state.spinMultDisplay) || 1;
+  const next = current <= 1 ? Number(value) : current + Number(value);
+  state.spinMultDisplay = next;
+  if (target) target.textContent = mfmt(next);
+
+  meterNode.style.setProperty("--soul-glow", tier.glow);
+  meterNode.classList.remove("soul-hit");
+  void meterNode.offsetWidth;
+  meterNode.classList.add("soul-hit");
+  setTimeout(() => meterNode.classList.remove("soul-hit"), 620);
+
+  const plus = document.createElement("div");
+  plus.className = "soul-plus";
+  plus.textContent = `+${value}x`;
+  plus.style.setProperty("--soul-color", tier.accent);
+  plus.style.setProperty("--soul-glow", tier.glow);
+  plus.style.left = `${tx}px`;
+  plus.style.top = `${ty - 6}px`;
+  layer.appendChild(plus);
+  setTimeout(() => plus.remove(), 950);
+}
+
+function playWinCombineSequence(rawWin, multiplier, totalWin) {
+  return new Promise((resolve) => {
+    if (!el.reels?.parentElement) { resolve(); return; }
+    const stage = el.reels.parentElement;
+    const overlay = document.createElement("div");
+    overlay.className = "win-combine-overlay";
+
+    const amount = document.createElement("div");
+    amount.className = "combine-chip combine-amount";
+    amount.innerHTML = `<span class="combine-kicker">Win</span><span class="combine-value">${fmt(rawWin)}</span>`;
+
+    const multi = document.createElement("div");
+    multi.className = "combine-chip combine-multi";
+    const tier = getMultiplierTier(Number(multiplier));
+    multi.style.setProperty("--combine-color", tier.accent);
+    multi.style.setProperty("--combine-glow", tier.glow);
+    multi.innerHTML = `<span class="combine-kicker">Multiplier</span><span class="combine-value">${mfmt(multiplier)}</span>`;
+
+    const flash = document.createElement("div");
+    flash.className = "combine-flash";
+
+    const total = document.createElement("div");
+    total.className = "combine-chip combine-total";
+    total.innerHTML = `<span class="combine-kicker">Total Win</span><span class="combine-value">${fmt(totalWin)}</span>`;
+
+    overlay.append(amount, multi, flash, total);
+    stage.appendChild(overlay);
+
+    // Phase timings (ms)
+    const ENTER = 480;
+    const HOLD  = 320;
+    const SLAM  = 360;
+    const REVEAL = 1500;
+
+    // Enter from sides.
+    requestAnimationFrame(() => {
+      amount.classList.add("is-entered");
+      multi.classList.add("is-entered");
+    });
+    setTimeout(() => {
+      // Slam together.
+      amount.classList.add("is-slamming");
+      multi.classList.add("is-slamming");
+    }, ENTER + HOLD);
+    setTimeout(() => {
+      // Collision flash + total reveal.
+      amount.classList.add("is-merged");
+      multi.classList.add("is-merged");
+      flash.classList.add("is-live");
+      total.classList.add("is-live");
+      shakeVault("strong");
+    }, ENTER + HOLD + SLAM);
+    setTimeout(() => {
+      overlay.classList.add("is-fading");
+    }, ENTER + HOLD + SLAM + REVEAL - 320);
+    setTimeout(() => {
+      overlay.remove();
+      resolve();
+    }, ENTER + HOLD + SLAM + REVEAL);
+  });
+}
+
+function confirmBuy({ cost, currency, costMultiplier }) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("buyConfirmModal");
+    const amountEl = document.getElementById("buyCostAmount");
+    const currencyEl = document.getElementById("buyCostCurrency");
+    const metaEl = document.getElementById("buyCostMeta");
+    const confirmBtn = document.getElementById("buyConfirmBtn");
+    const cancelBtn = document.getElementById("buyCancelBtn");
+    if (!modal || !amountEl || !currencyEl || !confirmBtn || !cancelBtn) {
+      // Fall back to a native confirm if the modal markup isn't present.
+      resolve(window.confirm(`Buy Feature for ${fmt(cost)} ${currency}?`));
+      return;
+    }
+    amountEl.textContent = fmt(cost);
+    currencyEl.textContent = currency;
+    if (metaEl) metaEl.textContent = `${costMultiplier}× your current bet`;
+
+    let resolved = false;
+    const cleanup = (result) => {
+      if (resolved) return;
+      resolved = true;
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      modal.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    const onConfirm = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onBackdrop = (e) => { if (e.target === modal) cleanup(false); };
+    const onKey = (e) => {
+      if (e.key === "Escape") cleanup(false);
+      else if (e.key === "Enter") cleanup(true);
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    modal.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onKey);
+
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    setTimeout(() => confirmBtn.focus(), 30);
+  });
+}
+
 function pulseBanner(text, tone = "info", duration = 860) {
   if (!el.eventBanner || !el.eventBannerText) return;
   if (state.bannerTimer) {
@@ -1156,7 +2053,7 @@ function pulseBanner(text, tone = "info", duration = 860) {
   }, duration);
 }
 
-function showWinCallout(amount, label = "Win", duration = 980) {
+function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
   if (!el.winCallout || !el.winCalloutAmount || !el.winCalloutLabel) return;
   if (state.calloutTimer) {
     clearTimeout(state.calloutTimer);
@@ -1164,7 +2061,20 @@ function showWinCallout(amount, label = "Win", duration = 980) {
   }
   el.winCalloutLabel.textContent = label;
   el.winCalloutAmount.textContent = fmt(amount);
-  el.winCallout.classList.remove("hidden", "live-callout");
+  // Infer a tier from the amount/bet ratio if not explicitly provided. Drives
+  // the callout's color, glow, and size via CSS.
+  let inferredTier = tier;
+  if (!inferredTier) {
+    const bet = Number(el.betSelect?.value || 1) || 1;
+    const x = Number(amount || 0) / bet;
+    inferredTier = x >= 100 ? "epic" : x >= 50 ? "great" : x >= 12 ? "medium" : "small";
+  }
+  el.winCallout.classList.remove(
+    "hidden", "live-callout",
+    "callout-tier-small", "callout-tier-medium",
+    "callout-tier-great", "callout-tier-epic", "callout-tier-bonus"
+  );
+  el.winCallout.classList.add(`callout-tier-${inferredTier}`);
   void el.winCallout.offsetWidth;
   el.winCallout.classList.add("live-callout");
   state.calloutTimer = setTimeout(() => {
@@ -1243,8 +2153,13 @@ function summarizeSpin(payload, bet) {
   const tumbleSteps = Array.isArray(payload.tumble_steps) ? payload.tumble_steps : [];
   const tumbleCount = Math.max(0, tumbleSteps.length - 1);
   const allWins = Array.isArray(payload.ways_wins) ? payload.ways_wins : [];
-  const winsText = allWins.length
-    ? allWins.map((w) => `${w.symbol}(${Number(w.count || 0)})`).slice(0, 4).join(", ")
+  const wins = allWins.map((w) => ({
+    symbol: String(w.symbol || ""),
+    count: Number(w.count || 0),
+    amount: Number(w.amount || 0)
+  }));
+  const winsText = wins.length
+    ? wins.map((w) => `${w.symbol}(${w.count})`).slice(0, 4).join(", ")
     : "none";
 
   const multipliersByPos = new Map();
@@ -1275,12 +2190,127 @@ function summarizeSpin(payload, bet) {
     tumbling: tumbleCount > 0,
     tumbleCount,
     winsText,
+    wins,
     multiCount,
     multiSum,
     applied,
     rawWin,
     totalWin: Number(payload.total_win || 0)
   };
+}
+
+function spinCardTier(entry) {
+  const bet = Number(entry?.bet || 0);
+  const win = Number(entry?.totalWin || 0);
+  if (win <= 0) return "loss";
+  const x = bet > 0 ? win / bet : 0;
+  if (x >= 50) return "great";
+  if (x >= 12) return "medium";
+  return "small";
+}
+
+function renderSpinCardInto(li, entry) {
+  const tier = spinCardTier(entry);
+  const isBonus = entry.mode === "bonus";
+  li.className = `spin-card spin-tier-${tier}${isBonus ? " spin-bonus" : ""}`;
+
+  const head = document.createElement("div");
+  head.className = "spin-card-head";
+
+  const seq = document.createElement("span");
+  seq.className = "spin-seq";
+  seq.textContent = `#${entry.seq || "-"}`;
+  head.appendChild(seq);
+
+  const mode = document.createElement("span");
+  mode.className = `spin-chip mode-${isBonus ? "bonus" : "base"}`;
+  mode.textContent = isBonus ? "FREE" : "BASE";
+  head.appendChild(mode);
+
+  if (entry.tumbling && entry.tumbleCount > 0) {
+    const tumble = document.createElement("span");
+    tumble.className = "spin-chip mode-tumble";
+    tumble.textContent = `×${entry.tumbleCount + 1}`;
+    tumble.title = `${entry.tumbleCount} tumble${entry.tumbleCount === 1 ? "" : "s"}`;
+    head.appendChild(tumble);
+  }
+
+  const bet = document.createElement("span");
+  bet.className = "spin-bet";
+  bet.textContent = `Bet ${fmt(entry.bet)}`;
+  head.appendChild(bet);
+
+  const win = document.createElement("span");
+  win.className = "spin-win";
+  if (Number(entry.totalWin || 0) > 0) {
+    win.textContent = `+${fmt(entry.totalWin)}`;
+  } else {
+    win.textContent = "—";
+    win.classList.add("spin-win-none");
+  }
+  head.appendChild(win);
+
+  li.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "spin-card-body";
+
+  const wins = Array.isArray(entry.wins) ? entry.wins : [];
+  if (wins.length) {
+    const pills = document.createElement("div");
+    pills.className = "spin-pills";
+    wins.slice(0, 6).forEach((w) => {
+      const pill = document.createElement("span");
+      pill.className = "spin-pill";
+      const tone = symbolTone[w.symbol] || symbolTone.BLUE_DIAMOND;
+      const dot = document.createElement("span");
+      dot.className = "spin-pill-dot";
+      dot.style.background = tone[0];
+      dot.style.boxShadow = `0 0 6px ${tone[0]}`;
+      const txt = document.createElement("span");
+      txt.className = "spin-pill-count";
+      txt.textContent = `×${w.count}`;
+      pill.title = `${w.symbol} — ${w.count} symbols, ${fmt(w.amount)}`;
+      pill.append(dot, txt);
+      pills.appendChild(pill);
+    });
+    if (wins.length > 6) {
+      const more = document.createElement("span");
+      more.className = "spin-pill spin-pill-more";
+      more.textContent = `+${wins.length - 6}`;
+      pills.appendChild(more);
+    }
+    body.appendChild(pills);
+  } else {
+    const noWin = document.createElement("span");
+    noWin.className = "spin-no-win";
+    noWin.textContent = "No win";
+    body.appendChild(noWin);
+  }
+
+  if (Number(entry.applied || 1) > 1) {
+    const mathBox = document.createElement("span");
+    mathBox.className = "spin-math";
+
+    const raw = document.createElement("span");
+    raw.className = "spin-raw";
+    raw.textContent = fmt(entry.rawWin);
+    mathBox.appendChild(raw);
+
+    const times = document.createElement("span");
+    times.className = "spin-math-op";
+    times.textContent = "×";
+    mathBox.appendChild(times);
+
+    const mult = document.createElement("span");
+    mult.className = "spin-mult";
+    mult.textContent = mfmt(entry.applied);
+    mathBox.appendChild(mult);
+
+    body.appendChild(mathBox);
+  }
+
+  li.appendChild(body);
 }
 
 function renderSpinLog() {
@@ -1300,9 +2330,15 @@ function renderSpinLog() {
     const li = document.createElement("li");
     if (entry.type === "event") {
       li.className = `log-event event-${entry.tone || "info"}`;
-      li.innerHTML = `<strong>EVENT</strong> ${entry.text}`;
+      const tag = document.createElement("span");
+      tag.className = "event-tag";
+      tag.textContent = "EVENT";
+      const text = document.createElement("span");
+      text.className = "event-text";
+      text.textContent = entry.text;
+      li.append(tag, text);
     } else {
-      li.innerHTML = `<strong>#${entry.seq || "-"}</strong> ${entry.mode.toUpperCase()} | Bet ${fmt(entry.bet)} | Wins: ${entry.winsText} | Tumble: ${entry.tumbling ? `${entry.tumbleCount}x` : "no"} | Multi caught: ${entry.multiCount} (sum ${mfmt(entry.multiSum)}) | Applied: ${mfmt(entry.applied)} | ${fmt(entry.rawWin)} -> ${fmt(entry.totalWin)}`;
+      renderSpinCardInto(li, entry);
     }
     el.spinLogList.appendChild(li);
   });
@@ -1326,21 +2362,40 @@ function pushSpinLog(payload, bet) {
 }
 
 function applyRoundStats(payload, bet, wagerOverride) {
+  const totalWin = Number(payload.total_win || 0);
   stats.spins += 1;
-  if (Number(payload.total_win || 0) > 0) stats.wins += 1;
+  if (totalWin > 0) stats.wins += 1;
   else stats.losses += 1;
   if (Number.isFinite(wagerOverride)) stats.wagered += wagerOverride;
   else if (!payload.is_free_spin) stats.wagered += Number(payload.bet_charged || bet);
-  stats.won += Number(payload.total_win || 0);
+  stats.won += totalWin;
+  if (Number(payload.free_spins_awarded || 0) > 0) stats.bonusHits += 1;
+  const winX = bet > 0 ? totalWin / bet : 0;
+  if (winX > stats.maxWinX) stats.maxWinX = winX;
 
   el.spinsPlayed.textContent = String(stats.spins);
-  el.winSpins.textContent = String(stats.wins);
-  el.lossSpins.textContent = String(stats.losses);
   el.sessionWagered.textContent = fmt(stats.wagered);
   el.sessionWon.textContent = fmt(stats.won);
   const net = Number((stats.won - stats.wagered).toFixed(2));
   el.sessionNet.textContent = fmt(net);
   setSigned(el.sessionNet, net);
+
+  if (el.sessionWinLoss) el.sessionWinLoss.textContent = `${stats.wins} / ${stats.losses}`;
+  if (el.sessionHitRate) {
+    const hr = stats.spins > 0 ? (stats.wins / stats.spins) * 100 : 0;
+    el.sessionHitRate.textContent = `${hr.toFixed(2)}%`;
+  }
+  if (el.sessionRtp) {
+    if (stats.wagered > 0) {
+      const rtp = (stats.won / stats.wagered) * 100;
+      el.sessionRtp.textContent = `${rtp.toFixed(2)}%`;
+      setSigned(el.sessionRtp, rtp - 100);
+    } else {
+      el.sessionRtp.textContent = "—";
+    }
+  }
+  if (el.sessionMaxWinX) el.sessionMaxWinX.textContent = `${stats.maxWinX.toFixed(2)}x`;
+  if (el.sessionBonusHits) el.sessionBonusHits.textContent = String(stats.bonusHits);
 }
 
 async function animateRound(payload, bet, wagerOverride) {
@@ -1348,7 +2403,11 @@ async function animateRound(payload, bet, wagerOverride) {
     ? payload.tumble_steps
     : [{ matrix: payload.matrix, multipliers: payload.multipliers || [], winning_positions: payload.winning_positions || [], ways_wins: payload.ways_wins || [], win_total: payload.total_win || 0 }];
 
-  pulseBanner(payload.is_free_spin ? "Free Spin" : "Spin Started", "info", 640);
+  state.spinFlownSouls = new Set();
+  state.spinCelebratedMultis = new Set();
+  state.spinMultDisplay = parseFloat(el.activeMultiplier.textContent) || 1;
+  reelRenderer.resetHeavyBangs();
+  if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
   await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || []);
 
@@ -1361,9 +2420,8 @@ async function animateRound(payload, bet, wagerOverride) {
       if (prevWinning.length > 0 && prevWinTotal > 0) {
         await sleep(140);
         const prevTier = winTier(prev?.ways_wins || [], bet);
-        pulseBanner(`Tumble ${i}`, "win", 700);
         pushGameMessage(`Tumble ${i} triggered.`, "info");
-        shakeVault(prevTier === "blast-great" ? "strong" : "normal");
+        if (prevTier !== "blast-small") shakeVault(prevTier === "blast-great" ? "strong" : "normal");
         await reelRenderer.explode(prevWinning, 360, prevTier);
         const dropMap = buildDropMap(prev.matrix, prevWinning);
         await reelRenderer.drop(step.matrix, step.multipliers || [], dropMap, 980);
@@ -1383,46 +2441,54 @@ async function animateRound(payload, bet, wagerOverride) {
           : tier === "blast-medium"
             ? "Big Win"
             : "Win";
-      showWinCallout(stepWin, label, tier === "blast-great" ? 1200 : 940);
-      pulseBanner(`${label} ${fmt(stepWin)}`, "win", 900);
+      // Only surface the on-screen callout/banner for medium+ wins. Small
+      // wins keep the visuals on the reels and the running balance update.
+      if (tier !== "blast-small") {
+        showWinCallout(stepWin, label, tier === "blast-great" ? 1200 : 940);
+        pulseBanner(`${label} ${fmt(stepWin)}`, "win", 900);
+      }
       pushGameMessage(`${label}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
-      if (tier !== "blast-small" || winX >= 40) shakeVault(tier === "blast-great" || winX >= 80 ? "strong" : "normal");
+      if (tier !== "blast-small") shakeVault(tier === "blast-great" || winX >= 80 ? "strong" : "normal");
       if (winX >= 100) {
         await reelRenderer.jackpotFlash({
           duration: 640,
           colorA: "rgba(170, 225, 255, 0.40)",
           colorB: "rgba(255, 214, 136, 0.34)"
         });
-        const winCols = Array.from(new Set((step.winning_positions || []).map((p) => Number(p.col)).filter(Number.isFinite)));
-        await reelRenderer.reelSlam(winCols.length ? winCols : [Math.floor(cols / 2)], {
-          duration: 760,
-          force: 1.9,
-          accent: "rgba(255, 221, 156, 0.5)"
-        });
       }
       if (Array.isArray(step.multipliers) && step.multipliers.length) {
-        await reelRenderer.multiplierCatch(step.multipliers, mTier === "epic" || mTier === "legendary" || mTier === "mythic" ? 820 : 460);
-        if (mTier === "epic" || mTier === "legendary" || mTier === "mythic") {
-          const colsHit = Array.from(new Set(step.multipliers.map((m) => Number(m.col)).filter(Number.isFinite)));
-          const catchLabel = mTier === "mythic"
-            ? `MYTHIC CATCH ${stepMaxMultiplier}x`
-            : mTier === "legendary"
-              ? `LEGENDARY CATCH ${stepMaxMultiplier}x`
-              : `EPIC CATCH ${stepMaxMultiplier}x`;
-          pulseBanner(catchLabel, "bonus", 1200);
-          showWinCallout(stepMaxMultiplier, "Multiplier Catch", 1200);
-          pushGameMessage(`${catchLabel} on step ${i + 1}.`, "bonus");
-          shakeVault(mTier === "mythic" || mTier === "legendary" ? "strong" : "normal");
-          await reelRenderer.jackpotFlash({
-            duration: mTier === "mythic" ? 900 : 700,
-            colorA: mTier === "mythic" ? "rgba(255, 165, 224, 0.46)" : "rgba(190, 214, 255, 0.34)",
-            colorB: mTier === "mythic" ? "rgba(255, 232, 184, 0.38)" : "rgba(149, 190, 255, 0.26)"
-          });
-          await reelRenderer.reelSlam(colsHit.length ? colsHit : [Math.floor(cols / 2)], {
-            duration: mTier === "mythic" ? 980 : 760,
-            force: mTier === "mythic" ? 2.2 : mTier === "legendary" ? 1.8 : 1.45,
-            accent: mTier === "mythic" ? "rgba(255, 170, 227, 0.52)" : "rgba(167, 214, 255, 0.44)"
-          });
+        // Filter to multipliers we haven't yet celebrated this spin. Tumble
+        // cascades that drag the same multipliers through don't re-fire the
+        // catch animation, banner, callout, shake, or flash.
+        const fresh = step.multipliers.filter((m) => {
+          const k = `${m?.row}-${m?.col}-${Number(m?.value || 0)}`;
+          if (state.spinCelebratedMultis.has(k)) return false;
+          state.spinCelebratedMultis.add(k);
+          return true;
+        });
+        if (fresh.length) {
+          const freshMaxMultiplier = maxMultiplierInStep({ multipliers: fresh });
+          const freshTier = multiplierEventTier(freshMaxMultiplier);
+          await Promise.all([
+            reelRenderer.multiplierCatch(fresh, freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic" ? 820 : 460),
+            flyMultiplierSouls(fresh)
+          ]);
+          if (freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic") {
+            const catchLabel = freshTier === "mythic"
+              ? `MYTHIC CATCH ${freshMaxMultiplier}x`
+              : freshTier === "legendary"
+                ? `LEGENDARY CATCH ${freshMaxMultiplier}x`
+                : `EPIC CATCH ${freshMaxMultiplier}x`;
+            pulseBanner(catchLabel, "bonus", 1200);
+            showWinCallout(freshMaxMultiplier, "Multiplier Catch", 1200);
+            pushGameMessage(`${catchLabel} on step ${i + 1}.`, "bonus");
+            shakeVault(freshTier === "mythic" || freshTier === "legendary" ? "strong" : "normal");
+            await reelRenderer.jackpotFlash({
+              duration: freshTier === "mythic" ? 900 : 700,
+              colorA: freshTier === "mythic" ? "rgba(255, 165, 224, 0.46)" : "rgba(190, 214, 255, 0.34)",
+              colorB: freshTier === "mythic" ? "rgba(255, 232, 184, 0.38)" : "rgba(149, 190, 255, 0.26)"
+            });
+          }
         }
       }
     }
@@ -1433,16 +2499,28 @@ async function animateRound(payload, bet, wagerOverride) {
     );
   }
 
+  // Finale combine sequence: when an epic+ (≥50x) multiplier was caught, fly
+  // the raw win and the multiplier together visually and reveal the total.
+  const appliedMult = Number(payload.multiplier_applied || 1);
+  const totalWinAmt = Number(payload.total_win || 0);
+  if (appliedMult >= 50 && totalWinAmt > 0) {
+    const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
+    await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
+  }
+
   if (Number(payload.free_spins_awarded || 0) > 0) {
     pulseBanner(`Bonus Triggered: +${payload.free_spins_awarded} Free Spins`, "bonus", 1400);
     showWinCallout(payload.total_win || 0, "Bonus Trigger", 1400);
     pushGameMessage(`Bonus triggered: +${payload.free_spins_awarded} free spins.`, "bonus");
     shakeVault("strong");
   } else if (Number(payload.total_win || 0) <= 0) {
-    pulseBanner("No Win", "info", 460);
+    // No on-screen "No Win" banner — silence is fine, the player can see it.
     pushGameMessage("No win this spin.", "info");
   } else {
-    pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
+    const totalWinX = bet > 0 ? Number(payload.total_win || 0) / bet : 0;
+    if (totalWinX >= 12) {
+      pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
+    }
     pushGameMessage(`Total spin win: ${fmt(payload.total_win || 0)}.`, "win");
   }
 
@@ -1465,7 +2543,7 @@ async function spin(options = {}) {
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
-    pulseBanner(state.bonusAutoplay ? "Auto Free Spin..." : "Invoking Spin...", "info", 560);
+    if (state.bonusAutoplay) pulseBanner("Auto Free Spin...", "info", 560);
     const payload = await api("/api/v1/spin", {
       session_id: state.sessionId,
       spin_id: crypto.randomUUID(),
@@ -1513,9 +2591,13 @@ async function autoplayBonus() {
 async function buyFreeSpins() {
   if (!state.sessionId || state.bonusAutoplay) return;
   if (el.anteToggle.checked) return;
+  const bet = Number(el.betSelect.value || 1);
+  const costMultiplier = Number(state.rules?.features?.buy_free_spins?.cost_multiplier || 100);
+  const cost = Number((bet * costMultiplier).toFixed(2));
+  const ok = await confirmBuy({ cost, currency: state.currency || "GEL", costMultiplier });
+  if (!ok) return;
   setControls(true);
   try {
-    const bet = Number(el.betSelect.value || 1);
     pulseBanner("Buying Free Spins...", "bonus", 900);
     const payload = await api("/api/v1/buy-free-spins", { session_id: state.sessionId, bet_amount: bet });
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
@@ -1709,6 +2791,7 @@ function renderRulesPage() {
 async function initSession() {
   const payload = await api("/api/v1/session/init", { player_id: `player_${Date.now()}`, currency: "GEL", locale: "en", game_id: state.gameId });
   state.sessionId = payload.session_id;
+  state.currency = payload.currency || "GEL";
   state.gameId = payload.game_id || state.gameId;
   el.sessionId.textContent = state.sessionId.slice(0, 8);
   el.balance.textContent = fmt(payload.balance);
@@ -1721,14 +2804,40 @@ async function initSession() {
   });
   el.betSelect.value = "1";
   el.betView.textContent = "1.00";
+  if (el.betDisplay) el.betDisplay.textContent = "1.00";
   renderPaytable(1);
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
 }
 
 el.betSelect.addEventListener("change", () => {
   el.betView.textContent = fmt(el.betSelect.value);
+  if (el.betDisplay) el.betDisplay.textContent = fmt(el.betSelect.value);
   renderPaytable(Number(el.betSelect.value || 1));
 });
+
+function stepBet(direction) {
+  if (!el.betSelect || el.betSelect.disabled) return;
+  const opts = Array.from(el.betSelect.options);
+  if (!opts.length) return;
+  const idx = Math.max(0, opts.findIndex((o) => o.value === el.betSelect.value));
+  const next = Math.max(0, Math.min(opts.length - 1, idx + direction));
+  if (opts[next].value === el.betSelect.value) return;
+  el.betSelect.value = opts[next].value;
+  el.betSelect.dispatchEvent(new Event("change"));
+}
+if (el.betDownBtn) el.betDownBtn.addEventListener("click", () => stepBet(-1));
+if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
+
+const anteToggleImg = $("anteToggleImg");
+if (el.anteToggle && anteToggleImg) {
+  const updateAnteImg = () => {
+    anteToggleImg.src = el.anteToggle.checked
+      ? "/assets/symbols/ANTE_ACTIVE-removebg-preview.png"
+      : "/assets/symbols/ANTE_INACTIVE-removebg-preview.png";
+  };
+  el.anteToggle.addEventListener("change", updateAnteImg);
+  updateAnteImg();
+}
 el.spinBtn.addEventListener("click", spin);
 el.buyFreeBtn.addEventListener("click", buyFreeSpins);
 el.simulateBtn.addEventListener("click", () => runSimulation({ bonusOnly: false }));
