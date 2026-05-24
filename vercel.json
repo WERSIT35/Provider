@@ -1,0 +1,7 @@
+{
+  "buildCommand": null,
+  "outputDirectory": "client",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

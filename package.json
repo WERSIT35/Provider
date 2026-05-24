@@ -5,9 +5,12 @@
   "description": "Provider slot MVP with server-authoritative outcomes",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "npx --yes http-server client -p 3000 -c-1 -o",
+    "start:dev-server": "node backend/server.js",
     "simulate": "node math/simulate.js",
-    "test:api": "node tools/api-test.js"
+    "test:api": "node tools/api-test.js",
+    "test:rtp-parity": "node tools/rtp-parity.js",
+    "build": "echo \"No build step - static site\" && exit 0"
   },
   "engines": {
     "node": ">=18"

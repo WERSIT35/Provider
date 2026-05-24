@@ -4,7 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Banana X</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      (function () {
+        var path = location.pathname.replace(/index\.html$/, "");
+        if (!path.endsWith("/")) path += "/";
+        document.write('<base href="' + path + '">');
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="sanctum">
@@ -66,8 +73,9 @@
               <div class="hud-node"><span>Balance</span><strong id="balance">-</strong></div>
               <div class="hud-node"><span>Bet</span><strong id="betView">1.00</strong></div>
               <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
-              <div class="hud-node"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
-              <div class="hud-node hud-node-multi"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
+              <div class="hud-node hud-node-bonus hidden" id="bonusTotalNode"><span>Bonus Total</span><strong id="bonusTotal">0.00</strong></div>
+              <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
+              <div class="hud-node hud-node-multi hidden" id="activeMultiplierNode"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
             </div>
             <div class="vault-window">
               <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
@@ -100,15 +108,15 @@
                 </div>
                 <label class="ante-toggle" for="anteToggle">
                   <input id="anteToggle" type="checkbox" />
-                  <img class="ante-toggle-img" id="anteToggleImg" src="/assets/symbols/ANTE_INACTIVE-removebg-preview.png" alt="Ante Bet 1.25x" />
+                  <img class="ante-toggle-img" id="anteToggleImg" src="assets/symbols/ANTE_INACTIVE-removebg-preview.png" alt="Ante Bet 1.25x" />
                 </label>
               </div>
               <button id="spinBtn" type="button" class="img-btn img-btn-spin" aria-label="Spin">
-                <img src="/assets/symbols/SPIN.png" alt="Spin" />
+                <img src="assets/symbols/SPIN.png" alt="Spin" />
               </button>
               <div class="deck-right">
                 <button id="buyFreeBtn" type="button" class="img-btn img-btn-buy" aria-label="Buy Free Spins">
-                  <img src="/assets/symbols/BUY_FEATURE-removebg-preview.png" alt="Buy Free Spins" />
+                  <img src="assets/symbols/BUY_FEATURE-removebg-preview.png" alt="Buy Free Spins" />
                 </button>
                 <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
                 <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
@@ -160,7 +168,14 @@
               <div class="test-actions">
                 <button id="testDropBtn" type="button">Test Drop</button>
                 <button id="testExplodeBtn" type="button">Test Explosion</button>
+                <button id="testCelebrateBtn" type="button">Test Celebration</button>
                 <button id="testCatchBtn" type="button">Test Catch FX</button>
+              </div>
+              <div class="test-actions test-actions-crazy">
+                <button id="crazyToggleBtn" type="button" class="crazy-toggle">
+                  <span class="crazy-toggle-state">OFF</span>
+                  <span class="crazy-toggle-label">Go Crazy</span>
+                </button>
               </div>
               <div class="test-multi-head">Trigger Multiplier</div>
               <div class="test-multi-grid" id="testMultiButtons"></div>
@@ -248,6 +263,18 @@
       </div>
     </section>
 
-    <script src="/main.js?v=20260508-1"></script>
+    <script src="engine/rng.js?v=20260523-1"></script>
+    <script src="engine/config.js?v=20260523-1"></script>
+    <script src="engine/symbols.js?v=20260523-1"></script>
+    <script src="engine/multipliers.js?v=20260523-1"></script>
+    <script src="engine/matrix.js?v=20260523-1"></script>
+    <script src="engine/payouts.js?v=20260523-1"></script>
+    <script src="engine/tumble.js?v=20260523-1"></script>
+    <script src="engine/near-miss.js?v=20260523-1"></script>
+    <script src="engine/crazy-mode.js?v=20260523-1"></script>
+    <script src="engine/session-store.js?v=20260523-1"></script>
+    <script src="engine/spin-engine.js?v=20260523-1"></script>
+    <script src="engine/simulator.js?v=20260523-1"></script>
+    <script src="main.js?v=20260523-1"></script>
   </body>
 </html>

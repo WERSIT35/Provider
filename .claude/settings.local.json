@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -n \"^const \\\\$ = \\\\|^const el = \" c:/Users/OTO/Documents/Web-Projects/Provider/client/main.js)"
+      "Bash(grep -n \"^const \\\\$ = \\\\|^const el = \" c:/Users/OTO/Documents/Web-Projects/Provider/client/main.js)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\OTO\\\\Documents\\\\Web-Projects\\\\Provider\" -Directory | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\OTO\\\\Documents\\\\Web-Projects\\\\Provider\" -Recurse -File | Where-Object { $_.Extension -in @\\('.ts', '.tsx', '.js', '.jsx', '.json'\\) } | Measure-Object | Select-Object -Property Count)",
+      "PowerShell(\\(Get-Item \"c:\\\\Users\\\\OTO\\\\Documents\\\\Web-Projects\\\\Provider\\\\client\\\\main.js\"\\).Length / 1KB)",
+      "Read(//c/Users/OTO/.claude/plans/**)",
+      "Read(//c/Users/OTO/.claude/**)",
+      "Bash(STEPS=200000 node tools/rtp-parity.js)",
+      "Bash(STEPS=1000000 TOLERANCE=0.5 node tools/rtp-parity.js)",
+      "Bash(STEPS=200000 TOLERANCE=0.5 node tools/rtp-parity.js)",
+      "Bash(node -e ' *)",
+      "Bash(node --check client/main.js)",
+      "Bash(STEPS=200000 TOLERANCE=1.0 node tools/rtp-parity.js)",
+      "Bash(STEPS=100000 TOLERANCE=1.5 node tools/rtp-parity.js)",
+      "Bash(STEPS=50000 TOLERANCE=2.0 node tools/rtp-parity.js)",
+      "Bash(STEPS=200000 TOLERANCE=1.5 node tools/rtp-parity.js)",
+      "Bash(STEPS=200000 TOLERANCE=5 node tools/rtp-parity.js)"
     ]
   }
 }

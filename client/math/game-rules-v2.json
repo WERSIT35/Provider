@@ -1,0 +1,200 @@
+{
+  "version": "3.0.0",
+  "game_title": "Banana X",
+  "provider": "Fantasma Games",
+  "release_date": "2026-04-14",
+  "mode": "production_profile",
+  "layout": {
+    "reels": 6,
+    "rows": 5,
+    "pays": "symbols_pay_anywhere",
+    "min_match_count": 8
+  },
+  "rtp": {
+    "theoretical_percent": 96.38,
+    "ante_bet_percent": 96.38,
+    "buy_free_spins_percent": 96.38,
+    "payout_scaler": 1.49,
+    "target_band_min": 96.2,
+    "target_band_max": 96.55,
+    "target_tolerance_percent": 0.05
+  },
+  "rtp_profiles": [
+    {
+      "key": "96",
+      "game_id": "bananax",
+      "slug": "banana_x_fantasma",
+      "theoretical_percent": 96.38,
+      "ante_bet_percent": 96.38,
+      "buy_free_spins_percent": 96.38,
+      "payout_scaler": 1.49,
+      "base_payout_scaler": 1.629,
+      "free_spin_payout_scaler": 1.115,
+      "target_band_min": 96.2,
+      "target_band_max": 96.55,
+      "target_tolerance_percent": 0.05
+    },
+    {
+      "key": "94",
+      "game_id": "bananax_94",
+      "slug": "banana_x_94_fantasma",
+      "theoretical_percent": 94.4,
+      "ante_bet_percent": 94.4,
+      "buy_free_spins_percent": 94.4,
+      "payout_scaler": 1.46,
+      "base_payout_scaler": 1.595,
+      "free_spin_payout_scaler": 1.092,
+      "target_band_min": 94.2,
+      "target_band_max": 94.6,
+      "target_tolerance_percent": 0.05
+    },
+    {
+      "key": "92",
+      "game_id": "bananax_92",
+      "slug": "banana_x92_fantasma",
+      "theoretical_percent": 92.38,
+      "ante_bet_percent": 92.38,
+      "buy_free_spins_percent": 92.38,
+      "payout_scaler": 1.426,
+      "base_payout_scaler": 1.561,
+      "free_spin_payout_scaler": 1.068,
+      "target_band_min": 92.2,
+      "target_band_max": 92.55,
+      "target_tolerance_percent": 0.05
+    }
+  ],
+  "volatility": "high",
+  "bet_limits": {
+    "min_total_bet": 0.2,
+    "max_total_bet": 125.0
+  },
+  "max_win_cap_multiplier": 20000,
+  "markets": [
+    "Brazil",
+    "Bulgaria",
+    "Denmark",
+    "Estonia",
+    "Latvia",
+    "Malta",
+    "Ontario",
+    "Portugal",
+    "Romania",
+    "Sweden",
+    "US (Connecticut)",
+    "United Kingdom"
+  ],
+  "markets_coming_soon": ["Greece", "Peru"],
+  "simulation_acceptance": {
+    "steps": 1000000,
+    "casino_net_must_be_positive": true,
+    "bonus_catch_count_min": 1
+  },
+  "features": {
+    "tumble": {
+      "enabled": true,
+      "description": "Winning symbols are removed, remaining symbols collapse, and new symbols drop in until no new win appears."
+    },
+    "multipliers": {
+      "enabled": true,
+      "range_min": 2,
+      "range_max": 1000,
+      "allowed_values": [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100, 250, 500, 1000],
+      "base_game_apply_mode": "sum_sequence_end",
+      "free_spins_apply_mode": "persistent_round_total",
+      "apex_wild_enabled": true
+    },
+    "free_spins": {
+      "base_trigger_scatter_count": 4,
+      "base_award_spins": 15,
+      "retrigger_scatter_count": 3,
+      "retrigger_award_spins": 5
+    },
+    "ante_bet": {
+      "enabled": true,
+      "multiplier": 1.25,
+      "description": "Increases feature frequency and disables Buy Free Spins while active."
+    },
+    "buy_free_spins": {
+      "enabled": true,
+      "cost_multiplier": 100,
+      "guaranteed_trigger_scatter_count": 4,
+      "description": "Instantly triggers Free Spins."
+    }
+  },
+  "symbol_payout_display": {
+    "groups": [
+      { "label": "8-9", "match_min": 8, "match_max": 9 },
+      { "label": "10-11", "match_min": 10, "match_max": 11 },
+      { "label": "12-30", "match_min": 12, "match_max": 30 }
+    ],
+    "symbols": [
+      { "symbol": "Top Crown", "payouts": { "8-9": 20, "10-11": 50, "12-30": 100 } },
+      { "symbol": "Hourglass", "payouts": { "8-9": 5, "10-11": 20, "12-30": 50 } },
+      { "symbol": "Ring", "payouts": { "8-9": 4, "10-11": 10, "12-30": 30 } },
+      { "symbol": "Chalice", "payouts": { "8-9": 3, "10-11": 4, "12-30": 24 } },
+      { "symbol": "Red Gem", "payouts": { "8-9": 2, "10-11": 3, "12-30": 20 } },
+      { "symbol": "Purple Triangle", "payouts": { "8-9": 1.6, "10-11": 2.4, "12-30": 16 } },
+      { "symbol": "Yellow Hex", "payouts": { "8-9": 1, "10-11": 2, "12-30": 10 } },
+      { "symbol": "Green Triangle", "payouts": { "8-9": 0.8, "10-11": 1.8, "12-30": 8 } },
+      { "symbol": "Blue Diamond", "payouts": { "8-9": 0.5, "10-11": 1.5, "12-30": 4 } },
+      { "symbol": "SCATTER", "payouts": { "4": 6, "5": 10, "6": 200 } }
+    ]
+  },
+  "ui": {
+    "autoplay": true,
+    "quick_spin": true,
+    "turbo_spin": true,
+    "settings_menu": true,
+    "rules_pages": 6
+  },
+  "rules_pages": [
+    {
+      "title": "BANANA X",
+      "points": [
+        "Enter Banana X where a viral monkey ramps up chaos every spin.",
+        "Grid layout is 5 reels x 4 rows.",
+        "Symbols pay anywhere on screen with minimum 8 matching symbols."
+      ]
+    },
+    {
+      "title": "CORE FEATURES",
+      "points": [
+        "Wild multipliers can appear in base spins and tumbles.",
+        "Apex Wild behavior increases upside during feature flow.",
+        "Tumble continues while new wins appear."
+      ]
+    },
+    {
+      "title": "FREE SPINS",
+      "points": [
+        "4+ Scatter symbols trigger 15 Free Spins.",
+        "3+ Scatters during Free Spins retrigger +5 spins.",
+        "Free Spin multipliers can persist and stack through the round."
+      ]
+    },
+    {
+      "title": "RTP MODES",
+      "points": [
+        "bananax / banana_x_fantasma: 96.38% RTP.",
+        "bananax_94 / banana_x_94_fantasma: 94.40% RTP.",
+        "bananax_92 / banana_x92_fantasma: 92.38% RTP."
+      ]
+    },
+    {
+      "title": "GAME PARAMETERS",
+      "points": [
+        "Volatility: High.",
+        "Max win cap: 20000x bet.",
+        "Minimum bet: 0.20. Maximum bet: 125.00."
+      ]
+    },
+    {
+      "title": "MARKETS",
+      "points": [
+        "Live markets: Brazil, Bulgaria, Denmark, Estonia, Latvia, Malta, Ontario, Portugal, Romania, Sweden, US (Connecticut), United Kingdom.",
+        "Coming soon: Greece, Peru.",
+        "Malfunction voids all pays and plays."
+      ]
+    }
+  ]
+}

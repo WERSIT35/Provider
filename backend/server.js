@@ -7,12 +7,14 @@ const { URL } = require("url");
 const BASE_PORT = Number(process.env.PORT || 3000);
 const ROOT = path.resolve(__dirname, "..");
 const CLIENT_DIR = path.join(ROOT, "client");
+const CLIENT_MATH_DIR = path.join(CLIENT_DIR, "math");
 const MATH_DIR = path.join(ROOT, "math");
 const ASSETS_DIR = path.join(CLIENT_DIR, "assets");
 
-const gameRules = JSON.parse(
-  fs.readFileSync(path.join(MATH_DIR, "game-rules-v2.json"), "utf8")
-);
+const RULES_PATH = fs.existsSync(path.join(CLIENT_MATH_DIR, "game-rules-v2.json"))
+  ? path.join(CLIENT_MATH_DIR, "game-rules-v2.json")
+  : path.join(MATH_DIR, "game-rules-v2.json");
+const gameRules = JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
 
 const sessions = new Map();
 const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10];
