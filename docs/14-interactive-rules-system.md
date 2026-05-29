@@ -35,7 +35,7 @@ Enforce strict runtime rule consistency where behavior is driven by `math/game-r
 
 5. Economy and safety:
 - RTP profile modes: `96.38`, `94.40`, `92.38`
-- Bet range: `0.20` to `125.00`
+- Bet range: `0.20` to `500.00`
 - Max win cap: `20000x`
 
 ## Validation Requirements

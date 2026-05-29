@@ -17,7 +17,7 @@ const RULES_PATH = fs.existsSync(path.join(CLIENT_MATH_DIR, "game-rules-v2.json"
 const gameRules = JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
 
 const sessions = new Map();
-const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10];
+const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 250, 500];
 
 const LAYOUT_REELS = Number(gameRules.layout?.reels || 6);
 const LAYOUT_ROWS = Number(gameRules.layout?.rows || 5);
@@ -486,19 +486,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
       win_total: ways.total,
       winning_positions: ways.winning_positions
     });
-    if (ways.total <= 0) {
-      // If a tumble chain already produced wins, count multipliers that
-      // landed on the final (non-winning) board too.
-      if (sequenceWin > 0) {
-        for (const m of multipliers) {
-          const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
-          if (countedMultiplierIds.has(id)) continue;
-          countedMultiplierIds.add(id);
-          sequenceMultiplierSum += Number(m.value || 0);
-        }
-      }
-      break;
-    }
+    if (ways.total <= 0) break;
     sequenceWin += ways.total;
     for (const m of multipliers) {
       const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
@@ -535,7 +523,9 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   let multiplierApplied = 1;
   let multiplierGainApplied = 0;
   if (isFreeSpin) {
-    const prevPersistent = Number(session.freeSpinPersistentMultiplier || 1);
+    const prevPersistent = Number.isFinite(Number(session.freeSpinPersistentMultiplier))
+      ? Number(session.freeSpinPersistentMultiplier)
+      : 0;
     if (sequenceWin > 0) {
       multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
       const nextPersistent = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
@@ -549,6 +539,9 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
     multiplierApplied = Number(sequenceMultiplierSum.toFixed(2));
   }
+  const freeSpinMultiplierCurrentForResponse = isFreeSpin
+    ? Number((session.freeSpinPersistentMultiplier || 0).toFixed(2))
+    : 0;
 
   let totalWin = Number((preMultiplierWin * multiplierApplied).toFixed(2));
   const maxWinCap = Number((MAX_WIN_CAP_X * betAmount).toFixed(2));
@@ -558,7 +551,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   if (!isFreeSpin && scatterPeak >= FREE_SPINS_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_AWARD;
     session.freeSpinsLeft += freeSpinsAwarded;
-    session.freeSpinPersistentMultiplier = 1;
+    session.freeSpinPersistentMultiplier = 0;
   }
   if (isFreeSpin && scatterPeak >= FREE_SPINS_RETRIGGER_TRIGGER) {
     freeSpinsAwarded = FREE_SPINS_RETRIGGER_AWARD;
@@ -568,7 +561,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
   session.balance = Number((session.balance + totalWin).toFixed(2));
 
   if (session.freeSpinsLeft === 0) {
-    session.freeSpinPersistentMultiplier = 1;
+    session.freeSpinPersistentMultiplier = 0;
   }
 
   return {
@@ -589,7 +582,7 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     multipliers_sum_sequence: Number(sequenceMultiplierSum.toFixed(2)),
     multiplier_gain_applied: Number(multiplierGainApplied.toFixed(2)),
     multiplier_applied: Number(multiplierApplied.toFixed(2)),
-    free_spin_multiplier_current: Number((isFreeSpin ? multiplierApplied : 1).toFixed(2)),
+    free_spin_multiplier_current: freeSpinMultiplierCurrentForResponse,
     total_win: totalWin,
     balance_after: session.balance
   };
@@ -598,7 +591,7 @@ function simulateOneBonusRound(betAmount, options = {}) {
   const session = {
     balance: 0,
     freeSpinsLeft: 1,
-    freeSpinPersistentMultiplier: 1
+    freeSpinPersistentMultiplier: 0
   };
   let roundWin = 0;
   let spinsPlayed = 0;
@@ -656,7 +649,7 @@ function createSession({ player_id, currency, locale, game_id }) {
     rtpProfile: getRtpProfileByGameId(resolvedGameId),
     balance: 1000,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 1,
+    freeSpinPersistentMultiplier: 0,
     forceMultiplierValue: null,
     anteEnabled: false,
     spinHistory: new Map(),
@@ -674,7 +667,7 @@ function simulateProfile(steps, betAmount, options = {}) {
   const session = {
     balance: 0,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 1
+    freeSpinPersistentMultiplier: 0
   };
   let paidWager = 0;
   let paidSpins = 0;
@@ -842,7 +835,7 @@ function streamSimulationComparison(req, res, steps, betAmount, options = {}) {
   const session = {
     balance: 0,
     freeSpinsLeft: 0,
-    freeSpinPersistentMultiplier: 1
+    freeSpinPersistentMultiplier: 0
   };
   let paidWager = 0;
   let paidSpins = 0;

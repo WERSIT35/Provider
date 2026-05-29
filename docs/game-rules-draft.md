@@ -48,7 +48,7 @@
   - `bananax`: `96.38%`
   - `bananax_94`: `94.40%`
   - `bananax_92`: `92.38%`
-- Bet range: `0.20` to `125.00`
+- Bet range: `0.20` to `500.00`
 - Max win cap: `20000x` bet
 
 ## Transparency Disclosures

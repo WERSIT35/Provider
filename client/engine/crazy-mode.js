@@ -20,7 +20,7 @@
     payoutScaler: 4.5,
     freeSpinPayoutScaler: 5.5,
     forceFreeSpinTriggerProbability: 0.55,
-    freeSpinPersistentMultiplierStart: 2
+    freeSpinPersistentMultiplierStart: 0
   };
 
   function getRates({ crazyMode, isFreeSpin, anteEnabled }) {
@@ -63,7 +63,7 @@
   }
 
   function persistentMultiplierStart(crazyMode) {
-    return crazyMode ? CRAZY_OVERRIDES.freeSpinPersistentMultiplierStart : 1;
+    return crazyMode ? CRAZY_OVERRIDES.freeSpinPersistentMultiplierStart : 0;
   }
 
   root.SlotEngine = root.SlotEngine || {};

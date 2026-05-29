@@ -35,7 +35,7 @@
     const session = {
       balance: 0,
       freeSpinsLeft: 1,
-      freeSpinPersistentMultiplier: 1,
+      freeSpinPersistentMultiplier: 0,
       bonusRoundWin: 0,
       gameId: profile.game_id,
       rtpProfile: profile,
@@ -72,7 +72,7 @@
     const session = {
       balance: 0,
       freeSpinsLeft: 0,
-      freeSpinPersistentMultiplier: 1,
+      freeSpinPersistentMultiplier: 0,
       bonusRoundWin: 0,
       gameId: profile.game_id,
       rtpProfile: profile,

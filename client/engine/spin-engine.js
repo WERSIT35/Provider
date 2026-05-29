@@ -1,7 +1,7 @@
 (function (root) {
   "use strict";
 
-  const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10];
+  const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 250, 500];
 
   function buildEngineContext(rules) {
     const { Symbols, Multipliers, Matrix, Payouts, Tumble, NearMiss } = root.SlotEngine;
@@ -78,7 +78,7 @@
         rtpProfile: profile,
         balance: 1000,
         freeSpinsLeft: 0,
-        freeSpinPersistentMultiplier: 1,
+        freeSpinPersistentMultiplier: 0,
         bonusRoundWin: 0,
         forceMultiplierValue: null,
         anteEnabled: false,
@@ -102,7 +102,9 @@
           rtpProfile: profile,
           balance: Number.isFinite(persisted.balance) ? persisted.balance : 1000,
           freeSpinsLeft: Number(persisted.freeSpinsLeft || 0),
-          freeSpinPersistentMultiplier: Number(persisted.freeSpinPersistentMultiplier || 1),
+          freeSpinPersistentMultiplier: Number.isFinite(Number(persisted.freeSpinPersistentMultiplier))
+            ? Number(persisted.freeSpinPersistentMultiplier)
+            : 0,
           bonusRoundWin: Number(persisted.freeSpinsLeft || 0) > 0 ? Number(persisted.bonusRoundWin || 0) : 0,
           anteEnabled: Boolean(persisted.anteEnabled),
           crazyMode: Boolean(persisted.crazyMode),
@@ -214,17 +216,7 @@
           win_total: ways.total,
           winning_positions: ways.winning_positions
         });
-        if (ways.total <= 0) {
-          if (sequenceWin > 0) {
-            for (const m of multipliers) {
-              const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
-              if (countedMultiplierIds.has(id)) continue;
-              countedMultiplierIds.add(id);
-              sequenceMultiplierSum += Number(m.value || 0);
-            }
-          }
-          break;
-        }
+        if (ways.total <= 0) break;
         sequenceWin += ways.total;
         for (const m of multipliers) {
           const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
@@ -257,7 +249,9 @@
       let multiplierApplied = 1;
       let multiplierGainApplied = 0;
       if (isFreeSpin) {
-        const prevPersistent = Number(session.freeSpinPersistentMultiplier || 1);
+        const prevPersistent = Number.isFinite(Number(session.freeSpinPersistentMultiplier))
+          ? Number(session.freeSpinPersistentMultiplier)
+          : 0;
         if (sequenceWin > 0) {
           multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
           const nextPersistent = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
@@ -270,6 +264,9 @@
         multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
         multiplierApplied = Number(sequenceMultiplierSum.toFixed(2));
       }
+      const freeSpinMultiplierCurrentForResponse = isFreeSpin
+        ? Number((session.freeSpinPersistentMultiplier || 0).toFixed(2))
+        : 0;
 
       let totalWin = Number((preMultiplierWin * multiplierApplied).toFixed(2));
       const maxWinCap = Number((this.MAX_WIN_CAP_X * betAmount).toFixed(2));
@@ -282,7 +279,7 @@
           totalWin = remainingCap;
           capReached = true;
           session.freeSpinsLeft = 0;
-          session.freeSpinPersistentMultiplier = 1;
+          session.freeSpinPersistentMultiplier = 0;
           session.bonusRoundWin = maxWinCap;
           events.push({
             type: "FREE_SPINS_ENDED_BY_MAX_WIN_CAP",
@@ -316,7 +313,7 @@
 
       session.balance = Number((session.balance + totalWin).toFixed(2));
       if (session.freeSpinsLeft === 0 && !capReached) {
-        session.freeSpinPersistentMultiplier = 1;
+        session.freeSpinPersistentMultiplier = 0;
         session.bonusRoundWin = 0;
       }
 
@@ -340,7 +337,7 @@
         multipliers_sum_sequence: Number(sequenceMultiplierSum.toFixed(2)),
         multiplier_gain_applied: Number(multiplierGainApplied.toFixed(2)),
         multiplier_applied: Number(multiplierApplied.toFixed(2)),
-        free_spin_multiplier_current: Number((isFreeSpin ? multiplierApplied : 1).toFixed(2)),
+        free_spin_multiplier_current: freeSpinMultiplierCurrentForResponse,
         total_win: totalWin,
         balance_after: session.balance,
         events,

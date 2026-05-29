@@ -112,7 +112,7 @@ const state = {
   spinFlownSouls: new Set(),
   spinMultDisplay: 1,
   spinCelebratedMultis: new Set(),
-  bonusMultiplierCarry: 1,
+  bonusMultiplierCarry: 0,
   roundAnimating: false,
   fastStopRequested: false,
   crazyMode: false
@@ -166,6 +166,17 @@ const symbolAssets = {
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
+const ANIMATION_TIMING = {
+  spinBurst: 520,
+  oldBoardDropOff: 1040,
+  introDrop: 1040,
+  tumbleDrop: 980,
+  tumbleDropOverlap: 260,
+  markSmall: 680,
+  markMedium: 760,
+  markGreat: 860,
+  explode: 540
+};
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -251,6 +262,17 @@ function getMultiplierTier(value) {
   return MULTIPLIER_TIER_BY_VALUE.get(Number(value)) || MULTIPLIER_TIER_DEFS[0];
 }
 
+function multiplierIconScale(value) {
+  const v = Number(value || 0);
+  if (v >= 1000) return 1.34;
+  if (v >= 500) return 1.28;
+  if (v >= 250) return 1.21;
+  if (v >= 100) return 1.14;
+  if (v >= 50) return 1.08;
+  if (v >= 20) return 1.04;
+  return 1;
+}
+
 class ReelCanvasRenderer {
   constructor(canvas, { rowsCount, colsCount }) {
     this.canvas = canvas;
@@ -262,7 +284,8 @@ class ReelCanvasRenderer {
     this.board = {
       matrix: Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => "BLUE_DIAMOND")),
       winningSet: new Set(),
-      multiMap: new Map()
+      multiMap: new Map(),
+      hidden: false
     };
     this.fx = {
       drop: null,
@@ -331,6 +354,7 @@ class ReelCanvasRenderer {
     this.board.multiMap = new Map(
       (multipliers || []).map((m) => [`${m.row}-${m.col}`, Number(m.value || 1)])
     );
+    this.board.hidden = false;
     this.dirty = true;
     if (typeof window !== "undefined") {
       window.__boardDebug = (safeMatrix?.[0] || []).slice(0, 3).join(",");
@@ -488,18 +512,43 @@ class ReelCanvasRenderer {
     });
   }
 
-  async preSpin(duration = 320) {
+  async preSpin(duration = ANIMATION_TIMING.spinBurst) {
     this.fx.spinBurst = { start: performance.now(), duration };
     await animationSleep(duration);
     this.fx.spinBurst = null;
   }
 
-  async intro(matrix, multipliers = []) {
+  async dropOff(duration = ANIMATION_TIMING.oldBoardDropOff) {
+    const hasBoard = Array.isArray(this.board.matrix) && this.board.matrix.length > 0;
+    if (!hasBoard) return;
+    this.board.winningSet = new Set();
+    this.fx.heavyReveals = new Map();
+    const dropMap = {};
+    for (let r = 0; r < this.rows; r += 1) {
+      for (let c = 0; c < this.cols; c += 1) dropMap[`${r}-${c}`] = this.rows + 1;
+    }
+    this.fx.drop = {
+      start: performance.now(),
+      duration,
+      map: dropMap,
+      heavy: new Map(),
+      exit: true
+    };
+    const maxDelay = Object.entries(dropMap).reduce((acc, [key, count]) => {
+      const [row, col] = key.split("-").map((n) => Number(n));
+      return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
+    }, 0);
+    await animationSleep(duration + maxDelay + 40);
+    this.fx.drop = null;
+    this.board.hidden = true;
+  }
+
+  async intro(matrix, multipliers = [], options = {}) {
     const introMap = {};
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) introMap[`${r}-${c}`] = this.rows;
     }
-    return this.drop(matrix, multipliers, introMap, 780);
+    return this.drop(matrix, multipliers, introMap, ANIMATION_TIMING.introDrop, options);
   }
 
   resetHeavyBangs() {
@@ -590,7 +639,7 @@ class ReelCanvasRenderer {
     return p; // used by spawnHeavyImpact for shockwave scaling
   }
 
-  async drop(matrix, multipliers = [], dropMap = {}, duration = 960) {
+  async drop(matrix, multipliers = [], dropMap = {}, duration = 960, options = {}) {
     if (window.__renderDebug) {
       const incoming = (matrix?.[0] || []).slice(0, 3).join(",");
       console.log(`[drop:enter] incoming row0=${incoming} dropMap.size=${Object.keys(dropMap || {}).length}`);
@@ -601,12 +650,13 @@ class ReelCanvasRenderer {
     //  • lightOnlyCells: get just a tier-scaled lightning strike on landing.
     //    Used for common tier and for any non-common multipliers after the
     //    first BANG has already fired this spin.
+    const animateMultipliers = Boolean(options.animateMultipliers);
     const heavyCells = new Map();
     const lightOnlyCells = new Map();
     let peakTier = null;
     let peakValue = 0;
     const alreadyBanged = this.fx.bangedKeys.size > 0;
-    (multipliers || []).forEach((m) => {
+    if (animateMultipliers) (multipliers || []).forEach((m) => {
       const v = Number(m?.value || 0);
       if (!Number.isInteger(m?.row) || !Number.isInteger(m?.col) || v <= 0) return;
       const tier = getMultiplierTier(v);
@@ -1054,9 +1104,14 @@ class ReelCanvasRenderer {
     const delay = this.dropDelay(row, col, count);
     const elapsed = performance.now() - drop.start - delay;
     const distance = count * rowStep * 1.15;
+    if (drop.exit && elapsed < 0) return 0;
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
     const fallT = easeOutQuint(progress);
+    if (drop.exit) {
+      const exitT = progress ** 4;
+      return lerp(0, distance, exitT);
+    }
     const fallY = lerp(-distance, 0, fallT);
     if (progress < 0.82) return fallY;
     // Single small landing bounce — short, quick settle (no pendulum sway).
@@ -1630,6 +1685,7 @@ class ReelCanvasRenderer {
 
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
+        if (this.board.hidden) continue;
         const symbol = this.board.matrix?.[r]?.[c] || "BLUE_DIAMOND";
         const key = `${r}-${c}`;
         const x = padX + laneW * (c + 0.5);
@@ -1703,7 +1759,12 @@ class ReelCanvasRenderer {
         const ringR = radius * 1.05 * baseScale * revealScale;
         const coreR = radius * 1.05 * baseScale * revealScale;
         const scatterSizeBoost = symbol === "SCATTER" ? 1.22 : 1;
-        const iconBase = radius * 2.25 * baseScale * scatterSizeBoost * revealScale;
+        const multiScale = symbol === "MULTI" ? multiplierIconScale(this.board.multiMap.get(key)) : 1;
+        const maxIconBase = Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.16 : 1.02);
+        const iconBase = Math.min(
+          radius * 2.25 * baseScale * scatterSizeBoost * revealScale * multiScale,
+          maxIconBase * baseScale * revealScale
+        );
         const iconW = iconBase * squashX;
         const iconH = iconBase * squashY;
 
@@ -2733,6 +2794,44 @@ function renderCaughtLines(wins = [], multipliers = []) {
   });
 }
 
+function delayedDropAfter(ms, ...dropArgs) {
+  return animationSleep(ms).then(() => reelRenderer.drop(...dropArgs));
+}
+
+function scatterPositionsFromPayload(payload = {}) {
+  const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
+    ? payload.tumble_steps
+    : [{ matrix: payload.matrix }];
+  const positions = [];
+  const seen = new Set();
+  for (const step of steps) {
+    const matrix = Array.isArray(step?.matrix) ? step.matrix : [];
+    for (let row = 0; row < matrix.length; row += 1) {
+      for (let col = 0; col < (matrix[row] || []).length; col += 1) {
+        if (matrix[row][col] !== "SCATTER") continue;
+        const key = `${row}-${col}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        positions.push({ row, col });
+      }
+    }
+  }
+  return positions;
+}
+
+async function celebrateScatterCatch(payload, label = "Bonus Catch") {
+  const scatters = scatterPositionsFromPayload(payload);
+  if (!scatters.length) return;
+  const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
+  const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
+  pulseBanner(label, "bonus", 900);
+  pushGameMessage(`${label}: ${scatters.length} scatters caught.`, "bonus");
+  await Promise.all([
+    reelRenderer.highlight(matrix, { winning: scatters, multipliers }, 1180),
+    reelRenderer.celebrateCluster(scatters, "SCATTER", scatters.length >= 5 ? "blast-great" : "blast-medium", 980)
+  ]);
+}
+
 function summarizeSpin(payload, bet) {
   const tumbleSteps = Array.isArray(payload.tumble_steps) ? payload.tumble_steps : [];
   const tumbleCount = Math.max(0, tumbleSteps.length - 1);
@@ -2992,7 +3091,7 @@ function applyRoundStats(payload, bet, wagerOverride) {
   if (el.sessionBonusHits) el.sessionBonusHits.textContent = String(stats.bonusHits);
 }
 
-async function animateRound(payload, bet, wagerOverride) {
+async function animateRound(payload, bet, wagerOverride, options = {}) {
   state.roundAnimating = true;
   el.spinBtn?.classList.add("is-spinning");
   el.spinBtn?.setAttribute("aria-label", "Stop spin");
@@ -3042,6 +3141,11 @@ async function animateRound(payload, bet, wagerOverride) {
   reelRenderer.fx.multiCatch = null;
   reelRenderer.fx.spotlight = null;
   reelRenderer.fx.heavyReveals = new Map();
+  if (options.preparedTransition) {
+    await options.preparedTransition;
+  } else {
+    await reelRenderer.dropOff();
+  }
   // Commit the new spin's first matrix to the canvas immediately so the
   // visible board is always the current payload, even if intro is aborted
   // or the prior round left fx state mid-animation.
@@ -3055,7 +3159,7 @@ async function animateRound(payload, bet, wagerOverride) {
   } catch {}
   if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
-  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || []);
+  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
@@ -3086,19 +3190,31 @@ async function animateRound(payload, bet, wagerOverride) {
         const celebratePromise = prevTier !== "blast-small"
           ? reelRenderer.celebrateCluster(prevWinning, prevDominant, prevTier)
           : Promise.resolve();
-        await Promise.all([
-          reelRenderer.explode(prevWinning, 360, prevTier),
-          chipPromise,
-          celebratePromise
-        ]);
         const dropMap = buildDropMap(prev.matrix, prevWinning);
-        await reelRenderer.drop(step.matrix, step.multipliers || [], dropMap, 720);
+        const dropPromise = delayedDropAfter(
+          ANIMATION_TIMING.tumbleDropOverlap,
+          step.matrix,
+          step.multipliers || [],
+          dropMap,
+          ANIMATION_TIMING.tumbleDrop,
+          { animateMultipliers: true }
+        );
+        await Promise.all([
+          reelRenderer.explode(prevWinning, ANIMATION_TIMING.explode, prevTier),
+          chipPromise,
+          celebratePromise,
+          dropPromise
+        ]);
       } else if (prevWinning.length === 0 && Array.isArray(prev?.multipliers) && prev.multipliers.length > 0) {
         // multipliers may persist on a non-winning matrix; nothing to do.
       }
     }
     const tier = winTier(step?.ways_wins || [], bet);
-    const pulseDuration = tier === "blast-great" ? 540 : tier === "blast-medium" ? 480 : 420;
+    const pulseDuration = tier === "blast-great"
+      ? ANIMATION_TIMING.markGreat
+      : tier === "blast-medium"
+        ? ANIMATION_TIMING.markMedium
+        : ANIMATION_TIMING.markSmall;
     const stepWin = Number(step?.win_total || 0);
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);
@@ -3128,11 +3244,11 @@ async function animateRound(payload, bet, wagerOverride) {
         });
       }
     }
-    // Multiplier catch fires for ANY step that has fresh multipliers (not
-    // just winning steps). A multiplier dropping in during a tumble — even
-    // on a no-win final step — still needs to fly to the multiplier counter
-    // and visibly accumulate into the persistent total.
-    if (Array.isArray(step.multipliers) && step.multipliers.length) {
+    // Multiplier symbols always keep the normal reel drop. The multiplier
+    // lightning/catch/fly-to-total sequence only runs on wins or tumbles.
+    const isWinningStep = (step.winning_positions || []).length > 0 && stepWin > 0;
+    const isTumbleStep = i > 0;
+    if ((isWinningStep || isTumbleStep) && Array.isArray(step.multipliers) && step.multipliers.length) {
       const fresh = step.multipliers.filter((m) => {
         const k = m?.id ? `id:${m.id}` : `${m?.row}-${m?.col}-${Number(m?.value || 0)}`;
         if (state.spinCelebratedMultis.has(k)) return false;
@@ -3255,13 +3371,12 @@ async function animateRound(payload, bet, wagerOverride) {
   el.freeSpins.textContent = String(payload.free_spins_left || 0);
   if (payload.is_free_spin) {
     const reportedBonusMult = Number(payload.free_spin_multiplier_current);
-    const appliedMult = Number(payload.multiplier_applied || 1);
-    const safeReported = Number.isFinite(reportedBonusMult) && reportedBonusMult > 0 ? reportedBonusMult : 1;
-    const safeApplied = Number.isFinite(appliedMult) && appliedMult > 0 ? appliedMult : 1;
-    state.bonusMultiplierCarry = Math.max(state.bonusMultiplierCarry || 1, safeReported, safeApplied);
+    state.bonusMultiplierCarry = Number.isFinite(reportedBonusMult) && reportedBonusMult >= 0
+      ? reportedBonusMult
+      : Number(state.bonusMultiplierCarry || 0);
     el.activeMultiplier.textContent = mfmt(state.bonusMultiplierCarry);
   } else {
-    state.bonusMultiplierCarry = 1;
+    state.bonusMultiplierCarry = 0;
     el.activeMultiplier.textContent = mfmt(payload.multiplier_applied || 1);
   }
   updateBonusHud({
@@ -3306,6 +3421,8 @@ async function spin(options = {}) {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
     if (state.bonusAutoplay) pulseBanner("Auto Free Spin...", "info", 560);
+    const preparedTransition = reelRenderer.dropOff();
+    await preparedTransition;
     const spinId = (window.SlotEngine?.RNG?.uuid?.()) || crypto.randomUUID();
     const payload = await api("/api/v1/spin", {
       session_id: state.sessionId,
@@ -3327,8 +3444,9 @@ async function spin(options = {}) {
     // "spin is in flight" cue that should not linger across the animation
     // or the trailing waitForIdle settle window.
     el.spinBtn?.classList.remove("is-spinning", "is-fast-stopping");
-    await animateRound(payload, bet);
+    await animateRound(payload, bet, undefined, { preparedTransition });
     if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
+      await celebrateScatterCatch(payload, "Bonus Catch");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     } else if (
@@ -3341,6 +3459,7 @@ async function spin(options = {}) {
       // Show the feature panel briefly then auto-dismiss so the autoplay
       // continues without requiring a click. Player can still click to
       // skip it sooner.
+      await celebrateScatterCatch(payload, "Retrigger Catch");
       const sf = showFeature(`You won ${payload.free_spins_awarded} more Free Spins`, "Spins resume in a moment...");
       const autoDismiss = setTimeout(() => dismissFeature(), 1800);
       try { await sf; } finally { clearTimeout(autoDismiss); }
@@ -3395,6 +3514,7 @@ async function buyFreeSpins() {
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
     await animateRound(payload, bet, Number(payload.buy_cost || 0));
     if (Number(payload.free_spins_awarded || 0) > 0) {
+      await celebrateScatterCatch(payload, "Bonus Catch");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     }
@@ -3585,7 +3705,9 @@ async function initSession() {
   const pendingFreeSpins = Number(payload.free_spins_left || 0);
   if (pendingFreeSpins > 0) {
     el.freeSpins.textContent = String(pendingFreeSpins);
-    state.bonusMultiplierCarry = Number(payload.free_spin_multiplier_current || 1);
+    state.bonusMultiplierCarry = Number.isFinite(Number(payload.free_spin_multiplier_current))
+      ? Number(payload.free_spin_multiplier_current)
+      : 0;
     el.activeMultiplier.textContent = mfmt(state.bonusMultiplierCarry);
   }
   updateBonusHud({
