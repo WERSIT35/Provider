@@ -1,0 +1,25 @@
+# Optional Postgres for the production-shaped data path. The in-memory repos
+# remain the default (tests rely on them); this compose file is here so a real
+# Postgres is one command away when you need to wire up the persistent path:
+#
+#   docker compose -f platform/docker-compose.yml up -d
+#   psql "postgres://bananax:bananax@127.0.0.1:5432/bananax" \
+#     -f platform/migrations/0001_core.sql
+#
+# See platform/GUIDE.md → "Postgres path" for the swap-in steps.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bananax-postgres
+    environment:
+      POSTGRES_USER: bananax
+      POSTGRES_PASSWORD: bananax
+      POSTGRES_DB: bananax
+    ports:
+      - "5432:5432"
+    volumes:
+      - bananax-pg:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  bananax-pg:

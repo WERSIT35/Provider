@@ -38,6 +38,10 @@ const el = {
   paytableBody: $("paytableBody"),
   paytableTitle: $("paytableTitle"),
   caughtLines: $("caughtLines"),
+  roundIdBar: $("roundIdBar"),
+  roundIdValue: $("roundIdValue"),
+  roundIdCopyBtn: $("roundIdCopyBtn"),
+  roundIdCopied: $("roundIdCopied"),
   spinsPlayed: $("spinsPlayed"),
   sessionWagered: $("sessionWagered"),
   sessionWon: $("sessionWon"),
@@ -175,6 +179,13 @@ const ANIMATION_TIMING = {
   markSmall: 680,
   markMedium: 760,
   markGreat: 860,
+  // Large clusters (8+ caught symbols) hold the mark longer so the player can
+  // clearly read every symbol in the match before it explodes. The base mark
+  // above is extended by markPerExtraSymbol for each symbol past the threshold,
+  // capped by markBigClusterCap so very large boards stay responsive.
+  markBigClusterThreshold: 8,
+  markPerExtraSymbol: 34,
+  markBigClusterCap: 540,
   explode: 540
 };
 const fmt = (v) => Number(v || 0).toFixed(2);
@@ -2109,7 +2120,130 @@ function getEngine() {
   return _enginePromise;
 }
 
+// ─── Platform mode ──────────────────────────────────────────────────────────
+// When the page is opened with a launch token (?lt=…), this client stops
+// computing spins locally and instead talks to the Banana X platform's
+// server-authoritative Game API. The local engine is still loaded so the UI
+// can read rules/paytable/symbol art from it, but every real money operation
+// (session init, spin) hits the platform over HTTP.
+const _platform = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const launchToken = params.get("lt");
+  return {
+    enabled: Boolean(launchToken),
+    launchToken,
+    sessionToken: null,
+    /** Snapshot of the platform's session/init response (so spin can reuse it). */
+    sessionMeta: null
+  };
+})();
+
+async function platformInitSession() {
+  const res = await fetch("/game/v1/session/init", {
+    method: "POST",
+    headers: { authorization: `Bearer ${_platform.launchToken}` }
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = body?.error?.code || `HTTP_${res.status}`;
+    const msg = body?.error?.message || "session init failed";
+    throw new Error(`${code}: ${msg}`);
+  }
+  _platform.sessionToken = body.session_token;
+  _platform.sessionMeta = body;
+  // Adapt the platform response to the shape the local engine returns so the
+  // rest of the client (initSession()) needs no changes.
+  return {
+    session_id: body.session_id,
+    currency: body.currency,
+    game_id: body.game?.code || "bananax",
+    slug: body.game?.code || "bananax",
+    balance: Number(body.balance?.amount ?? 0),
+    allowed_bets: body.allowed_bets || [],
+    free_spins_left: Number(body.free_spins_left || 0),
+    free_spin_multiplier_current: 0,
+    bonus_round_win: 0,
+    ante_enabled: false,
+    crazy_mode: false
+  };
+}
+
+async function platformSpin(payload) {
+  if (!_platform.sessionToken) {
+    throw new Error("NO_SESSION: platform session not initialised");
+  }
+  const idem =
+    payload?.spin_id ||
+    (window.crypto?.randomUUID ? window.crypto.randomUUID() : `idem_${Date.now()}_${Math.random()}`);
+  const res = await fetch("/game/v1/spin", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${_platform.sessionToken}`,
+      "content-type": "application/json",
+      "idempotency-key": idem
+    },
+    body: JSON.stringify({
+      bet_amount: Number(payload?.bet_amount),
+      ante_enabled: Boolean(payload?.ante_enabled)
+    })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = body?.error?.code || `HTTP_${res.status}`;
+    const msg = body?.error?.message || "spin failed";
+    throw new Error(`${code}: ${msg}`);
+  }
+  // The platform returns the full SpinResult + money fields. Adapt the few
+  // engine-shaped fields the client UI relies on.
+  return {
+    ...body,
+    balance_after: Number(body.balance?.amount ?? body.balance_after ?? 0),
+    // The animation/log code reads spin_id as a stable round identifier — we
+    // hand it the (also unique) round_ref so logs and the round-id badge agree.
+    spin_id: body.round_ref || body.spin_id || idem,
+    round_ref: body.round_ref || null
+  };
+}
+
+/** Surface the server-authoritative Round ID for the just-completed spin so a
+ * player can hand it to support and have an admin look it up in the Round
+ * Inspector. No-op outside platform mode (no `round_ref` is generated locally). */
+function showRoundId(roundRef) {
+  if (!roundRef || !el.roundIdBar || !el.roundIdValue) return;
+  el.roundIdValue.textContent = roundRef;
+  el.roundIdBar.classList.remove("hidden");
+  if (el.roundIdCopied) el.roundIdCopied.hidden = true;
+}
+
+if (el.roundIdCopyBtn) {
+  el.roundIdCopyBtn.addEventListener("click", async () => {
+    const text = el.roundIdValue?.textContent || "";
+    if (!text || text === "—") return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (el.roundIdCopied) {
+        el.roundIdCopied.hidden = false;
+        setTimeout(() => { if (el.roundIdCopied) el.roundIdCopied.hidden = true; }, 1600);
+      }
+    } catch {
+      // Clipboard not allowed (insecure context, denied permission, etc.);
+      // the player can still triple-click the value (user-select: all).
+    }
+  });
+}
+
 async function api(path, payload) {
+  if (_platform.enabled && path === "/api/v1/session/init") {
+    return platformInitSession();
+  }
+  if (_platform.enabled && path === "/api/v1/spin") {
+    const result = await platformSpin(payload || {});
+    showRoundId(result.round_ref);
+    return result;
+  }
+  // /api/v1/buy-free-spins and /api/v1/simulate stay on the local engine even
+  // in platform mode — they're either not server-authoritative (simulate is a
+  // dev sandbox) or not yet wired into the platform API.
   const engine = await getEngine();
   if (path === "/api/v1/session/init") return engine.initSession(payload || {});
   if (path === "/api/v1/spin") return engine.spin(payload || {});
@@ -2144,7 +2278,9 @@ function setControls(disabled) {
   el.simulateBtn.disabled = disabled;
   if (el.simulateBonusBtn) el.simulateBonusBtn.disabled = disabled;
   el.betSelect.disabled = disabled;
-  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
+  // Buy-free-spins isn't wired into the platform API yet, so disable it in
+  // platform mode to avoid running a local-only feature against a server session.
+  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked) || _platform.enabled;
   el.anteToggle.disabled = disabled;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
@@ -3159,7 +3295,12 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } catch {}
   if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
-  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
+  // Multipliers only animate when they are part of a win. On the initial board
+  // reveal that means the first step must itself be a winning step; otherwise
+  // multipliers simply drop in silently and only come alive on a later
+  // winning tumble (handled by the tumble drop below with animateMultipliers).
+  const step0Winning = (steps[0].winning_positions || []).length > 0 && Number(steps[0].win_total || 0) > 0;
+  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: step0Winning });
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
@@ -3210,11 +3351,21 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       }
     }
     const tier = winTier(step?.ways_wins || [], bet);
-    const pulseDuration = tier === "blast-great"
+    let pulseDuration = tier === "blast-great"
       ? ANIMATION_TIMING.markGreat
       : tier === "blast-medium"
         ? ANIMATION_TIMING.markMedium
         : ANIMATION_TIMING.markSmall;
+    // Slow the mark further the more symbols were caught (8+), so the player
+    // can clearly see every symbol that is part of a large match before it
+    // resolves. Scales with cluster size and is capped to stay responsive.
+    const markedCount = (step.winning_positions || []).length;
+    if (markedCount >= ANIMATION_TIMING.markBigClusterThreshold) {
+      pulseDuration += Math.min(
+        ANIMATION_TIMING.markBigClusterCap,
+        (markedCount - ANIMATION_TIMING.markBigClusterThreshold) * ANIMATION_TIMING.markPerExtraSymbol
+      );
+    }
     const stepWin = Number(step?.win_total || 0);
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);

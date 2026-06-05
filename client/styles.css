@@ -367,6 +367,57 @@ body.public-mode .reels-canvas {
   display: none;
 }
 
+/* Round-ID badge — only shown when a server-authoritative round_ref is known
+   (platform mode). Players hand this ID to support to look up the exact spin. */
+.round-id-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(170, 210, 255, 0.16);
+  background: linear-gradient(180deg, rgba(20, 28, 50, 0.58), rgba(8, 12, 24, 0.72));
+  font: 600 0.78rem/1 "SF Pro Display", "Segoe UI", sans-serif;
+  color: #cad7f0;
+  flex-wrap: wrap;
+}
+.round-id-bar.hidden { display: none; }
+.round-id-label {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  color: #8aa0c2;
+}
+.round-id-value {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: #ffd86f;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 216, 111, 0.18);
+  letter-spacing: 0.02em;
+  user-select: all;
+  word-break: break-all;
+}
+.round-id-copy {
+  background: rgba(255, 216, 111, 0.14);
+  border: 1px solid rgba(255, 216, 111, 0.34);
+  color: #ffe9a3;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.round-id-copy:hover {
+  background: rgba(255, 216, 111, 0.22);
+}
+.round-id-copied {
+  color: #82e6a4;
+  font-size: 0.78rem;
+}
+
 /* Bonus-only nodes (bonus total / free spins / persistent multiplier) are
    visible in both player and admin views so the player can always see the
    running bonus state. The general hud-bar still shows everywhere. */

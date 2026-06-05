@@ -1,0 +1,34 @@
+{
+  "name": "@bananax/platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider platform (RGS + control plane) — Phase 1 foundation",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "dev:seed": "tsx scripts/dev-seed.ts",
+    "start:seed": "tsx scripts/dev-seed.ts",
+    "e2e": "tsx scripts/e2e-operator.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke:rtp": "tsx scripts/rtp-smoke.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

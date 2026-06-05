@@ -77,6 +77,12 @@
               <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
               <div class="hud-node hud-node-multi hidden" id="activeMultiplierNode"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
             </div>
+            <div class="round-id-bar hidden" id="roundIdBar" aria-live="polite">
+              <span class="round-id-label">Round ID</span>
+              <code class="round-id-value" id="roundIdValue">—</code>
+              <button type="button" id="roundIdCopyBtn" class="round-id-copy" aria-label="Copy Round ID">Copy</button>
+              <span class="round-id-copied" id="roundIdCopied" hidden>copied</span>
+            </div>
             <div class="vault-window">
               <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
                 <span id="eventBannerText">Ready</span>
