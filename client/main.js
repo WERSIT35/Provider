@@ -178,8 +178,14 @@ const ANIMATION_TIMING = {
   spinBurst: 420,
   oldBoardDropOff: 820,
   introDrop: 820,
-  tumbleDrop: 800,
-  tumbleDropOverlap: 300,
+  // Tumble cascade: refill the blasted cells with CONTINUOUS motion. The drop
+  // now starts while the explosion is still flashing (its particles mask the
+  // emptied cells) and falls quickly, so incoming symbols arrive as the blast
+  // clears instead of leaving a ~0.5s empty gap. tumbleDropOverlap = how long
+  // after the explode begins the new symbols start falling; tumbleDrop = fall
+  // duration. Tune live for feel.
+  tumbleDrop: 540,
+  tumbleDropOverlap: 200,
   markSmall: 600,
   markMedium: 680,
   markGreat: 800,
@@ -341,6 +347,14 @@ class ReelCanvasRenderer {
     };
     this.multiplierDecoyById = new Map();
     this.particles = [];
+    // Per-frame perf caches (built lazily, invalidated on resize):
+    //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
+    //    the hot particle loop blits instead of building a gradient every frame.
+    //  • stageCacheBack/Front: the fully-static stage (background + table frame +
+    //    lanes) baked to offscreen canvases and blitted once per frame.
+    this.glowSprites = new Map();
+    this.stageCacheBack = null;
+    this.stageCacheFront = null;
     this.time = 0;
     this.lastTick = performance.now();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -373,12 +387,210 @@ class ReelCanvasRenderer {
     let scale = cssWidth < 380 ? 0.5 : cssWidth < 560 ? 0.7 : cssWidth < 820 ? 0.85 : 1;
     if (prefersReducedMotion()) scale = Math.min(scale, 0.4);
     this.fxScale = scale;
+    // Layout/DPR changed → rebuild the static stage cache and colour sprites
+    // (they were baked at the old size/resolution).
+    this.stageCacheBack = null;
+    this.stageCacheFront = null;
+    this.glowSprites.clear();
   }
 
   /** Scale a particle/effect count by fxScale, never below `min` so an effect
    *  never vanishes entirely (unless the caller passes min=0). */
   fxCount(n, min = 1) {
     return Math.max(min, Math.round(Number(n || 0) * this.fxScale));
+  }
+
+  /** A blank offscreen canvas of `w`×`h` CSS px backed at device resolution.
+   *  The returned 2D context is pre-scaled by dpr so callers draw in CSS px. */
+  makeOffscreen(w, h) {
+    const dpr = this.dpr || 1;
+    const cvs = document.createElement("canvas");
+    cvs.width = Math.max(1, Math.round(w * dpr));
+    cvs.height = Math.max(1, Math.round(h * dpr));
+    const c = cvs.getContext("2d");
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { cvs, ctx: c, w, h };
+  }
+
+  /** Pre-rendered soft radial glow for `color`, cached by colour string. The
+   *  particle loop blits this (cheap) instead of allocating a gradient/particle/
+   *  frame. Drawn at a fixed sprite radius; callers scale via drawImage. */
+  getGlowSprite(color) {
+    const key = String(color || "#ffffff");
+    let sprite = this.glowSprites.get(key);
+    if (sprite) return sprite;
+    const R = 32; // sprite core radius in CSS px; scaled down per particle
+    const { cvs, ctx } = this.makeOffscreen(R * 2, R * 2);
+    const grad = ctx.createRadialGradient(R, R, 0, R, R, R);
+    grad.addColorStop(0, `${key}dd`);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(R, R, R, 0, Math.PI * 2);
+    ctx.fill();
+    sprite = { cvs, r: R };
+    this.glowSprites.set(key, sprite);
+    return sprite;
+  }
+
+  isReelBackReady() {
+    const r = this.images.get("REEL");
+    return Boolean(r?.complete && r?.naturalWidth);
+  }
+
+  /** Table/inner-panel geometry derived from the current layout. Shared by the
+   *  stage cache builder and the live render (which re-clips to the inner panel). */
+  getTableRect() {
+    const { width, height, padX, top, laneW } = this.getLayout();
+    const tableX = Math.max(8, padX * 0.34);
+    const tableY = Math.max(8, top * 0.2);
+    const tableW = width - tableX * 2;
+    const tableH = height - tableY - Math.max(10, top * 0.22);
+    const frameR = Math.min(24, Math.max(10, laneW * 0.18));
+    const inX = tableX + 8;
+    const inY = tableY + 8;
+    const inW = tableW - 16;
+    const inH = tableH - 16;
+    const inR = Math.max(8, frameR - 4);
+    return { tableX, tableY, tableW, tableH, frameR, inX, inY, inW, inH, inR };
+  }
+
+  /**
+   * Bake the fully-static stage into two offscreen canvases (blitted once per
+   * frame instead of rebuilding ~25 gradients every frame):
+   *   • stageCacheBack  — the flat background gradient.
+   *   • stageCacheFront — vignette, table frame/core, inner grid + ember noise,
+   *     and the per-column reel backs + lane glow/spine/cap (transparent bg).
+   * The time-animated fog/mesh, the spin-burst flash, and the drop streaks stay
+   * live in draw(). Rebuilt on resize, or once the REEL image finishes loading.
+   */
+  buildStageCache() {
+    const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
+    const { tableX, tableY, tableW, tableH, frameR, inX, inY, inW, inH, inR } = this.getTableRect();
+
+    // Back layer — flat background gradient.
+    const back = this.makeOffscreen(width, height);
+    const bg = back.ctx.createLinearGradient(0, 0, 0, height);
+    bg.addColorStop(0, "#111728");
+    bg.addColorStop(0.35, "#0b101d");
+    bg.addColorStop(1, "#060a14");
+    back.ctx.fillStyle = bg;
+    back.ctx.fillRect(0, 0, width, height);
+    this.stageCacheBack = back;
+
+    // Front layer — transparent; everything static above the animated fog.
+    const front = this.makeOffscreen(width, height);
+    const fctx = front.ctx;
+
+    const vignette = fctx.createRadialGradient(width * 0.5, height * 0.5, height * 0.12, width * 0.5, height * 0.5, height * 0.95);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.52)");
+    fctx.fillStyle = vignette;
+    fctx.fillRect(0, 0, width, height);
+
+    const tableShadow = fctx.createRadialGradient(width * 0.5, tableY + tableH * 0.45, tableW * 0.1, width * 0.5, tableY + tableH * 0.45, tableW * 0.7);
+    tableShadow.addColorStop(0, "rgba(0,0,0,0.16)");
+    tableShadow.addColorStop(1, "rgba(0,0,0,0)");
+    fctx.fillStyle = tableShadow;
+    this.roundedRectPath(fctx, tableX - 14, tableY - 14, tableW + 28, tableH + 28, frameR + 10);
+    fctx.fill();
+
+    const frame = fctx.createLinearGradient(tableX, tableY, tableX, tableY + tableH);
+    frame.addColorStop(0, "#2f4c8f");
+    frame.addColorStop(0.26, "#5888ff");
+    frame.addColorStop(0.52, "#2d4e98");
+    frame.addColorStop(0.78, "#1b2b5d");
+    frame.addColorStop(1, "#111b39");
+    fctx.fillStyle = frame;
+    this.roundedRectPath(fctx, tableX, tableY, tableW, tableH, frameR);
+    fctx.fill();
+
+    const tableCore = fctx.createLinearGradient(inX, inY, inX, inY + inH);
+    tableCore.addColorStop(0, "rgba(15, 24, 42, 0.98)");
+    tableCore.addColorStop(0.4, "rgba(11, 18, 34, 0.99)");
+    tableCore.addColorStop(1, "rgba(8, 12, 24, 1)");
+    fctx.fillStyle = tableCore;
+    this.roundedRectPath(fctx, inX, inY, inW, inH, inR);
+    fctx.fill();
+
+    fctx.strokeStyle = "rgba(185, 219, 255, 0.32)";
+    fctx.lineWidth = 1.2;
+    this.roundedRectPath(fctx, inX + 0.6, inY + 0.6, inW - 1.2, inH - 1.2, inR - 1);
+    fctx.stroke();
+
+    fctx.save();
+    this.roundedRectPath(fctx, inX + 2, inY + 2, inW - 4, inH - 4, inR - 2);
+    fctx.clip();
+
+    const gridStep = Math.max(24, Math.min(44, laneW * 0.42));
+    fctx.strokeStyle = "rgba(184, 220, 255, 0.05)";
+    fctx.lineWidth = 1;
+    for (let y = inY + 8; y < inY + inH; y += gridStep) {
+      fctx.beginPath();
+      fctx.moveTo(inX, y);
+      fctx.lineTo(inX + inW, y);
+      fctx.stroke();
+    }
+
+    const emberNoise = 48;
+    for (let i = 0; i < emberNoise; i += 1) {
+      const nx = inX + ((i * 97) % 1000) / 1000 * inW;
+      const ny = inY + ((i * 67 + 137) % 1000) / 1000 * inH;
+      const a = 0.008 + (((i * 23) % 10) / 10) * 0.02;
+      fctx.fillStyle = `rgba(255, 191, 133, ${a.toFixed(3)})`;
+      fctx.fillRect(nx, ny, 1, 1);
+    }
+
+    const reelBack = this.images.get("REEL");
+    const reelBackReady = this.isReelBackReady();
+    this._stageCacheMissingReel = !reelBackReady;
+    for (let c = 0; c < this.cols; c += 1) {
+      const x = padX + laneW * (c + 0.5);
+      const spineTop = top * 0.5;
+      const spineBottom = top + rowStep * (this.rows - 0.1);
+
+      if (reelBackReady) {
+        const reelW = laneW * 0.96;
+        const reelH = rowStep * this.rows + Math.min(28, rowStep * 0.3);
+        const reelX = padX + laneW * c + (laneW - reelW) / 2;
+        const reelY = top - Math.min(14, rowStep * 0.15);
+        fctx.save();
+        fctx.globalAlpha = 0.55;
+        fctx.drawImage(reelBack, reelX, reelY, reelW, reelH);
+        fctx.restore();
+      }
+
+      const laneGlow = fctx.createLinearGradient(x, top * 0.22, x, height);
+      laneGlow.addColorStop(0, "rgba(172, 214, 255, 0.05)");
+      laneGlow.addColorStop(0.45, "rgba(172, 214, 255, 0.02)");
+      laneGlow.addColorStop(1, "rgba(172, 214, 255, 0)");
+      fctx.fillStyle = laneGlow;
+      fctx.fillRect(x - laneW * 0.42, top * 0.2, laneW * 0.84, height - top * 0.2);
+
+      const spine = fctx.createLinearGradient(x, spineTop, x, spineBottom);
+      spine.addColorStop(0, "rgba(206, 230, 255, 0.52)");
+      spine.addColorStop(0.3, "rgba(115, 155, 255, 0.3)");
+      spine.addColorStop(1, "rgba(42, 64, 130, 0.24)");
+      fctx.strokeStyle = spine;
+      fctx.lineWidth = Math.max(3, laneW * 0.05);
+      fctx.beginPath();
+      fctx.moveTo(x, spineTop);
+      fctx.lineTo(x, spineBottom);
+      fctx.stroke();
+
+      const cap = fctx.createRadialGradient(x, top * 0.26, radius * 0.06, x, top * 0.26, radius * 0.54);
+      cap.addColorStop(0, "rgba(210, 233, 255, 0.42)");
+      cap.addColorStop(1, "rgba(210, 233, 255, 0.04)");
+      fctx.fillStyle = cap;
+      fctx.beginPath();
+      fctx.arc(x, top * 0.26, radius * 0.44, 0, Math.PI * 2);
+      fctx.fill();
+      fctx.strokeStyle = "rgba(200, 227, 255, 0.3)";
+      fctx.lineWidth = 1;
+      fctx.stroke();
+    }
+    fctx.restore();
+    this.stageCacheFront = front;
   }
 
   setBoard(matrix, { winning = [], multipliers = [] } = {}) {
@@ -705,8 +917,10 @@ class ReelCanvasRenderer {
       // during tumbles stays the same logical object (no re-conceal/re-reveal).
       const k = m?.id ? `id:${m.id}` : `${m.row}-${m.col}-${v}`;
       if (this.fx.struckKeys.has(k)) return; // already struck this spin
-      const isHeavyEligible =
-        tier.key !== "common" && !alreadyBanged && heavyCells.size === 0;
+      // User rule: every multiplier plays the full BANG reveal (lightning +
+      // flash + shockwave) the FIRST time it appears — deduped by struckKeys
+      // above — regardless of tier or whether another already banged this spin.
+      const isHeavyEligible = true;
       if (isHeavyEligible) {
         heavyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k, id: m?.id || "" });
         if (v > peakValue) { peakValue = v; peakTier = tier; }
@@ -1305,12 +1519,14 @@ class ReelCanvasRenderer {
     const idleWave2 = Math.cos(this.time * 0.00092);
     const glowX = width * (0.5 + driftA * 0.08);
     const glowY = height * (0.2 + driftB * 0.04);
-    const stageBase = ctx.createLinearGradient(0, 0, 0, height);
-    stageBase.addColorStop(0, "#111728");
-    stageBase.addColorStop(0.35, "#0b101d");
-    stageBase.addColorStop(1, "#060a14");
-    ctx.fillStyle = stageBase;
-    ctx.fillRect(0, 0, width, height);
+
+    // Static stage is baked once (rebuilt on resize, or when REEL finishes
+    // loading). The flat background is the back layer; vignette/table/lanes are
+    // the front layer blitted after the animated fog below.
+    if (!this.stageCacheBack || !this.stageCacheFront || (this._stageCacheMissingReel && this.isReelBackReady())) {
+      this.buildStageCache();
+    }
+    ctx.drawImage(this.stageCacheBack.cvs, 0, 0, width, height);
 
     const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
     amberFog.addColorStop(0, "rgba(120, 198, 255, 0.24)");
@@ -1326,52 +1542,10 @@ class ReelCanvasRenderer {
     ctx.fillStyle = meshGlow;
     ctx.fillRect(0, 0, width, height);
 
-    const vignette = ctx.createRadialGradient(width * 0.5, height * 0.5, height * 0.12, width * 0.5, height * 0.5, height * 0.95);
-    vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,0.52)");
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, width, height);
-
-    const tableX = Math.max(8, padX * 0.34);
-    const tableY = Math.max(8, top * 0.2);
-    const tableW = width - tableX * 2;
-    const tableH = height - tableY - Math.max(10, top * 0.22);
-    const frameR = Math.min(24, Math.max(10, laneW * 0.18));
-
-    const tableShadow = ctx.createRadialGradient(width * 0.5, tableY + tableH * 0.45, tableW * 0.1, width * 0.5, tableY + tableH * 0.45, tableW * 0.7);
-    tableShadow.addColorStop(0, "rgba(0,0,0,0.16)");
-    tableShadow.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = tableShadow;
-    this.roundedRectPath(ctx, tableX - 14, tableY - 14, tableW + 28, tableH + 28, frameR + 10);
-    ctx.fill();
-
-    const frame = ctx.createLinearGradient(tableX, tableY, tableX, tableY + tableH);
-    frame.addColorStop(0, "#2f4c8f");
-    frame.addColorStop(0.26, "#5888ff");
-    frame.addColorStop(0.52, "#2d4e98");
-    frame.addColorStop(0.78, "#1b2b5d");
-    frame.addColorStop(1, "#111b39");
-    ctx.fillStyle = frame;
-    this.roundedRectPath(ctx, tableX, tableY, tableW, tableH, frameR);
-    ctx.fill();
-
-    const inX = tableX + 8;
-    const inY = tableY + 8;
-    const inW = tableW - 16;
-    const inH = tableH - 16;
-    const inR = Math.max(8, frameR - 4);
-    const tableCore = ctx.createLinearGradient(inX, inY, inX, inY + inH);
-    tableCore.addColorStop(0, "rgba(15, 24, 42, 0.98)");
-    tableCore.addColorStop(0.4, "rgba(11, 18, 34, 0.99)");
-    tableCore.addColorStop(1, "rgba(8, 12, 24, 1)");
-    ctx.fillStyle = tableCore;
-    this.roundedRectPath(ctx, inX, inY, inW, inH, inR);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(185, 219, 255, 0.32)";
-    ctx.lineWidth = 1.2;
-    this.roundedRectPath(ctx, inX + 0.6, inY + 0.6, inW - 1.2, inH - 1.2, inR - 1);
-    ctx.stroke();
+    // Static vignette + table frame/core + inner grid/ember + lane structure
+    // (all baked into the front cache). Geometry shared with the live clip below.
+    const { inX, inY, inW, inH, inR } = this.getTableRect();
+    ctx.drawImage(this.stageCacheFront.cvs, 0, 0, width, height);
 
     if (this.fx.spinBurst) {
       const t = clamp((performance.now() - this.fx.spinBurst.start) / this.fx.spinBurst.duration, 0, 1);
@@ -1380,81 +1554,16 @@ class ReelCanvasRenderer {
       ctx.fillRect(0, 0, width, height);
     }
 
+    // Re-establish the inner clip for the live (animated) content. The static
+    // grid/ember/lane art already lives in the cached front layer above.
     ctx.save();
     this.roundedRectPath(ctx, inX + 2, inY + 2, inW - 4, inH - 4, inR - 2);
     ctx.clip();
 
-    const gridStep = Math.max(24, Math.min(44, laneW * 0.42));
-    ctx.strokeStyle = "rgba(184, 220, 255, 0.05)";
-    ctx.lineWidth = 1;
-    for (let y = inY + 8; y < inY + inH; y += gridStep) {
-      ctx.beginPath();
-      ctx.moveTo(inX, y);
-      ctx.lineTo(inX + inW, y);
-      ctx.stroke();
-    }
-
-    const emberNoise = 48;
-    for (let i = 0; i < emberNoise; i += 1) {
-      const nx = inX + ((i * 97) % 1000) / 1000 * inW;
-      const ny = inY + ((i * 67 + 137) % 1000) / 1000 * inH;
-      const a = 0.008 + (((i * 23) % 10) / 10) * 0.02;
-      ctx.fillStyle = `rgba(255, 191, 133, ${a.toFixed(3)})`;
-      ctx.fillRect(nx, ny, 1, 1);
-    }
-
-    // Reel back panel — REEL.png drawn once per column behind the symbols.
-    const reelBack = this.images.get("REEL");
-    const reelBackReady = Boolean(reelBack?.complete && reelBack?.naturalWidth);
-
-    for (let c = 0; c < this.cols; c += 1) {
-      const x = padX + laneW * (c + 0.5);
-      const spineTop = top * 0.5;
-      const spineBottom = top + rowStep * (this.rows - 0.1);
-
-      if (reelBackReady) {
-        const reelW = laneW * 0.96;
-        const reelH = rowStep * this.rows + Math.min(28, rowStep * 0.3);
-        const reelX = padX + laneW * c + (laneW - reelW) / 2;
-        const reelY = top - Math.min(14, rowStep * 0.15);
-        // Static, lighter reel back — no blur, just reduced opacity so the
-        // symbols pop and the reel feels less heavy.
-        ctx.save();
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(reelBack, reelX, reelY, reelW, reelH);
-        ctx.restore();
-      }
-
-      const laneGlow = ctx.createLinearGradient(x, top * 0.22, x, height);
-      laneGlow.addColorStop(0, "rgba(172, 214, 255, 0.05)");
-      laneGlow.addColorStop(0.45, "rgba(172, 214, 255, 0.02)");
-      laneGlow.addColorStop(1, "rgba(172, 214, 255, 0)");
-      ctx.fillStyle = laneGlow;
-      ctx.fillRect(x - laneW * 0.42, top * 0.2, laneW * 0.84, height - top * 0.2);
-
-      const spine = ctx.createLinearGradient(x, spineTop, x, spineBottom);
-      spine.addColorStop(0, "rgba(206, 230, 255, 0.52)");
-      spine.addColorStop(0.3, "rgba(115, 155, 255, 0.3)");
-      spine.addColorStop(1, "rgba(42, 64, 130, 0.24)");
-      ctx.strokeStyle = spine;
-      ctx.lineWidth = Math.max(3, laneW * 0.05);
-      ctx.beginPath();
-      ctx.moveTo(x, spineTop);
-      ctx.lineTo(x, spineBottom);
-      ctx.stroke();
-
-      const cap = ctx.createRadialGradient(x, top * 0.26, radius * 0.06, x, top * 0.26, radius * 0.54);
-      cap.addColorStop(0, "rgba(210, 233, 255, 0.42)");
-      cap.addColorStop(1, "rgba(210, 233, 255, 0.04)");
-      ctx.fillStyle = cap;
-      ctx.beginPath();
-      ctx.arc(x, top * 0.26, radius * 0.44, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(200, 227, 255, 0.3)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      if (this.fx.drop) {
+    // Falling-symbol streaks down each column — only while a drop is in flight.
+    if (this.fx.drop) {
+      for (let c = 0; c < this.cols; c += 1) {
+        const x = padX + laneW * (c + 0.5);
         const streak = ctx.createLinearGradient(x, top * 0.15, x, top + rowStep * this.rows);
         streak.addColorStop(0, "rgba(208, 233, 255, 0.18)");
         streak.addColorStop(0.3, "rgba(178, 216, 255, 0.09)");
@@ -1999,14 +2108,12 @@ class ReelCanvasRenderer {
         }
         p.rot = (p.rot || 0) + (p.spin || 0);
         const alpha = 1 - t;
-        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 3.2);
-        glow.addColorStop(0, `${p.colorA}dd`);
-        glow.addColorStop(1, "rgba(0,0,0,0)");
+        // Soft glow via a pre-rendered per-colour sprite (no per-particle
+        // gradient allocation). Blit scaled to the particle's glow radius.
+        const glowR = p.size * 3.2;
+        const sprite = this.getGlowSprite(p.colorA);
         ctx.globalAlpha = alpha * 0.7;
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * 3.2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.drawImage(sprite.cvs, p.x - glowR, p.y - glowR, glowR * 2, glowR * 2);
         if (p.mode === "shard") {
           ctx.save();
           ctx.globalAlpha = alpha;
@@ -3040,6 +3147,9 @@ async function celebrateScatterCatch(payload, label = "Bonus Catch") {
     reelRenderer.highlight(matrix, { winning: scatters, multipliers }, 1180),
     reelRenderer.celebrateCluster(scatters, "SCATTER", scatters.length >= 5 ? "blast-great" : "blast-medium", 980)
   ]);
+  // Near-win beat: hold on the caught scatters so the player registers the
+  // bonus trigger before autoplay/feature continues. (Skipped on fast-stop.)
+  await animationSleep(460);
 }
 
 function summarizeSpin(payload, bet) {
@@ -3369,12 +3479,14 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } catch {}
   if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
-  // Multipliers only animate when they are part of a win. On the initial board
-  // reveal that means the first step must itself be a winning step; otherwise
-  // multipliers simply drop in silently and only come alive on a later
-  // winning tumble (handled by the tumble drop below with animateMultipliers).
-  const step0Winning = (steps[0].winning_positions || []).length > 0 && Number(steps[0].win_total || 0) > 0;
-  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: step0Winning });
+  // A multiplier landing on the first board ALWAYS plays its full reveal
+  // (lightning + BANG), even when the opening board isn't itself a win — so the
+  // player never sees a multiplier appear silently.
+  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
+  // Near-win beat: if a multiplier just dropped in, hold briefly so the player
+  // registers it before the win/tumble flow continues. animationSleep collapses
+  // to ~0 on fast-stop, so impatient players aren't held up.
+  if ((steps[0].multipliers || []).length) await animationSleep(420);
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
