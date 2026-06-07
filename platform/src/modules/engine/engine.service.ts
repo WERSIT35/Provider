@@ -76,6 +76,11 @@ export class EngineService {
     return Number((this.template as { ANTE_MULTIPLIER?: number }).ANTE_MULTIPLIER ?? 1.25);
   }
 
+  /** Buy-Free-Spins cost multiplier from the rules (player is charged bet × this). */
+  buyCostMultiplier(): number {
+    return Number((this.template as { BUY_FREE_SPINS_COST_MULT?: number }).BUY_FREE_SPINS_COST_MULT ?? 100);
+  }
+
   getRtpProfile(gameId?: string): RtpProfile {
     return this.template.getRtpProfile(gameId) as RtpProfile;
   }
@@ -154,6 +159,26 @@ export class EngineService {
     engine.session = this.buildSessionObject(snapshot);
     const seed = Buffer.from(seedHex, "hex");
     const { result, bytesDrawn } = withSeed(seed, () => engine.spin(input) as SpinResult);
+    return { result, bytesDrawn };
+  }
+
+  /**
+   * Deterministically resolve a Buy-Free-Spins round (forces the bonus trigger).
+   * Mirrors resolveDeterministic but drives engine.buyFreeSpins so the outcome —
+   * and the free spins it awards — is reproducible from (seed, pre-spin state).
+   */
+  resolveDeterministicBuy(
+    snapshot: SessionSnapshot,
+    input: SpinInput,
+    seedHex: string
+  ): { result: SpinResult; bytesDrawn: number } {
+    const engine = new this.ns.SpinEngine({ rules: this.rules, storage: new MemoryStorage() });
+    engine.session = this.buildSessionObject(snapshot);
+    const seed = Buffer.from(seedHex, "hex");
+    const { result, bytesDrawn } = withSeed(
+      seed,
+      () => engine.buyFreeSpins({ bet_amount: input.bet_amount, spin_id: input.spin_id }) as SpinResult
+    );
     return { result, bytesDrawn };
   }
 

@@ -124,6 +124,9 @@ describe("round lifecycle (launch → session → debit → resolve → record �
     const failingResolver: ResolverPort = {
       resolve() {
         throw new Error("ENGINE_FAILURE");
+      },
+      resolveBuy() {
+        throw new Error("ENGINE_FAILURE");
       }
     };
     const { orchestrator, session, rounds } = harness({ wallet, resolver: failingResolver });
@@ -135,6 +138,44 @@ describe("round lifecycle (launch → session → debit → resolve → record �
     const bal = await wallet.balance({ operatorId: session.operator_id }, { operatorPlayerId: PLAYER, currency: "GEL" });
     expect(bal.amount).toBe(100);
     expect(rounds.size()).toBe(0);
+  });
+
+  it("buys free spins: charges bet × buy-cost, records the round, awards free spins", async () => {
+    const wallet = new SandboxWallet();
+    wallet.setBalance(PLAYER, "GEL", 1000);
+    const { orchestrator, engine, sessions, session, rounds, ledger } = harness({ wallet });
+
+    const cost = 1 * engine.buyCostMultiplier();
+    const outcome = await orchestrator.buyFeature(session.id, { bet_amount: 1, idempotency_key: "buy1" });
+
+    expect(outcome.round_ref).toBe("r_buy1");
+    expect(outcome.bet_charged).toBeCloseTo(cost, 2);
+    // The forced trigger awards free spins, synced onto the live session.
+    expect(outcome.free_spins_left).toBeGreaterThan(0);
+    expect(sessions.get(session.id).free_spins_left).toBe(outcome.free_spins_left);
+    // balance = 1000 - cost + any immediate trigger-round win.
+    expect(outcome.balance.amount).toBeCloseTo(1000 - cost + outcome.total_win, 2);
+    expect(rounds.getByRef("r_buy1")).not.toBeNull();
+    expect(ledger.verifyIntegrity().rounds.ok).toBe(true);
+
+    // The subsequent free spins are free (charge 0) and flow through spin().
+    const fs = await orchestrator.spin(session.id, { bet_amount: 1, idempotency_key: "fs1" });
+    expect(fs.bet_charged).toBe(0);
+  });
+
+  it("buy free spins is idempotent: replaying the key never double-charges", async () => {
+    const wallet = new SandboxWallet();
+    wallet.setBalance(PLAYER, "GEL", 1000);
+    const { orchestrator, session } = harness({ wallet });
+
+    const first = await orchestrator.buyFeature(session.id, { bet_amount: 1, idempotency_key: "bdup" });
+    const balAfterFirst = (await wallet.balance({ operatorId: session.operator_id }, { operatorPlayerId: PLAYER, currency: "GEL" })).amount;
+    const second = await orchestrator.buyFeature(session.id, { bet_amount: 1, idempotency_key: "bdup" });
+    const balAfterSecond = (await wallet.balance({ operatorId: session.operator_id }, { operatorPlayerId: PLAYER, currency: "GEL" })).amount;
+
+    expect(second.idempotent_replay).toBe(true);
+    expect(second.round_ref).toBe(first.round_ref);
+    expect(balAfterSecond).toBe(balAfterFirst);
   });
 
   it("keeps the round and flags settlement when the win credit fails", async () => {

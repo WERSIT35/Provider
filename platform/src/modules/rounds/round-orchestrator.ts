@@ -9,11 +9,17 @@ import { type WalletAdapter, type Money, WalletDeclinedError } from "../wallet/w
 
 export interface ResolverPort {
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound;
+  resolveBuy(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound;
 }
 
 export interface SpinRequest {
   bet_amount: number;
   ante_enabled?: boolean;
+  idempotency_key: string;
+}
+
+export interface BuyFeatureRequest {
+  bet_amount: number;
   idempotency_key: string;
 }
 
@@ -127,6 +133,112 @@ export class RoundOrchestrator {
       throw err;
     }
 
+    // 3-5) Record the immutable round, credit the win, settle, sync session.
+    return this.finalizeRound(session, ctx, {
+      idempotencyKey: req.idempotency_key,
+      roundRef,
+      betAmount: req.bet_amount,
+      charge,
+      isFreeSpin,
+      anteEnabled: Boolean(req.ante_enabled),
+      resolved
+    });
+  }
+
+  /**
+   * Buy Free Spins: the player pays bet × buy-cost-multiplier to force the bonus
+   * trigger immediately. Same money-safe lifecycle as a paid spin (debit → resolve
+   * → record → credit → settle); the awarded free spins land on the session so the
+   * subsequent 0-charge free spins flow through the normal spin() path.
+   */
+  async buyFeature(sessionId: string, req: BuyFeatureRequest): Promise<SpinOutcome> {
+    const cached = this.idem.get(req.idempotency_key);
+    if (cached) return { ...cached, idempotent_replay: true };
+
+    const session = this.sessions.get(sessionId);
+    this.mgmt.assertOperatorActive(session.operator_id);
+    if (!session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
+
+    const ctx = { operatorId: session.operator_id };
+    const charge = Number((req.bet_amount * this.engine.buyCostMultiplier()).toFixed(2));
+    const roundRef = `r_${req.idempotency_key}`;
+
+    // 1) DEBIT the buy cost. Decline aborts the buy entirely.
+    const debit = await this.wallet.debit(ctx, {
+      idempotencyKey: `${req.idempotency_key}:debit`,
+      roundRef,
+      operatorPlayerId: session.operator_player_id,
+      amount: charge,
+      currency: session.currency
+    });
+    const debitTxRef = debit.operatorTxRef;
+    this.transactions.record({
+      operator_id: session.operator_id,
+      session_id: session.id,
+      round_ref: roundRef,
+      type: "DEBIT",
+      amount: charge,
+      currency: session.currency,
+      idempotency_key: `${req.idempotency_key}:debit`,
+      operator_tx_ref: debitTxRef,
+      status: "confirmed"
+    });
+
+    // 2) RESOLVE the forced-trigger round. Failure after debit → rollback.
+    let resolved: AuthoritativeRound;
+    try {
+      resolved = this.resolver.resolveBuy(this.snapshotFor(session), { bet_amount: req.bet_amount });
+    } catch (err) {
+      await this.wallet.rollback(ctx, {
+        idempotencyKey: `${req.idempotency_key}:rollback`,
+        originalOperatorTxRef: debitTxRef,
+        roundRef
+      });
+      this.transactions.record({
+        operator_id: session.operator_id,
+        session_id: session.id,
+        round_ref: roundRef,
+        type: "ROLLBACK",
+        amount: charge,
+        currency: session.currency,
+        idempotency_key: `${req.idempotency_key}:rollback`,
+        status: "rolled_back"
+      });
+      throw err;
+    }
+
+    return this.finalizeRound(session, ctx, {
+      idempotencyKey: req.idempotency_key,
+      roundRef,
+      betAmount: req.bet_amount,
+      charge,
+      isFreeSpin: false,
+      anteEnabled: false,
+      resolved
+    });
+  }
+
+  /**
+   * Shared round tail (plan §5 steps 3-5): record the immutable round, credit any
+   * win (flagging settlement on credit failure rather than dropping it), sync
+   * engine state to the session, read back the wallet balance, and cache the
+   * outcome under the idempotency key. Used by both spin() and buyFeature().
+   */
+  private async finalizeRound(
+    session: Session,
+    ctx: { operatorId: string },
+    args: {
+      idempotencyKey: string;
+      roundRef: string;
+      betAmount: number;
+      charge: number;
+      isFreeSpin: boolean;
+      anteEnabled: boolean;
+      resolved: AuthoritativeRound;
+    }
+  ): Promise<SpinOutcome> {
+    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolved } = args;
+
     // 3) RECORD the immutable round (legal system of record).
     this.ledger.recordResolvedRound(
       {
@@ -135,9 +247,9 @@ export class RoundOrchestrator {
         operator_id: session.operator_id,
         game_id: session.game_id,
         math_config_id: session.math_config_id,
-        bet_amount: req.bet_amount,
+        bet_amount: betAmount,
         is_free_spin: isFreeSpin,
-        ante_enabled: Boolean(req.ante_enabled)
+        ante_enabled: anteEnabled
       },
       resolved
     );
@@ -146,7 +258,7 @@ export class RoundOrchestrator {
     const win = Number(resolved.result.total_win ?? 0);
     let settlement: Settlement = "settled";
     if (win > 0) {
-      const creditKey = `${req.idempotency_key}:credit`;
+      const creditKey = `${idempotencyKey}:credit`;
       try {
         const credit = await this.wallet.credit(ctx, {
           idempotencyKey: creditKey,
@@ -201,7 +313,7 @@ export class RoundOrchestrator {
       idempotent_replay: false,
       result: resolved.result
     };
-    this.idem.set(req.idempotency_key, outcome);
+    this.idem.set(idempotencyKey, outcome);
     return outcome;
   }
 

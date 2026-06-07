@@ -96,10 +96,17 @@ The demo player UI is at `/play?lt=<launch_token>`.
 2. The player picks a bet and clicks **Spin**. The platform debits the wallet,
    resolves the spin server-authoritatively, records the immutable round, and
    credits any win — all in one call.
-3. After every spin, the page shows a "**Round ID**" card with the round's
+3. **Buy Free Spins** is also server-authoritative: it calls
+   `POST /game/v1/buy-feature` (same idempotent debit → resolve → record →
+   credit lifecycle as a spin), charges `bet × buy-cost` (default 100×), forces
+   the bonus trigger, and the awarded free spins then play out as normal
+   0-charge spins. Disabled while an Ante bet is active.
+4. After every spin, the page shows a "**Round ID**" card with the round's
    `round_ref` (looks like `r_3a8b…`). There's a **Copy** button.
 
-When a player calls support, they share that Round ID. You look it up next.
+The player UI is **mobile-first (portrait)**: the same `/play/` URL is the one a
+casino embeds in its iframe on desktop and phone alike — no separate mobile
+build. When a player calls support, they share the Round ID. You look it up next.
 
 ---
 

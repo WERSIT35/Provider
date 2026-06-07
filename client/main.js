@@ -171,14 +171,18 @@ const symbolAssets = {
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const ANIMATION_TIMING = {
-  spinBurst: 520,
-  oldBoardDropOff: 1040,
-  introDrop: 1040,
-  tumbleDrop: 980,
-  tumbleDropOverlap: 260,
-  markSmall: 680,
-  markMedium: 760,
-  markGreat: 860,
+  // Snappiness pass: the pre-result phases (burst → old board exit → new board
+  // entry) were ~2.6s before the player could read the outcome. Trimmed ~20%
+  // for a tighter spin→result rhythm without losing the drop/bounce character.
+  // Tune these live if a slower, more cinematic feel is preferred.
+  spinBurst: 420,
+  oldBoardDropOff: 820,
+  introDrop: 820,
+  tumbleDrop: 800,
+  tumbleDropOverlap: 300,
+  markSmall: 600,
+  markMedium: 680,
+  markGreat: 800,
   // Large clusters (8+ caught symbols) hold the mark longer so the player can
   // clearly read every symbol in the match before it explodes. The base mark
   // above is extended by markPerExtraSymbol for each symbol past the threshold,
@@ -284,13 +288,27 @@ function multiplierIconScale(value) {
   return 1;
 }
 
+// True when the player has asked the OS to minimise motion. Re-read live so a
+// settings change mid-session is respected. Used to calm screen shake / flashes
+// and to thin out particle bursts for comfort + battery.
+const prefersReducedMotion = () =>
+  Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
 class ReelCanvasRenderer {
   constructor(canvas, { rowsCount, colsCount }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.rows = rowsCount;
     this.cols = colsCount;
-    this.dpr = Math.max(1, window.devicePixelRatio || 1);
+    // Cap the backing-store resolution: phones report DPR up to 3-4, but drawing
+    // 3x+ pixels every frame is the single biggest mobile perf cost for almost no
+    // visible gain. 2x stays crisp on retina while keeping fill-rate sane.
+    this.maxDpr = 2;
+    this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
+    // Particle-density multiplier, recomputed on resize from viewport size +
+    // reduced-motion. 1 = full desktop FX; lower thins bursts on small/low-power
+    // screens to hold framerate.
+    this.fxScale = 1;
     this.images = new Map();
     this.board = {
       matrix: Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => "BLUE_DIAMOND")),
@@ -345,10 +363,22 @@ class ReelCanvasRenderer {
   resize() {
     const box = this.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
-    this.dpr = Math.max(1, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
     this.canvas.width = Math.round(box.width * this.dpr);
     this.canvas.height = Math.round(box.height * this.dpr);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    // Thin particle bursts on small canvases (phones) and when the player asked
+    // for reduced motion. CSS-px width is the proxy for "how much room/power".
+    const cssWidth = box.width;
+    let scale = cssWidth < 380 ? 0.5 : cssWidth < 560 ? 0.7 : cssWidth < 820 ? 0.85 : 1;
+    if (prefersReducedMotion()) scale = Math.min(scale, 0.4);
+    this.fxScale = scale;
+  }
+
+  /** Scale a particle/effect count by fxScale, never below `min` so an effect
+   *  never vanishes entirely (unless the caller passes min=0). */
+  fxCount(n, min = 1) {
+    return Math.max(min, Math.round(Number(n || 0) * this.fxScale));
   }
 
   setBoard(matrix, { winning = [], multipliers = [] } = {}) {
@@ -408,7 +438,7 @@ class ReelCanvasRenderer {
     if (!winning.length) return;
     // Halved particle counts — explosions are now localized and readable
     // rather than chaotic. Great wins still get a noticeably stronger burst.
-    const perCell = strength === "great" ? 12 : strength === "small" ? 4 : 8;
+    const perCell = this.fxCount(strength === "great" ? 12 : strength === "small" ? 4 : 8);
     const speed = strength === "great" ? 1.25 : strength === "small" ? 0.65 : 0.9;
     winning.forEach((p) => {
       if (!Number.isInteger(p?.row) || !Number.isInteger(p?.col)) return;
@@ -453,7 +483,7 @@ class ReelCanvasRenderer {
       }
       // Embers cut to a small drift — calm leftover heat rather than a plume.
       if (strength !== "small") {
-        const emberCount = strength === "great" ? 4 : 2;
+        const emberCount = this.fxCount(strength === "great" ? 4 : 2);
         for (let i = 0; i < emberCount; i += 1) {
           this.particles.push({
             x: center.x + (Math.random() - 0.5) * 12,
@@ -496,7 +526,7 @@ class ReelCanvasRenderer {
       const valueNum = Number(m.value || 2);
       const tier = getMultiplierTier(valueNum);
       const tierBoost = tier.key === "mythic" ? 3.2 : tier.key === "legendary" ? 2.4 : tier.key === "epic" ? 1.7 : tier.key === "rare" ? 1.25 : 1;
-      const count = Math.round(26 * tierBoost);
+      const count = this.fxCount(Math.round(26 * tierBoost));
       for (let i = 0; i < count; i += 1) {
         const a = (Math.PI * 2 * i) / count + Math.random() * 0.2;
         const outward = (1.1 + Math.random() * 1.7) * Math.sqrt(tierBoost);
@@ -831,7 +861,7 @@ class ReelCanvasRenderer {
       this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 70, life: 520 * heaviness, color: "rgba(255, 255, 255, 0.58)" });
     }
     // Dust dome — particles spraying outward and downward.
-    const dustCount = Math.round(8 * heaviness);
+    const dustCount = this.fxCount(Math.round(8 * heaviness));
     for (let i = 0; i < dustCount; i += 1) {
       const a = -Math.PI + Math.random() * Math.PI; // lower hemisphere bias
       const v = (0.8 + Math.random() * 1.2) * heaviness;
@@ -1032,6 +1062,13 @@ class ReelCanvasRenderer {
     colorA = "rgba(163, 220, 255, 0.34)",
     colorB = "rgba(255, 213, 106, 0.24)"
   } = {}) {
+    // Reduced-motion: keep the beat (so the win sequence still paces correctly)
+    // but skip the full-screen flash, which is the harshest effect for
+    // photosensitive players.
+    if (prefersReducedMotion()) {
+      await animationSleep(Math.min(duration, 260));
+      return;
+    }
     this.fx.jackpotFlash = {
       start: performance.now(),
       duration,
@@ -2205,6 +2242,36 @@ async function platformSpin(payload) {
   };
 }
 
+async function platformBuyFeature(payload) {
+  if (!_platform.sessionToken) {
+    throw new Error("NO_SESSION: platform session not initialised");
+  }
+  const idem =
+    payload?.spin_id ||
+    (window.crypto?.randomUUID ? window.crypto.randomUUID() : `idem_${Date.now()}_${Math.random()}`);
+  const res = await fetch("/game/v1/buy-feature", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${_platform.sessionToken}`,
+      "content-type": "application/json",
+      "idempotency-key": idem
+    },
+    body: JSON.stringify({ bet_amount: Number(payload?.bet_amount) })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = body?.error?.code || `HTTP_${res.status}`;
+    const msg = body?.error?.message || "buy feature failed";
+    throw new Error(`${code}: ${msg}`);
+  }
+  return {
+    ...body,
+    balance_after: Number(body.balance?.amount ?? body.balance_after ?? 0),
+    spin_id: body.round_ref || body.spin_id || idem,
+    round_ref: body.round_ref || null
+  };
+}
+
 /** Surface the server-authoritative Round ID for the just-completed spin so a
  * player can hand it to support and have an admin look it up in the Round
  * Inspector. No-op outside platform mode (no `round_ref` is generated locally). */
@@ -2241,9 +2308,13 @@ async function api(path, payload) {
     showRoundId(result.round_ref);
     return result;
   }
-  // /api/v1/buy-free-spins and /api/v1/simulate stay on the local engine even
-  // in platform mode — they're either not server-authoritative (simulate is a
-  // dev sandbox) or not yet wired into the platform API.
+  if (_platform.enabled && path === "/api/v1/buy-free-spins") {
+    const result = await platformBuyFeature(payload || {});
+    showRoundId(result.round_ref);
+    return result;
+  }
+  // /api/v1/simulate stays on the local engine even in platform mode — it's a
+  // dev sandbox tool (1M-spin RTP imitation), not a server-authoritative path.
   const engine = await getEngine();
   if (path === "/api/v1/session/init") return engine.initSession(payload || {});
   if (path === "/api/v1/spin") return engine.spin(payload || {});
@@ -2278,9 +2349,10 @@ function setControls(disabled) {
   el.simulateBtn.disabled = disabled;
   if (el.simulateBonusBtn) el.simulateBonusBtn.disabled = disabled;
   el.betSelect.disabled = disabled;
-  // Buy-free-spins isn't wired into the platform API yet, so disable it in
-  // platform mode to avoid running a local-only feature against a server session.
-  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked) || _platform.enabled;
+  // Buy-free-spins is server-authoritative in platform mode (/game/v1/buy-feature)
+  // and local otherwise. It's only disabled while busy or when Ante is on (the
+  // engine forbids buying the feature with an active ante bet).
+  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
   el.anteToggle.disabled = disabled;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
@@ -2867,6 +2939,8 @@ function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
 
 function shakeVault(strength = "normal") {
   if (!el.vaultWindow) return;
+  // Players who asked the OS to reduce motion get no screen shake.
+  if (prefersReducedMotion()) return;
   const cls = strength === "strong" ? "event-shake-strong" : "event-shake";
   el.vaultWindow.classList.remove("event-shake", "event-shake-strong");
   void el.vaultWindow.offsetWidth;

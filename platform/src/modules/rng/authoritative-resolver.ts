@@ -33,6 +33,19 @@ export class AuthoritativeResolver {
     };
   }
 
+  /** Server-authoritative Buy-Free-Spins resolution (forces the bonus trigger). */
+  resolveBuy(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
+    const seedHex = generateSeed().toString("hex");
+    const { result, bytesDrawn } = this.engine.resolveDeterministicBuy(snapshot, input, seedHex);
+    return {
+      seed_hex: seedHex,
+      rng_algo: RNG_ALGO,
+      rng_bytes_drawn: bytesDrawn,
+      outcome_hash: outcomeHash(result),
+      result
+    };
+  }
+
   /** True iff replaying the stored seed against the same pre-spin state reproduces the outcome. */
   verifyReplay(round: Pick<AuthoritativeRound, "seed_hex" | "outcome_hash">, snapshot: SessionSnapshot, input: SpinInput): boolean {
     const { result } = this.engine.resolveDeterministic(snapshot, input, round.seed_hex);

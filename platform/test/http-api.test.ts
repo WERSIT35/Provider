@@ -148,6 +148,33 @@ describe("HTTP API (operator + game) with HMAC + bearer auth", () => {
     expect((lookup.json() as { outcome_hash: string }).outcome_hash).toHaveLength(64);
   });
 
+  it("buys free spins over HTTP: charges the buy cost and awards free spins", async () => {
+    const { sessionToken } = await launchAndInit();
+    const buyCost = 1 * container.engine.buyCostMultiplier();
+    const res = await app.inject({
+      method: "POST",
+      url: "/game/v1/buy-feature",
+      headers: { authorization: `Bearer ${sessionToken}`, "content-type": "application/json", "idempotency-key": "http-buy1" },
+      payload: JSON.stringify({ bet_amount: 1 })
+    });
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { round_ref: string; bet_charged: number; free_spins_left: number; balance: { amount: number }; total_win: number };
+    expect(out.round_ref).toBe("r_http-buy1");
+    expect(out.bet_charged).toBeCloseTo(buyCost, 2);
+    expect(out.free_spins_left).toBeGreaterThan(0);
+    expect(out.balance.amount).toBeCloseTo(1000 - buyCost + out.total_win, 2);
+
+    // The follow-up free spin is free (charge 0).
+    const fs = await app.inject({
+      method: "POST",
+      url: "/game/v1/spin",
+      headers: { authorization: `Bearer ${sessionToken}`, "content-type": "application/json", "idempotency-key": "http-fs1" },
+      payload: JSON.stringify({ bet_amount: 1 })
+    });
+    expect(fs.statusCode).toBe(200);
+    expect((fs.json() as { bet_charged: number }).bet_charged).toBe(0);
+  });
+
   it("requires an Idempotency-Key on spin and is idempotent when given one", async () => {
     const { sessionToken } = await launchAndInit();
     const noKey = await app.inject({
