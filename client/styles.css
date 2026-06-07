@@ -34,6 +34,11 @@ body {
     radial-gradient(circle at 50% -10%, rgba(238, 183, 106, 0.08), transparent 36%),
     linear-gradient(180deg, var(--bg-0), var(--bg-1) 34%, var(--bg-2));
   overflow-x: hidden;
+  /* Mobile input hardening: no double-tap zoom delay, no rubber-band/pull-to-
+     refresh, and no grey tap flash on touch. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body::before,
@@ -207,15 +212,23 @@ body.public-mode .admin-only {
 html:has(body.public-mode),
 body.public-mode {
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   overflow: hidden;
+  /* In the casino iframe the player should never select/drag the chrome. The
+     Round-ID value re-enables selection on itself (user-select: all). */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body.public-mode .sanctum {
   width: 100vw;
   max-width: 100vw;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   padding: 0;
   margin: 0 auto;
   display: flex;
@@ -228,13 +241,17 @@ body.public-mode .altar {
   width: min(100vw, 1040px);
   max-width: 1040px;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   margin: 0 auto;
   border-radius: 0;
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 8px;
-  padding: 8px 18px 10px;
+  /* Pad for notches / home indicator on phones; falls back to 0 on desktop. */
+  padding: max(8px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   overflow: hidden;
 }
 
@@ -306,6 +323,81 @@ body.public-mode .vault-shell {
 body.public-mode .reels-canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* ----------------------------------------------------------------------------
+   Mobile portrait-first tuning (player view only). The public-mode layout is
+   already a vertical stack (title → HUD → reels → controls); here we size the
+   controls for one-thumb play and keep them in the bottom thumb zone.
+---------------------------------------------------------------------------- */
+@media (max-width: 720px) and (orientation: portrait) {
+  body.public-mode .altar {
+    gap: 6px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  /* The reels take all the free vertical space between the HUD and controls. */
+  body.public-mode .vault-shell {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* Bigger, thumb-friendly spin button anchored at the bottom. */
+  body.public-mode .img-btn-spin {
+    max-width: clamp(104px, 30vw, 140px);
+    max-height: clamp(104px, 30vw, 140px);
+  }
+
+  /* Keep flanking controls comfortably tappable (>= 44px) and roomy. */
+  body.public-mode .ritual-deck {
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+  body.public-mode .img-btn-buy,
+  body.public-mode .ante-toggle,
+  body.public-mode .bet-stepper {
+    height: 56px;
+  }
+  body.public-mode .hud-node strong {
+    font-size: 1rem;
+  }
+}
+
+/* Very small phones — trim chrome so the reels stay as large as possible. */
+@media (max-width: 380px) and (orientation: portrait) {
+  body.public-mode .hud-bar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  body.public-mode .img-btn-spin {
+    max-width: clamp(92px, 28vw, 120px);
+    max-height: clamp(92px, 28vw, 120px);
+  }
+}
+
+/* Landscape on phones (short viewport): keep it usable but secondary. Shrink
+   vertical chrome so the reels don't get crushed; controls stay at the bottom. */
+@media (orientation: landscape) and (max-height: 560px) {
+  body.public-mode .altar {
+    gap: 4px;
+    padding-top: max(4px, env(safe-area-inset-top));
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+  }
+  body.public-mode .altar-top {
+    display: none;
+  }
+  body.public-mode .hud-bar {
+    padding: 4px 10px;
+  }
+  body.public-mode .img-btn-spin {
+    max-width: clamp(72px, 12vh, 104px);
+    max-height: clamp(72px, 12vh, 104px);
+  }
+  body.public-mode .img-btn-buy,
+  body.public-mode .ante-toggle,
+  body.public-mode .bet-stepper {
+    height: 48px;
+  }
 }
 
 /* Spin is centered by the deck's 3-column "1fr auto 1fr" layout — the auto
@@ -1952,6 +2044,27 @@ pre {
 @media (max-width: 520px) {
   .ritual-deck {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Reduced motion: players who ask the OS to minimise motion get a calm board —
+   no shake, no aura pulses, no spinning glints. Canvas particle FX are thinned
+   separately in main.js (fxScale + reduced-motion gates). */
+@media (prefers-reduced-motion: reduce) {
+  .vault-window.event-shake,
+  .vault-window.event-shake-strong {
+    animation: none !important;
+  }
+  .vault-aura,
+  .img-btn-spin::after {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
 

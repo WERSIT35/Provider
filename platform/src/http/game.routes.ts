@@ -79,6 +79,39 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Buy Free Spins — pay bet × buy-cost to force the bonus immediately. Same
+  // server-authoritative, idempotent lifecycle as a spin.
+  app.post("/game/v1/buy-feature", { preHandler: bearer }, async (req, reply) => {
+    const idem = req.headers["idempotency-key"];
+    if (typeof idem !== "string" || idem.length === 0) {
+      return reply.code(422).send(envelope("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header required", req.id));
+    }
+    const body = (req.body ?? {}) as SpinBody;
+    if (typeof body.bet_amount !== "number") {
+      return reply.code(422).send(envelope("VALIDATION", "bet_amount (number) required", req.id));
+    }
+    try {
+      const outcome = await app.container.orchestrator.buyFeature(req.sessionId as string, {
+        bet_amount: body.bet_amount,
+        idempotency_key: idem
+      });
+      reply.header("idempotent-replay", String(outcome.idempotent_replay));
+      return {
+        ...outcome.result,
+        round_ref: outcome.round_ref,
+        outcome_hash: outcome.outcome_hash,
+        bet_charged: outcome.bet_charged,
+        total_win: outcome.total_win,
+        balance: outcome.balance,
+        free_spins_left: outcome.free_spins_left,
+        settlement: outcome.settlement,
+        idempotent_replay: outcome.idempotent_replay
+      };
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
   // Round lookup is tenant-scoped to the session's operator.
   app.get("/game/v1/rounds/:ref", { preHandler: bearer }, async (req, reply) => {
     const ref = (req.params as { ref: string }).ref;
