@@ -325,11 +325,27 @@ async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers });
   const text = await res.text();
   let body; try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (res.status === 401) {
+    // The token is invalid or expired — don't leave a half-broken dashboard with
+    // "invalid admin token" smeared across every panel. Bounce to a clean login.
+    handleAuthExpired();
+    const err = new Error('admin token invalid or expired'); err.status = 401; err.body = body; throw err;
+  }
   if (!res.ok) {
     const msg = body?.error?.message || ('HTTP ' + res.status);
     const err = new Error(msg); err.status = res.status; err.body = body; throw err;
   }
   return body;
+}
+
+// Force a clean re-auth when a 401 is seen mid-session (expired/invalid token).
+let _authExpiredFlashed = false;
+function handleAuthExpired() {
+  signOut();
+  if (_authExpiredFlashed) return;
+  _authExpiredFlashed = true;
+  flash($('loginErr'), 'Your admin token is invalid or expired. Paste a fresh one — re-run "npm run dev:seed" to mint new tokens.', false);
+  setTimeout(() => { _authExpiredFlashed = false; }, 1500);
 }
 
 // ── views ────────────────────────────────────────────────────────────────────
@@ -351,8 +367,18 @@ async function signIn() {
   if (!tok) return flash($('loginErr'), 'paste a token first', false);
   state.token = tok;
   try {
-    // Probe scope: provider tokens can hit /operators; operator tokens can hit /rounds.
+    // Probe scope: provider tokens can hit /operators (200); operator tokens are
+    // forbidden there (403) but valid. A 401 means the token is invalid or
+    // expired — don't "sign in" into a dashboard that will 401 on every panel.
     const ops = await fetch('/admin/v1/operators', { headers: { authorization: 'Bearer ' + tok } });
+    if (ops.status === 401) {
+      state.token = '';
+      return flash($('loginErr'), 'Token invalid or expired — paste a fresh one. Re-run "npm run dev:seed" to mint new tokens.', false);
+    }
+    if (ops.status !== 200 && ops.status !== 403) {
+      state.token = '';
+      return flash($('loginErr'), 'Sign-in failed (HTTP ' + ops.status + ').', false);
+    }
     state.scope = ops.status === 200 ? 'provider' : 'operator';
     localStorage.setItem('adminToken', tok);
     afterSignIn();
@@ -835,8 +861,10 @@ if (state.token) {
 </body></html>`;
 
 const adminConsoleRoutes: FastifyPluginAsync = async (app) => {
-  const serve = async (_req: unknown, reply: { type: (t: string) => { send: (b: string) => unknown } }) =>
-    reply.type("text/html").send(PAGE);
+  // The portal HTML/JS is inlined, so never let a browser serve a stale copy —
+  // otherwise an old build's sign-in logic (or a fixed bug) lingers after a deploy.
+  const serve = async (_req: unknown, reply: import("fastify").FastifyReply) =>
+    reply.type("text/html").header("cache-control", "no-store").send(PAGE);
   app.get("/", serve);
   app.get("/admin", serve);
 };

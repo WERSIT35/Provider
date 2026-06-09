@@ -335,13 +335,19 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(422).send(envelope("VALIDATION", "game_code, operator_player_id, currency, origin required", req.id));
     }
     try {
-      const token = app.container.sessions.createLaunchToken({
-        operator_id: operatorId,
-        game_code: body.game_code,
-        operator_player_id: body.operator_player_id,
-        currency: body.currency,
-        origin: body.origin
-      });
+      // Demo launch links are opened by hand, so give them an hour rather than
+      // the 60s production single-use default (otherwise the link is dead before
+      // the admin can click it).
+      const token = app.container.sessions.createLaunchToken(
+        {
+          operator_id: operatorId,
+          game_code: body.game_code,
+          operator_player_id: body.operator_player_id,
+          currency: body.currency,
+          origin: body.origin
+        },
+        3600
+      );
       return { launch_token: token, launch_url: `/play?lt=${token}` };
     } catch (err) {
       return sendDomainError(reply, err, req.id);

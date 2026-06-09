@@ -40,8 +40,13 @@ export class SessionService {
     private readonly launchSecret: string
   ) {}
 
-  /** Operator-side: produce a signed launch token after validating access. */
-  createLaunchToken(req: LaunchRequest): string {
+  /**
+   * Operator-side: produce a signed launch token after validating access.
+   * Defaults to a short 60s single-use handoff (production semantics); demo
+   * callers (dev-seed, the portal's Launch-demo helper) pass a longer ttl so a
+   * hand-driven test session doesn't expire before the URL is even opened.
+   */
+  createLaunchToken(req: LaunchRequest, ttlSeconds = 60): string {
     this.mgmt.assertOperatorActive(req.operator_id);
     const allowed =
       this.mgmt.isDomainAllowed(req.operator_id, req.origin, "prod") ||
@@ -50,7 +55,7 @@ export class SessionService {
     if (!this.mgmt.findOperatorGame(req.operator_id, req.game_code, req.currency)) {
       throw new Error("GAME_NOT_ASSIGNED");
     }
-    return signToken(this.launchSecret, { ...req }, 60);
+    return signToken(this.launchSecret, { ...req }, ttlSeconds);
   }
 
   /** Client-side: exchange a launch token for a session. */

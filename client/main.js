@@ -4165,5 +4165,20 @@ requestAnimationFrame(() => document.body.classList.add("app-ready"));
 initSession().catch((err) => {
   el.resultDump.textContent = `Init failed: ${err.message}`;
   pushGameMessage(`Init failed: ${err.message}`, "error");
+  // In platform mode an expired/invalid launch token leaves balance "-" and the
+  // controls clickable-but-dead, which looks like a generic break. Make the real
+  // cause obvious and lock the controls so nothing silently no-ops.
+  const code = String(err?.message || "");
+  const isAuthError = _platform.enabled &&
+    /TOKEN_EXPIRED|UNAUTHORIZED|HTTP_401|HTTP_403/i.test(code);
+  if (isAuthError) {
+    if (el.balance) el.balance.textContent = "—";
+    setControls(true);
+    pulseBanner("Game link expired", "bonus", 6000);
+    pushGameMessage(
+      'This game link has expired. Open a fresh launch URL — re-run "npm run dev:seed", or use the Admin Portal → Onboarding → Launch a demo player.',
+      "error"
+    );
+  }
 });
 loadRules();
