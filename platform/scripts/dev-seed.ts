@@ -24,6 +24,9 @@ import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ADMIN_SECRET = process.env.ADMIN_TOKEN_SECRET ?? "dev-admin-secret-change-me";
+// Demo tokens (player launch + admin) live long enough for a hand-driven test
+// session. The printed URLs/tokens are useless if they expire before you click.
+const DEMO_TTL_SECONDS = Number(process.env.DEMO_TOKEN_TTL_SECONDS ?? 3600);
 
 const cfg = {
   launchSecret: process.env.LAUNCH_TOKEN_SECRET ?? "dev-launch-secret-change-me",
@@ -78,26 +81,35 @@ async function main(): Promise<void> {
   const inspectorRef = firstWinRef ?? firstRef;
 
   // Mint a fresh launch token for the player demo (the one above was consumed).
-  const playerToken = c.sessions.createLaunchToken({
-    operator_id: op.id,
-    game_code: "bananax",
-    operator_player_id: "p1",
-    currency: "GEL",
-    origin: "casino.example.com"
-  });
+  const playerToken = c.sessions.createLaunchToken(
+    {
+      operator_id: op.id,
+      game_code: "bananax",
+      operator_player_id: "p1",
+      currency: "GEL",
+      origin: "casino.example.com"
+    },
+    DEMO_TTL_SECONDS
+  );
 
-  const providerToken = c.adminAuth.mintToken({
-    admin_id: "dev-admin",
-    scope: "provider",
-    operator_id: null,
-    role: "provider_super_admin"
-  });
-  const operatorToken = c.adminAuth.mintToken({
-    admin_id: "dev-op-admin",
-    scope: "operator",
-    operator_id: op.id,
-    role: "operator_admin"
-  });
+  const providerToken = c.adminAuth.mintToken(
+    {
+      admin_id: "dev-admin",
+      scope: "provider",
+      operator_id: null,
+      role: "provider_super_admin"
+    },
+    DEMO_TTL_SECONDS
+  );
+  const operatorToken = c.adminAuth.mintToken(
+    {
+      admin_id: "dev-op-admin",
+      scope: "operator",
+      operator_id: op.id,
+      role: "operator_admin"
+    },
+    DEMO_TTL_SECONDS
+  );
 
   const app = buildApp({
     logger: createLogger({ level: "info", pretty: true, env: "local" }),

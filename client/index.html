@@ -27,21 +27,30 @@
           <div class="title-cluster">
             <span class="title-kicker">Fantasma Games</span>
             <h1>Banana X</h1>
+            <span class="title-tagline">Hit multipliers to boost your tumble win</span>
           </div>
           <div class="status-ribbon">
             <div class="status-ribbon-item admin-only" id="sessionIdItem">
               <span>Session</span>
               <strong id="sessionId">-</strong>
             </div>
-            <div class="status-ribbon-item">
+            <div class="status-ribbon-item ribbon-detail">
               <span>Ways</span>
               <strong id="lineCount">Pay Anywhere</strong>
             </div>
-            <div class="status-ribbon-item">
+            <div class="status-ribbon-item ribbon-detail">
               <span>Winning Symbols</span>
               <strong id="winningLines">0</strong>
             </div>
-            <button id="rulesBtn" type="button">Rules</button>
+            <button id="rulesBtn" type="button" class="ribbon-detail">Rules</button>
+            <div class="ribbon-compact">
+              <button id="infoToggle" type="button" class="icon-btn" aria-label="Game info" aria-expanded="false">i</button>
+              <div class="info-popover hidden" id="infoPopover" role="dialog" aria-label="Game info">
+                <div class="info-row"><span>Ways</span><strong>Pay Anywhere</strong></div>
+                <div class="info-row"><span>Winning Symbols</span><strong id="winningLinesMobile">0</strong></div>
+                <button id="rulesBtnMobile" type="button" class="info-rules-btn">Rules</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -77,8 +86,8 @@
 
           <section class="vault-shell">
             <div class="hud-bar">
-              <div class="hud-node"><span>Balance</span><strong id="balance">-</strong></div>
-              <div class="hud-node"><span>Bet</span><strong id="betView">1.00</strong></div>
+              <div class="hud-node" id="balanceNode"><span>Balance</span><strong id="balance">-</strong></div>
+              <div class="hud-node" id="betNode"><span>Bet</span><strong id="betView">1.00</strong></div>
               <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
               <div class="hud-node hud-node-bonus hidden" id="bonusTotalNode"><span>Bonus Total</span><strong id="bonusTotal">0.00</strong></div>
               <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
@@ -90,9 +99,15 @@
               <button type="button" id="roundIdCopyBtn" class="round-id-copy" aria-label="Copy Round ID">Copy</button>
               <span class="round-id-copied" id="roundIdCopied" hidden>copied</span>
             </div>
-            <div class="vault-window">
+            <div class="hud-message-rail">
               <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
                 <span id="eventBannerText">Ready</span>
+              </div>
+            </div>
+            <div class="vault-window">
+              <div class="bonus-multi-badge hidden" id="bonusMultiBadge" aria-live="polite">
+                <span class="bonus-multi-badge-label">Total Multiplier</span>
+                <span class="bonus-multi-badge-value" id="bonusMultiBadgeValue">1x</span>
               </div>
               <div class="vault-aura"></div>
               <div class="reels-stage" aria-live="polite">
@@ -135,6 +150,33 @@
                 <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
               </div>
             </section>
+
+            <div class="control-toolbar" aria-label="Quick controls">
+              <div class="tool-wrap">
+                <button id="autoplayBtn" type="button" class="tool-btn" aria-label="Autoplay">
+                  <span class="tool-glyph" aria-hidden="true">&#10227;</span>
+                  <span class="tool-count"></span>
+                </button>
+                <div class="autoplay-popover hidden" id="autoplayPopover" role="menu" aria-label="Autoplay spins">
+                  <span class="autoplay-popover-head">Autoplay</span>
+                  <div class="autoplay-popover-grid">
+                    <button type="button" data-autoplay="10">10</button>
+                    <button type="button" data-autoplay="25">25</button>
+                    <button type="button" data-autoplay="50">50</button>
+                    <button type="button" data-autoplay="inf">&#8734;</button>
+                  </div>
+                </div>
+              </div>
+              <button id="turboBtn" type="button" class="tool-btn" aria-label="Turbo spin" aria-pressed="false">
+                <span class="tool-glyph" aria-hidden="true">&#9889;</span>
+                <span class="tool-label">Turbo</span>
+              </button>
+            </div>
+
+            <div class="game-footer" aria-label="Balance and bet">
+              <div class="footer-cell"><span>Balance</span><strong id="footerBalance">—</strong></div>
+              <div class="footer-cell"><span>Bet</span><strong id="footerBet">1.00</strong></div>
+            </div>
           </section>
 
           <aside class="archive-panel admin-only" aria-label="Simulation and outputs">
