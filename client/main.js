@@ -13,11 +13,18 @@ const el = {
   balance: $("balance"),
   betView: $("betView"),
   winningLines: $("winningLines"),
+  winningLinesMobile: $("winningLinesMobile"),
   lastWin: $("lastWin"),
+  betNode: $("betNode"),
   freeSpins: $("freeSpins"),
   freeSpinsNode: $("freeSpinsNode"),
   activeMultiplier: $("activeMultiplier"),
   activeMultiplierNode: $("activeMultiplierNode"),
+  bonusMultiBadge: $("bonusMultiBadge"),
+  bonusMultiBadgeValue: $("bonusMultiBadgeValue"),
+  infoToggle: $("infoToggle"),
+  infoPopover: $("infoPopover"),
+  rulesBtnMobile: $("rulesBtnMobile"),
   bonusTotal: $("bonusTotal"),
   bonusTotalNode: $("bonusTotalNode"),
   betSelect: $("betSelect"),
@@ -95,6 +102,11 @@ const el = {
   featureScreenCopy: $("featureScreenCopy"),
   eventBanner: $("eventBanner"),
   eventBannerText: $("eventBannerText"),
+  turboBtn: $("turboBtn"),
+  autoplayBtn: $("autoplayBtn"),
+  autoplayPopover: $("autoplayPopover"),
+  footerBalance: $("footerBalance"),
+  footerBet: $("footerBet"),
   vaultWindow: document.querySelector(".vault-window")
 };
 
@@ -119,7 +131,11 @@ const state = {
   bonusMultiplierCarry: 0,
   roundAnimating: false,
   fastStopRequested: false,
-  crazyMode: false
+  crazyMode: false,
+  turbo: false,
+  autoplayActive: false,
+  autoplayLeft: 0,
+  autoplayInitial: 0
 };
 
 const rows = 5;
@@ -184,8 +200,13 @@ const ANIMATION_TIMING = {
   // clears instead of leaving a ~0.5s empty gap. tumbleDropOverlap = how long
   // after the explode begins the new symbols start falling; tumbleDrop = fall
   // duration. Tune live for feel.
-  tumbleDrop: 540,
-  tumbleDropOverlap: 200,
+  tumbleDrop: 640,
+  // Smaller overlap so the surviving symbols above the blast start falling
+  // almost WITH the explosion instead of freezing in place for ~0.2s and then
+  // dropping (which read as a sharp hitch). The explosion particles still mask
+  // the emptied cells, and falling cells are immune to the blast fade (#3), so
+  // the cascade now flows like the spin-start drop the player likes.
+  tumbleDropOverlap: 120,
   markSmall: 600,
   markMedium: 680,
   markGreat: 800,
@@ -201,7 +222,11 @@ const ANIMATION_TIMING = {
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const animationSleep = (ms) => sleep(state.fastStopRequested ? Math.min(50, ms) : ms);
+// Turbo compresses every animated hold/duration to ~45% (fast but still
+// watchable). Fast-stop still wins and collapses to near-instant.
+const turboScale = () => (state.turbo ? 0.45 : 1);
+const animationSleep = (ms) =>
+  sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
@@ -1369,17 +1394,28 @@ class ReelCanvasRenderer {
     if (drop.exit && elapsed < 0) return 0;
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
-    const fallT = easeOutQuint(progress);
     if (drop.exit) {
-      const exitT = progress ** 4;
+      // Spin-end exit: symbols fall OUT of the board under gravity. The old
+      // progress**4 curve left them hovering motionless then yanked them away
+      // (sharp). This starts moving immediately with a small velocity and
+      // accelerates downward — a smooth, readable "drop out of the game".
+      const exitT = progress * (0.25 + 0.75 * progress);
       return lerp(0, distance, exitT);
     }
-    const fallY = lerp(-distance, 0, fallT);
-    if (progress < 0.82) return fallY;
-    // Single small landing bounce — short, quick settle (no pendulum sway).
-    const settleT = (progress - 0.82) / 0.18;
-    const damp = 1 - settleT;
-    return Math.sin(settleT * Math.PI) * damp * rowStep * 0.05;
+    // Gravity-style fall: the symbol ACCELERATES downward like a real drop
+    // instead of the old decelerating ease (which read as a sharp snap). It
+    // gives a gentle bit of initial motion, speeds up, reaches its slot ~75%
+    // through, then a single soft, fully-damped bounce settles it — the
+    // satisfying tumble-cascade feel.
+    const fallEnd = 0.75;
+    if (progress < fallEnd) {
+      const ft = progress / fallEnd;
+      const accel = ft * (0.4 + 0.6 * ft); // slight initial velocity, then gravity
+      return lerp(-distance, 0, accel);
+    }
+    const settleT = (progress - fallEnd) / (1 - fallEnd);
+    const damp = (1 - settleT) ** 2;
+    return -Math.sin(settleT * Math.PI) * damp * rowStep * 0.09;
   }
 
   dropDelay(row, col, count) {
@@ -1851,7 +1887,15 @@ class ReelCanvasRenderer {
         const slamOffset = isSlamColumn ? reelSlamWave * radius * 0.46 : 0;
         const y = yBase + this.cellOffset(r, c, rowStep) + slamOffset;
         const isWinner = this.board.winningSet.has(key);
-        const isBlast = this.fx.blast?.set?.has(key);
+        // A cell that is actively falling (refilled by the tumble drop) must not
+        // inherit the explode fade. The drop commits the new board ~200ms into
+        // the 540ms explode, so the former winning-cell positions now hold the
+        // NEW dropping symbols; without this guard they'd be faded to invisible
+        // by the still-running blast and then snap back in — the "disappear for a
+        // second" glitch. Old winners still fade normally in the pre-drop window
+        // (they aren't in the drop map yet).
+        const isFalling = Number(this.fx.drop?.map?.[key] || 0) > 0;
+        const isBlast = this.fx.blast?.set?.has(key) && !isFalling;
         // Per-cell blast progress — staggered across cells so big wins ripple
         // outward instead of all popping at the same instant.
         let cellBlast = 0;
@@ -2447,6 +2491,30 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
   if (el.bonusTotalNode) el.bonusTotalNode.classList.toggle("hidden", !inBonus);
   if (el.freeSpinsNode) el.freeSpinsNode.classList.toggle("hidden", spins <= 0);
   if (el.activeMultiplierNode) el.activeMultiplierNode.classList.toggle("hidden", !inBonus && mult <= 1);
+  // Bonus total-multiplier badge over the top of the reels — the signature
+  // bonus element (and the multiplier display on mobile, where the HUD column
+  // is hidden). Its glow tier scales with the multiplier, and it pops on
+  // each increase.
+  if (el.bonusMultiBadge) {
+    el.bonusMultiBadge.classList.toggle("hidden", !inBonus);
+    if (inBonus) {
+      if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = mfmt(mult);
+      el.bonusMultiBadge.dataset.tier = mult >= 100 ? "mythic"
+        : mult >= 50 ? "legendary"
+        : mult >= 20 ? "epic"
+        : mult >= 10 ? "rare"
+        : "common";
+      const prev = Number(el.bonusMultiBadge.dataset.value || 0);
+      el.bonusMultiBadge.dataset.value = String(mult);
+      if (mult > prev) {
+        el.bonusMultiBadge.classList.remove("badge-bump");
+        void el.bonusMultiBadge.offsetWidth;
+        el.bonusMultiBadge.classList.add("badge-bump");
+      }
+    } else {
+      el.bonusMultiBadge.dataset.value = "0";
+    }
+  }
 }
 
 function setControls(disabled) {
@@ -3519,15 +3587,15 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           : Promise.resolve();
         const dropMap = buildDropMap(prev.matrix, prevWinning);
         const dropPromise = delayedDropAfter(
-          ANIMATION_TIMING.tumbleDropOverlap,
+          Math.round(ANIMATION_TIMING.tumbleDropOverlap * turboScale()),
           step.matrix,
           step.multipliers || [],
           dropMap,
-          ANIMATION_TIMING.tumbleDrop,
+          Math.round(ANIMATION_TIMING.tumbleDrop * turboScale()),
           { animateMultipliers: true }
         );
         await Promise.all([
-          reelRenderer.explode(prevWinning, ANIMATION_TIMING.explode, prevTier),
+          reelRenderer.explode(prevWinning, Math.round(ANIMATION_TIMING.explode * turboScale()), prevTier),
           chipPromise,
           celebratePromise,
           dropPromise
@@ -3722,6 +3790,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     bonusTotal: payload.bonus_round_win || 0
   });
   el.winningLines.textContent = String((payload.ways_wins || []).length);
+  if (el.winningLinesMobile) el.winningLinesMobile.textContent = String((payload.ways_wins || []).length);
   const finalStep = steps[steps.length - 1] || {};
   renderCaughtLines(payload.ways_wins || [], finalStep.multipliers || payload.multipliers || []);
   pushSpinLog(payload, bet);
@@ -3747,6 +3816,12 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
 async function spin(options = {}) {
   if (!state.sessionId) return;
   if (state.bonusAutoplay && !options.autoplay) return;
+  // A manual spin tap while autoplay is running stops the autoplay rather than
+  // queueing another spin (matches production slots).
+  if (state.autoplayActive && !options.autoplay) {
+    stopAutoplay();
+    return;
+  }
   if (state.roundAnimating) {
     requestFastStop();
     return;
@@ -3834,6 +3909,73 @@ async function autoplayBonus() {
     state.bonusAutoplay = false;
     setControls(false);
   }
+}
+
+function setTurbo(on) {
+  state.turbo = Boolean(on);
+  if (el.turboBtn) {
+    el.turboBtn.classList.toggle("is-active", state.turbo);
+    el.turboBtn.setAttribute("aria-pressed", String(state.turbo));
+  }
+}
+
+function updateAutoplayUi() {
+  if (!el.autoplayBtn) return;
+  const active = state.autoplayActive;
+  el.autoplayBtn.classList.toggle("is-active", active);
+  el.autoplayBtn.setAttribute("aria-label", active ? "Stop autoplay" : "Autoplay");
+  const count = el.autoplayBtn.querySelector(".tool-count");
+  if (count) {
+    count.textContent = active
+      ? (state.autoplayLeft === Infinity ? "∞" : String(state.autoplayLeft))
+      : "";
+  }
+}
+
+// Regular (base-game) autoplay: spin a chosen count automatically, stopping on
+// request, on a spin error (e.g. insufficient funds -> spin() returns falsy),
+// or when the count runs out. A bonus award mid-run is handled inside spin()
+// (it runs the bonus autoplay, then returns and we continue).
+async function startAutoplay(count) {
+  if (state.autoplayActive || state.bonusAutoplay || !state.sessionId) return;
+  el.autoplayPopover?.classList.add("hidden");
+  state.autoplayActive = true;
+  state.autoplayLeft = count;
+  state.autoplayInitial = count;
+  updateAutoplayUi();
+  try {
+    while (state.autoplayActive && state.autoplayLeft > 0 && state.sessionId) {
+      if (state.autoplayLeft !== Infinity) state.autoplayLeft -= 1;
+      updateAutoplayUi();
+      const payload = await spin({ autoplay: true });
+      if (!payload || !state.autoplayActive) break;
+      await animationSleep(260);
+    }
+  } finally {
+    state.autoplayActive = false;
+    state.autoplayLeft = 0;
+    updateAutoplayUi();
+    setControls(false);
+  }
+}
+
+function stopAutoplay() {
+  state.autoplayActive = false;
+  updateAutoplayUi();
+}
+
+// Mirror the live Balance/Bet readouts into the persistent bottom footer
+// (Pragmatic-style CREDIT/BET strip) without touching every update site.
+function bindFooterMirror() {
+  if (!el.footerBalance && !el.footerBet) return;
+  const sync = () => {
+    if (el.footerBalance && el.balance) el.footerBalance.textContent = el.balance.textContent;
+    if (el.footerBet && el.betView) el.footerBet.textContent = el.betView.textContent;
+  };
+  sync();
+  const obs = new MutationObserver(sync);
+  if (el.balance) obs.observe(el.balance, { childList: true, characterData: true, subtree: true });
+  if (el.betView) obs.observe(el.betView, { childList: true, characterData: true, subtree: true });
 }
 
 async function buyFreeSpins() {
@@ -4118,6 +4260,28 @@ if (el.anteToggle && anteToggleImg) {
 }
 el.spinBtn.addEventListener("click", spin);
 el.buyFreeBtn.addEventListener("click", buyFreeSpins);
+if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
+if (el.autoplayBtn) {
+  el.autoplayBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (state.autoplayActive) { stopAutoplay(); return; }
+    el.autoplayPopover?.classList.toggle("hidden");
+  });
+}
+if (el.autoplayPopover) {
+  el.autoplayPopover.querySelectorAll("button[data-autoplay]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const raw = btn.dataset.autoplay;
+      const count = raw === "inf" ? Infinity : Number(raw);
+      startAutoplay(count);
+    });
+  });
+  document.addEventListener("click", (e) => {
+    if (el.autoplayPopover.classList.contains("hidden")) return;
+    if (el.autoplayPopover.contains(e.target) || e.target === el.autoplayBtn) return;
+    el.autoplayPopover.classList.add("hidden");
+  });
+}
 el.simulateBtn.addEventListener("click", () => runSimulation({ bonusOnly: false }));
 if (el.simulateBonusBtn) el.simulateBonusBtn.addEventListener("click", () => runSimulation({ bonusOnly: true }));
 if (el.testDropBtn) el.testDropBtn.addEventListener("click", () => runVisualTest("drop"));
@@ -4126,10 +4290,28 @@ if (el.testCelebrateBtn) el.testCelebrateBtn.addEventListener("click", () => run
 if (el.testCatchBtn) el.testCatchBtn.addEventListener("click", () => runVisualTest("catch"));
 if (el.crazyToggleBtn) el.crazyToggleBtn.addEventListener("click", () => setCrazyMode(!state.crazyMode));
 el.featureScreen.addEventListener("click", dismissFeature);
-el.rulesBtn.addEventListener("click", () => {
+function openRules() {
+  el.infoPopover?.classList.add("hidden");
+  el.infoToggle?.setAttribute("aria-expanded", "false");
   el.rulesModal.classList.remove("hidden");
   renderRulesPage();
-});
+}
+el.rulesBtn.addEventListener("click", openRules);
+if (el.rulesBtnMobile) el.rulesBtnMobile.addEventListener("click", openRules);
+if (el.infoToggle) {
+  el.infoToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = el.infoPopover?.classList.toggle("hidden") === false;
+    el.infoToggle.setAttribute("aria-expanded", String(open));
+  });
+  // Tap outside closes the info popover.
+  document.addEventListener("click", (e) => {
+    if (!el.infoPopover || el.infoPopover.classList.contains("hidden")) return;
+    if (el.infoPopover.contains(e.target) || e.target === el.infoToggle) return;
+    el.infoPopover.classList.add("hidden");
+    el.infoToggle.setAttribute("aria-expanded", "false");
+  });
+}
 el.rulesCloseBtn.addEventListener("click", () => el.rulesModal.classList.add("hidden"));
 el.rulesPrevBtn.addEventListener("click", () => {
   if (!state.rules || state.rulesPageIndex <= 0) return;
@@ -4157,6 +4339,7 @@ reelRenderer.setBoard(randomMatrix());
 renderExamples();
 renderSpinLog();
 renderTestPanel();
+bindFooterMirror();
 el.symbolLegend.textContent = "Top Crown, Hourglass, Ring, Chalice, Red Gem, Purple Triangle, Yellow Hex, Green Triangle, Blue Diamond, Wild Multiplier, Scatter";
 el.payoutRuleText.textContent = "High-volatility pays-anywhere model. Wild multipliers and scatter-triggered bonus spins drive peak wins.";
 el.multiplierInfo.textContent = "Loading...";

@@ -216,14 +216,20 @@
           win_total: ways.total,
           winning_positions: ways.winning_positions
         });
-        if (ways.total <= 0) break;
-        sequenceWin += ways.total;
+        // Accumulate every multiplier present on the board into the sequence sum,
+        // including the multipliers that landed on this board during the previous
+        // tumble. This must happen BEFORE the no-win break below: the board a
+        // multiplier drops onto is usually the one that ends the cascade (no
+        // further win), so counting only on winning steps would silently drop it
+        // from the total. The sum is still only *applied* when sequenceWin > 0.
         for (const m of multipliers) {
           const id = typeof m?.id === "string" && m.id ? m.id : `${m.row}-${m.col}-${m.value}`;
           if (countedMultiplierIds.has(id)) continue;
           countedMultiplierIds.add(id);
           sequenceMultiplierSum += Number(m.value || 0);
         }
+        if (ways.total <= 0) break;
+        sequenceWin += ways.total;
         if (firstWinningPositions.length === 0) {
           firstWinningPositions = ways.winning_positions;
         }
@@ -333,8 +339,8 @@
         free_spins_awarded: freeSpinsAwarded,
         free_spins_left: session.freeSpinsLeft,
         bonus_round_win: Number(session.bonusRoundWin || 0),
-        multipliers_count_sequence: countedMultiplierIds.size,
-        multipliers_sum_sequence: Number(sequenceMultiplierSum.toFixed(2)),
+        multipliers_count_sequence: sequenceWin > 0 ? countedMultiplierIds.size : 0,
+        multipliers_sum_sequence: sequenceWin > 0 ? Number(sequenceMultiplierSum.toFixed(2)) : 0,
         multiplier_gain_applied: Number(multiplierGainApplied.toFixed(2)),
         multiplier_applied: Number(multiplierApplied.toFixed(2)),
         free_spin_multiplier_current: freeSpinMultiplierCurrentForResponse,
