@@ -163,8 +163,9 @@
 
       const { scatterChance, multiChance } = CrazyMode.getRates({ crazyMode, isFreeSpin, anteEnabled });
       const multiplierWeights = CrazyMode.getMultiplierWeights(crazyMode);
-      const ctx = crazyMode || multiplierWeights
-        ? this._cloneContextForWeights(multiplierWeights)
+      const symbolWeightOverrides = CrazyMode.getSymbolWeightOverrides(crazyMode);
+      const ctx = crazyMode || multiplierWeights || symbolWeightOverrides
+        ? this._cloneContextForWeights(multiplierWeights, symbolWeightOverrides)
         : this.ctx;
 
       let { matrix, multipliers } = ctx.matrixCtx.createMatrixWithMetaRates(scatterChance, multiChance);
@@ -177,6 +178,15 @@
         multipliers = forced.multipliers;
       }
       multipliers = ctx.matrixCtx.sanitizeMultipliersForMatrix(matrix, multipliers);
+
+      // Crazy Mode: flood the opening board with one premium symbol so the
+      // player feels a huge win is imminent. Runs AFTER forced scatter/multiplier
+      // injection (clustering never overwrites SCATTER/MULTI cells) so feature
+      // triggers are preserved.
+      if (crazyMode) {
+        matrix = ctx.matrixCtx.applyCrazyClustering(matrix, CrazyMode.getClusterPlan(crazyMode));
+        multipliers = ctx.matrixCtx.sanitizeMultipliersForMatrix(matrix, multipliers);
+      }
 
       let nearMissInfo = null;
       if (!isFreeSpin && !crazyMode) {
@@ -351,10 +361,15 @@
       };
     }
 
-    _cloneContextForWeights(weights) {
-      if (!weights) return this.ctx;
+    _cloneContextForWeights(weights, symbolWeightOverrides = null) {
+      if (!weights && !symbolWeightOverrides) return this.ctx;
       const { Symbols, Multipliers, Matrix, Payouts, Tumble, NearMiss } = root.SlotEngine;
-      const tables = this.ctx.tables;
+      // Crazy symbol overrides rebuild the weighted symbol tables so BOTH the
+      // initial board and the tumble refills lean premium; otherwise reuse the
+      // base tables unchanged.
+      const tables = symbolWeightOverrides
+        ? Symbols.buildSymbolTables(this.rules, { symbolWeightOverrides })
+        : this.ctx.tables;
       const multiplierValues = this.ctx.multiplierValues;
       const matrixCtx = Matrix.makeMatrixContext({
         rules: this.rules,

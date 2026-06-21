@@ -138,6 +138,11 @@ const state = {
   autoplayInitial: 0
 };
 
+// Single lifecycle lock guarding the whole spin (dropOff → network → animation).
+// Set the instant a spin is requested — before any await — so spamming the spin
+// button can never start a second concurrent spin. See engine/spin-lock.js.
+const spinLock = window.SlotEngine.SpinLock.createSpinLock();
+
 const rows = 5;
 const cols = 6;
 const payoutGroups = ["8-9", "10-11", "12-30"];
@@ -194,26 +199,19 @@ const ANIMATION_TIMING = {
   spinBurst: 420,
   oldBoardDropOff: 820,
   introDrop: 820,
-  // Tumble cascade: refill the blasted cells with CONTINUOUS motion. The drop
-  // now starts while the explosion is still flashing (its particles mask the
-  // emptied cells) and falls quickly, so incoming symbols arrive as the blast
-  // clears instead of leaving a ~0.5s empty gap. tumbleDropOverlap = how long
-  // after the explode begins the new symbols start falling; tumbleDrop = fall
-  // duration. Tune live for feel.
+  // Tumble cascade refill fall duration. The drop now runs AFTER the explosion
+  // has fully finished (see the deliberate win beat below), so the refill reads
+  // as a clean gravity drop into the cleared cells rather than overlapping the
+  // burst. Tune live for feel.
   tumbleDrop: 640,
-  // Smaller overlap so the surviving symbols above the blast start falling
-  // almost WITH the explosion instead of freezing in place for ~0.2s and then
-  // dropping (which read as a sharp hitch). The explosion particles still mask
-  // the emptied cells, and falling cells are immune to the blast fade (#3), so
-  // the cascade now flows like the spin-start drop the player likes.
-  tumbleDropOverlap: 120,
-  markSmall: 600,
-  markMedium: 680,
-  markGreat: 800,
-  // Large clusters (8+ caught symbols) hold the mark longer so the player can
-  // clearly read every symbol in the match before it explodes. The base mark
-  // above is extended by markPerExtraSymbol for each symbol past the threshold,
-  // capped by markBigClusterCap so very large boards stay responsive.
+  // Deliberate win beat (no overlap): the caught cluster is CELEBRATED (held +
+  // glowing) for a clear moment, THEN it explodes, and only once the explosion
+  // fully finishes do the refill symbols drop in. celebrateHoldFirst is the
+  // headline hold for the first/opening catch; chained tumble catches use the
+  // shorter celebrateHoldChain so long cascades keep their momentum. Very large
+  // clusters get a little extra read-time (markPerExtraSymbol, capped).
+  celebrateHoldFirst: 2500,
+  celebrateHoldChain: 1500,
   markBigClusterThreshold: 8,
   markPerExtraSymbol: 34,
   markBigClusterCap: 540,
@@ -1390,17 +1388,25 @@ class ReelCanvasRenderer {
     if (count <= 0) return 0;
     const delay = this.dropDelay(row, col, count);
     const elapsed = performance.now() - drop.start - delay;
-    const distance = count * rowStep * 1.15;
+    // A refilling symbol must START exactly where it was last seen — one cell
+    // per `count` directly above its destination — so the motion is continuous.
+    // The old `* 1.15` overshoot started it ~0.15 cell HIGHER than its prior
+    // resting spot, so at drop-commit the symbol visibly hopped UP before
+    // falling (the reported glitch). Exit drops keep a little extra travel so
+    // symbols fully clear the board on the way out.
+    const distance = count * rowStep;
+    const exitDistance = count * rowStep * 1.15;
     if (drop.exit && elapsed < 0) return 0;
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
     if (drop.exit) {
-      // Spin-end exit: symbols fall OUT of the board under gravity. The old
-      // progress**4 curve left them hovering motionless then yanked them away
-      // (sharp). This starts moving immediately with a small velocity and
-      // accelerates downward — a smooth, readable "drop out of the game".
-      const exitT = progress * (0.25 + 0.75 * progress);
-      return lerp(0, distance, exitT);
+      // Spin-end exit: symbols fall OUT of the board under real gravity. From
+      // rest, displacement under constant acceleration is ∝ t², so the symbols
+      // start nearly still and accelerate downward — the satisfying "the floor
+      // dropped out" feel, instead of the near-linear constant-speed slide the
+      // old curve produced.
+      const exitT = progress * progress;
+      return lerp(0, exitDistance, exitT);
     }
     // Gravity-style fall: the symbol ACCELERATES downward like a real drop
     // instead of the old decelerating ease (which read as a sharp snap). It
@@ -1616,9 +1622,23 @@ class ReelCanvasRenderer {
     const pulse = this.fx.pulse
       ? clamp((performance.now() - this.fx.pulse.start) / this.fx.pulse.duration, 0, 1)
       : 0;
-    // Sharper attack, longer glow tail — feels punchier than a symmetric sine.
+    // Celebration glow: quick attack, then SUSTAIN at a high plateau with a
+    // gentle shimmer for the whole (now multi-second) hold, then a short
+    // release at the tail. The old curve faded back to 0 by the end, so a 2.5s
+    // celebration visibly "died" before the explosion — this keeps the caught
+    // cluster alive and breathing right up until it bursts.
     const pulseGlow = this.fx.pulse
-      ? (pulse < 0.28 ? easeOutCubic(pulse / 0.28) : 1 - easeInOutCubic((pulse - 0.28) / 0.72))
+      ? (() => {
+          const attack = 0.1;
+          const release = 0.16;
+          const plateau = 0.84;
+          let env;
+          if (pulse < attack) env = easeOutCubic(pulse / attack);
+          else if (pulse > 1 - release) env = 1 - easeInOutCubic((pulse - (1 - release)) / release);
+          else env = 1;
+          const shimmer = 0.16 * (0.5 + 0.5 * Math.sin((performance.now() - this.fx.pulse.start) * 0.011));
+          return clamp(env * (plateau + shimmer), 0, 1);
+        })()
       : 0;
     const blast = this.fx.blast
       ? clamp((performance.now() - this.fx.blast.start) / this.fx.blast.duration, 0, 1)
@@ -1995,9 +2015,13 @@ class ReelCanvasRenderer {
         }
 
         if (isWinner) {
+          // Halo breathes with the celebration pulse so the held cluster reads
+          // as actively celebrating, not statically lit. A floor keeps it
+          // clearly marked even at the shimmer's low point.
+          const haloPulse = 0.55 + 0.45 * pulseGlow;
           const halo = ctx.createRadialGradient(x, yFloat, coreR * 0.28, x, yFloat, ringR * 1.55);
-          halo.addColorStop(0, `rgba(215, 236, 255, ${0.6 * blastFade})`);
-          halo.addColorStop(0.35, `rgba(150, 188, 255, ${0.24 * blastFade})`);
+          halo.addColorStop(0, `rgba(215, 236, 255, ${0.6 * blastFade * haloPulse})`);
+          halo.addColorStop(0.35, `rgba(150, 188, 255, ${0.24 * blastFade * haloPulse})`);
           halo.addColorStop(1, "rgba(150, 188, 255, 0)");
           ctx.fillStyle = halo;
           ctx.beginPath();
@@ -3179,10 +3203,6 @@ function renderCaughtLines(wins = [], multipliers = []) {
   });
 }
 
-function delayedDropAfter(ms, ...dropArgs) {
-  return animationSleep(ms).then(() => reelRenderer.drop(...dropArgs));
-}
-
 function scatterPositionsFromPayload(payload = {}) {
   const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
     ? payload.tumble_steps
@@ -3480,6 +3500,9 @@ function applyRoundStats(payload, bet, wagerOverride) {
 }
 
 async function animateRound(payload, bet, wagerOverride, options = {}) {
+  // The result is now committed and the reels are about to play it out: promote
+  // the lock to the ANIMATING phase so a tap from here on means "fast-stop".
+  spinLock.markAnimating();
   state.roundAnimating = true;
   el.spinBtn?.classList.add("is-spinning");
   el.spinBtn?.setAttribute("aria-label", "Stop spin");
@@ -3534,11 +3557,14 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } else {
     await reelRenderer.dropOff();
   }
-  // Commit the new spin's first matrix to the canvas immediately so the
-  // visible board is always the current payload, even if intro is aborted
-  // or the prior round left fx state mid-animation.
+  // Make the new matrix current WITHOUT drawing it at rest. The old code
+  // force-drew the full board in its resting position here, one frame before
+  // the intro drop began — so the player saw the generated rows sitting in
+  // place and then snap upward to fall (the "I see the rows right before they
+  // fall" glitch). intro() below commits the board together with the fall
+  // offset on the same synchronous tick, so the very first painted frame
+  // already shows the symbols entering from above — no resting flash, no blank.
   reelRenderer.setBoard(steps[0].matrix, { multipliers: steps[0].multipliers || [] });
-  reelRenderer.forceDrawNow();
   try {
     const m = steps[0].matrix || [];
     const tag = `[anim] id=${String(payload?.spin_id || "?").slice(0, 8)} m[0][0]=${m?.[0]?.[0] || "?"}`;
@@ -3586,41 +3612,52 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           ? reelRenderer.celebrateCluster(prevWinning, prevDominant, prevTier)
           : Promise.resolve();
         const dropMap = buildDropMap(prev.matrix, prevWinning);
-        const dropPromise = delayedDropAfter(
-          Math.round(ANIMATION_TIMING.tumbleDropOverlap * turboScale()),
+        // Deliberate beat (no overlap):
+        //   1) the caught cluster was just held + celebrated (the 2.5s mark),
+        //   2) it EXPLODES here and we wait for the burst to fully finish,
+        //   3) only THEN do the refill symbols drop in.
+        // The win chip + cluster celebration ride along with the burst. The
+        // drop is awaited immediately after the explode resolves (no awaited
+        // gap on the slower chip/celebrate promises in between) so the cleared
+        // cells can never flash the old symbols back before the refill commits.
+        await reelRenderer.explode(
+          prevWinning,
+          Math.round(ANIMATION_TIMING.explode * turboScale()),
+          prevTier
+        );
+        await reelRenderer.drop(
           step.matrix,
           step.multipliers || [],
           dropMap,
           Math.round(ANIMATION_TIMING.tumbleDrop * turboScale()),
           { animateMultipliers: true }
         );
-        await Promise.all([
-          reelRenderer.explode(prevWinning, Math.round(ANIMATION_TIMING.explode * turboScale()), prevTier),
-          chipPromise,
-          celebratePromise,
-          dropPromise
-        ]);
+        await Promise.all([chipPromise, celebratePromise]);
       } else if (prevWinning.length === 0 && Array.isArray(prev?.multipliers) && prev.multipliers.length > 0) {
         // multipliers may persist on a non-winning matrix; nothing to do.
       }
     }
     const tier = winTier(step?.ways_wins || [], bet);
-    let pulseDuration = tier === "blast-great"
-      ? ANIMATION_TIMING.markGreat
-      : tier === "blast-medium"
-        ? ANIMATION_TIMING.markMedium
-        : ANIMATION_TIMING.markSmall;
-    // Slow the mark further the more symbols were caught (8+), so the player
-    // can clearly see every symbol that is part of a large match before it
-    // resolves. Scales with cluster size and is capped to stay responsive.
-    const markedCount = (step.winning_positions || []).length;
-    if (markedCount >= ANIMATION_TIMING.markBigClusterThreshold) {
-      pulseDuration += Math.min(
-        ANIMATION_TIMING.markBigClusterCap,
-        (markedCount - ANIMATION_TIMING.markBigClusterThreshold) * ANIMATION_TIMING.markPerExtraSymbol
-      );
-    }
     const stepWin = Number(step?.win_total || 0);
+    // Celebration hold for the caught cluster. Every win here is an 8+ catch
+    // (min match = 8), so the headline opening catch is held for the full
+    // celebrateHoldFirst (2.5s) and chained tumble catches use the shorter
+    // celebrateHoldChain so a long cascade keeps moving. Very large clusters
+    // get a little extra read-time, capped, so huge boards stay watchable.
+    const markedCount = (step.winning_positions || []).length;
+    const isWinStep = markedCount > 0 && stepWin > 0;
+    let pulseDuration = 0;
+    if (isWinStep) {
+      pulseDuration = i === 0
+        ? ANIMATION_TIMING.celebrateHoldFirst
+        : ANIMATION_TIMING.celebrateHoldChain;
+      if (markedCount >= ANIMATION_TIMING.markBigClusterThreshold) {
+        pulseDuration += Math.min(
+          ANIMATION_TIMING.markBigClusterCap,
+          (markedCount - ANIMATION_TIMING.markBigClusterThreshold) * ANIMATION_TIMING.markPerExtraSymbol
+        );
+      }
+    }
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);
     if ((step.winning_positions || []).length && stepWin > 0) {
@@ -3822,9 +3859,18 @@ async function spin(options = {}) {
     stopAutoplay();
     return;
   }
-  if (state.roundAnimating) {
-    requestFastStop();
-    return;
+  // Lifecycle lock. Autoplay spins are already serialized by their driving
+  // loop (and manual interference is blocked by the guards above), so only
+  // manual spins contend for the lock. Acquire BEFORE any await so a rapid
+  // double-tap can never slip a second spin through the network window.
+  const manual = !options.autoplay;
+  if (manual) {
+    if (!spinLock.tryAcquire()) {
+      // Already in flight: once the result is visibly animating a tap means
+      // "fast-stop"; during the pre-animation/network window it's a no-op.
+      if (spinLock.isAnimating()) requestFastStop();
+      return;
+    }
   }
   state.fastStopRequested = false;
   el.spinBtn?.classList.remove("is-fast-stopping");
@@ -3882,6 +3928,10 @@ async function spin(options = {}) {
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Spin error: ${err.message}`, "error");
   } finally {
+    // Release reliably on every exit path — success, error, or fast-stop
+    // cancel. Held across the trailing bonus flow above so manual taps stay
+    // blocked until the whole lifecycle (including bonus autoplay) settles.
+    if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
   }
 }
