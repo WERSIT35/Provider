@@ -18,7 +18,8 @@
         document.write('<base href="' + path + '">');
       })();
     </script>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css?v=20260622-4" />
   </head>
   <body>
     <main class="sanctum">
@@ -43,6 +44,9 @@
               <strong id="winningLines">0</strong>
             </div>
             <button id="rulesBtn" type="button" class="ribbon-detail">Rules</button>
+            <button id="soundToggle" type="button" class="icon-btn sound-toggle" aria-label="Toggle sound" aria-pressed="true">
+              <span class="sound-glyph" aria-hidden="true">&#128266;</span>
+            </button>
             <div class="ribbon-compact">
               <button id="infoToggle" type="button" class="icon-btn" aria-label="Game info" aria-expanded="false">i</button>
               <div class="info-popover hidden" id="infoPopover" role="dialog" aria-label="Game info">
@@ -331,6 +335,8 @@
     <script src="engine/spin-engine.js?v=20260523-1"></script>
     <script src="engine/simulator.js?v=20260523-1"></script>
     <script src="engine/spin-lock.js?v=20260523-1"></script>
-    <script src="main.js?v=20260523-1"></script>
+    <script src="engine/audio.js?v=20260622-4"></script>
+    <script src="engine/ambiance.js?v=20260622-4"></script>
+    <script src="main.js?v=20260622-5"></script>
   </body>
 </html>
