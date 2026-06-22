@@ -103,6 +103,7 @@ const el = {
   eventBanner: $("eventBanner"),
   eventBannerText: $("eventBannerText"),
   turboBtn: $("turboBtn"),
+  soundToggle: $("soundToggle"),
   autoplayBtn: $("autoplayBtn"),
   autoplayPopover: $("autoplayPopover"),
   footerBalance: $("footerBalance"),
@@ -220,9 +221,13 @@ const ANIMATION_TIMING = {
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Turbo compresses every animated hold/duration to ~45% (fast but still
-// watchable). Fast-stop still wins and collapses to near-instant.
-const turboScale = () => (state.turbo ? 0.45 : 1);
+// Turbo uniformly compresses EVERY animated duration AND hold to ~40% — the old
+// board drop-off, the board drop-in, explosions, tumbles, the celebration hold,
+// multiplier catches and flashes all speed up together, so the whole spin is
+// fast (but still smoothly animated, not skipped). Applied centrally inside the
+// renderer animation methods + animationSleep. Fast-stop still wins and
+// collapses to near-instant.
+const turboScale = () => (state.turbo ? 0.4 : 1);
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -240,10 +245,12 @@ async function animateWinMeter(from, to, duration = 260) {
   }
   const t0 = performance.now();
   const span = Math.max(80, duration);
+  const counting = end > start;
   while (true) {
     const t = clamp((performance.now() - t0) / span, 0, 1);
     const eased = 1 - (1 - t) ** 3;
     el.lastWin.textContent = fmt(lerp(start, end, eased));
+    if (counting) window.Sound?.play("win_tick", { progress: t });
     if (t >= 1) break;
     await sleep(16);
   }
@@ -445,7 +452,12 @@ class ReelCanvasRenderer {
     const R = 32; // sprite core radius in CSS px; scaled down per particle
     const { cvs, ctx } = this.makeOffscreen(R * 2, R * 2);
     const grad = ctx.createRadialGradient(R, R, 0, R, R, R);
-    grad.addColorStop(0, `${key}dd`);
+    // Soft-glow core. The `dd` alpha suffix is only valid on a 6-digit hex
+    // (#rrggbb → #rrggbbdd); appending it to rgba()/rgb()/named colors yields an
+    // invalid color that throws in addColorStop and kills the frame. Only add
+    // the alpha suffix for 6-digit hex; otherwise use the color as-is.
+    const core = /^#[0-9a-fA-F]{6}$/.test(key) ? `${key}dd` : key;
+    grad.addColorStop(0, core);
     grad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -795,6 +807,7 @@ class ReelCanvasRenderer {
   }
 
   async dropOff(duration = ANIMATION_TIMING.oldBoardDropOff) {
+    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     const hasBoard = Array.isArray(this.board.matrix) && this.board.matrix.length > 0;
     if (!hasBoard) return;
     this.board.winningSet = new Set();
@@ -916,6 +929,7 @@ class ReelCanvasRenderer {
   }
 
   async drop(matrix, multipliers = [], dropMap = {}, duration = 960, options = {}) {
+    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     if (window.__renderDebug) {
       const incoming = (matrix?.[0] || []).slice(0, 3).join(",");
       console.log(`[drop:enter] incoming row0=${incoming} dropMap.size=${Object.keys(dropMap || {}).length}`);
@@ -1089,6 +1103,12 @@ class ReelCanvasRenderer {
   }
 
   spawnHeavyImpact(row, col, tier, value) {
+    // Fire the multiplier drop sound + lightning reaction at the EXACT moment
+    // the multiplier bangs into place (this is the visual reveal), so the audio
+    // is perfectly in sync with each multiplier's landing and scales with its
+    // value. Deduped upstream via struckKeys, so it plays once per multiplier.
+    window.Sound?.play("multiplier_drop", { value });
+    window.Ambiance?.react("multiplier", { value });
     const center = this.cellCenter(row, col);
     const now = performance.now();
     const heaviness = tier.key === "mythic" ? 1.35 : tier.key === "legendary" ? 1.2 : tier.key === "epic" ? 1.08 : 0.92;
@@ -1158,6 +1178,7 @@ class ReelCanvasRenderer {
   }
 
   async explode(winning = [], duration = 380, tier = "medium") {
+    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     if (!winning.length) return;
     const strength = tier === "blast-great" ? "great" : tier === "blast-small" ? "small" : "medium";
     // Anticipation charge: cells brighten and "inhale" before they pop. Length
@@ -1214,6 +1235,7 @@ class ReelCanvasRenderer {
   }
 
   async highlight(matrix, { winning = [], multipliers = [] } = {}, duration = 560) {
+    duration = Math.round(duration * turboScale()); // turbo speeds the celebration hold
     this.setBoard(matrix, { winning, multipliers });
     if (!winning.length) return;
     this.fx.pulse = {
@@ -1225,6 +1247,7 @@ class ReelCanvasRenderer {
   }
 
   async multiplierCatch(multipliers = [], duration = 620) {
+    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     if (!Array.isArray(multipliers) || multipliers.length === 0) return;
     const catchSet = new Set(
       multipliers
@@ -1299,6 +1322,7 @@ class ReelCanvasRenderer {
     colorA = "rgba(163, 220, 255, 0.34)",
     colorB = "rgba(255, 213, 106, 0.24)"
   } = {}) {
+    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     // Reduced-motion: keep the beat (so the win sequence still paces correctly)
     // but skip the full-screen flash, which is the harshest effect for
     // photosensitive players.
@@ -1493,7 +1517,7 @@ class ReelCanvasRenderer {
     // Calmer celebration: short focal bloom from cluster center, no
     // edge-spawned sparkles, no full-screen color cascade. Great wins get
     // a slightly longer, brighter bloom — that's the whole difference.
-    const ms = duration ?? (tier === "blast-great" ? 560 : 280);
+    const ms = Math.round((duration ?? (tier === "blast-great" ? 560 : 280)) * turboScale());
     const centroid = this.computeCentroid(winning);
     const bbox = this.computeWinningBBox(winning);
     if (!bbox) return;
@@ -2959,6 +2983,7 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
   const next = current <= 1 ? Number(value) : current + Number(value);
   state.spinMultDisplay = next;
   if (target) target.textContent = mfmt(next);
+  window.Sound?.play("multiplier_combine", { value: next });
 
   meterNode.style.setProperty("--soul-glow", tier.glow);
   meterNode.classList.remove("soul-hit");
@@ -3068,7 +3093,7 @@ function confirmBuy({ cost, currency, costMultiplier }) {
       document.removeEventListener("keydown", onKey);
       resolve(result);
     };
-    const onConfirm = () => cleanup(true);
+    const onConfirm = () => { window.Sound?.play("buy_feature"); cleanup(true); };
     const onCancel = () => cleanup(false);
     const onBackdrop = (e) => { if (e.target === modal) cleanup(false); };
     const onKey = (e) => {
@@ -3127,6 +3152,17 @@ function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
     "callout-tier-great", "callout-tier-epic", "callout-tier-bonus"
   );
   el.winCallout.classList.add(`callout-tier-${inferredTier}`);
+  // Win reveal sound, keyed to the visual tier. "Multiplier Catch" / "Max Win"
+  // callouts have their own dedicated sounds fired at their source, so don't
+  // double up here.
+  if (label !== "Multiplier Catch" && !/^Max Win/.test(label)) {
+    const sfx = inferredTier === "epic" || inferredTier === "great"
+      ? "win_mega"
+      : inferredTier === "medium"
+        ? "win_big"
+        : "win_small";
+    window.Sound?.play(sfx);
+  }
   void el.winCallout.offsetWidth;
   el.winCallout.classList.add("live-callout");
   state.calloutTimer = setTimeout(() => {
@@ -3134,6 +3170,18 @@ function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
     el.winCallout.classList.remove("live-callout");
     state.calloutTimer = null;
   }, duration);
+}
+
+// Immediately hide the win callout (used before the combine finale so only one
+// message is ever on screen).
+function hideWinCallout() {
+  if (!el.winCallout) return;
+  if (state.calloutTimer) {
+    clearTimeout(state.calloutTimer);
+    state.calloutTimer = null;
+  }
+  el.winCallout.classList.add("hidden");
+  el.winCallout.classList.remove("live-callout");
 }
 
 function shakeVault(strength = "normal") {
@@ -3230,6 +3278,8 @@ async function celebrateScatterCatch(payload, label = "Bonus Catch") {
   const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
+  window.Sound?.play("bonus_trigger");
+  window.Ambiance?.react("bonus");
   pushGameMessage(`${label}: ${scatters.length} scatters caught.`, "bonus");
   await Promise.all([
     reelRenderer.highlight(matrix, { winning: scatters, multipliers }, 1180),
@@ -3577,6 +3627,10 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // (lightning + BANG), even when the opening board isn't itself a win — so the
   // player never sees a multiplier appear silently.
   await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
+  window.Sound?.play("reel_stop", { index: 0 });
+  // Note: multiplier drop sounds are fired by the renderer at each multiplier's
+  // BANG moment (spawnHeavyImpact) so they stay perfectly in sync with the
+  // visual landing — see ReelCanvasRenderer.spawnHeavyImpact.
   // Near-win beat: if a multiplier just dropped in, hold briefly so the player
   // registers it before the win/tumble flow continues. animationSleep collapses
   // to ~0 on fast-stop, so impatient players aren't held up.
@@ -3620,16 +3674,20 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         // drop is awaited immediately after the explode resolves (no awaited
         // gap on the slower chip/celebrate promises in between) so the cleared
         // cells can never flash the old symbols back before the refill commits.
+        window.Sound?.play("explode", { tier: prevTier });
         await reelRenderer.explode(
           prevWinning,
-          Math.round(ANIMATION_TIMING.explode * turboScale()),
+          ANIMATION_TIMING.explode, // turbo scaling applied inside explode()
           prevTier
         );
+        window.Sound?.play("tumble", { step: i });
+        // Multiplier drop sounds fire from the renderer at each BANG (synced to
+        // the visual landing) — see spawnHeavyImpact.
         await reelRenderer.drop(
           step.matrix,
           step.multipliers || [],
           dropMap,
-          Math.round(ANIMATION_TIMING.tumbleDrop * turboScale()),
+          ANIMATION_TIMING.tumbleDrop, // turbo scaling applied inside drop()
           { animateMultipliers: true }
         );
         await Promise.all([chipPromise, celebratePromise]);
@@ -3669,12 +3727,11 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           : tier === "blast-medium"
             ? "Big Win"
             : "Win";
-      // Only surface the on-screen callout/banner for medium+ wins. Small
-      // wins keep the visuals on the reels and the running balance update.
-      if (tier !== "blast-small") {
-        showWinCallout(stepWin, label, tier === "blast-great" ? 1200 : 940);
-        pulseBanner(`${label} ${fmt(stepWin)}`, "win", 900);
-      }
+      // No per-step popups. Across a tumble chain, showing the amount every
+      // step (and stacking banners/callouts) is noisy and repetitive — so steps
+      // only update the running meter + play a tiered sound. Exactly ONE win
+      // message is shown at the end of the spin (the finale below).
+      window.Sound?.play(winX >= 50 ? "win_mega" : winX >= 12 ? "win_big" : "win_small");
       pushGameMessage(`${label}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
       // Shake only on great-tier (and stronger above 100x). Medium wins stay calm.
       if (tier === "blast-great") shakeVault(winX >= 100 ? "strong" : "normal");
@@ -3700,19 +3757,16 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       if (fresh.length) {
         const freshMaxMultiplier = maxMultiplierInStep({ multipliers: fresh });
         const freshTier = multiplierEventTier(freshMaxMultiplier);
+        // The drop sound already fired at each multiplier's BANG (renderer's
+        // spawnHeavyImpact, synced to the visual landing). Here we only run the
+        // catch visuals.
         await Promise.all([
           reelRenderer.multiplierCatch(fresh, freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic" ? 820 : 460),
           flyMultiplierSouls(fresh)
         ]);
+        // Big catches keep the screen shake + flash for impact, but no text
+        // "CATCH" banner/callout/log message (removed per design).
         if (freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic") {
-          const catchLabel = freshTier === "mythic"
-            ? `MYTHIC CATCH ${freshMaxMultiplier}x`
-            : freshTier === "legendary"
-              ? `LEGENDARY CATCH ${freshMaxMultiplier}x`
-              : `EPIC CATCH ${freshMaxMultiplier}x`;
-          pulseBanner(catchLabel, "bonus", 1200);
-          showWinCallout(freshMaxMultiplier, "Multiplier Catch", 1200);
-          pushGameMessage(`${catchLabel} on step ${i + 1}.`, "bonus");
           shakeVault(freshTier === "mythic" || freshTier === "legendary" ? "strong" : "normal");
           await reelRenderer.jackpotFlash({
             duration: freshTier === "mythic" ? 900 : 700,
@@ -3729,83 +3783,68 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     );
   }
 
-  // Finale combine sequence: when an epic+ (≥50x) multiplier was caught, fly
-  // the raw win and the multiplier together visually and reveal the total.
+  // ── Single end-of-spin message ───────────────────────────────────────────
+  // Exactly ONE message is shown over the reels per spin (no stacked Total Win /
+  // Multiplier Applied / Big Win popups). The running meter counts up silently;
+  // then either the combine finale OR one win callout OR the max-win message is
+  // shown — never more than one.
   const appliedMult = Number(payload.multiplier_applied || 1);
   const totalWinAmt = Number(payload.total_win || 0);
+  const totalWinX = bet > 0 ? totalWinAmt / bet : 0;
   const meterBeforeFinal = Number(el.lastWin.textContent || 0);
-  // Only run the multiplier-applied finale when there's actually a multiplier
-  // AND a meaningful diff to bridge. With the chip already showing scaled
-  // amounts, multiplier=1 spins now skip this entirely (no extra delay).
-  if (appliedMult > 1 && totalWinAmt > meterBeforeFinal + 0.009) {
-    pulseBanner(`Multiplier Applied ${mfmt(appliedMult)}`, "bonus", 520);
-    await animateWinMeter(meterBeforeFinal, totalWinAmt, 360);
-  } else if (totalWinAmt > meterBeforeFinal + 0.009) {
-    // Tiny rounding gap (no multiplier) — snap the meter, no animation tail.
-    el.lastWin.textContent = fmt(totalWinAmt);
+  if (totalWinAmt > meterBeforeFinal + 0.009) {
+    await animateWinMeter(meterBeforeFinal, totalWinAmt, appliedMult > 1 ? 360 : 240);
   }
-  if (appliedMult >= 50 && totalWinAmt > 0) {
+
+  // Detect a max-win-cap event (rare) — it owns the single message if present.
+  const maxWinEvt = (Array.isArray(payload.events) ? payload.events : [])
+    .find((e) => e?.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP" || e?.type === "MAX_WIN_CAP_REACHED");
+
+  let messageShown = false;
+  if (maxWinEvt) {
+    const capX = Number(maxWinEvt.cap_x || 0);
+    window.Sound?.play("max_win");
+    showWinCallout(totalWinAmt, `Max Win ${capX.toLocaleString()}×`, 2200);
+    window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+    shakeVault("strong");
+    await reelRenderer.jackpotFlash({
+      duration: 1200, colorA: "rgba(255, 80, 60, 0.5)", colorB: "rgba(255, 220, 100, 0.4)"
+    });
+    pushGameMessage(`Max win cap (${capX}×) reached.`, "bonus");
+    messageShown = true;
+  } else if (appliedMult >= 50 && totalWinAmt > 0) {
+    // Big multiplier win → the combine overlay IS the single grand finale
+    // (Win × Multiplier = Total in one cohesive reveal).
     const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
+    hideWinCallout();
     await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
+    window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+    messageShown = true;
   }
 
-  // Surface server-style events from the engine payload (max-win cap etc.).
-  if (Array.isArray(payload.events) && payload.events.length) {
-    for (const evt of payload.events) {
-      if (evt?.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP") {
-        const capX = Number(evt.cap_x || 0);
-        pulseBanner(`MAX WIN ${capX.toLocaleString()}× CAPPED`, "bonus", 2400);
-        showWinCallout(Number(evt.total_win || 0), "Max Win Cap", 2200);
-        shakeVault("strong");
-        await reelRenderer.jackpotFlash({
-          duration: 1200,
-          colorA: "rgba(255, 80, 60, 0.5)",
-          colorB: "rgba(255, 220, 100, 0.4)"
-        });
-        pushGameMessage(`Free spins ended because max win cap (${capX}×) was reached.`, "bonus");
-      } else if (evt?.type === "MAX_WIN_CAP_REACHED") {
-        const capX = Number(evt.cap_x || 0);
-        pulseBanner(`MAX WIN ${capX.toLocaleString()}× CAPPED`, "bonus", 2000);
-        pushGameMessage(`Max win cap (${capX}×) reached.`, "bonus");
-      }
-    }
-  }
-
-  // Optional subtle hint for near-miss outcomes (no win, but board teases).
-  if (payload.near_miss && Number(payload.total_win || 0) <= 0) {
-    pushGameMessage("So close!", "info");
-  }
-
+  // Near-miss / no-win / bonus-trigger only touch the admin log (no over-reel
+  // text — the player can see the board).
+  if (payload.near_miss && totalWinAmt <= 0) pushGameMessage("So close!", "info");
   if (Number(payload.free_spins_awarded || 0) > 0) {
-    // Retriggers and initial triggers are announced via the showFeature
-    // panel in spin(); no in-flow banner/callout/shake is needed here.
     pushGameMessage(`Bonus triggered: +${payload.free_spins_awarded} free spins.`, "bonus");
-  } else if (Number(payload.total_win || 0) <= 0) {
-    // No on-screen "No Win" banner — silence is fine, the player can see it.
+  } else if (totalWinAmt <= 0) {
     pushGameMessage("No win this spin.", "info");
   } else {
-    const totalWinX = bet > 0 ? Number(payload.total_win || 0) / bet : 0;
-    if (payload.is_free_spin) {
-      const bonusLabel = totalWinX >= 50
-        ? "Sensational Win"
-        : totalWinX >= 25
-          ? "Huge Win"
-          : totalWinX >= 10
-            ? "Big Win"
-            : "";
-      if (bonusLabel) {
-        showWinCallout(payload.total_win || 0, bonusLabel, totalWinX >= 50 ? 1300 : 1100);
-        pulseBanner(`${bonusLabel} ${fmt(payload.total_win || 0)}`, "win", totalWinX >= 50 ? 1200 : 1000);
-        // Hold the round slightly longer on notable bonus wins so the player
-        // can actually read and feel the moment before the next spin starts.
-        await animationSleep(totalWinX >= 50 ? 1200 : totalWinX >= 25 ? 900 : 700);
-      } else if (totalWinX >= 12) {
-        pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
+    // Plain win (no big-multiplier finale): show ONE callout for a notable win.
+    if (!messageShown) {
+      const label = totalWinX >= 50 ? "Epic Win"
+        : totalWinX >= 25 ? "Huge Win"
+        : totalWinX >= 12 ? "Big Win"
+        : totalWinX >= 5 ? "Nice Win"
+        : null;
+      if (label) {
+        showWinCallout(totalWinAmt, label, totalWinX >= 25 ? 1300 : 1000);
+        if (totalWinX >= 20) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+        messageShown = true;
+        if (totalWinX >= 25) await animationSleep(totalWinX >= 50 ? 900 : 600);
       }
-    } else if (totalWinX >= 12) {
-      pulseBanner(`Total Win ${fmt(payload.total_win || 0)}`, "win", 900);
     }
-    pushGameMessage(`Total spin win: ${fmt(payload.total_win || 0)}.`, "win");
+    pushGameMessage(`Total spin win: ${fmt(totalWinAmt)}.`, "win");
   }
 
   el.balance.textContent = fmt(payload.balance_after || 0);
@@ -3879,6 +3918,8 @@ async function spin(options = {}) {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
     if (state.bonusAutoplay) pulseBanner("Auto Free Spin...", "info", 560);
+    window.Sound?.play("spin_start");
+    window.Ambiance?.react("spin");
     const preparedTransition = reelRenderer.dropOff();
     await preparedTransition;
     const spinId = (window.SlotEngine?.RNG?.uuid?.()) || crypto.randomUUID();
@@ -3963,6 +4004,7 @@ async function autoplayBonus() {
 
 function setTurbo(on) {
   state.turbo = Boolean(on);
+  window.Sound?.play("turbo_toggle", { on: state.turbo });
   if (el.turboBtn) {
     el.turboBtn.classList.toggle("is-active", state.turbo);
     el.turboBtn.setAttribute("aria-pressed", String(state.turbo));
@@ -4294,6 +4336,7 @@ function stepBet(direction) {
   if (opts[next].value === el.betSelect.value) return;
   el.betSelect.value = opts[next].value;
   el.betSelect.dispatchEvent(new Event("change"));
+  window.Sound?.play("bet_change", { up: direction > 0 });
 }
 if (el.betDownBtn) el.betDownBtn.addEventListener("click", () => stepBet(-1));
 if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
@@ -4309,8 +4352,28 @@ if (el.anteToggle && anteToggleImg) {
   updateAnteImg();
 }
 el.spinBtn.addEventListener("click", spin);
-el.buyFreeBtn.addEventListener("click", buyFreeSpins);
+el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
+
+// Sound on/off toggle — reflects + persists via the engine, syncs the glyph.
+if (el.soundToggle) {
+  const syncSoundToggle = () => {
+    const muted = window.Sound ? window.Sound.isMuted() : false;
+    el.soundToggle.classList.toggle("is-muted", muted);
+    el.soundToggle.setAttribute("aria-pressed", String(!muted));
+    const glyph = el.soundToggle.querySelector(".sound-glyph");
+    if (glyph) glyph.innerHTML = muted ? "&#128263;" : "&#128266;";
+  };
+  el.soundToggle.addEventListener("click", () => {
+    if (!window.Sound) return;
+    window.Sound.unlock();
+    window.Sound.toggleMuted();
+    if (!window.Sound.isMuted()) window.Sound.play("click");
+    syncSoundToggle();
+  });
+  window.Sound?.onChange(syncSoundToggle);
+  syncSoundToggle();
+}
 if (el.autoplayBtn) {
   el.autoplayBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -4321,6 +4384,7 @@ if (el.autoplayBtn) {
 if (el.autoplayPopover) {
   el.autoplayPopover.querySelectorAll("button[data-autoplay]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      window.Sound?.play("click");
       const raw = btn.dataset.autoplay;
       const count = raw === "inf" ? Infinity : Number(raw);
       startAutoplay(count);
@@ -4385,7 +4449,9 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-reelRenderer.setBoard(randomMatrix());
+// Seed the idle board with a varied mix (not a flat wall of one symbol) so the
+// first impression looks like a real slot. Engine spins remain authoritative.
+reelRenderer.setBoard(createDemoMatrix());
 renderExamples();
 renderSpinLog();
 renderTestPanel();
