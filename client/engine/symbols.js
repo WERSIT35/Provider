@@ -4,7 +4,11 @@
   const SCATTER_SYMBOL = "SCATTER";
   const MULTI_SYMBOL = "MULTI";
 
-  function buildSymbolTables(rules) {
+  function buildSymbolTables(rules, options = {}) {
+    // `symbolWeightOverrides` (code → absolute weight) replaces the default
+    // scarcity ladder for any symbol it names. Used by Crazy Mode to make the
+    // premium symbols common (see crazy-mode.js CRAZY_SYMBOL_WEIGHTS).
+    const overrides = options.symbolWeightOverrides || null;
     const symbolPayouts = new Map();
     const scatterPayouts = {};
     const regularSymbols = [];
@@ -31,6 +35,14 @@
       else if (symbol.includes("YELLOW_HEX")) w = 0.9;
       else if (symbol.includes("GREEN_TRIANGLE")) w = 0.95;
       else if (symbol.includes("BLUE_DIAMOND")) w = 1.0;
+      if (overrides) {
+        for (const [code, weight] of Object.entries(overrides)) {
+          if (symbol.includes(code) && Number.isFinite(Number(weight))) {
+            w = Number(weight);
+            break;
+          }
+        }
+      }
       symbolWeights.set(symbol, w);
     }
     return { symbolPayouts, scatterPayouts, regularSymbols, symbolWeights };

@@ -96,6 +96,34 @@
       return { matrix: nextMatrix, multipliers: Array.from(byPos.values()) };
     }
 
+    function applyCrazyClustering(matrix, plan) {
+      // Stamp a wall of ONE premium symbol onto the board so a crazy spin
+      // visibly screams "huge win incoming". Picks the target via the (crazy)
+      // weighted table, which favors high-value symbols, then floods a random
+      // batch of regular cells with it. Never touches SCATTER/MULTI cells so
+      // free-spin and multiplier logic is unaffected.
+      if (!plan) return matrix;
+      if (randomFloat() >= Number(plan.probability || 0)) return matrix;
+      const next = matrix.map((row) => row.slice());
+      const target = weightedRegularSymbol(tables);
+      const minCells = Math.max(1, Number(plan.minCells || 1));
+      const maxCells = Math.max(minCells, Number(plan.maxCells || minCells));
+      const want = minCells + randomInt(maxCells - minCells + 1);
+      const total = LAYOUT_ROWS * LAYOUT_REELS;
+      let converted = 0;
+      let attempts = 0;
+      while (converted < want && attempts < total * 5) {
+        attempts += 1;
+        const row = randomInt(LAYOUT_ROWS);
+        const col = randomInt(LAYOUT_REELS);
+        const cell = next[row][col];
+        if (cell === SCATTER_SYMBOL || cell === MULTI_SYMBOL || cell === target) continue;
+        next[row][col] = target;
+        converted += 1;
+      }
+      return next;
+    }
+
     function countSymbol(matrix, symbol) {
       let count = 0;
       for (let row = 0; row < matrix.length; row += 1) {
@@ -123,6 +151,7 @@
       sanitizeMultipliersForMatrix,
       forceScatterTrigger,
       injectForcedMultiplier,
+      applyCrazyClustering,
       countSymbol,
       toPublicMultipliers
     };

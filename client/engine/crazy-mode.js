@@ -23,6 +23,43 @@
     freeSpinPersistentMultiplierStart: 0
   };
 
+  // Go Crazy is about EXPECTATION, not just bigger payouts. Base mode makes the
+  // high-value symbols the rarest (see symbols.js scarcity ladder); crazy mode
+  // INVERTS that so the premium symbols become the common ones — the board
+  // visibly fills with the good stuff so every spin feels like a near-jackpot.
+  // Absolute weights (replace the base ladder entirely when crazy is on).
+  const CRAZY_SYMBOL_WEIGHTS = {
+    TOP_CROWN: 1.0,
+    HOURGLASS: 0.95,
+    RING: 0.9,
+    CHALICE: 0.85,
+    RED_GEM: 0.8,
+    PURPLE_TRIANGLE: 0.72,
+    YELLOW_HEX: 0.62,
+    GREEN_TRIANGLE: 0.56,
+    BLUE_DIAMOND: 0.5
+  };
+
+  // Same-symbol flood: on SOME crazy spins, pick one premium symbol and stamp a
+  // cluster of it onto the opening board so the player sees a wall of one
+  // high-value type — the "I'm about to win huge" rush. Kept occasional (not
+  // every spin) and modest in size so it builds ANTICIPATION and lands real big
+  // wins without turning the game into a guaranteed max-cap money printer (which
+  // would remove all suspense).
+  const CRAZY_CLUSTER = {
+    probability: 0.4,
+    minCells: 5,
+    maxCells: 8
+  };
+
+  function getSymbolWeightOverrides(crazyMode) {
+    return crazyMode ? CRAZY_SYMBOL_WEIGHTS : null;
+  }
+
+  function getClusterPlan(crazyMode) {
+    return crazyMode ? CRAZY_CLUSTER : null;
+  }
+
   function getRates({ crazyMode, isFreeSpin, anteEnabled }) {
     if (crazyMode) {
       const scatterChance = isFreeSpin
@@ -69,8 +106,12 @@
   root.SlotEngine = root.SlotEngine || {};
   root.SlotEngine.CrazyMode = {
     CRAZY_OVERRIDES,
+    CRAZY_SYMBOL_WEIGHTS,
+    CRAZY_CLUSTER,
     getRates,
     getMultiplierWeights,
+    getSymbolWeightOverrides,
+    getClusterPlan,
     getPayoutScalers,
     shouldForceFreeSpinTrigger,
     persistentMultiplierStart
