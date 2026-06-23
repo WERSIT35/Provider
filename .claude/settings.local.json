@@ -58,7 +58,24 @@
       "Bash(git check-ignore *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(npm start *)"
+      "Bash(npm start *)",
+      "Bash(git push *)",
+      "Bash(cp /tmp/shots/admin.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_admin.png\")",
+      "Bash(cp /tmp/shots/player.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_player.png\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1100,1500 --screenshot=/tmp/shots/admin1100.png http://127.0.0.1:8123/index.html?admin=1)",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=820,1400 --screenshot=/tmp/shots/admin820.png http://127.0.0.1:8123/index.html?admin=1)",
+      "Bash(cp /tmp/shots/admin1100.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_admin1100.png\")",
+      "Bash(cp /tmp/shots/admin820.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_admin820.png\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=430,300 --screenshot=/tmp/shots/phead.png http://127.0.0.1:8123/index.html)",
+      "Bash(cp /tmp/shots/phead.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_phead.png\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=430,932 --screenshot=/tmp/shots/pfull.png http://127.0.0.1:8123/index.html)",
+      "Bash(python -c \"from PIL import Image; im=Image.open\\('pfull.png'\\); im.crop\\(\\(0,0,430,150\\)\\).save\\('ptop.png'\\)\")",
+      "Bash(cp ptop.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_ptop.png\")",
+      "Bash(cp pfull.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_ptop.png\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=430,932 --screenshot=/tmp/shots/p3.png http://127.0.0.1:8123/index.html)",
+      "Bash(cp /tmp/shots/p3.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_p3.png\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1440,1500 --screenshot=/tmp/shots/a2.png http://127.0.0.1:8123/index.html?admin=1)",
+      "Bash(cp /tmp/shots/a2.png \"c:/Users/OTO/Documents/Web-Projects/Provider/client/_shot_a2.png\")"
     ]
   }
 }
