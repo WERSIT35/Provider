@@ -161,34 +161,26 @@ const payouts = {
 const scatterPayouts = { 4: 6, 5: 10, 6: 200 };
 
 const symbolAssets = {
-  TOP_CROWN: "assets/symbols/TOP_CROWN-removebg-preview.png",
-  HOURGLASS: "assets/symbols/HOURGLASS-removebg-preview.png",
-  RING: "assets/symbols/RING-removebg-preview.png",
-  CHALICE: "assets/symbols/CHALICE-removebg-preview.png",
-  RED_GEM: "assets/symbols/RED_GEM-removebg-preview.png",
-  PURPLE_TRIANGLE: "assets/symbols/PURPLE_TRIANGLE-removebg-preview.png",
-  YELLOW_HEX: "assets/symbols/YELLOW_HEX-removebg-preview.png",
-  GREEN_TRIANGLE: "assets/symbols/GREEN_TRIANGLE-removebg-preview.png",
-  BLUE_DIAMOND: "assets/symbols/BLUE_DIAMOND-removebg-preview.png",
+  TOP_CROWN: "assets/symbols/Crown.png",
+  HOURGLASS: "assets/symbols/HourGlass.png",
+  RING: "assets/symbols/Ring.png",
+  CHALICE: "assets/symbols/Chaile.png",
+  RED_GEM: "assets/symbols/RedGem.png",
+  PURPLE_TRIANGLE: "assets/symbols/PurpleGem.png",
+  YELLOW_HEX: "assets/symbols/YellowGem.png",
+  GREEN_TRIANGLE: "assets/symbols/GreenGem.png",
+  BLUE_DIAMOND: "assets/symbols/BlueGem.png",
   REEL: "assets/symbols/REEL.png",
-  MULTI: "assets/symbols/multi.svg",
-  MULTI2: "assets/symbols/MULTI2-removebg-preview.png",
-  MULTI3: "assets/symbols/MULTI3-removebg-preview.png",
-  MULTI4: "assets/symbols/MULTI4-removebg-preview.png",
-  MULTI5: "assets/symbols/MULTI5-removebg-preview.png",
-  MULTI6: "assets/symbols/MULTI6-removebg-preview.png",
-  MULTI8: "assets/symbols/MULTI8-removebg-preview.png",
-  MULTI10: "assets/symbols/MULTI10-removebg-preview.png",
-  MULTI12: "assets/symbols/MULTI12-removebg-preview.png",
-  MULTI15: "assets/symbols/MULTI15-removebg-preview.png",
-  MULTI20: "assets/symbols/MULTI20-removebg-preview.png",
-  MULTI25: "assets/symbols/MULTI25-removebg-preview.png",
-  MULTI50: "assets/symbols/MULTI50-removebg-preview.png",
-  MULTI100: "assets/symbols/MULTI100-removebg-preview.png",
-  MULTI250: "assets/symbols/MULTI250-removebg-preview.png",
-  MULTI500: "assets/symbols/MULTI500-removebg-preview.png",
-  MULTI1000: "assets/symbols/MULTI1000-removebg-preview.png",
-  SCATTER: "assets/symbols/SCATTER.png"
+  // Multiplier art is now ONE token per rarity tier (numbers are drawn in code
+  // onto the blank center plate — see the MULTI draw block below). The generic
+  // MULTI key falls back to the Common token if a tier image fails to load.
+  MULTI: "assets/symbols/Common.png",
+  MULTI_COMMON: "assets/symbols/Common.png",
+  MULTI_RARE: "assets/symbols/Rare.png",
+  MULTI_EPIC: "assets/symbols/Epic.png",
+  MULTI_LEGENDARY: "assets/symbols/Legendary.png",
+  MULTI_MYTHIC: "assets/symbols/Mythic.png",
+  SCATTER: "assets/symbols/Scatter.png"
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
@@ -297,11 +289,11 @@ const symbolTone = {
 };
 
 const MULTIPLIER_TIER_DEFS = [
-  { key: "common", label: "Common", values: [2, 3, 4, 5, 6, 8], accent: "#7dd3fc", glow: "rgba(125, 211, 252, 0.5)" },
-  { key: "rare", label: "Rare", values: [10, 12, 15, 20, 25], accent: "#a78bfa", glow: "rgba(167, 139, 250, 0.52)" },
-  { key: "epic", label: "Epic", values: [50], accent: "#fb923c", glow: "rgba(251, 146, 60, 0.56)" },
-  { key: "legendary", label: "Legendary", values: [100, 250, 500], accent: "#facc15", glow: "rgba(250, 204, 21, 0.62)" },
-  { key: "mythic", label: "Mythic", values: [1000], accent: "#f472b6", glow: "rgba(244, 114, 182, 0.66)" }
+  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], accent: "#7dd3fc", glow: "rgba(125, 211, 252, 0.5)" },
+  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], accent: "#a78bfa", glow: "rgba(167, 139, 250, 0.52)" },
+  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], accent: "#fb923c", glow: "rgba(251, 146, 60, 0.56)" },
+  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], accent: "#facc15", glow: "rgba(250, 204, 21, 0.62)" },
+  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], accent: "#f472b6", glow: "rgba(244, 114, 182, 0.66)" }
 ];
 
 const MULTIPLIER_TIER_BY_VALUE = new Map(
@@ -503,7 +495,9 @@ class ReelCanvasRenderer {
     const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
     const { tableX, tableY, tableW, tableH, frameR, inX, inY, inW, inH, inR } = this.getTableRect();
 
-    // Back layer — flat background gradient.
+    // Back layer — flat gradient. The drowned sun-temple scene lives on the page
+    // behind the whole game (see .altar in styles.css); the reel table is opaque
+    // and sits on top, so the scene is visible around/above/below it, not here.
     const back = this.makeOffscreen(width, height);
     const bg = back.ctx.createLinearGradient(0, 0, 0, height);
     bg.addColorStop(0, "#111728");
@@ -2066,7 +2060,10 @@ class ReelCanvasRenderer {
         }
 
         const multiValueNum = symbol === "MULTI" ? Number(this.board.multiMap.get(key) || 1) : null;
-        const multiImageKey = symbol === "MULTI" ? `MULTI${multiValueNum}` : null;
+        // One token image per rarity tier; the numeric value is drawn in code
+        // onto the blank center plate further below.
+        const multiTier = symbol === "MULTI" ? getMultiplierTier(multiValueNum) : null;
+        const multiImageKey = multiTier ? multiTier.image : null;
         const img = (multiImageKey && this.images.get(multiImageKey)) || this.images.get(symbol);
         if (concealIcon) {
           // Show the decoy regular symbol falling in this cell. It gets
@@ -2078,7 +2075,17 @@ class ReelCanvasRenderer {
           }
         } else if (img?.complete && img.naturalWidth) {
           ctx.globalAlpha = blastFade * revealAlpha;
-          ctx.drawImage(img, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
+          // SCATTER art is a rectangular (wide) tile, not a square sprite. Draw
+          // it at its true aspect ratio contained inside the icon box so it is
+          // never stretched; every other symbol still fills the square box.
+          let drawW = iconW;
+          let drawH = iconH;
+          if (symbol === "SCATTER") {
+            const ar = img.naturalWidth / img.naturalHeight;
+            if (iconW / iconH > ar) drawW = iconH * ar;
+            else drawH = iconW / ar;
+          }
+          ctx.drawImage(img, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
         } else {
           ctx.fillStyle = "rgba(255, 238, 200, 0.9)";
           ctx.font = `${Math.max(10, coreR * 0.22)}px Trebuchet MS, sans-serif`;
@@ -2098,36 +2105,18 @@ class ReelCanvasRenderer {
         }
 
         if (symbol === "MULTI" && !concealIcon) {
-          const valueNum = multiValueNum;
-          const value = `${valueNum}x`;
-          const hasDedicatedMultiImage = Boolean(this.images.get(multiImageKey)?.complete && this.images.get(multiImageKey)?.naturalWidth);
-
-          if (!hasDedicatedMultiImage) {
-            const tier = getMultiplierTier(valueNum);
-            ctx.fillStyle = tier.accent;
-            ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
-            ctx.lineWidth = Math.max(2.4, coreR * 0.1);
-            ctx.strokeText(value, x, yFloat + coreR * 0.02);
-            ctx.fillText(value, x, yFloat + coreR * 0.02);
-
-            const tagW = Math.max(46, coreR * 1.15);
-            const tagH = Math.max(14, coreR * 0.28);
-            const tagX = x - tagW / 2;
-            const tagY = yFloat + coreR * 0.5;
-            ctx.fillStyle = "rgba(8, 16, 30, 0.86)";
-            ctx.fillRect(tagX, tagY, tagW, tagH);
-            ctx.strokeStyle = tier.accent;
-            ctx.lineWidth = 1;
-            ctx.strokeRect(tagX, tagY, tagW, tagH);
-            ctx.fillStyle = "#e8f2ff";
-            ctx.font = `800 ${Math.max(7, coreR * 0.13)}px Trebuchet MS, sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(tier.label.toUpperCase(), x, tagY + tagH / 2);
-          }
+          // The tier token art carries the rarity; we only stamp the number onto
+          // its blank center plate. Drawn for EVERY value (no per-value images).
+          const tier = multiTier || getMultiplierTier(multiValueNum);
+          const value = `${multiValueNum}x`;
+          ctx.fillStyle = tier.accent;
+          ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
+          ctx.lineWidth = Math.max(2.4, coreR * 0.1);
+          ctx.strokeText(value, x, yFloat + coreR * 0.02);
+          ctx.fillText(value, x, yFloat + coreR * 0.02);
         }
 
         if (symbol === "SCATTER") {

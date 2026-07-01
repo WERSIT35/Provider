@@ -71,14 +71,44 @@ body::after {
 }
 
 .altar {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 18px;
+  /* Drowned sun-temple scene as the whole-game backdrop. The translucent gradient
+     sits ON TOP of the image to keep text/UI readable; `cover` fills the panel
+     (and the full viewport in public mode) responsively, cropping only the safe
+     outer edges. The reel table (canvas) is opaque and floats on top, so the
+     temple shows above, below and around it. */
   background:
-    linear-gradient(180deg, rgba(32, 21, 18, 0.94), rgba(12, 8, 7, 0.98));
+    linear-gradient(180deg, rgba(20, 13, 11, 0.66), rgba(10, 7, 6, 0.82)),
+    url("assets/symbols/Background.png") center / cover no-repeat,
+    var(--bg-0);
   box-shadow: var(--shadow-hard);
   display: grid;
   gap: 16px;
+}
+
+/* Guardian-priestess host. Stands at the bottom-right of the game panel beside
+   the reel table, in front of the temple backdrop. Decorative only (no pointer
+   events). Tune side/size below; hidden on narrow + portrait where there's no
+   room without covering the reels or controls. */
+.stage-character {
+  position: absolute;
+  right: max(0px, env(safe-area-inset-right));
+  bottom: 0;
+  height: clamp(300px, 46vh, 620px);
+  width: auto;
+  z-index: 3;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.55));
+}
+
+@media (max-width: 1024px), (max-aspect-ratio: 1 / 1) {
+  .stage-character {
+    display: none;
+  }
 }
 
 .altar-top {
@@ -1498,9 +1528,11 @@ body.crazy-mode-on .vault-window {
   padding: 14px 14px 16px;
   border: 1px solid var(--line);
   border-radius: 6px;
+  /* Mostly transparent so the temple backdrop on .altar shows through around the
+     reel table; just a faint warm glow + edge darkening for depth. */
   background:
-    radial-gradient(circle at 50% 18%, rgba(234, 125, 99, 0.12), transparent 26%),
-    linear-gradient(180deg, rgba(25, 14, 14, 0.98), rgba(10, 8, 8, 1));
+    radial-gradient(circle at 50% 18%, rgba(234, 125, 99, 0.10), transparent 30%),
+    linear-gradient(180deg, rgba(18, 11, 10, 0.18), rgba(8, 6, 6, 0.34));
   overflow: hidden;
   min-height: clamp(520px, 70vh, 780px);
 }
