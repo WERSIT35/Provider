@@ -298,6 +298,12 @@
 
   function init() {
     if (state.inited) return;
+    // Background ambiance DISABLED: no animated backdrop (nebulas/stars/floaters),
+    // no floating deco gems, no CSS mascot, no pointer parallax — the game uses a
+    // clean, static temple background with the real character image on top. Leaving
+    // early keeps `state.inited` false so every react() call is a safe no-op.
+    return;
+    // eslint-disable-next-line no-unreachable
     buildBackdrop();
     buildStage();
     installPointer();

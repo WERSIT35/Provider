@@ -741,6 +741,51 @@ body.public-mode .reels-canvas {
 }
 
 /* ----------------------------------------------------------------------------
+   Desktop / wide-landscape player view. Give the reel board the lion's share of
+   the vertical space and a reference-style (Pragmatic) 3:2 shape so cells are
+   large and slightly wider than tall — much bigger symbols than the default
+   full-width/short board. Scoped to desktop so the mobile stack is untouched.
+---------------------------------------------------------------------------- */
+@media (min-width: 1000px) and (min-height: 700px) {
+  /* Board sized by HEIGHT (fills the reclaimed vertical space) with a 3:2 shape;
+     width derives from that, capped at the container and centred. */
+  body.public-mode .reels-stage {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 3 / 2;
+    margin: 0 auto;
+  }
+
+  /* The board no longer fills the full window width, so drop the window's own
+     dark fill and let the temple backdrop show in the side margins around the
+     reel frame (the reels-stage keeps its own framed background). */
+  body.public-mode .vault-window {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  /* Compact the surrounding chrome so .vault-window (flex:1) absorbs more height. */
+  body.public-mode .vault-shell { gap: 6px; }
+  body.public-mode .hud-message-rail { min-height: 16px; }
+  body.public-mode .hud-bar { padding: 6px 14px; }
+  body.public-mode .ritual-deck { gap: 10px; padding-bottom: 0; }
+  body.public-mode .img-btn-spin {
+    max-width: 104px;
+    max-height: 104px;
+  }
+  body.public-mode .img-btn-buy,
+  body.public-mode .ante-toggle {
+    height: 56px;
+  }
+  body.public-mode .control-toolbar {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+}
+
+/* ----------------------------------------------------------------------------
    Mobile portrait-first tuning (player view only). The public-mode layout is
    already a vertical stack (title → HUD → reels → controls); here we size the
    controls for one-thumb play and keep them in the bottom thumb zone.
@@ -769,8 +814,7 @@ body.public-mode .reels-canvas {
     padding-bottom: 2px;
   }
   body.public-mode .img-btn-buy,
-  body.public-mode .ante-toggle,
-  body.public-mode .bet-stepper {
+  body.public-mode .ante-toggle {
     height: 56px;
   }
   body.public-mode .hud-node strong {
@@ -809,8 +853,7 @@ body.public-mode .reels-canvas {
     max-height: clamp(72px, 12vh, 104px);
   }
   body.public-mode .img-btn-buy,
-  body.public-mode .ante-toggle,
-  body.public-mode .bet-stepper {
+  body.public-mode .ante-toggle {
     height: 48px;
   }
 }
@@ -2034,11 +2077,15 @@ button.img-btn,
 .bet-stepper {
   position: relative;
   display: block;
-  height: 64px;
-  /* Match the BET pill image's aspect so clickable circles align. */
-  aspect-ratio: 768 / 220;
-  max-width: 100%;
-  background: url("/assets/symbols/BET-removebg-preview.png") center / contain no-repeat;
+  /* WIDTH-driven so the box aspect ALWAYS equals the pill image's intrinsic
+     aspect (776×183). A fixed height + capped width would override aspect-ratio
+     and letterbox the pill, pushing the drawn +/- circles out of the invisible
+     round hit-zones (the "have to click off-target" bug). With width driving the
+     height, `contain` fills the box exactly and the %-positioned buttons always
+     land dead-on the circles. */
+  width: min(100%, 260px);
+  aspect-ratio: 776 / 183;
+  background: url("/assets/symbols/BET-removebg-preview.png") center / 100% 100% no-repeat;
   user-select: none;
   margin: 0 auto;
 }
@@ -2065,8 +2112,8 @@ button.bet-step,
   outline: 0;
   transition: transform 0.1s ease, filter 0.12s ease;
 }
-.bet-step-down { left: 1.5%; }
-.bet-step-up { right: 1.5%; }
+.bet-step-down { left: 2%; }
+.bet-step-up { right: 2%; }
 .bet-step:hover { filter: brightness(1.18); }
 .bet-step:active { transform: translateY(-50%) scale(0.92); }
 .bet-step:disabled { cursor: not-allowed; opacity: 0.5; }
@@ -2747,42 +2794,26 @@ pre {
 
 body {
   font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  /* Drowned sun-temple scene is the whole-GAME backdrop: one fixed, viewport-
-     covering image sits behind everything so the temple fills the full view (not
-     just the reel panel). A soft blue top-glow + dark scrim over the image keep the
-     UI readable and blend it with the underwater theme; the reel table floats on top. */
-  background:
-    radial-gradient(1200px 560px at 12% -8%, rgba(130, 176, 255, 0.22), transparent 60%),
-    radial-gradient(1100px 520px at 92% -12%, rgba(116, 232, 255, 0.15), transparent 58%),
-    linear-gradient(180deg, rgba(5, 10, 20, 0.55) 0%, rgba(8, 15, 31, 0.62) 42%, rgba(13, 23, 48, 0.7) 100%),
-    url("assets/symbols/Background.png") center / cover no-repeat fixed,
-    linear-gradient(180deg, #050a14 0%, #080f1f 42%, #0d1730 100%);
+  /* Clean, static temple backdrop: the image is shown FULLY and clearly — no dark
+     scrim, no colour wash, no animated overlays. One fixed, viewport-covering image
+     fills the whole game; the reel table and controls float on top. */
+  background: url("assets/symbols/Background.png") center / cover no-repeat fixed;
   background-color: #050a14;
 }
 
-body::before {
-  background:
-    radial-gradient(circle at 22% 18%, rgba(181, 213, 255, 0.06), transparent 32%),
-    radial-gradient(circle at 80% 20%, rgba(148, 237, 255, 0.05), transparent 30%),
-    linear-gradient(90deg, transparent 0, rgba(200, 225, 255, 0.02) 50%, transparent 100%),
-    repeating-linear-gradient(90deg, rgba(198, 221, 255, 0.012) 0px, rgba(198, 221, 255, 0.012) 1px, transparent 1px, transparent 42px);
-}
-
+/* Overlay layers removed — nothing washes/tints the background anymore. */
+body::before,
 body::after {
-  background: linear-gradient(180deg, rgba(205, 230, 255, 0.04), transparent 14%, transparent 84%, rgba(3, 7, 16, 0.34));
+  display: none;
 }
 
 .altar {
   border-radius: 20px;
   border-color: rgba(171, 207, 255, 0.26);
-  /* The temple scene is painted on the panel itself too (under a translucent tint
-     for readability), so the altar carries the backdrop directly rather than only
-     letting the <body> image show through. `cover` fills the panel responsively. */
-  background:
-    linear-gradient(180deg, rgba(14, 23, 42, 0.38), rgba(7, 13, 28, 0.44)),
-    url("assets/symbols/Background.png") center / cover no-repeat;
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  /* Transparent so the clean <body> temple image shows through fully. No own image
+     copy, no dark scrim, and NO backdrop-filter blur (that frosted/blurred the
+     background — the "blended, not fully shown" look). */
+  background: transparent;
 }
 
 .status-ribbon-item,
