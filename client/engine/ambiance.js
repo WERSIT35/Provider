@@ -23,7 +23,7 @@
 
   // Optional real-character art. Leave null to use the CSS idol.
   const MASCOT_IMG = null; // e.g. "assets/mascot/zeus.png"
-  const CROWN_IMG = "assets/symbols/TOP_CROWN-removebg-preview.png";
+  const CROWN_IMG = "assets/symbols/Crown.png";
 
   const reduceMotion = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -114,7 +114,7 @@
   function buildAltarDeco(stage) {
     const deco = el("fx-deco", stage);
     if (reduceMotion) return;
-    const gems = ["RED_GEM", "BLUE_DIAMOND", "YELLOW_HEX", "PURPLE_TRIANGLE", "GREEN_TRIANGLE", "CHALICE", "RING", "TOP_CROWN"];
+    const gems = ["RedGem", "BlueGem", "YellowGem", "PurpleGem", "GreenGem", "Chaile", "Ring", "Crown"];
     const orbColors = ["#9be7ff", "#ffd86f", "#ff7fa8", "#b58bff", "#77f1d0"];
     const n = root.innerWidth < 620 ? 8 : 14;
     for (let i = 0; i < n; i++) {
@@ -139,7 +139,7 @@
       node.style.setProperty("--delay", `${-Math.random() * 16}s`);
       node.style.setProperty("--spin", `${Math.random() < 0.5 ? -1 : 1}`);
       if (useImg) {
-        node.src = `assets/symbols/${gems[i % gems.length]}-removebg-preview.png`;
+        node.src = `assets/symbols/${gems[i % gems.length]}.png`;
         node.alt = "";
         node.classList.add("fx-deco-gem");
       } else {

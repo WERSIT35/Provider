@@ -2747,10 +2747,17 @@ pre {
 
 body {
   font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Drowned sun-temple scene is the whole-GAME backdrop: one fixed, viewport-
+     covering image sits behind everything so the temple fills the full view (not
+     just the reel panel). A soft blue top-glow + dark scrim over the image keep the
+     UI readable and blend it with the underwater theme; the reel table floats on top. */
   background:
     radial-gradient(1200px 560px at 12% -8%, rgba(130, 176, 255, 0.22), transparent 60%),
     radial-gradient(1100px 520px at 92% -12%, rgba(116, 232, 255, 0.15), transparent 58%),
+    linear-gradient(180deg, rgba(5, 10, 20, 0.55) 0%, rgba(8, 15, 31, 0.62) 42%, rgba(13, 23, 48, 0.7) 100%),
+    url("assets/symbols/Background.png") center / cover no-repeat fixed,
     linear-gradient(180deg, #050a14 0%, #080f1f 42%, #0d1730 100%);
+  background-color: #050a14;
 }
 
 body::before {
@@ -2768,7 +2775,12 @@ body::after {
 .altar {
   border-radius: 20px;
   border-color: rgba(171, 207, 255, 0.26);
-  background: linear-gradient(180deg, rgba(14, 23, 42, 0.74), rgba(7, 13, 28, 0.74));
+  /* The temple scene is painted on the panel itself too (under a translucent tint
+     for readability), so the altar carries the backdrop directly rather than only
+     letting the <body> image show through. `cover` fills the panel responsively. */
+  background:
+    linear-gradient(180deg, rgba(14, 23, 42, 0.38), rgba(7, 13, 28, 0.44)),
+    url("assets/symbols/Background.png") center / cover no-repeat;
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
 }
