@@ -220,6 +220,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // renderer animation methods + animationSleep. Fast-stop still wins and
 // collapses to near-instant.
 const turboScale = () => (state.turbo ? 0.4 : 1);
+// On fast-stop, the in-flight drop is re-timed to land smoothly in ~this window
+// (a quick, visible settle — NOT an instant teleport), and the per-step drop
+// awaits resolve this long after the tap so the board never commits mid-fall.
+const FAST_STOP_SETTLE_MS = 150;
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -650,21 +654,54 @@ class ReelCanvasRenderer {
     try { this.draw(); } catch (err) { console.error("forceDrawNow draw failed:", err); }
   }
 
-  requestFastStop() {
+  /** Re-time an in-flight drop so it CONTINUES from its current visual position
+   *  and finishes smoothly in ~`remainingMs`, i.e. it appears to speed up rather
+   *  than snapping. (The old code jumped progress to 0.75 instantly, which read
+   *  as a glitchy teleport.) Preserves the current progress `p` and compresses
+   *  only the remaining (1 - p) of the fall. */
+  _accelerateDrop(fx, remainingMs) {
+    if (!fx) return;
     const now = performance.now();
-    if (this.fx.drop) {
-      this.fx.drop.duration = Math.min(this.fx.drop.duration || 120, 120);
-      this.fx.drop.start = Math.min(this.fx.drop.start || now, now - 90);
-    }
-    if (this.fx.heavyDrop) {
-      this.fx.heavyDrop.duration = Math.min(this.fx.heavyDrop.duration || 120, 120);
-      this.fx.heavyDrop.start = Math.min(this.fx.heavyDrop.start || now, now - 90);
-    }
+    const dur = fx.duration || 1;
+    const p = clamp((now - fx.start) / dur, 0, 1);
+    if (p >= 1) return;
+    const newDur = Math.max(1, remainingMs / (1 - p));
+    fx.duration = newDur;
+    fx.start = now - p * newDur;
+  }
+
+  requestFastStop() {
+    // Speed the current drop(s) up to a smooth quick landing (no teleport).
+    this._accelerateDrop(this.fx.drop, FAST_STOP_SETTLE_MS - 20);
+    this._accelerateDrop(this.fx.heavyDrop, FAST_STOP_SETTLE_MS - 20);
     this.fx.cluster = null;
     this.fx.sweeps = [];
     this.fx.charge = null;
     this.fx.spotlight = null;
     this.particles = this.particles.slice(-40);
+  }
+
+  /** Wait `realMs` (already in real / turbo-adjusted ms — do NOT pass raw values
+   *  through animationSleep, which would double-scale in turbo and resolve before
+   *  the fall visually finishes, making symbols vanish mid-air). Resolves early on
+   *  a fast-stop, but only ~FAST_STOP_SETTLE_MS after the request so the sped-up
+   *  drop has time to visibly land first. */
+  _dropSettle(realMs) {
+    const start = performance.now();
+    return new Promise((resolve) => {
+      let stopAt = state.fastStopRequested ? start : null;
+      const tick = () => {
+        const now = performance.now();
+        if (stopAt === null && state.fastStopRequested) stopAt = now;
+        if (stopAt !== null) {
+          if (now - stopAt >= FAST_STOP_SETTLE_MS) return resolve();
+        } else if (now - start >= realMs) {
+          return resolve();
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
   }
 
   cellCenter(row, col) {
@@ -821,7 +858,10 @@ class ReelCanvasRenderer {
       const [row, col] = key.split("-").map((n) => Number(n));
       return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
     }, 0);
-    await animationSleep(duration + maxDelay + 40);
+    // `duration` and `maxDelay` are already turbo-adjusted, so wait the REAL time
+    // (not animationSleep, which re-scales and would hide the board while symbols
+    // are still exiting — the "half-way out then vanish" bug).
+    await this._dropSettle(duration + maxDelay + 40);
     this.fx.drop = null;
     this.board.hidden = true;
   }
@@ -1087,7 +1127,10 @@ class ReelCanvasRenderer {
 
     // Tail buffer: 30ms when no reveal cells (just settles the landing
     // frame), 90ms when reveals are running (lets the reveal-pop finish).
-    await animationSleep(dropDuration + maxDelay + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
+    // dropDuration / maxDelay are already turbo-adjusted — wait the REAL time so
+    // the fall fully lands before the board commits (animationSleep would double-
+    // scale in turbo and commit mid-fall → symbols vanish half-way down).
+    await this._dropSettle(dropDuration + maxDelay + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
     this.fx.drop = null;
     this.fx.heavyDrop = null;
     if (window.__renderDebug) {
@@ -1390,12 +1433,16 @@ class ReelCanvasRenderer {
   getLayout() {
     const width = this.canvas.width / this.dpr;
     const height = this.canvas.height / this.dpr;
-    const padX = clamp(width * 0.04, 20, 40);
-    const top = clamp(height * 0.08, 34, 62);
-    const bottom = clamp(height * 0.08, 30, 60);
+    // Tighter frame padding so the 6×5 grid claims more of the canvas → bigger
+    // cells and bigger symbols (was 0.04 padX / 0.08 top+bottom, which wasted
+    // ~17% of the height on margins). Kept a small top band for the reel-frame
+    // crown/spine that draws above the first row.
+    const padX = clamp(width * 0.022, 8, 22);
+    const top = clamp(height * 0.045, 14, 34);
+    const bottom = clamp(height * 0.04, 12, 30);
     const laneW = (width - padX * 2) / this.cols;
     const rowStep = (height - top - bottom) / this.rows;
-    const radius = Math.min(laneW, rowStep) * 0.42;
+    const radius = Math.min(laneW, rowStep) * 0.46;
     return { width, height, padX, top, bottom, laneW, rowStep, radius };
   }
 
@@ -1443,8 +1490,17 @@ class ReelCanvasRenderer {
   }
 
   dropDelay(row, col, count) {
-    // Subtle per-column stagger (~25ms); per-row stagger kept light.
-    return Math.max(0, col * 25 + row * 10 + Math.max(0, count - 1) * 14);
+    // Fast-stop collapses the whole board in at once — no cascade.
+    if (state.fastStopRequested) return 0;
+    // Pronounced left-to-right REEL cascade: each column starts dropping a clear
+    // beat (~90ms) after the column to its left, so reel 1 lands first, then reel
+    // 2, then reel 3 … (Pragmatic-style waterfall) instead of the whole board
+    // arriving together. A small per-row stagger keeps each column reading as
+    // falling gravity rather than a rigid block, and symbols that fall farther
+    // (higher count) wait a touch longer. Scaled by turbo so the cascade
+    // compresses in step with the rest of the spin.
+    const raw = col * 90 + row * 12 + Math.max(0, count - 1) * 14;
+    return Math.max(0, Math.round(raw * turboScale()));
   }
 
   computeWinningBBox(winning) {
@@ -1999,9 +2055,11 @@ class ReelCanvasRenderer {
         const coreR = radius * 1.05 * baseScale * revealScale;
         const scatterSizeBoost = symbol === "SCATTER" ? 1.22 : 1;
         const multiScale = symbol === "MULTI" ? multiplierIconScale(this.board.multiMap.get(key)) : 1;
-        const maxIconBase = Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.16 : 1.02);
+        // Fill the cell: symbols are drawn nearly edge-to-edge (Pragmatic-style)
+        // instead of the old ~0.94-of-cell size that left big gaps.
+        const maxIconBase = Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.24 : 1.12);
         const iconBase = Math.min(
-          radius * 2.25 * baseScale * scatterSizeBoost * revealScale * multiScale,
+          radius * 2.5 * baseScale * scatterSizeBoost * revealScale * multiScale,
           maxIconBase * baseScale * revealScale
         );
         const iconW = iconBase * squashX;
