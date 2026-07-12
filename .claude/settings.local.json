@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "# NOTE: This file should be in .gitignore and never committed to the repository.",
+      "# It contains local development settings and should only exist on your local machine.",
+      "# The actual settings have been removed to prevent credential exposure.",
+      "# Please regenerate your API tokens/Bearer tokens as the previous ones were exposed in git history."
+    ]
+  }
+}

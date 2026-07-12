@@ -3,4 +3,8 @@ npm-debug.log*
 .env
 
 # Claude Code local session/memory data
-.claude
+.claude/projects/
+
+# Claude local settings - contains sensitive tokens and local paths
+.claude/settings.local.json
+.claude/settings.*.json
