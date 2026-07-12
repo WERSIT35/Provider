@@ -23,16 +23,50 @@ export interface AdminClaims {
 
 const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
   provider_super_admin: new Set(["*"]),
-  provider_finance: new Set(["reports.read", "transactions.read", "rounds.read"]),
+  // Finance can move money on rounds (void/settle) and resolve disputes, but not
+  // change the operator/game catalog.
+  provider_finance: new Set([
+    "reports.read",
+    "transactions.read",
+    "rounds.read",
+    "rounds.verify",
+    "rounds.write",
+    "disputes.read",
+    "disputes.resolve",
+    "players.read"
+  ]),
   provider_read_only: new Set([
     "rounds.read",
+    "rounds.verify",
     "reports.read",
     "operators.read",
-    "games.read"
+    "games.read",
+    "disputes.read",
+    "players.read"
   ]),
-  operator_admin: new Set(["rounds.read", "reports.read", "transactions.read"]),
-  operator_finance: new Set(["reports.read", "transactions.read"]),
-  operator_viewer: new Set(["rounds.read", "reports.read"])
+  // Operator admins run their own tenant: read their data, verify rounds, toggle
+  // their own games on/off, look up players, and RAISE disputes (provider executes).
+  operator_admin: new Set([
+    "rounds.read",
+    "rounds.verify",
+    "reports.read",
+    "transactions.read",
+    "games.read",
+    "games.toggle",
+    "players.read",
+    "disputes.read",
+    "disputes.raise"
+  ]),
+  operator_finance: new Set([
+    "reports.read",
+    "transactions.read",
+    "rounds.read",
+    "rounds.verify",
+    "players.read",
+    "disputes.read",
+    "disputes.raise"
+  ]),
+  operator_viewer: new Set(["rounds.read", "reports.read", "players.read", "disputes.read"])
 };
 
 export function can(claims: AdminClaims, permission: string): boolean {

@@ -48,7 +48,26 @@ export class AuthoritativeResolver {
 
   /** True iff replaying the stored seed against the same pre-spin state reproduces the outcome. */
   verifyReplay(round: Pick<AuthoritativeRound, "seed_hex" | "outcome_hash">, snapshot: SessionSnapshot, input: SpinInput): boolean {
-    const { result } = this.engine.resolveDeterministic(snapshot, input, round.seed_hex);
-    return outcomeHash(result) === round.outcome_hash;
+    return this.verifyReplayDetailed(round, snapshot, input, "spin").ok;
+  }
+
+  /**
+   * Mode-aware replay used by the admin verification tool. Re-resolves the stored
+   * seed through the same code path the round was originally resolved on ("spin" or
+   * the forced-trigger "buy"), and returns the recomputed hash alongside the verdict
+   * so the caller can surface the exact mismatch on a dispute.
+   */
+  verifyReplayDetailed(
+    round: Pick<AuthoritativeRound, "seed_hex" | "outcome_hash">,
+    snapshot: SessionSnapshot,
+    input: SpinInput,
+    mode: "spin" | "buy"
+  ): { ok: boolean; recomputed_hash: string; result: SpinResult } {
+    const { result } =
+      mode === "buy"
+        ? this.engine.resolveDeterministicBuy(snapshot, input, round.seed_hex)
+        : this.engine.resolveDeterministic(snapshot, input, round.seed_hex);
+    const recomputed_hash = outcomeHash(result);
+    return { ok: recomputed_hash === round.outcome_hash, recomputed_hash, result };
   }
 }

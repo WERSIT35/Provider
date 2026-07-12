@@ -13,11 +13,29 @@ export type RoundStatus = "resolved" | "settled" | "void";
  */
 export type StoredOutcome = SpinResult;
 
+/**
+ * The exact pre-spin state a round was resolved against. Persisting it lets the
+ * verification service deterministically replay ANY round (including free spins,
+ * whose outcome depends on the carried free-spin count/multiplier) rather than
+ * only base spins where the pre-state is implicitly zero.
+ */
+export interface RoundPreState {
+  game_code: string;
+  /** The exact engine balance the round was resolved against (a seamless-model sentinel).
+   * Captured because the engine's outcome embeds the balance, so replay must match it. */
+  balance: number;
+  free_spins_left: number;
+  free_spin_multiplier_carry: number;
+  ante_enabled: boolean;
+  resolve_mode: "spin" | "buy";
+}
+
 /** Caller-supplied content of a round (everything except chain/identity fields). */
 export interface RoundInput {
   round_ref: string;
   session_id: string;
   operator_id: string;
+  operator_player_id: string;
   game_id: string;
   math_config_id: string;
   bet_amount: number;
@@ -32,6 +50,8 @@ export interface RoundInput {
   multiplier_applied: number;
   status: RoundStatus;
   outcome: StoredOutcome;
+  /** Optional for rounds recorded before pre-state capture; verification is inconclusive without it. */
+  pre_state?: RoundPreState;
 }
 
 export interface RoundRecord extends RoundInput {
@@ -70,6 +90,7 @@ export interface ChainVerification {
 
 export interface RoundFilter {
   operator_id?: string;
+  operator_player_id?: string;
   session_id?: string;
   status?: RoundStatus;
 }

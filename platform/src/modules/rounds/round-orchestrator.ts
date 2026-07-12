@@ -50,6 +50,14 @@ export interface SpinOutcome {
  * recorded and flags settlement for the failed-settlement queue (never silently
  * dropping a win).
  */
+/**
+ * Sentinel engine balance for resolution. In the seamless-wallet model the operator
+ * wallet is the money authority, so the engine's internal balance is irrelevant to
+ * settlement — but it IS embedded in the outcome the engine returns, so it must be a
+ * fixed, replayable constant (captured into the round's pre-state for verification).
+ */
+const ENGINE_BALANCE_SENTINEL = Number.MAX_SAFE_INTEGER / 1000;
+
 export class RoundOrchestrator {
   private readonly idem = new Map<string, SpinOutcome>();
 
@@ -141,6 +149,7 @@ export class RoundOrchestrator {
       charge,
       isFreeSpin,
       anteEnabled: Boolean(req.ante_enabled),
+      resolveMode: "spin",
       resolved
     });
   }
@@ -214,6 +223,7 @@ export class RoundOrchestrator {
       charge,
       isFreeSpin: false,
       anteEnabled: false,
+      resolveMode: "buy",
       resolved
     });
   }
@@ -234,10 +244,22 @@ export class RoundOrchestrator {
       charge: number;
       isFreeSpin: boolean;
       anteEnabled: boolean;
+      resolveMode: "spin" | "buy";
       resolved: AuthoritativeRound;
     }
   ): Promise<SpinOutcome> {
-    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolved } = args;
+    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved } = args;
+
+    // Snapshot the exact pre-spin state BEFORE applyResult mutates the session, so
+    // the verification service can deterministically replay this round later.
+    const preState = {
+      game_code: session.game_code,
+      balance: ENGINE_BALANCE_SENTINEL,
+      free_spins_left: session.free_spins_left,
+      free_spin_multiplier_carry: session.free_spin_multiplier_carry,
+      ante_enabled: anteEnabled,
+      resolve_mode: resolveMode
+    };
 
     // 3) RECORD the immutable round (legal system of record).
     this.ledger.recordResolvedRound(
@@ -245,11 +267,14 @@ export class RoundOrchestrator {
         round_ref: roundRef,
         session_id: session.id,
         operator_id: session.operator_id,
+        operator_player_id: session.operator_player_id,
         game_id: session.game_id,
         math_config_id: session.math_config_id,
         bet_amount: betAmount,
+        bet_charged: charge,
         is_free_spin: isFreeSpin,
-        ante_enabled: anteEnabled
+        ante_enabled: anteEnabled,
+        pre_state: preState
       },
       resolved
     );
@@ -325,7 +350,7 @@ export class RoundOrchestrator {
   private snapshotFor(session: Session): SessionSnapshot {
     return {
       gameId: session.game_code,
-      balance: Number.MAX_SAFE_INTEGER / 1000,
+      balance: ENGINE_BALANCE_SENTINEL,
       freeSpinsLeft: session.free_spins_left,
       freeSpinPersistentMultiplier: session.free_spin_multiplier_carry
     };

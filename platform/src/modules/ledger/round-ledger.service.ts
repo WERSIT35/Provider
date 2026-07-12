@@ -4,6 +4,7 @@ import type {
   AuditRepository,
   RoundRecord,
   RoundStatus,
+  RoundPreState,
   ChainVerification
 } from "./ledger.types";
 
@@ -12,11 +13,15 @@ export interface RoundContext {
   round_ref: string;
   session_id: string;
   operator_id: string;
+  operator_player_id: string;
   game_id: string;
   math_config_id: string;
   bet_amount: number;
+  /** Actual amount debited (0 for free spins). Falls back to the engine/bet_amount if omitted. */
+  bet_charged?: number;
   is_free_spin?: boolean;
   ante_enabled?: boolean;
+  pre_state?: RoundPreState;
 }
 
 /**
@@ -36,10 +41,11 @@ export class RoundLedgerService {
       round_ref: ctx.round_ref,
       session_id: ctx.session_id,
       operator_id: ctx.operator_id,
+      operator_player_id: ctx.operator_player_id,
       game_id: ctx.game_id,
       math_config_id: ctx.math_config_id,
       bet_amount: ctx.bet_amount,
-      bet_charged: Number(resolved.result.bet_charged ?? ctx.bet_amount),
+      bet_charged: Number(ctx.bet_charged ?? resolved.result.bet_charged ?? ctx.bet_amount),
       is_free_spin: Boolean(ctx.is_free_spin ?? resolved.result.is_free_spin),
       ante_enabled: Boolean(ctx.ante_enabled),
       rng_seed_hex: resolved.seed_hex,
@@ -49,7 +55,8 @@ export class RoundLedgerService {
       total_win: Number(resolved.result.total_win ?? 0),
       multiplier_applied: Number(resolved.result.multiplier_applied ?? 1),
       status,
-      outcome: resolved.result
+      outcome: resolved.result,
+      pre_state: ctx.pre_state
     });
 
     this.audit.append({

@@ -57,6 +57,18 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
 
   app.decorate("container", deps.container);
 
+  // Durable write-through: after handling each request, flush any queued mutations
+  // to Postgres in one transaction. No-op when persistence is disabled (in-memory).
+  // A flush failure is logged, not surfaced — the batch is re-queued for the next
+  // request so a transient DB hiccup never fails an otherwise-successful spin.
+  app.addHook("onSend", async (req) => {
+    try {
+      await deps.container.persistence.flush();
+    } catch (err) {
+      req.log.error({ err }, "persistence_flush_failed");
+    }
+  });
+
   app.setErrorHandler((err: FastifyError, req, reply) => {
     req.log.error({ err }, "request_failed");
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;

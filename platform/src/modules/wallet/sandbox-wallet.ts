@@ -10,6 +10,7 @@ import {
   type WalletRollbackResult,
   WalletDeclinedError
 } from "./wallet.types";
+import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
 /**
  * In-memory operator wallet stub for sandbox/testing. Models the seamless-wallet
@@ -21,15 +22,38 @@ export class SandboxWallet implements WalletAdapter {
   private readonly balances = new Map<string, number>();
   private readonly applied = new Map<string, WalletTxResult | WalletRollbackResult>();
   private readonly debitByRef = new Map<string, { balanceKey: string; amount: number }>();
+  private persistence: Persistence = NullPersistence;
 
   constructor(private readonly opts: { failCreditFor?: (args: CreditArgs) => boolean } = {}) {}
+
+  /** Attach a persistence port (write-through). Called by the container when PG is on. */
+  usePersistence(p: Persistence): void {
+    this.persistence = p;
+  }
+
+  /** Rebuild balances/idempotency/debit-refs from Postgres on boot. */
+  hydrate(data: {
+    balances: Array<{ balance_key: string; amount: number }>;
+    applied: Array<{ idempotency_key: string; result: WalletTxResult | WalletRollbackResult }>;
+    debitRefs: Array<{ operator_tx_ref: string; balance_key: string; amount: number }>;
+  }): void {
+    for (const b of data.balances) this.balances.set(b.balance_key, b.amount);
+    for (const a of data.applied) this.applied.set(a.idempotency_key, a.result);
+    for (const d of data.debitRefs) this.debitByRef.set(d.operator_tx_ref, { balanceKey: d.balance_key, amount: d.amount });
+  }
 
   private key(playerId: string, currency: string): string {
     return `${playerId}:${currency}`;
   }
 
+  private persistBalance(balanceKey: string): void {
+    this.persistence.save("wallet_balances", { balance_key: balanceKey, amount: this.balances.get(balanceKey) ?? 0 });
+  }
+
   setBalance(operatorPlayerId: string, currency: string, amount: number): void {
-    this.balances.set(this.key(operatorPlayerId, currency), amount);
+    const k = this.key(operatorPlayerId, currency);
+    this.balances.set(k, amount);
+    this.persistBalance(k);
   }
 
   async balance(_ctx: WalletContext, args: { operatorPlayerId: string; currency: string }): Promise<Money> {
@@ -53,6 +77,9 @@ export class SandboxWallet implements WalletAdapter {
     };
     this.applied.set(args.idempotencyKey, result);
     this.debitByRef.set(result.operatorTxRef, { balanceKey: k, amount: args.amount });
+    this.persistBalance(k);
+    this.persistence.save("wallet_applied", { idempotency_key: args.idempotencyKey, result });
+    this.persistence.save("wallet_debit_refs", { operator_tx_ref: result.operatorTxRef, balance_key: k, amount: args.amount });
     return result;
   }
 
@@ -72,6 +99,8 @@ export class SandboxWallet implements WalletAdapter {
       status: "confirmed"
     };
     this.applied.set(args.idempotencyKey, result);
+    this.persistBalance(k);
+    this.persistence.save("wallet_applied", { idempotency_key: args.idempotencyKey, result });
     return result;
   }
 
@@ -84,9 +113,11 @@ export class SandboxWallet implements WalletAdapter {
     if (debit) {
       const current = this.balances.get(debit.balanceKey) ?? 0;
       this.balances.set(debit.balanceKey, Number((current + debit.amount).toFixed(2)));
+      this.persistBalance(debit.balanceKey);
     }
     const result: WalletRollbackResult = { operatorTxRef: `otx_${randomUUID()}`, status: "rolled_back" };
     this.applied.set(args.idempotencyKey, result);
+    this.persistence.save("wallet_applied", { idempotency_key: args.idempotencyKey, result });
     return result;
   }
 }

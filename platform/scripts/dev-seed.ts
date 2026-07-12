@@ -21,6 +21,10 @@ import { buildContainer } from "../src/container";
 import { buildApp } from "../src/app";
 import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
+import { NullPersistence, PostgresPersistence, type Persistence } from "../src/persistence/persistence";
+import { hydrateContainer } from "../src/persistence/hydrate";
+import { createPool, getPool } from "../src/db/pool";
+import { runMigrations } from "../src/db/migrate";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ADMIN_SECRET = process.env.ADMIN_TOKEN_SECRET ?? "dev-admin-secret-change-me";
@@ -37,48 +41,71 @@ const cfg = {
 };
 
 async function main(): Promise<void> {
-  const wallet = new SandboxWallet();
-  const c = buildContainer(cfg, { wallet });
-
-  // Provision: operator → domain → approved math config → game assignment.
-  const op = c.mgmt.createOperator({ name: "Demo Casino", slug: "demo" });
-  c.mgmt.addDomain(op.id, "casino.example.com", "prod");
-  const game = c.mgmt.registerGame({ code: "bananax", title: "Banana X" });
-  let mc = c.mgmt.createMathConfig({
-    game_id: game.id,
-    version: "3.0.0",
-    rtp_profile_key: "bananax",
-    theoretical_rtp: 96.38,
-    config_hash: "sha256:demo"
-  });
-  mc = c.mgmt.approveMathConfig(c.mgmt.submitMathConfigForReview(mc.id).id, "math-lead");
-  c.mgmt.assignGame({
-    operator_id: op.id,
-    game_id: game.id,
-    math_config_id: mc.id,
-    currency: "GEL",
-    allowed_bets: [1, 5, 10, 50, 500]
-  });
-  wallet.setBalance("p1", "GEL", 100_000);
-
-  // Open a session and play a handful of spins so the ledger has rows.
-  const launchToken = c.sessions.createLaunchToken({
-    operator_id: op.id,
-    game_code: "bananax",
-    operator_player_id: "p1",
-    currency: "GEL",
-    origin: "casino.example.com"
-  });
-  const session = c.sessions.initSession(launchToken);
-
-  let firstWinRef: string | null = null;
-  let firstRef: string | null = null;
-  for (let i = 0; i < 50; i += 1) {
-    const out = await c.orchestrator.spin(session.id, { bet_amount: 5, idempotency_key: `seed-${i}` });
-    if (i === 0) firstRef = out.round_ref;
-    if (!firstWinRef && out.total_win > 0) firstWinRef = out.round_ref;
+  // Optional Postgres durability. Re-running against an existing DB reuses the
+  // already-seeded operator instead of erroring on the duplicate slug.
+  let persistence: Persistence = NullPersistence;
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    const pool = createPool(dbUrl);
+    await runMigrations(pool);
   }
-  const inspectorRef = firstWinRef ?? firstRef;
+
+  const wallet = new SandboxWallet();
+  if (dbUrl) persistence = new PostgresPersistence(getPool());
+  const c = buildContainer(cfg, { wallet, persistence });
+  if (dbUrl) await hydrateContainer(c, persistence);
+
+  // Idempotent provisioning: only seed if the demo operator doesn't already exist.
+  let op = c.mgmt.listOperators().find((o) => o.slug === "demo") ?? null;
+  let inspectorRef: string | null = null;
+
+  if (!op) {
+    op = c.mgmt.createOperator({ name: "Demo Casino", slug: "demo" });
+    c.mgmt.addDomain(op.id, "casino.example.com", "prod");
+    const game = c.mgmt.registerGame({ code: "bananax", title: "Banana X" });
+    let mc = c.mgmt.createMathConfig({
+      game_id: game.id,
+      version: "3.0.0",
+      rtp_profile_key: "bananax",
+      theoretical_rtp: 96.38,
+      config_hash: "sha256:demo"
+    });
+    mc = c.mgmt.approveMathConfig(c.mgmt.submitMathConfigForReview(mc.id).id, "math-lead");
+    c.mgmt.assignGame({
+      operator_id: op.id,
+      game_id: game.id,
+      math_config_id: mc.id,
+      currency: "GEL",
+      allowed_bets: [1, 5, 10, 50, 500]
+    });
+    wallet.setBalance("p1", "GEL", 100_000);
+
+    // Open a session and play a handful of spins so the ledger has rows.
+    const launchToken = c.sessions.createLaunchToken({
+      operator_id: op.id,
+      game_code: "bananax",
+      operator_player_id: "p1",
+      currency: "GEL",
+      origin: "casino.example.com"
+    });
+    const session = c.sessions.initSession(launchToken);
+
+    let firstWinRef: string | null = null;
+    let firstRef: string | null = null;
+    for (let i = 0; i < 50; i += 1) {
+      const out = await c.orchestrator.spin(session.id, { bet_amount: 5, idempotency_key: `seed-${i}` });
+      if (i === 0) firstRef = out.round_ref;
+      if (!firstWinRef && out.total_win > 0) firstWinRef = out.round_ref;
+    }
+    inspectorRef = firstWinRef ?? firstRef;
+  } else {
+    // Reuse the persisted operator; pick an existing round for the inspector.
+    const rounds = c.reporting.listRounds(op.id);
+    inspectorRef = rounds.find((r) => r.total_win > 0)?.round_ref ?? rounds[0]?.round_ref ?? null;
+  }
+
+  // Persist everything the seed just created before we start serving.
+  await persistence.flush();
 
   // Mint a fresh launch token for the player demo (the one above was consumed).
   const playerToken = c.sessions.createLaunchToken(

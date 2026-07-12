@@ -14,18 +14,21 @@
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke:rtp": "tsx scripts/rtp-smoke.ts"
+    "smoke:rtp": "tsx scripts/rtp-smoke.ts",
+    "migrate": "tsx scripts/migrate.ts"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "fastify": "^5.2.1",
+    "pg": "^8.22.0",
     "pino": "^9.6.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
+    "@types/pg": "^8.20.0",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

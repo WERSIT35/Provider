@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GENESIS_HASH, hashPayload, chainHash } from "./hash-chain";
+import { NullPersistence, type Persistence } from "../../persistence/persistence";
 import type {
   RoundRepository,
   RoundInput,
@@ -36,6 +37,16 @@ export class InMemoryRoundRepository implements RoundRepository {
   private readonly entries: RoundRecord[] = [];
   private readonly byRef = new Map<string, RoundRecord>();
 
+  constructor(private readonly persistence: Persistence = NullPersistence) {}
+
+  /** Rebuild state from Postgres on boot (rows already carry their chain fields). */
+  hydrate(rows: RoundRecord[]): void {
+    for (const r of rows) {
+      this.entries.push(r);
+      this.byRef.set(r.round_ref, r);
+    }
+  }
+
   append(input: RoundInput): RoundRecord {
     if (this.byRef.has(input.round_ref)) {
       throw new Error(`DUPLICATE_ROUND_REF:${input.round_ref}`);
@@ -54,6 +65,7 @@ export class InMemoryRoundRepository implements RoundRepository {
     };
     this.entries.push(record);
     this.byRef.set(record.round_ref, record);
+    this.persistence.save("rounds", record);
     return clone(record);
   }
 
@@ -65,6 +77,7 @@ export class InMemoryRoundRepository implements RoundRepository {
   list(filter: RoundFilter = {}): RoundRecord[] {
     return this.entries
       .filter((r) => (filter.operator_id ? r.operator_id === filter.operator_id : true))
+      .filter((r) => (filter.operator_player_id ? r.operator_player_id === filter.operator_player_id : true))
       .filter((r) => (filter.session_id ? r.session_id === filter.session_id : true))
       .filter((r) => (filter.status ? r.status === filter.status : true))
       .map(clone);
@@ -87,6 +100,12 @@ export class InMemoryRoundRepository implements RoundRepository {
 export class InMemoryAuditRepository implements AuditRepository {
   private readonly entries: AuditRecord[] = [];
 
+  constructor(private readonly persistence: Persistence = NullPersistence) {}
+
+  hydrate(rows: AuditRecord[]): void {
+    for (const r of rows) this.entries.push(r);
+  }
+
   append(input: AuditInput): AuditRecord {
     const seq = this.entries.length;
     const prev_hash = seq === 0 ? GENESIS_HASH : this.entries[seq - 1].chain_hash;
@@ -101,6 +120,7 @@ export class InMemoryAuditRepository implements AuditRepository {
       chain_hash: chainHash(prev_hash, payload_hash)
     };
     this.entries.push(record);
+    this.persistence.save("audit_records", record);
     return clone(record);
   }
 

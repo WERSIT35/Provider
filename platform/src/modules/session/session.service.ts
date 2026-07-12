@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { signToken, verifyToken } from "../../lib/tokens";
 import type { ManagementService } from "../management/management.service";
 import type { SpinResult } from "../engine/engine.types";
+import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
 export interface Session {
   id: string;
@@ -37,8 +38,13 @@ export class SessionService {
 
   constructor(
     private readonly mgmt: ManagementService,
-    private readonly launchSecret: string
+    private readonly launchSecret: string,
+    private readonly persistence: Persistence = NullPersistence
   ) {}
+
+  hydrate(rows: Session[]): void {
+    for (const s of rows) this.sessions.set(s.id, s);
+  }
 
   /**
    * Operator-side: produce a signed launch token after validating access.
@@ -80,6 +86,7 @@ export class SessionService {
       created_at: new Date().toISOString()
     };
     this.sessions.set(session.id, session);
+    this.persistence.save("player_sessions", session);
     return { ...session };
   }
 
@@ -103,10 +110,14 @@ export class SessionService {
     s.free_spins_left = Number(result.free_spins_left ?? s.free_spins_left);
     const carry = (result as { free_spin_multiplier_current?: number }).free_spin_multiplier_current;
     if (typeof carry === "number") s.free_spin_multiplier_carry = carry;
+    this.persistence.save("player_sessions", s);
   }
 
   close(sessionId: string): void {
     const s = this.sessions.get(sessionId);
-    if (s) s.status = "closed";
+    if (s) {
+      s.status = "closed";
+      this.persistence.save("player_sessions", s);
+    }
   }
 }

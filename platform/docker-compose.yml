@@ -1,12 +1,13 @@
-# Optional Postgres for the production-shaped data path. The in-memory repos
-# remain the default (tests rely on them); this compose file is here so a real
-# Postgres is one command away when you need to wire up the persistent path:
+# Optional Postgres for the durable data path. In-memory stays the default (tests
+# rely on it); this brings a real Postgres up in one command:
 #
 #   docker compose -f platform/docker-compose.yml up -d
-#   psql "postgres://bananax:bananax@127.0.0.1:5432/bananax" \
-#     -f platform/migrations/0001_core.sql
+#   cd platform
+#   DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run migrate
+#   DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run dev:seed
 #
-# See platform/GUIDE.md → "Postgres path" for the swap-in steps.
+# The migration runner (src/db/migrate.ts) applies migrations/*.sql, so this compose
+# does NOT auto-apply them via initdb — there is a single migration path.
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,7 +20,6 @@ services:
       - "5432:5432"
     volumes:
       - bananax-pg:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
 
 volumes:
   bananax-pg:

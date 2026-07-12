@@ -1,5 +1,6 @@
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import type { AuditRepository } from "../ledger/ledger.types";
+import { NullPersistence, type Persistence } from "../../persistence/persistence";
 import type {
   Operator,
   OperatorStatus,
@@ -42,13 +43,50 @@ export class ManagementService {
   private readonly mathConfigs = new Map<string, MathConfig>();
   private readonly operatorGames = new Map<string, OperatorGame>();
 
-  constructor(private readonly audit: AuditRepository) {}
+  constructor(
+    private readonly audit: AuditRepository,
+    private readonly persistence: Persistence = NullPersistence
+  ) {}
 
-  private record(operatorId: string | null, action: string, targetType: string, targetId: string): void {
+  /** Rebuild the control plane from Postgres on boot. */
+  hydrate(data: {
+    operators: Operator[];
+    domains: OperatorDomain[];
+    credentials: Array<ApiCredential & { hmac_secret?: string | null }>;
+    games: Game[];
+    mathConfigs: MathConfig[];
+    operatorGames: OperatorGame[];
+  }): void {
+    for (const o of data.operators) {
+      this.operators.set(o.id, o);
+      this.slugs.set(o.slug, o.id);
+    }
+    for (const d of data.domains) this.domains.set(d.id, d);
+    for (const c of data.credentials) {
+      const { hmac_secret, ...cred } = c;
+      this.credentials.set(cred.api_key_id, cred as ApiCredential);
+      if (hmac_secret) this.secretVault.set(cred.api_key_id, hmac_secret);
+    }
+    for (const g of data.games) this.games.set(g.id, g);
+    for (const m of data.mathConfigs) this.mathConfigs.set(m.id, m);
+    for (const og of data.operatorGames) this.operatorGames.set(og.id, og);
+  }
+
+  // Write-through helpers (no-ops unless a Persistence is attached).
+  private saveOperator(o: Operator): void { this.persistence.save("operators", o); }
+  private saveDomain(d: OperatorDomain): void { this.persistence.save("operator_domains", d); }
+  private saveCredential(c: ApiCredential): void {
+    this.persistence.save("operator_api_credentials", { ...c, hmac_secret: this.secretVault.get(c.api_key_id) ?? null });
+  }
+  private saveGame(g: Game): void { this.persistence.save("games", g); }
+  private saveMathConfig(m: MathConfig): void { this.persistence.save("math_configs", m); }
+  private saveOperatorGame(og: OperatorGame): void { this.persistence.save("operator_games", og); }
+
+  private record(operatorId: string | null, action: string, targetType: string, targetId: string, actorId = "provider-admin"): void {
     this.audit.append({
       operator_id: operatorId,
       actor_type: "admin",
-      actor_id: "provider-admin",
+      actor_id: actorId,
       action,
       target_type: targetType,
       target_id: targetId
@@ -68,6 +106,7 @@ export class ManagementService {
     };
     this.operators.set(operator.id, operator);
     this.slugs.set(operator.slug, operator.id);
+    this.saveOperator(operator);
     this.record(operator.id, "operator.create", "operator", operator.id);
     return { ...operator };
   }
@@ -87,6 +126,7 @@ export class ManagementService {
     const op = this.operators.get(operatorId);
     if (!op) throw new Error("OPERATOR_NOT_FOUND");
     op.status = status;
+    this.saveOperator(op);
     this.record(operatorId, `operator.${status === "suspended" ? "suspend" : "status"}`, "operator", operatorId);
     return { ...op };
   }
@@ -108,6 +148,7 @@ export class ManagementService {
       created_at: now()
     };
     this.domains.set(rec.id, rec);
+    this.saveDomain(rec);
     this.record(operatorId, "operator.domain.add", "operator_domain", rec.id);
     return { ...rec };
   }
@@ -146,6 +187,7 @@ export class ManagementService {
     };
     this.credentials.set(apiKeyId, credential);
     this.secretVault.set(apiKeyId, apiSecret);
+    this.saveCredential(credential);
     this.record(operatorId, "credential.issue", "api_credential", apiKeyId);
     return { credential: { ...credential }, api_secret: apiSecret };
   }
@@ -180,6 +222,7 @@ export class ManagementService {
     if (!old || old.operator_id !== operatorId) throw new Error("CREDENTIAL_NOT_FOUND");
     if (old.status === "revoked") throw new Error("CREDENTIAL_REVOKED");
     old.status = "rotating";
+    this.saveCredential(old);
     const issued = this.issueCredential(operatorId, old.environment, old.ip_allowlist);
     this.record(operatorId, "credential.rotate", "api_credential", oldApiKeyId);
     return issued;
@@ -190,6 +233,7 @@ export class ManagementService {
     if (!cred || cred.operator_id !== operatorId) throw new Error("CREDENTIAL_NOT_FOUND");
     cred.status = "revoked";
     this.secretVault.delete(apiKeyId);
+    this.saveCredential(cred);
     this.record(operatorId, "credential.revoke", "api_credential", apiKeyId);
     return { ...cred };
   }
@@ -204,6 +248,7 @@ export class ManagementService {
       created_at: now()
     };
     this.games.set(game.id, game);
+    this.saveGame(game);
     this.record(null, "game.register", "game", game.id);
     return { ...game };
   }
@@ -229,6 +274,7 @@ export class ManagementService {
       created_at: now()
     };
     this.mathConfigs.set(cfg.id, cfg);
+    this.saveMathConfig(cfg);
     this.record(null, "math_config.create", "math_config", cfg.id);
     return { ...cfg };
   }
@@ -238,6 +284,7 @@ export class ManagementService {
     if (!cfg) throw new Error("MATH_CONFIG_NOT_FOUND");
     if (cfg.status !== "draft") throw new Error("INVALID_STATE_TRANSITION");
     cfg.status = "in_review";
+    this.saveMathConfig(cfg);
     this.record(null, "math_config.submit", "math_config", cfg.id);
     return { ...cfg };
   }
@@ -249,6 +296,7 @@ export class ManagementService {
     cfg.status = "approved";
     cfg.approved_by = approver;
     cfg.approved_at = now();
+    this.saveMathConfig(cfg);
     this.record(null, "math_config.approve", "math_config", cfg.id);
     return { ...cfg };
   }
@@ -283,6 +331,7 @@ export class ManagementService {
       created_at: now()
     };
     this.operatorGames.set(rec.id, rec);
+    this.saveOperatorGame(rec);
     this.record(input.operator_id, "operator.game.assign", "operator_game", rec.id);
     return { ...rec };
   }
@@ -309,6 +358,33 @@ export class ManagementService {
     return Array.from(this.operatorGames.values())
       .filter((og) => og.operator_id === operatorId)
       .map((og) => ({ ...og }));
+  }
+
+  getOperatorGame(operatorGameId: string): OperatorGame | null {
+    const og = this.operatorGames.get(operatorGameId);
+    return og ? { ...og } : null;
+  }
+
+  /**
+   * Enable/disable a specific operator↔game assignment. This is the "turn a game
+   * on/off" control: a disabled assignment can no longer open new sessions
+   * (findOperatorGame already requires status === "enabled"). Operators may toggle
+   * their own games; the provider may toggle any.
+   */
+  setOperatorGameStatus(operatorGameId: string, status: "enabled" | "disabled", actorId = "system"): OperatorGame {
+    const og = this.operatorGames.get(operatorGameId);
+    if (!og) throw new Error("OPERATOR_GAME_NOT_FOUND");
+    og.status = status;
+    this.saveOperatorGame(og);
+    this.record(og.operator_id, `operator.game.${status}`, "operator_game", og.id, actorId);
+    return { ...og };
+  }
+
+  /** Tenant-scoped read of an operator's issued credentials (secrets never returned). */
+  listCredentials(operatorId: string): ApiCredential[] {
+    return Array.from(this.credentials.values())
+      .filter((c) => c.operator_id === operatorId)
+      .map((c) => ({ ...c }));
   }
 
   findOperatorGame(operatorId: string, gameCode: string, currency: string): OperatorGame | null {
