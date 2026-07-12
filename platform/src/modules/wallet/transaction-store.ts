@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
 /** Money-movement ledger (plan §3.3 wallet_transactions). Append-only + idempotent
  * by idempotency_key. Feeds reporting, reconciliation, and the failed-settlement queue. */
 
-export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK";
+export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK" | "ADJUSTMENT";
 export type TxStatus = "confirmed" | "failed" | "rolled_back";
 
 export interface TxInput {
@@ -40,6 +41,15 @@ export class InMemoryTransactionStore {
   private readonly entries: TxRecord[] = [];
   private readonly byKey = new Map<string, TxRecord>();
 
+  constructor(private readonly persistence: Persistence = NullPersistence) {}
+
+  hydrate(rows: TxRecord[]): void {
+    for (const r of rows) {
+      this.entries.push(r);
+      this.byKey.set(r.idempotency_key, r);
+    }
+  }
+
   /** Append a transaction. Idempotent: a repeated idempotency_key returns the stored row. */
   record(input: TxInput): TxRecord {
     const existing = this.byKey.get(input.idempotency_key);
@@ -52,6 +62,7 @@ export class InMemoryTransactionStore {
     };
     this.entries.push(record);
     this.byKey.set(record.idempotency_key, record);
+    this.persistence.save("wallet_transactions", record);
     return clone(record);
   }
 

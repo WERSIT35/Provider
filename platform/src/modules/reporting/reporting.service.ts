@@ -1,6 +1,7 @@
 import type { RoundRepository, RoundRecord } from "../ledger/ledger.types";
 import type { InMemoryTransactionStore, TxRecord } from "../wallet/transaction-store";
 import type { EngineService } from "../engine/engine.service";
+import type { InMemoryRoundAdjustmentStore } from "../rounds/round-adjustment.store";
 
 /** Reporting + reconciliation over the immutable ledger (plan §10). All queries are
  * tenant-scoped when an operator_id is supplied. */
@@ -58,7 +59,8 @@ export class ReportingService {
   constructor(
     private readonly rounds: RoundRepository,
     private readonly transactions: InMemoryTransactionStore,
-    private readonly engine: EngineService
+    private readonly engine: EngineService,
+    private readonly adjustments: InMemoryRoundAdjustmentStore
   ) {}
 
   listRounds(operatorId?: string, range: DateRange = {}): RoundRecord[] {
@@ -67,8 +69,26 @@ export class ReportingService {
       .filter((r) => inRange(r.created_at, range));
   }
 
+  /** Rounds for a single player (support / dispute lookup). Newest first. */
+  listRoundsByPlayer(operatorId: string, operatorPlayerId: string): RoundRecord[] {
+    return this.rounds
+      .list({ operator_id: operatorId, operator_player_id: operatorPlayerId })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  /** Full money-movement timeline for one round (the "why wasn't the player paid?" view). */
+  transactionsForRound(roundRef: string): TxRecord[] {
+    return this.transactions.list({ round_ref: roundRef }).sort((a, b) => a.seq - b.seq);
+  }
+
+  /** Financial totals must exclude voided rounds (their money was reversed). */
+  private financialRounds(operatorId?: string, range: DateRange = {}): RoundRecord[] {
+    const voided = this.adjustments.voidedRoundRefs(operatorId);
+    return this.listRounds(operatorId, range).filter((r) => !voided.has(r.round_ref));
+  }
+
   roundsSummary(operatorId?: string, range: DateRange = {}): RoundsSummary {
-    const list = this.listRounds(operatorId, range);
+    const list = this.financialRounds(operatorId, range);
     const total_bet = round2(list.reduce((s, r) => s + r.bet_charged, 0));
     const total_win = round2(list.reduce((s, r) => s + r.total_win, 0));
     const ggr = round2(total_bet - total_win);
@@ -93,7 +113,7 @@ export class ReportingService {
 
   ggrByDay(operatorId?: string, range: DateRange = {}): GgrByDay[] {
     const buckets = new Map<string, GgrByDay>();
-    for (const r of this.listRounds(operatorId, range)) {
+    for (const r of this.financialRounds(operatorId, range)) {
       const date = r.created_at.slice(0, 10);
       const b = buckets.get(date) ?? { date, rounds: 0, total_bet: 0, total_win: 0, ggr: 0 };
       b.rounds += 1;
@@ -115,7 +135,9 @@ export class ReportingService {
    * Any drift is flagged for an operations incident (plan §10).
    */
   reconcile(operatorId?: string, range: DateRange = {}): Reconciliation {
-    const rounds = this.listRounds(operatorId, range);
+    // Voided rounds are excluded: their bet was refunded and any win clawed back, so
+    // they must not count on the round side either (the money side nets to zero too).
+    const rounds = this.financialRounds(operatorId, range);
     const rounds_total_bet = round2(rounds.reduce((s, r) => s + r.bet_charged, 0));
     const rounds_total_win = round2(rounds.reduce((s, r) => s + r.total_win, 0));
 
@@ -124,8 +146,11 @@ export class ReportingService {
       round2(txs.filter((t) => t.type === type && t.status === status).reduce((s, t) => s + t.amount, 0));
 
     const tx_debits = sum("DEBIT", "confirmed");
-    const tx_credits = sum("CREDIT", "confirmed");
+    const tx_credits_gross = sum("CREDIT", "confirmed");
     const tx_rollbacks = sum("ROLLBACK", "rolled_back");
+    // Void clawbacks are compensating debits that reverse a previously-paid win.
+    const tx_clawbacks = sum("ADJUSTMENT", "confirmed");
+    const tx_credits = round2(tx_credits_gross - tx_clawbacks);
 
     const bet_vs_debit_diff = round2(rounds_total_bet - (tx_debits - tx_rollbacks));
     const win_vs_credit_diff = round2(rounds_total_win - tx_credits);

@@ -112,7 +112,10 @@ const PAGE = /* html */ `<!doctype html>
   <nav id="nav" hidden>
     <button data-view="dashboard" class="active">Dashboard</button>
     <button data-view="inspector">Round Inspector</button>
-    <button data-view="onboarding">Onboarding</button>
+    <button data-view="games">Games</button>
+    <button data-view="disputes">Disputes</button>
+    <button data-view="players">Players</button>
+    <button data-view="onboarding" data-provider>Onboarding</button>
     <button data-view="reports">Reports</button>
     <button data-view="settings" class="ghost">Token</button>
   </nav>
@@ -168,7 +171,65 @@ const PAGE = /* html */ `<!doctype html>
         <span id="inspectorStatus" class="muted"></span>
       </div>
     </div>
+
+    <!-- Legitimacy check + lifecycle actions for the round in the box above -->
+    <div class="panel">
+      <h2>Legitimacy &amp; actions</h2>
+      <p class="muted">Verify recomputes the outcome from the stored server seed and checks the ledger hash-chain. Provider admins can void/settle directly; operator admins raise a request the provider approves.</p>
+      <div class="toolbar">
+        <button class="ghost" onclick="verifyRound()">✓ Verify legitimacy</button>
+        <button class="ghost" onclick="loadRoundTx()">Transaction timeline</button>
+        <span data-provider><button class="danger" onclick="voidRoundAction()">Void round</button></span>
+        <span data-provider><button onclick="settleRoundAction()">Settle (re-credit)</button></span>
+        <span data-operator><button class="ghost" onclick="raiseDisputeAction('void')">Request void</button></span>
+        <span data-operator><button class="ghost" onclick="raiseDisputeAction('settle')">Request settle</button></span>
+      </div>
+      <div id="roundActionOut"></div>
+    </div>
+
     <div id="inspectorContent"></div>
+  </section>
+
+  <!-- GAMES (on/off) -->
+  <section id="gamesView" hidden>
+    <div class="panel">
+      <h2>Games — turn on / off</h2>
+      <p class="muted">Disabling an assignment immediately stops new player sessions for that game. <span data-provider>Provide an operator id to view another tenant;</span> operator admins see only their own.</p>
+      <div class="toolbar">
+        <input class="search" id="gamesOp" placeholder="operator id (provider only)"/>
+        <button class="ghost" onclick="loadGames()">Load</button>
+      </div>
+      <div id="gamesList">–</div>
+    </div>
+  </section>
+
+  <!-- DISPUTES -->
+  <section id="disputesView" hidden>
+    <div class="panel">
+      <h2>Disputes</h2>
+      <p class="muted">Operators raise a void/settle request against one of their rounds; provider admins approve (executes it) or reject.</p>
+      <div class="toolbar">
+        <input class="search" id="dspOp" placeholder="operator id (provider only)"/>
+        <select id="dspStatus"><option value="">all</option><option value="open">open</option><option value="approved">approved</option><option value="rejected">rejected</option></select>
+        <button class="ghost" onclick="loadDisputes()">Load</button>
+      </div>
+      <div id="disputesList">–</div>
+    </div>
+  </section>
+
+  <!-- PLAYERS -->
+  <section id="playersView" hidden>
+    <div class="panel">
+      <h2>Player lookup</h2>
+      <p class="muted">Every round for one player id — the support / dispute triage view.</p>
+      <div class="toolbar">
+        <input class="search" id="plOp" placeholder="operator id (provider only)"/>
+        <input class="search" id="plPlayer" placeholder="operator_player_id (e.g. p1)"/>
+        <button onclick="loadPlayer()">Look up</button>
+        <span id="plStatus" class="muted"></span>
+      </div>
+      <div id="playerRounds">–</div>
+    </div>
   </section>
 
   <!-- ONBOARDING -->
@@ -349,11 +410,15 @@ function handleAuthExpired() {
 }
 
 // ── views ────────────────────────────────────────────────────────────────────
+const VIEWS = ['login','dashboard','inspector','games','disputes','players','onboarding','reports','settings'];
 function show(view) {
-  for (const id of ['loginView','dashboardView','inspectorView','onboardingView','reportsView','settingsView']) $(id).hidden = (id !== view + 'View');
+  for (const v of VIEWS) $(v + 'View').hidden = (v !== view);
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'dashboard') refreshDashboard();
   if (view === 'inspector') $('roundRefInput')?.focus();
+  if (view === 'games') loadGames();
+  if (view === 'disputes') loadDisputes();
+  if (view === 'players') $('plPlayer')?.focus();
   if (view === 'onboarding') refreshOnboardingDropdowns();
   if (view === 'reports') loadReports();
   history.replaceState(null, '', '#' + view);
@@ -389,8 +454,17 @@ async function signIn() {
 function afterSignIn() {
   $('scopePill').textContent = (state.scope || '?') + ' admin';
   $('nav').hidden = false;
+  applyScopeVisibility();
   const initial = (location.hash || '#dashboard').slice(1);
-  show(['dashboard','inspector','onboarding','reports','settings'].includes(initial) ? initial : 'dashboard');
+  show(VIEWS.includes(initial) && initial !== 'login' ? initial : 'dashboard');
+}
+
+// Show provider-only controls (data-provider) only to provider admins, and
+// operator-only controls (data-operator) only to operator admins.
+function applyScopeVisibility() {
+  const isProvider = state.scope === 'provider';
+  document.querySelectorAll('[data-provider]').forEach(el => { el.style.display = isProvider ? '' : 'none'; });
+  document.querySelectorAll('[data-operator]').forEach(el => { el.style.display = isProvider ? 'none' : ''; });
 }
 
 function signOut() {
@@ -428,7 +502,7 @@ async function refreshDashboard() {
     try {
       const data = await api('/admin/v1/operators');
       state.operators = data.operators || [];
-      $('operatorsList').innerHTML = tableHtml(state.operators, ['slug','name','status','default_currency','id'], (row) => {});
+      renderOperators();
     } catch (e) { $('operatorsList').innerHTML = '<span class="err">'+e.message+'</span>'; }
   } else {
     $('operatorsList').innerHTML = '<p class="muted">Operator scope — your own operator only.</p>';
@@ -842,6 +916,155 @@ async function loadReports() {
     $('repFailed').innerHTML = tableHtml(f.failed_settlements || [], ['round_ref','type','amount','currency','status','error_code']);
   } catch (e) { $('repFailed').innerHTML = '<span class="err">'+e.message+'</span>'; }
 }
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── ROUND: verify / transactions / lifecycle / dispute ─────────────────────────
+async function verifyRound() {
+  const ref = $('roundRefInput').value.trim(); const out = $('roundActionOut');
+  if (!ref) { flash(out, 'paste a round id above first', false); return; }
+  out.hidden = false; out.className = 'status'; out.textContent = 'verifying…';
+  try {
+    const v = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/verify');
+    out.className = 'status ' + (v.verdict === 'tampered' ? 'err' : 'ok');
+    out.innerHTML = '<b>Verdict: ' + v.verdict.toUpperCase() + '</b>' +
+      '<div class="cards" style="margin-top:8px;">' +
+        cardHtml('outcome ok', v.outcome_ok === null ? 'n/a' : (v.outcome_ok ? 'yes' : 'NO')) +
+        cardHtml('chain ok', v.chain_ok ? 'yes' : 'NO') + '</div>' +
+      '<pre class="code">stored:     ' + v.stored_hash + '\\nrecomputed: ' + (v.recomputed_hash || '(not replayed)') + '</pre>' +
+      (v.notes && v.notes.length ? '<p class="muted">' + esc(v.notes.join(' · ')) + '</p>' : '');
+  } catch (e) { flash(out, e.message, false); }
+}
+
+async function loadRoundTx() {
+  const ref = $('roundRefInput').value.trim(); const out = $('roundActionOut');
+  if (!ref) { flash(out, 'paste a round id above first', false); return; }
+  try {
+    const d = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/transactions');
+    out.hidden = false; out.className = 'status';
+    out.innerHTML = '<p>effective status: <b>' + d.effective_status + '</b> (recorded: ' + d.recorded_status + ')</p>' +
+      tableHtml(d.transactions, ['type','amount','currency','status','error_code','idempotency_key']);
+  } catch (e) { flash(out, e.message, false); }
+}
+
+async function voidRoundAction() { await lifecycleAction('void'); }
+async function settleRoundAction() { await lifecycleAction('settle'); }
+async function lifecycleAction(kind) {
+  const ref = $('roundRefInput').value.trim(); const out = $('roundActionOut');
+  if (!ref) { flash(out, 'paste a round id first', false); return; }
+  const reason = prompt('Reason for ' + kind + ' on ' + ref + ':');
+  if (reason === null || !reason.trim()) return;
+  try {
+    const r = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/' + kind, { method: 'POST', body: { reason: reason.trim() } });
+    flash(out, kind + ' done — effective status: ' + r.effective_status + (r.already ? ' (no-op)' : '') + '. ' + (r.notes || []).join('; '), true);
+  } catch (e) { flash(out, e.message, false); }
+}
+
+async function raiseDisputeAction(kind) {
+  const ref = $('roundRefInput').value.trim(); const out = $('roundActionOut');
+  if (!ref) { flash(out, 'paste a round id first', false); return; }
+  const reason = prompt('Reason for requesting ' + kind + ' on ' + ref + ':');
+  if (reason === null || !reason.trim()) return;
+  try {
+    const r = await api('/admin/v1/disputes', { method: 'POST', body: { round_ref: ref, kind, reason: reason.trim() } });
+    flash(out, 'dispute raised (' + r.dispute.id + ', ' + r.dispute.status + ') — a provider admin will review it.', true);
+  } catch (e) { flash(out, e.message, false); }
+}
+
+// ── GAMES on/off ───────────────────────────────────────────────────────────────
+async function loadGames() {
+  const el = $('gamesList'); const opId = $('gamesOp').value.trim();
+  const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
+  try {
+    const d = await api('/admin/v1/operator-games' + qs);
+    const rows = d.operator_games || [];
+    if (!rows.length) { el.innerHTML = '<p class="muted">no game assignments</p>'; return; }
+    el.innerHTML = '<table><tr><th>assignment</th><th>game_id</th><th>currency</th><th>bets</th><th>status</th><th></th></tr>' +
+      rows.map(g => '<tr><td><code>' + g.id.slice(0,8) + '…</code></td><td>' + g.game_id.slice(0,8) + '…</td><td>' + g.currency + '</td><td>' + g.allowed_bets.join(', ') + '</td>' +
+        '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
+        '<td><button class="ghost" data-id="' + g.id + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button></td></tr>').join('') + '</table>';
+    el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
+  } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
+}
+async function toggleGame(id, to) {
+  try { await api('/admin/v1/operator-games/' + id + '/status', { method: 'POST', body: { status: to } }); loadGames(); }
+  catch (e) { alert(e.message); }
+}
+
+// ── DISPUTES ───────────────────────────────────────────────────────────────────
+async function loadDisputes() {
+  const el = $('disputesList'); const opId = $('dspOp').value.trim(); const st = $('dspStatus').value;
+  const params = []; if (opId) params.push('operator_id=' + encodeURIComponent(opId)); if (st) params.push('status=' + st);
+  const qs = params.length ? ('?' + params.join('&')) : '';
+  try {
+    const d = await api('/admin/v1/disputes' + qs); const rows = d.disputes || [];
+    if (!rows.length) { el.innerHTML = '<p class="muted">no disputes</p>'; return; }
+    const prov = state.scope === 'provider';
+    el.innerHTML = '<table><tr><th>id</th><th>round</th><th>kind</th><th>reason</th><th>status</th><th>by</th><th></th></tr>' +
+      rows.map(x => '<tr><td><code>' + x.id + '</code></td><td class="clickable" data-ref="' + x.round_ref + '"><code>' + x.round_ref + '</code></td><td>' + x.kind + '</td><td>' + esc(x.reason) + '</td>' +
+        '<td>' + x.status + '</td><td>' + esc(x.requested_by) + '</td>' +
+        '<td>' + ((prov && x.status === 'open') ? ('<button data-app="' + x.id + '">Approve</button> <button class="danger" data-rej="' + x.id + '">Reject</button>') : '') + '</td></tr>').join('') + '</table>';
+    el.querySelectorAll('button[data-app]').forEach(b => b.addEventListener('click', () => approveDispute(b.dataset.app)));
+    el.querySelectorAll('button[data-rej]').forEach(b => b.addEventListener('click', () => rejectDispute(b.dataset.rej)));
+    el.querySelectorAll('td[data-ref]').forEach(td => td.addEventListener('click', () => { $('roundRefInput').value = td.dataset.ref; show('inspector'); lookupRound(); }));
+  } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
+}
+async function approveDispute(id) { const note = prompt('Approval note (optional):') || ''; try { await api('/admin/v1/disputes/' + id + '/approve', { method: 'POST', body: { note } }); loadDisputes(); } catch (e) { alert(e.message); } }
+async function rejectDispute(id) { const note = prompt('Rejection reason (required):'); if (note === null || !note.trim()) return; try { await api('/admin/v1/disputes/' + id + '/reject', { method: 'POST', body: { note: note.trim() } }); loadDisputes(); } catch (e) { alert(e.message); } }
+
+// ── PLAYER lookup ──────────────────────────────────────────────────────────────
+async function loadPlayer() {
+  const el = $('playerRounds'); const st = $('plStatus');
+  const opId = $('plOp').value.trim(); const pid = $('plPlayer').value.trim();
+  if (!pid) { flash(st, 'enter a player id', false); return; }
+  const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
+  st.hidden = false; st.className = 'muted'; st.textContent = 'loading…';
+  try {
+    const d = await api('/admin/v1/players/' + encodeURIComponent(pid) + '/rounds' + qs);
+    st.textContent = d.count + ' rounds';
+    if (!d.rounds.length) { el.innerHTML = '<p class="muted">no rounds for this player</p>'; return; }
+    el.innerHTML = '<table><tr><th>round</th><th>bet</th><th>win</th><th>free?</th><th>status</th><th>created</th></tr>' +
+      d.rounds.map(r => '<tr class="clickable" data-ref="' + r.round_ref + '"><td><code>' + r.round_ref + '</code></td><td>' + fmtMoney(r.bet_charged) + '</td>' +
+        '<td>' + (r.total_win > 0 ? '<span class="ok">+' + fmtMoney(r.total_win) + '</span>' : fmtMoney(r.total_win)) + '</td><td>' + (r.is_free_spin ? 'yes' : '') + '</td>' +
+        '<td>' + (r.effective_status !== r.status ? ('<span class="err">' + r.effective_status + '</span>') : r.status) + '</td><td>' + (r.created_at || '').replace('T',' ').slice(0,19) + '</td></tr>').join('') + '</table>';
+    el.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => { $('roundRefInput').value = tr.dataset.ref; show('inspector'); lookupRound(); }));
+  } catch (e) { flash(st, e.message, false); el.innerHTML = ''; }
+}
+
+// ── OPERATORS management (provider) ────────────────────────────────────────────
+function renderOperators() {
+  const el = $('operatorsList');
+  const rows = state.operators;
+  if (!rows.length) { el.innerHTML = '<p class="muted">no operators</p>'; return; }
+  el.innerHTML = '<table><tr><th>slug</th><th>name</th><th>status</th><th>ccy</th><th>actions</th></tr>' +
+    rows.map(o => '<tr><td>' + esc(o.slug) + '</td><td>' + esc(o.name) + '</td><td>' + o.status + '</td><td>' + o.default_currency + '</td>' +
+      '<td>' + (o.status === 'suspended'
+         ? '<button data-act="live" data-op="' + o.id + '">Reactivate</button>'
+         : '<button class="danger" data-act="suspended" data-op="' + o.id + '">Suspend</button>') + ' ' +
+        '<button class="ghost" data-creds="' + o.id + '">Credentials</button></td></tr>').join('') + '</table>' +
+    '<div id="opManageOut"></div>';
+  el.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', () => setOperatorStatus(b.dataset.op, b.dataset.act)));
+  el.querySelectorAll('button[data-creds]').forEach(b => b.addEventListener('click', () => loadCredentials(b.dataset.creds)));
+}
+async function setOperatorStatus(id, status) {
+  if (status === 'suspended' && !confirm('Suspend this operator? New sessions & spins will be blocked immediately.')) return;
+  try { await api('/admin/v1/operators/' + id + '/status', { method: 'POST', body: { status } }); refreshDashboard(); } catch (e) { alert(e.message); }
+}
+async function loadCredentials(id) {
+  const out = $('opManageOut');
+  try {
+    const d = await api('/admin/v1/operators/' + id + '/credentials'); const rows = d.credentials || [];
+    out.innerHTML = '<div class="panel"><h2>Credentials</h2>' + (rows.length
+      ? ('<table><tr><th>api_key_id</th><th>env</th><th>status</th><th>last4</th><th></th></tr>' +
+        rows.map(c => '<tr><td><code>' + c.api_key_id + '</code></td><td>' + c.environment + '</td><td>' + c.status + '</td><td>' + c.secret_last4 + '</td>' +
+          '<td>' + (c.status !== 'revoked' ? ('<button class="danger" data-rev="' + id + '|' + c.api_key_id + '">Revoke</button> <button class="ghost" data-rot="' + id + '|' + c.api_key_id + '">Rotate</button>') : '') + '</td></tr>').join('') + '</table>')
+      : '<p class="muted">no credentials</p>') + '</div>';
+    out.querySelectorAll('button[data-rev]').forEach(b => b.addEventListener('click', () => revokeCred(b.dataset.rev)));
+    out.querySelectorAll('button[data-rot]').forEach(b => b.addEventListener('click', () => rotateCred(b.dataset.rot)));
+  } catch (e) { out.innerHTML = '<span class="err">' + e.message + '</span>'; }
+}
+async function revokeCred(pair) { const parts = pair.split('|'); const op = parts[0], key = parts[1]; if (!confirm('Revoke ' + key + '? This is immediate and permanent.')) return; try { await api('/admin/v1/operators/' + op + '/credentials/' + key + '/revoke', { method: 'POST', body: {} }); loadCredentials(op); } catch (e) { alert(e.message); } }
+async function rotateCred(pair) { const parts = pair.split('|'); const op = parts[0], key = parts[1]; try { const d = await api('/admin/v1/operators/' + op + '/credentials/' + key + '/rotate', { method: 'POST', body: {} }); alert('New api_key_id: ' + d.credential.api_key_id + '\\napi_secret (shown once):\\n' + d.api_secret); loadCredentials(op); } catch (e) { alert(e.message); } }
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 if (state.token) {

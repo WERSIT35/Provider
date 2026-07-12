@@ -9,6 +9,7 @@ function ctx(ref: string): RoundContext {
     round_ref: ref,
     session_id: "sess-1",
     operator_id: "op-1",
+    operator_player_id: "p1",
     game_id: "bananax",
     math_config_id: "mc-1",
     bet_amount: 1
