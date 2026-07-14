@@ -17,7 +17,7 @@
  *
  * State is in-memory; restarting the process clears it.
  */
-import { buildContainer } from "../src/container";
+import { buildContainer, seedBootstrapAdmin } from "../src/container";
 import { buildApp } from "../src/app";
 import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
@@ -32,12 +32,17 @@ const ADMIN_SECRET = process.env.ADMIN_TOKEN_SECRET ?? "dev-admin-secret-change-
 // session. The printed URLs/tokens are useless if they expire before you click.
 const DEMO_TTL_SECONDS = Number(process.env.DEMO_TOKEN_TTL_SECONDS ?? 3600);
 
+const BOOTSTRAP_USER = process.env.BOOTSTRAP_ADMIN_USERNAME ?? "admin";
+const BOOTSTRAP_PASS = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "change-me-admin";
+
 const cfg = {
   launchSecret: process.env.LAUNCH_TOKEN_SECRET ?? "dev-launch-secret-change-me",
   sessionSecret: process.env.SESSION_TOKEN_SECRET ?? "dev-session-secret-change-me",
   adminSecret: ADMIN_SECRET,
   hmacSkewSeconds: 30,
-  rateLimitPerMin: 10_000
+  rateLimitPerMin: 10_000,
+  bootstrapAdminUsername: BOOTSTRAP_USER,
+  bootstrapAdminPassword: BOOTSTRAP_PASS
 };
 
 async function main(): Promise<void> {
@@ -138,6 +143,19 @@ async function main(): Promise<void> {
     DEMO_TTL_SECONDS
   );
 
+  // Real logins for the two consoles: seed the bootstrap provider super-admin and
+  // create a demo operator (casino) admin. Both must set a new password + enroll a
+  // TOTP authenticator on first sign-in.
+  seedBootstrapAdmin(c);
+  let operatorAdmin: { username: string; temp_password: string } | null = null;
+  if (!c.adminAccounts.getByUsername("demo-operator")) {
+    const created = c.adminAccounts.create(
+      { username: "demo-operator", scope: "operator", operator_id: op.id, role: "operator_admin" },
+      "dev-seed"
+    );
+    operatorAdmin = { username: created.account.username, temp_password: created.temp_password };
+  }
+
   const app = buildApp({
     logger: createLogger({ level: "info", pretty: true, env: "local" }),
     container: c
@@ -150,22 +168,29 @@ async function main(): Promise<void> {
     [
       "",
       "─────────────────────────────────────────────────────────────────────",
-      `  Banana X platform · ready on ${base}`,
+      `  Provider platform · ready on ${base}`,
       "─────────────────────────────────────────────────────────────────────",
       "",
-      `  Admin Portal:        ${base}/admin`,
-      `  Player demo (launch): ${base}/play?lt=${playerToken}`,
+      `  Provider Control Plane (our admin):  ${base}/provider`,
+      `  Operator Portal (client admin):      ${base}/admin`,
+      `  Player demo (launch):                ${base}/play?lt=${playerToken}`,
+      "",
+      "  Sign in with username + password, then enroll an authenticator (2FA)",
+      "  on first login. Seeded logins:",
+      "",
+      `    PROVIDER  → username: ${BOOTSTRAP_USER}   password: ${BOOTSTRAP_PASS}   (at /provider)`,
+      operatorAdmin
+        ? `    OPERATOR  → username: ${operatorAdmin.username}   one-time password: ${operatorAdmin.temp_password}   (at /admin)`
+        : "    OPERATOR  → already seeded (reuse your existing password)",
       "",
       `  Seeded operator:     '${op.slug}' (${op.id})`,
       `  Plays:               50 × bet 5 GEL`,
       `  Sample round_ref:    ${inspectorRef ?? "(none)"}`,
       `    → paste it in the Round Inspector to see the visual playback`,
       "",
-      "  PROVIDER admin token (see everything + onboard):",
-      `    ${providerToken}`,
-      "",
-      "  OPERATOR admin token (scoped to the demo operator):",
-      `    ${operatorToken}`,
+      "  Script-only admin tokens (bypass the login UI, e.g. for curl):",
+      `    PROVIDER: ${providerToken}`,
+      `    OPERATOR: ${operatorToken}`,
       "",
       "  Quick curl:",
       `    curl ${base}/admin/v1/rounds/${inspectorRef ?? "<round_ref>"} \\`,

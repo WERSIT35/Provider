@@ -20,30 +20,41 @@ That single command:
 - boots the platform on `http://127.0.0.1:8080`
 - creates a demo casino (operator slug `demo`) with an approved math config
 - plays 50 spins so the **Round Inspector** has something to show
-- prints **PROVIDER** and **OPERATOR** admin tokens you'll need to sign in
+- seeds a **PROVIDER** login (`admin` / `change-me-admin`) and a demo **OPERATOR**
+  login (`demo-operator` + a printed one-time password)
 - prints a sample **Round ID** (e.g. `r_seed-3`) to paste into the inspector
 - prints a **player launch URL** at `/play?lt=…`
 
-Leave that terminal running. Open these in your browser:
+Leave that terminal running. There are **two separate consoles** (different logins,
+for security):
 
-| What                      | URL                                               |
-|---------------------------|---------------------------------------------------|
-| Admin Portal              | `http://127.0.0.1:8080/admin`                     |
-| Player demo (launch URL)  | shown in the terminal — open it in another tab    |
+| What                              | URL                              |
+|-----------------------------------|----------------------------------|
+| Provider Control Plane (our admin)| `http://127.0.0.1:8080/provider` |
+| Operator Portal (the casino admin)| `http://127.0.0.1:8080/admin`    |
+| Player demo (launch URL)          | shown in the terminal            |
 
 > If you've already started the platform with `npm run dev` (no seed), the
-> portal still works but starts empty.
+> consoles still work but start empty (the provider `admin` login is still seeded).
 
 ---
 
-## 2. Sign in to the Admin Portal
+## 2. Sign in (username + password + authenticator 2FA)
 
-1. Open `http://127.0.0.1:8080/admin`.
-2. Paste the **PROVIDER** token from the terminal into the sign-in box → **Sign in**.
-3. You'll land on the **Dashboard** showing the seeded operator, RTP, GGR, and the
+1. Open `http://127.0.0.1:8080/provider`.
+2. Enter the **PROVIDER** username + password from the terminal → **Continue**.
+3. First sign-in only: you'll be asked to enroll a **TOTP authenticator** — add the
+   shown secret to Google Authenticator / Authy / 1Password (or paste it manually),
+   then enter the 6-digit code → **Verify & finish**. (A brand-new operator account
+   is also asked to set a new password first.)
+4. On later sign-ins you enter username + password, then just the current 6-digit
+   authenticator code.
+5. You'll land on the **Dashboard** showing the seeded operator, RTP, GGR, and the
    latest rounds.
 
-You can sign out at any time from the **Token** tab (right-most nav button).
+The client (casino) admin signs in the same way at `http://127.0.0.1:8080/admin`
+with the **OPERATOR** login — that portal shows only their own games and data.
+Sign out at any time from the **Sign out** button in the header.
 
 ---
 

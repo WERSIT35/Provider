@@ -17,6 +17,12 @@ const EnvSchema = z.object({
   LAUNCH_TOKEN_SECRET: z.string().min(8).default("dev-launch-secret-change-me"),
   SESSION_TOKEN_SECRET: z.string().min(8).default("dev-session-secret-change-me"),
   ADMIN_TOKEN_SECRET: z.string().min(8).default("dev-admin-secret-change-me"),
+  // Bootstrap provider super-admin, seeded on boot when no provider account exists.
+  // Local/dev defaults only; production MUST override (and the seeded admin still
+  // enrolls TOTP on first login).
+  BOOTSTRAP_ADMIN_USERNAME: z.string().min(1).default("admin"),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).default("change-me-admin"),
+  TOTP_ISSUER: z.string().min(1).default("Provider Platform"),
   // Operator HMAC request signing: max allowed clock skew, and per-key rate limit.
   HMAC_SKEW_SECONDS: z.coerce.number().int().positive().max(300).default(30),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),

@@ -50,6 +50,21 @@ export function operatorHmacAuth(container: Container): preHandlerHookHandler {
   };
 }
 
+/** Admin-console auth: validate an admin session bearer token → req.adminClaims. */
+export function adminBearerAuth(container: Container): preHandlerHookHandler {
+  return async (req, reply) => {
+    const auth = header(req, "authorization");
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return deny(reply, req, 401, "UNAUTHORIZED", "admin token required");
+    }
+    try {
+      req.adminClaims = container.adminAuth.verify(auth.slice(7));
+    } catch {
+      return deny(reply, req, 401, "UNAUTHORIZED", "invalid admin token");
+    }
+  };
+}
+
 /** Game-client auth: validate a session bearer token. */
 export function gameBearerAuth(container: Container): preHandlerHookHandler {
   return async (req, reply) => {

@@ -206,6 +206,26 @@ CREATE TABLE disputes (
 );
 CREATE INDEX ix_disputes_operator ON disputes (operator_id);
 
+-- ── Admin accounts (the identities behind the two consoles; MUTABLE, not WORM) ──
+-- password_hash is scrypt; totp_secret is the authenticator shared secret (a real
+-- build encrypts it at rest via KMS). Login (password → TOTP) is app logic.
+CREATE TABLE admin_accounts (
+  id                text PRIMARY KEY,
+  username          text NOT NULL UNIQUE,
+  scope             text NOT NULL,              -- 'provider' | 'operator'
+  operator_id       text,                       -- null for provider scope
+  role              text NOT NULL,
+  password_hash     text NOT NULL,
+  totp_secret       text,                       -- null until enrolled
+  status            text NOT NULL DEFAULT 'active',
+  must_set_password boolean NOT NULL DEFAULT true,
+  totp_enrolled     boolean NOT NULL DEFAULT false,
+  failed_attempts   integer NOT NULL DEFAULT 0,
+  locked_until      timestamptz,
+  created_at        timestamptz NOT NULL
+);
+CREATE INDEX ix_admin_accounts_operator ON admin_accounts (operator_id);
+
 -- ── Sandbox wallet (demo player funds; a real build uses the operator's wallet) ──
 CREATE TABLE wallet_balances (
   balance_key text PRIMARY KEY,   -- "<operator_player_id>:<currency>"
