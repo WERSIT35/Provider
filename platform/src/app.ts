@@ -5,7 +5,11 @@ import healthRoutes from "./modules/health/health.routes";
 import operatorRoutes from "./http/operator.routes";
 import gameRoutes from "./http/game.routes";
 import adminRoutes from "./http/admin.routes";
-import adminConsoleRoutes from "./http/admin-console";
+import adminAuthRoutes from "./http/admin-auth.routes";
+import adminAccountRoutes from "./http/admin-accounts.routes";
+import adminAssetsRoutes from "./http/admin-assets";
+import providerConsoleRoutes from "./http/provider-console";
+import operatorConsoleRoutes from "./http/operator-console";
 import playPageRoutes from "./http/play-page";
 import staticAssetsRoutes from "./http/static-assets";
 import type { AdminClaims } from "./modules/admin/admin-auth";
@@ -83,10 +87,14 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
 
   app.register(healthRoutes);
   app.register(staticAssetsRoutes);
-  app.register(adminConsoleRoutes);
+  app.register(adminAssetsRoutes);
+  app.register(providerConsoleRoutes);
+  app.register(operatorConsoleRoutes);
   app.register(playPageRoutes);
   app.register(operatorRoutes);
   app.register(gameRoutes);
+  app.register(adminAuthRoutes);
+  app.register(adminAccountRoutes);
   app.register(adminRoutes);
 
   return app;

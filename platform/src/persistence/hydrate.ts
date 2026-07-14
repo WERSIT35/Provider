@@ -8,6 +8,7 @@ import type { AdjustmentRecord } from "../modules/rounds/round-adjustment.store"
 import type { Session } from "../modules/session/session.service";
 import type { DisputeRecord } from "../modules/disputes/dispute.service";
 import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame } from "../modules/management/management.types";
+import type { AdminAccount } from "../modules/admin/admin-account";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 
 /**
@@ -16,7 +17,7 @@ import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wal
  * chains and seq counters continue seamlessly.
  */
 export async function hydrateContainer(c: Container, p: Persistence): Promise<void> {
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs] =
+  const [operators, domains, credentials, games, mathConfigs, operatorGames, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts] =
     await Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
@@ -32,7 +33,8 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
       p.loadTable("disputes"),
       p.loadTable("wallet_balances"),
       p.loadTable("wallet_applied"),
-      p.loadTable("wallet_debit_refs")
+      p.loadTable("wallet_debit_refs"),
+      p.loadTable("admin_accounts")
     ]);
 
   c.mgmt.hydrate({
@@ -49,6 +51,7 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
   c.transactions.hydrate(txs as unknown as TxRecord[]);
   c.adjustments.hydrate(adjustments as unknown as AdjustmentRecord[]);
   c.disputes.hydrate(disputes as unknown as DisputeRecord[]);
+  c.adminAccounts.hydrate(adminAccounts as unknown as AdminAccount[]);
 
   if (c.wallet instanceof SandboxWallet) {
     c.wallet.hydrate({

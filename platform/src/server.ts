@@ -1,6 +1,6 @@
 import { loadEnv, isProd } from "./config/env";
 import { createLogger } from "./lib/logger";
-import { buildContainer } from "./container";
+import { buildContainer, seedBootstrapAdmin } from "./container";
 import { buildApp } from "./app";
 import { NullPersistence, PostgresPersistence, type Persistence } from "./persistence/persistence";
 import { hydrateContainer } from "./persistence/hydrate";
@@ -33,7 +33,10 @@ async function main(): Promise<void> {
       sessionSecret: env.SESSION_TOKEN_SECRET,
       adminSecret: env.ADMIN_TOKEN_SECRET,
       hmacSkewSeconds: env.HMAC_SKEW_SECONDS,
-      rateLimitPerMin: env.RATE_LIMIT_PER_MIN
+      rateLimitPerMin: env.RATE_LIMIT_PER_MIN,
+      bootstrapAdminUsername: env.BOOTSTRAP_ADMIN_USERNAME,
+      bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD,
+      totpIssuer: env.TOTP_ISSUER
     },
     { persistence }
   );
@@ -46,6 +49,12 @@ async function main(): Promise<void> {
       "hydrated_from_postgres"
     );
   }
+
+  // Seed the bootstrap provider super-admin (after hydration so a durable account
+  // is never duplicated). The seeded admin enrolls TOTP on first login.
+  const boot = seedBootstrapAdmin(container);
+  if (boot.seeded) logger.info({ username: boot.username }, "bootstrap_admin_seeded");
+
   logger.info({ rules_version: container.engine.rulesVersion() }, "container_ready");
 
   const app = buildApp({ logger, container });

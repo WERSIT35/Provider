@@ -106,6 +106,11 @@ const TABLES: Record<string, TableSpec> = {
     ["id"],
     { orderBy: "created_at" }
   ),
+  admin_accounts: spec(
+    ["id", "username", "scope", "operator_id", "role", "password_hash", "totp_secret", "status", "must_set_password", "totp_enrolled", "failed_attempts", "locked_until", "created_at"],
+    ["id"],
+    { orderBy: "created_at" }
+  ),
   wallet_balances: spec(["balance_key", "amount"], ["balance_key"]),
   wallet_applied: spec(["idempotency_key", "result_jsonb"], ["idempotency_key"], { jsonb: ["result_jsonb"], rename: { result_jsonb: "result" } }),
   wallet_debit_refs: spec(["operator_tx_ref", "balance_key", "amount"], ["operator_tx_ref"])

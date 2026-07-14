@@ -98,18 +98,22 @@ npm run build         # tsc -> dist/
 The engine + rules are resolved from the repo's existing `client/engine` and
 `client/math/game-rules-v2.json`; override with `ENGINE_DIR` / `ENGINE_RULES_PATH`.
 
-### One-command run (Admin Portal + Round Inspector + player demo)
+### One-command run (two consoles + Round Inspector + player demo)
 
 ```bash
 npm run dev:seed
 ```
 
-This provisions a demo operator, plays 50 spins, prints both **PROVIDER** and **OPERATOR** admin
-tokens, prints a sample `round_ref` to paste into the Round Inspector, and prints a launch URL
-for the player demo. Then open:
+This provisions a demo operator, plays 50 spins, seeds the two console logins, prints a sample
+`round_ref` to paste into the Round Inspector, and prints a launch URL for the player demo. There
+are **two separate admin consoles** with **separate logins** (username + password + TOTP 2FA):
 
-- **`http://127.0.0.1:8080/admin`** — the Admin Portal (Dashboard / Round Inspector / Onboarding
-  / Reports). Sign in by pasting the printed bearer token.
+- **`http://127.0.0.1:8080/provider`** — the **Provider Control Plane** (our admin: Dashboard,
+  Onboarding, all games, Disputes, Reports, Round Inspector, Admin Accounts). Seeded login
+  `admin` / `change-me-admin`.
+- **`http://127.0.0.1:8080/admin`** — the **Provider Games · Operator Portal** (the casino admin:
+  only their assigned games + data). Seeded login `demo-operator` + the printed one-time password.
+- Each account sets a password (operator) and enrolls a TOTP authenticator on first sign-in.
 - The player launch URL printed in the terminal — opens `/play?lt=…`, the minimal player demo
   that shows the **Round ID** after each spin.
 

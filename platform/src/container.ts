@@ -8,6 +8,7 @@ import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
 import { ReportingService } from "./modules/reporting/reporting.service";
 import { AdminAuthService } from "./modules/admin/admin-auth";
+import { AdminAccountService } from "./modules/admin/admin-account";
 import { RoundLedgerService } from "./modules/ledger/round-ledger.service";
 import { InMemoryRoundRepository, InMemoryAuditRepository } from "./modules/ledger/memory-repositories";
 import { InMemoryRoundAdjustmentStore } from "./modules/rounds/round-adjustment.store";
@@ -24,6 +25,11 @@ export interface PlatformConfig {
   adminSecret: string;
   hmacSkewSeconds: number;
   rateLimitPerMin: number;
+  // Bootstrap provider super-admin (seeded on boot if no provider account exists).
+  // Optional so tests that mint tokens directly need not supply them.
+  bootstrapAdminUsername?: string;
+  bootstrapAdminPassword?: string;
+  totpIssuer?: string;
 }
 
 /**
@@ -47,6 +53,7 @@ export interface Container {
   verification: RoundVerificationService;
   disputes: DisputeService;
   adminAuth: AdminAuthService;
+  adminAccounts: AdminAccountService;
   nonceStore: NonceStore;
   rateLimiter: RateLimiter;
   // Durable-persistence plumbing (NullPersistence when Postgres is disabled).
@@ -93,10 +100,24 @@ export function buildContainer(
     verification,
     disputes,
     adminAuth: new AdminAuthService(config.adminSecret),
+    adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
     nonceStore: new NonceStore(config.hmacSkewSeconds * 4 * 1000),
     rateLimiter: new RateLimiter(config.rateLimitPerMin),
     persistence,
     roundsRepo: rounds,
     auditRepo: audit
   };
+}
+
+/**
+ * Seed the bootstrap provider super-admin if the platform has no provider account
+ * yet. Call AFTER hydration (so an existing DB account is not duplicated). The
+ * seeded admin has a known password but must still enroll TOTP on first login.
+ */
+export function seedBootstrapAdmin(c: Container): { username: string; seeded: boolean } {
+  const username = c.config.bootstrapAdminUsername ?? "admin";
+  const password = c.config.bootstrapAdminPassword ?? "change-me-admin";
+  if (c.adminAccounts.hasAnyProviderAccount()) return { username, seeded: false };
+  c.adminAccounts.seedProviderSuperAdmin(username, password);
+  return { username, seeded: true };
 }
