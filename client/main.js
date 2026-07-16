@@ -326,21 +326,79 @@ function multiplierIconScale(value) {
 const prefersReducedMotion = () =>
   Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
+// Quality tiers. "high" is the full desktop experience; "mid"/"low" progressively
+// trade visual richness for framerate on weaker hardware. Each tier maps to the
+// three knobs that actually move the needle: backing-store resolution (maxDpr),
+// a ceiling on particle density (fxCeil), and how hard idle frames are throttled.
+const TIER_PROFILES = {
+  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 50 },
+  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 33 },
+  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 0  }
+};
+const TIER_RANK = { low: 0, mid: 1, high: 2 };
+
+// Coarse device-capability guess, used only as the STARTING tier. The runtime FPS
+// governor (see ReelCanvasRenderer.monitorPerformance) can drop it further if real
+// frames come in slow, but never raises it above this — so a phone that lies about
+// its specs still gets throttled by measured performance. `deviceMemory` and
+// `connection` are Chromium-only; unknown values assume a capable mid device.
+// QA/testing override: `?perf=low|mid|high` forces a tier and is remembered in
+// localStorage (so it survives the launch-token redirect into /play). `?perf=auto`
+// clears it. Lets us exercise every device configuration without the hardware.
+function tierOverride() {
+  let forced = null;
+  try {
+    const q = new URLSearchParams(window.location.search).get("perf");
+    if (q) {
+      if (q === "auto") localStorage.removeItem("perfTier");
+      else if (TIER_PROFILES[q]) localStorage.setItem("perfTier", q);
+    }
+    forced = localStorage.getItem("perfTier");
+  } catch (_) { /* private mode / no storage — fall through to auto-detect */ }
+  return TIER_PROFILES[forced] ? forced : null;
+}
+
+function detectDeviceTier() {
+  const forced = tierOverride();
+  if (forced) return forced;
+  const nav = window.navigator || {};
+  // NaN when the API isn't exposed (deviceMemory is Chromium-only). We compare
+  // with <= so an *absent* signal never demotes — NaN <= n is always false — which
+  // keeps Safari/Firefox at high and lets the FPS governor demote if truly needed.
+  const mem = Number(nav.deviceMemory);        // GB
+  const cores = Number(nav.hardwareConcurrency);
+  const conn = nav.connection || {};
+  const et = conn.effectiveType || "";
+  if (conn.saveData || /(^|\b)(slow-2g|2g)$/.test(et) || mem <= 2 || cores <= 2) return "low";
+  if (/(^|\b)3g$/.test(et) || mem <= 4 || cores <= 4) return "mid";
+  return "high";
+}
+
 class ReelCanvasRenderer {
   constructor(canvas, { rowsCount, colsCount }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.rows = rowsCount;
     this.cols = colsCount;
+    // Quality tier drives resolution + FX budget. Starts from device capability;
+    // the FPS governor can only lower it. applyTier() publishes it to the DOM so
+    // CSS can degrade in step (body.perf-low / perf-mid).
+    this.tier = detectDeviceTier();
+    this.applyTier(this.tier);
     // Cap the backing-store resolution: phones report DPR up to 3-4, but drawing
     // 3x+ pixels every frame is the single biggest mobile perf cost for almost no
-    // visible gain. 2x stays crisp on retina while keeping fill-rate sane.
-    this.maxDpr = 2;
+    // visible gain. The per-tier maxDpr (set by applyTier) keeps fill-rate sane.
     this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
     // Particle-density multiplier, recomputed on resize from viewport size +
-    // reduced-motion. 1 = full desktop FX; lower thins bursts on small/low-power
-    // screens to hold framerate.
+    // reduced-motion, then clamped to the tier's fxCeil. 1 = full desktop FX;
+    // lower thins bursts on small/low-power screens to hold framerate.
     this.fxScale = 1;
+    // FPS-governor state. We sample frame intervals only while the scene is
+    // visually busy (idle frames are throttled and would skew the average slow),
+    // and re-evaluate about once a second.
+    this._frameSamples = [];
+    this._governorCheckedAt = performance.now();
+    this._lastDrawAt = 0;
     this.images = new Map();
     this.board = {
       matrix: Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => "BLUE_DIAMOND")),
@@ -400,6 +458,50 @@ class ReelCanvasRenderer {
     });
   }
 
+  /** Adopt a quality tier: update the resolution/FX budget and mirror it onto the
+   *  <body> so CSS can degrade (drop the fixed background, blur, heavy art). */
+  applyTier(tier) {
+    this.tier = TIER_PROFILES[tier] ? tier : "high";
+    const p = TIER_PROFILES[this.tier];
+    this.maxDpr = p.maxDpr;
+    this.idleThrottleMs = p.idleThrottleMs;
+    const body = document.body;
+    if (body) {
+      body.classList.toggle("perf-low", this.tier === "low");
+      body.classList.toggle("perf-mid", this.tier === "mid");
+    }
+  }
+
+  /** Drop one quality tier (high→mid→low). Returns true if it actually changed.
+   *  Downgrade-only by design: auto-upgrading invites oscillation, and a device
+   *  that struggled once will usually struggle again. */
+  downgradeTier() {
+    const next = this.tier === "high" ? "mid" : this.tier === "mid" ? "low" : null;
+    if (!next) return false;
+    this.applyTier(next);
+    this.resize(); // re-derive dpr + fxScale + rebuild caches at the new budget
+    return true;
+  }
+
+  /** Runtime FPS governor. Collects frame intervals while the scene is busy and,
+   *  about once a second, steps the tier down if the median frame is too slow
+   *  (median resists one-off GC/hitch spikes better than a mean would). */
+  monitorPerformance(now, dt, busy) {
+    if (busy && dt > 0) {
+      this._frameSamples.push(dt);
+      if (this._frameSamples.length > 120) this._frameSamples.shift();
+    }
+    if (now - this._governorCheckedAt < 1000) return;
+    this._governorCheckedAt = now;
+    const samples = this._frameSamples;
+    this._frameSamples = [];
+    if (TIER_RANK[this.tier] === 0 || samples.length < 30) return;
+    const sorted = samples.slice().sort((a, b) => a - b);
+    const medianMs = sorted[sorted.length >> 1];
+    // > ~30ms/frame (< ~33fps) sustained under load is our "too slow" line.
+    if (medianMs > 30) this.downgradeTier();
+  }
+
   resize() {
     const box = this.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
@@ -412,6 +514,9 @@ class ReelCanvasRenderer {
     const cssWidth = box.width;
     let scale = cssWidth < 380 ? 0.5 : cssWidth < 560 ? 0.7 : cssWidth < 820 ? 0.85 : 1;
     if (prefersReducedMotion()) scale = Math.min(scale, 0.4);
+    // Never exceed the current tier's FX budget — this is what a governor
+    // downgrade (and low-end devices) actually cash in for a steadier framerate.
+    scale = Math.min(scale, TIER_PROFILES[this.tier].fxCeil);
     this.fxScale = scale;
     // Layout/DPR changed → rebuild the static stage cache and colour sprites
     // (they were baked at the old size/resolution).
@@ -1416,9 +1521,23 @@ class ReelCanvasRenderer {
 
   loop() {
     const now = performance.now();
-    const dt = Math.max(0, Math.min(34, now - this.lastTick));
+    // Idle throttle: when nothing is animating the stage is just the (cached)
+    // static board, so on mid/low tiers we redraw it at a reduced cadence instead
+    // of a full 60fps to save CPU/battery. High tier and any busy frame always
+    // render. We still schedule every rAF so we react instantly when work starts.
+    const busy = this.isVisuallyBusy();
+    const throttle = this.idleThrottleMs;
+    if (!busy && throttle && now - this._lastDrawAt < throttle) {
+      requestAnimationFrame(() => this.loop());
+      return;
+    }
+    const rawDelta = now - this.lastTick;
+    const dt = Math.max(0, Math.min(34, rawDelta));
     this.lastTick = now;
+    this._lastDrawAt = now;
     this.time += dt;
+    // Governor needs the true frame interval, not the animation-clamped dt.
+    this.monitorPerformance(now, rawDelta, busy);
     try {
       this.draw();
     } catch (err) {
@@ -4507,7 +4626,64 @@ el.symbolLegend.textContent = "Top Crown, Hourglass, Ring, Chalice, Red Gem, Pur
 el.payoutRuleText.textContent = "High-volatility pays-anywhere model. Wild multipliers and scatter-triggered bonus spins drive peak wins.";
 el.multiplierInfo.textContent = "Loading...";
 el.activeMultiplier.textContent = "1x";
-requestAnimationFrame(() => document.body.classList.add("app-ready"));
+// Boot loader: gate the reveal on the assets the first frame actually needs, show
+// real progress, then pull the heavy non-critical art in the background. The
+// renderer already kicked these fetches off in preloadSymbols(), so re-requesting
+// the same URLs here just rides the browser cache while we track completion.
+function runBootLoader() {
+  const bar = document.getElementById("bootLoaderBar");
+  const pctEl = document.getElementById("bootLoaderPct");
+  const loader = document.getElementById("bootLoader");
+  const critical = [
+    "BLUE_DIAMOND", "GREEN_TRIANGLE", "YELLOW_HEX", "PURPLE_TRIANGLE", "RED_GEM",
+    "CHALICE", "RING", "HOURGLASS", "TOP_CROWN", "REEL", "MULTI_COMMON", "SCATTER"
+  ].map((key) => symbolAssets[key]).filter(Boolean);
+  critical.push("assets/symbols/SPIN.png"); // on-screen spin control
+  const total = critical.length;
+  let done = 0;
+  let revealed = false;
+
+  const setProgress = (p) => {
+    if (bar) bar.style.width = `${p}%`;
+    if (pctEl) pctEl.textContent = `${p}%`;
+    if (loader) loader.setAttribute("aria-valuenow", String(p));
+  };
+  const bump = () => {
+    done += 1;
+    setProgress(Math.round((done / total) * 100));
+  };
+  const loadOne = (src) => new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = img.onerror = () => { bump(); resolve(); };
+    img.src = src;
+  });
+  const reveal = () => {
+    if (revealed) return;
+    revealed = true;
+    setProgress(100);
+    document.body.classList.add("app-ready");
+    loadDeferredAssets();
+  };
+
+  // Safety valve: a stalled asset must never trap the player behind the splash.
+  const safety = setTimeout(reveal, 8000);
+  Promise.all(critical.map(loadOne)).then(() => {
+    clearTimeout(safety);
+    reveal();
+  });
+}
+
+// Non-critical, heavy art loaded only after the game is visible: the ~5MB hero
+// character (skipped entirely on low-tier devices, where CSS also hides it).
+function loadDeferredAssets() {
+  const hero = document.getElementById("stageCharacter");
+  if (hero && hero.dataset.src && !document.body.classList.contains("perf-low")) {
+    hero.src = hero.dataset.src;
+  }
+}
+
+runBootLoader();
 initSession().catch((err) => {
   el.resultDump.textContent = `Init failed: ${err.message}`;
   pushGameMessage(`Init failed: ${err.message}`, "error");

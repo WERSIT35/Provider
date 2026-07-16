@@ -22,9 +22,16 @@
     <link rel="stylesheet" href="styles.css?v=20260710-1" />
   </head>
   <body>
+    <div id="bootLoader" class="boot-loader" role="progressbar" aria-label="Loading game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="boot-loader__inner">
+        <div class="boot-loader__title">Banana X</div>
+        <div class="boot-loader__track"><div class="boot-loader__bar" id="bootLoaderBar"></div></div>
+        <div class="boot-loader__pct" id="bootLoaderPct">0%</div>
+      </div>
+    </div>
     <main class="sanctum">
       <section class="altar">
-        <img class="stage-character" id="stageCharacter" src="assets/symbols/Character.png" alt="" aria-hidden="true">
+        <img class="stage-character" id="stageCharacter" data-src="assets/symbols/Character.png" alt="" aria-hidden="true" decoding="async">
         <div class="altar-top">
           <div class="title-cluster">
             <span class="title-kicker">Fantasma Games</span>

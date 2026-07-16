@@ -2801,6 +2801,85 @@ body {
   background-color: #050a14;
 }
 
+/* ── Boot loader ───────────────────────────────────────────────────────────
+   Full-screen splash shown until the critical assets have decoded. main.js
+   drives the bar width and adds `app-ready` to <body> to fade it out. The game
+   UI underneath stays hidden until then so the player never sees a half-loaded
+   board or images popping in. */
+.boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #10192b, #050a14 70%);
+  transition: opacity 0.45s ease;
+}
+.boot-loader__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: min(320px, 68vw);
+}
+.boot-loader__title {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #eeb76a;
+  text-shadow: 0 0 18px rgba(238, 183, 106, 0.45);
+}
+.boot-loader__track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+.boot-loader__bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eeb76a, #ffd9a0);
+  box-shadow: 0 0 12px rgba(238, 183, 106, 0.6);
+  transition: width 0.25s ease;
+}
+.boot-loader__pct {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.66);
+}
+/* Keep the game UI out of sight until assets are ready, then fade both. */
+body:not(.app-ready) .sanctum { opacity: 0; }
+.sanctum { transition: opacity 0.4s ease; }
+body.app-ready .boot-loader {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-loader, .boot-loader__bar, .sanctum { transition: none; }
+}
+
+/* ── Graceful degradation on weak devices ──────────────────────────────────
+   ReelCanvasRenderer publishes its quality tier onto <body>; these rules cash
+   that in for the cheapest CSS wins. `background-attachment: fixed` is a notable
+   mobile repaint cost, so mid/low scroll the backdrop with the page instead. Low
+   tier also drops the expensive backdrop-blur/heavy hero art entirely. */
+body.perf-mid,
+body.perf-low {
+  background-attachment: scroll;
+}
+body.perf-low .stage-character { display: none; }
+body.perf-low *,
+body.perf-low *::before,
+body.perf-low *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* Overlay layers removed — nothing washes/tints the background anymore. */
 body::before,
 body::after {
