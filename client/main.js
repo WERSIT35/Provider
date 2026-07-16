@@ -272,6 +272,44 @@ const easeOutBounce = (t) => {
   return n1 * u * u + 0.984375;
 };
 
+// ── Reel-drop physics (#22) ────────────────────────────────────────────────
+// Gravity model for the symbol drop-in / drop-out. Everything is normalised: for
+// a fall of unit duration τ∈[0,1], gravityFallFraction returns the fraction of the
+// travel completed, s∈[0,1], under constant gravitational acceleration from an
+// initial velocity v0. Callers scale s by the real pixel distance.
+//
+// Uncapped, displacement is s = v0·τ + ½·a·τ², with a picked so the symbol lands
+// exactly at τ=1 → a = 2·(1 − v0). So v0=0 gives pure t² (start from rest, classic
+// gravity) and a small v0 gives a little initial push, then acceleration.
+//
+// `vMax` is an optional terminal velocity (in travel-fractions per unit τ). If the
+// uncapped fall would never exceed it (the default for normal drops) it does
+// nothing. If it would, the symbol accelerates under gravity until it reaches vMax,
+// then coasts at vMax — and gravity is re-solved so it STILL lands exactly at τ=1
+// (continuous with the uncapped case at the boundary vMax = 2 − v0).
+const DROP_PHYSICS = {
+  // Drop-in: a touch of initial velocity, gravity to the slot by fallEnd, then a
+  // small restitution-damped bounce over the remaining time settles it.
+  in:  { v0: 0.16, vMax: 2.6, fallEnd: 0.72, bounceCells: 0.09 },
+  // Drop-out: falls cleanly out of frame — near rest, then accelerates. No bounce.
+  out: { v0: 0.06, vMax: Infinity }
+};
+
+function gravityFallFraction(tau, v0 = 0, vMax = Infinity) {
+  tau = clamp(tau, 0, 1);
+  const peakV = 2 - v0;                       // uncapped velocity at τ=1
+  if (!(vMax < peakV)) {                       // no cap needed (covers Infinity)
+    const a = 2 * (1 - v0);
+    return v0 * tau + 0.5 * a * tau * tau;
+  }
+  const cap = Math.max(vMax, 1.001);           // vMax ≤ 1 could never reach the slot
+  const t1 = 2 * (cap - 1) / (cap - v0);       // time terminal velocity is reached
+  const g = (cap - v0) / t1;                   // gravity during the accel phase
+  if (tau <= t1) return v0 * tau + 0.5 * g * tau * tau;
+  const s1 = v0 * t1 + 0.5 * g * t1 * t1;      // distance covered by terminal onset
+  return s1 + cap * (tau - t1);                // constant-velocity coast to 1
+}
+
 function setSigned(target, value) {
   target.classList.remove("positive", "negative");
   if (value > 0) target.classList.add("positive");
@@ -1584,28 +1622,22 @@ class ReelCanvasRenderer {
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
     if (drop.exit) {
-      // Spin-end exit: symbols fall OUT of the board under real gravity. From
-      // rest, displacement under constant acceleration is ∝ t², so the symbols
-      // start nearly still and accelerate downward — the satisfying "the floor
-      // dropped out" feel, instead of the near-linear constant-speed slide the
-      // old curve produced.
-      const exitT = progress * progress;
-      return lerp(0, exitDistance, exitT);
+      // Drop-out (#22): symbols fall OUT of the board under gravity — near rest at
+      // first, then accelerating, for the "floor dropped out" feel. See
+      // gravityFallFraction for the kinematics.
+      const p = DROP_PHYSICS.out;
+      return exitDistance * gravityFallFraction(progress, p.v0, p.vMax);
     }
-    // Gravity-style fall: the symbol ACCELERATES downward like a real drop
-    // instead of the old decelerating ease (which read as a sharp snap). It
-    // gives a gentle bit of initial motion, speeds up, reaches its slot ~75%
-    // through, then a single soft, fully-damped bounce settles it — the
-    // satisfying tumble-cascade feel.
-    const fallEnd = 0.75;
-    if (progress < fallEnd) {
-      const ft = progress / fallEnd;
-      const accel = ft * (0.4 + 0.6 * ft); // slight initial velocity, then gravity
-      return lerp(-distance, 0, accel);
+    // Drop-in (#22): symbols accelerate downward under gravity into their slot,
+    // landing by `fallEnd`, then a single damped bounce (restitution) settles them.
+    const p = DROP_PHYSICS.in;
+    if (progress < p.fallEnd) {
+      const s = gravityFallFraction(progress / p.fallEnd, p.v0, p.vMax);
+      return lerp(-distance, 0, s);
     }
-    const settleT = (progress - fallEnd) / (1 - fallEnd);
+    const settleT = (progress - p.fallEnd) / (1 - p.fallEnd);
     const damp = (1 - settleT) ** 2;
-    return -Math.sin(settleT * Math.PI) * damp * rowStep * 0.09;
+    return -Math.sin(settleT * Math.PI) * damp * rowStep * p.bounceCells;
   }
 
   dropDelay(row, col, count) {
