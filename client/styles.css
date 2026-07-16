@@ -791,21 +791,54 @@ body.public-mode .reels-canvas {
    controls for one-thumb play and keep them in the bottom thumb zone.
 ---------------------------------------------------------------------------- */
 @media (max-width: 720px) and (orientation: portrait) {
+  /* Symbol size on a 6-wide grid is capped by boardWidth/6, so reclaim every
+     spare horizontal pixel: trim the side padding to the safe-area minimum. */
   body.public-mode .altar {
     gap: 6px;
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
+    padding-left: max(4px, env(safe-area-inset-left));
+    padding-right: max(4px, env(safe-area-inset-right));
   }
 
   /* The reels take all the free vertical space between the HUD and controls. */
   body.public-mode .vault-shell {
     grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 6px;
   }
+
+  /* Full-bleed board: drop the window's inner padding + dark fill so the 6/5 board
+     spans the full screen width (biggest possible symbols) and the space around it
+     shows the temple backdrop rather than a grey box. Centre the board in the
+     window (grid place-items) so the reclaimed vertical space sits evenly. */
+  body.public-mode .vault-window {
+    padding: 2px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    display: grid;
+    place-items: center;
+  }
+
+  /* Portrait is always width-bound (tall, narrow window), so bind WIDTH and let
+     height derive from the aspect — this yields an exact 6/5 box with square,
+     evenly-spaced cells (no stretched grid), and no max-* clamp to break the
+     ratio. max-height is only a safety net for unusually short viewports. */
+  body.public-mode .reels-stage {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 6 / 5;
+    margin: 0;
+  }
+
+  /* Trim the chrome above the board so the board + spin button dominate. */
+  body.public-mode .hud-message-rail { min-height: 20px; }
+  body.public-mode .hud-bar { padding: 6px 10px; }
 
   /* Bigger, thumb-friendly spin button anchored at the bottom. */
   body.public-mode .img-btn-spin {
-    max-width: clamp(104px, 30vw, 140px);
-    max-height: clamp(104px, 30vw, 140px);
+    max-width: clamp(108px, 32vw, 148px);
+    max-height: clamp(108px, 32vw, 148px);
   }
 
   /* Keep flanking controls comfortably tappable (>= 44px) and roomy. */
