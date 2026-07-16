@@ -791,21 +791,54 @@ body.public-mode .reels-canvas {
    controls for one-thumb play and keep them in the bottom thumb zone.
 ---------------------------------------------------------------------------- */
 @media (max-width: 720px) and (orientation: portrait) {
+  /* Symbol size on a 6-wide grid is capped by boardWidth/6, so reclaim every
+     spare horizontal pixel: trim the side padding to the safe-area minimum. */
   body.public-mode .altar {
     gap: 6px;
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
+    padding-left: max(4px, env(safe-area-inset-left));
+    padding-right: max(4px, env(safe-area-inset-right));
   }
 
   /* The reels take all the free vertical space between the HUD and controls. */
   body.public-mode .vault-shell {
     grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 6px;
   }
+
+  /* Full-bleed board: drop the window's inner padding + dark fill so the 6/5 board
+     spans the full screen width (biggest possible symbols) and the space around it
+     shows the temple backdrop rather than a grey box. Centre the board in the
+     window (grid place-items) so the reclaimed vertical space sits evenly. */
+  body.public-mode .vault-window {
+    padding: 2px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    display: grid;
+    place-items: center;
+  }
+
+  /* Portrait is always width-bound (tall, narrow window), so bind WIDTH and let
+     height derive from the aspect — this yields an exact 6/5 box with square,
+     evenly-spaced cells (no stretched grid), and no max-* clamp to break the
+     ratio. max-height is only a safety net for unusually short viewports. */
+  body.public-mode .reels-stage {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 6 / 5;
+    margin: 0;
+  }
+
+  /* Trim the chrome above the board so the board + spin button dominate. */
+  body.public-mode .hud-message-rail { min-height: 20px; }
+  body.public-mode .hud-bar { padding: 6px 10px; }
 
   /* Bigger, thumb-friendly spin button anchored at the bottom. */
   body.public-mode .img-btn-spin {
-    max-width: clamp(104px, 30vw, 140px);
-    max-height: clamp(104px, 30vw, 140px);
+    max-width: clamp(108px, 32vw, 148px);
+    max-height: clamp(108px, 32vw, 148px);
   }
 
   /* Keep flanking controls comfortably tappable (>= 44px) and roomy. */
@@ -2799,6 +2832,85 @@ body {
      fills the whole game; the reel table and controls float on top. */
   background: url("assets/symbols/Background.png") center / cover no-repeat fixed;
   background-color: #050a14;
+}
+
+/* ── Boot loader ───────────────────────────────────────────────────────────
+   Full-screen splash shown until the critical assets have decoded. main.js
+   drives the bar width and adds `app-ready` to <body> to fade it out. The game
+   UI underneath stays hidden until then so the player never sees a half-loaded
+   board or images popping in. */
+.boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #10192b, #050a14 70%);
+  transition: opacity 0.45s ease;
+}
+.boot-loader__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: min(320px, 68vw);
+}
+.boot-loader__title {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #eeb76a;
+  text-shadow: 0 0 18px rgba(238, 183, 106, 0.45);
+}
+.boot-loader__track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+.boot-loader__bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eeb76a, #ffd9a0);
+  box-shadow: 0 0 12px rgba(238, 183, 106, 0.6);
+  transition: width 0.25s ease;
+}
+.boot-loader__pct {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.66);
+}
+/* Keep the game UI out of sight until assets are ready, then fade both. */
+body:not(.app-ready) .sanctum { opacity: 0; }
+.sanctum { transition: opacity 0.4s ease; }
+body.app-ready .boot-loader {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-loader, .boot-loader__bar, .sanctum { transition: none; }
+}
+
+/* ── Graceful degradation on weak devices ──────────────────────────────────
+   ReelCanvasRenderer publishes its quality tier onto <body>; these rules cash
+   that in for the cheapest CSS wins. `background-attachment: fixed` is a notable
+   mobile repaint cost, so mid/low scroll the backdrop with the page instead. Low
+   tier also drops the expensive backdrop-blur/heavy hero art entirely. */
+body.perf-mid,
+body.perf-low {
+  background-attachment: scroll;
+}
+body.perf-low .stage-character { display: none; }
+body.perf-low *,
+body.perf-low *::before,
+body.perf-low *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Overlay layers removed — nothing washes/tints the background anymore. */
