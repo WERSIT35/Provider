@@ -10,6 +10,7 @@
     "simulate": "node math/simulate.js",
     "test:api": "node tools/api-test.js",
     "test:rtp-parity": "node tools/rtp-parity.js",
+    "test:spin-lock": "node tools/spin-lock-test.js",
     "build": "echo \"No build step - static site\" && exit 0"
   },
   "engines": {

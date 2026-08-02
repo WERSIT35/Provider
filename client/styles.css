@@ -620,6 +620,10 @@ body.public-mode .vault-window {
   justify-content: center;
   padding: 8px;
   margin: 0 auto;
+  /* Size container so the board below can fit itself to the AVAILABLE box
+     (cqw/cqh) and keep its aspect ratio, letterboxing/pillarboxing into
+     whatever space the surrounding chrome leaves. */
+  container-type: size;
 }
 
 body.public-mode .img-btn-spin {
@@ -628,12 +632,20 @@ body.public-mode .img-btn-spin {
 }
 
 body.public-mode .reels-stage {
-  width: 100%;
-  height: 100%;
+  /* Keep the intended 6/5 board shape on EVERY viewport, not just the ones the
+     specialized media queries below cover. Setting both width:100% and
+     height:100% (the old rule) makes the browser ignore aspect-ratio, so the
+     board stretched to the container's shape on tablets, landscape phones, and
+     short desktop windows. Bind whichever axis is limiting instead: 120cqh is
+     6/5 * 100cqh, so min() picks the width that fits both dimensions →
+     pillarbox on wide-short containers, letterbox on tall-narrow ones. */
+  aspect-ratio: 6 / 5;
+  width: min(100cqw, 120cqh);
+  height: auto;
   min-height: 0;
   max-width: 100%;
-  aspect-ratio: 6 / 5;
-  margin: 0 auto;
+  max-height: 100%;
+  margin: auto;
 }
 
 body.public-mode .altar-top {
