@@ -84,6 +84,38 @@ function check(name, cond) {
   check("all 19 remaining taps become fast-stops, not spins", fastStops === 19);
 }
 
+// --- Press decision: a 2nd press in ANY in-flight phase = fast-stop ----------
+// Models client/main.js spin() + requestFastStop(): the fast-stop must latch
+// during the STARTING window (dropOff + network), not only once ANIMATING — so
+// two quick presses accelerate the whole spin and no third press is ever needed.
+// This encodes the fix and would FAIL under the old `isAnimating()`-only rule.
+{
+  const lock = createSpinLock();
+  const state = { fastStopRequested: false };
+  // A press: first acquire starts a spin (resetting the flag, as spin() does);
+  // any press while locked latches a fast-stop (requestFastStop's new guard is
+  // `isLocked()`, not `roundAnimating`). A press while idle would start a spin.
+  function press() {
+    if (lock.tryAcquire()) { state.fastStopRequested = false; return "start"; }
+    if (lock.isLocked()) { state.fastStopRequested = true; return "faststop"; }
+    return "ignored";
+  }
+
+  check("1st press starts the spin", press() === "start");
+  check("...and does not request fast-stop yet", state.fastStopRequested === false);
+  // Still STARTING (result not committed → markAnimating NOT called yet).
+  check("2nd press during STARTING latches fast-stop", press() === "faststop");
+  check("...fast-stop flag is set", state.fastStopRequested === true);
+
+  lock.markAnimating(); // result arrives, reels animate
+  check("3rd press during ANIMATING is still a fast-stop", press() === "faststop");
+
+  lock.release();
+  state.fastStopRequested = false;
+  check("after completion, next press starts a fresh spin", press() === "start");
+  check("...with the fast-stop flag cleared", state.fastStopRequested === false);
+}
+
 if (failures === 0) {
   console.log("\nspin-lock: PASS");
   process.exit(0);

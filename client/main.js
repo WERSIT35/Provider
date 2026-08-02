@@ -2788,10 +2788,16 @@ function setControls(disabled) {
 }
 
 function requestFastStop() {
-  if (!state.roundAnimating) return false;
+  // Fire during ANY in-flight phase (starting OR animating), not just once the
+  // reels are visibly animating. A 2nd press in the pre-animation window
+  // (dropOff + network) latches the flag so the whole spin plays out fast; the
+  // reset in spin() runs before the first await, so this latch survives into
+  // dropOff() and animateRound(). Drops created after the flag is set are born
+  // compressed; any in-flight drop is accelerated by the renderer call below.
+  if (!spinLock.isLocked()) return false; // nothing in flight
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
-  reelRenderer.requestFastStop?.();
+  reelRenderer.requestFastStop?.(); // no-op if no drop exists yet (_accelerateDrop guards)
   pushGameMessage("Fast stop requested.", "info");
   return true;
 }
@@ -3763,6 +3769,13 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   state.roundAnimating = true;
   el.spinBtn?.classList.add("is-spinning");
   el.spinBtn?.setAttribute("aria-label", "Stop spin");
+  // If a fast-stop was latched during the starting/network window, spin() cleared
+  // the is-fast-stopping cue when the result arrived — re-assert it (and the
+  // renderer hint) so this round animates fast and shows the fast-stopping state.
+  if (state.fastStopRequested) {
+    el.spinBtn?.classList.add("is-fast-stopping");
+    reelRenderer.requestFastStop?.();
+  }
   try {
   // Clone tumble_steps into a fresh local array of step objects with
   // deep-copied matrices so renderer state can't be polluted by any later
@@ -4112,9 +4125,10 @@ async function spin(options = {}) {
   const manual = !options.autoplay;
   if (manual) {
     if (!spinLock.tryAcquire()) {
-      // Already in flight: once the result is visibly animating a tap means
-      // "fast-stop"; during the pre-animation/network window it's a no-op.
-      if (spinLock.isAnimating()) requestFastStop();
+      // Already in flight (starting OR animating): a 2nd press accelerates the
+      // CURRENT spin from this instant — it never starts or queues a new spin.
+      // So at most two presses are ever needed: one to start, one to speed up.
+      requestFastStop();
       return;
     }
   }
