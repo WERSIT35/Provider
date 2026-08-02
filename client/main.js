@@ -488,9 +488,18 @@ class ReelCanvasRenderer {
   }
 
   preloadSymbols() {
+    // Load every symbol image exactly once and remember a per-asset load promise
+    // so the boot loader can drive its progress bar from THESE loads instead of
+    // re-requesting the same URLs with a second `new Image()` (which it used to
+    // do purely to track completion). Handlers are attached before `.src` so a
+    // synchronously-cached image still resolves.
+    this.imageLoads = new Map();
     Object.entries(symbolAssets).forEach(([name, src]) => {
       const image = new Image();
       image.decoding = "async";
+      this.imageLoads.set(name, new Promise((resolve) => {
+        image.onload = image.onerror = () => resolve();
+      }));
       image.src = src;
       this.images.set(name, image);
     });
@@ -4660,18 +4669,30 @@ el.multiplierInfo.textContent = "Loading...";
 el.activeMultiplier.textContent = "1x";
 // Boot loader: gate the reveal on the assets the first frame actually needs, show
 // real progress, then pull the heavy non-critical art in the background. The
-// renderer already kicked these fetches off in preloadSymbols(), so re-requesting
-// the same URLs here just rides the browser cache while we track completion.
+// renderer already loaded the symbol art once in preloadSymbols(), so we WATCH
+// its existing load promises rather than re-requesting the URLs — every asset is
+// fetched exactly once.
 function runBootLoader() {
   const bar = document.getElementById("bootLoaderBar");
   const pctEl = document.getElementById("bootLoaderPct");
   const loader = document.getElementById("bootLoader");
-  const critical = [
+  // Symbol art owned by the renderer — reuse its per-asset load promises.
+  const criticalKeys = [
     "BLUE_DIAMOND", "GREEN_TRIANGLE", "YELLOW_HEX", "PURPLE_TRIANGLE", "RED_GEM",
     "CHALICE", "RING", "HOURGLASS", "TOP_CROWN", "REEL", "MULTI_COMMON", "SCATTER"
-  ].map((key) => symbolAssets[key]).filter(Boolean);
-  critical.push("assets/symbols/SPIN.png"); // on-screen spin control
-  const total = critical.length;
+  ];
+  const waits = criticalKeys
+    .map((key) => reelRenderer.imageLoads?.get(key))
+    .filter(Boolean);
+  // The on-screen spin control is a DOM <img> owned by the document (not the
+  // renderer), so wait on that element's own load instead of a fresh Image.
+  const spinImg = el.spinBtn?.querySelector("img");
+  if (spinImg) {
+    waits.push(spinImg.complete
+      ? Promise.resolve()
+      : new Promise((resolve) => { spinImg.onload = spinImg.onerror = () => resolve(); }));
+  }
+  const total = waits.length || 1;
   let done = 0;
   let revealed = false;
 
@@ -4684,12 +4705,6 @@ function runBootLoader() {
     done += 1;
     setProgress(Math.round((done / total) * 100));
   };
-  const loadOne = (src) => new Promise((resolve) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = img.onerror = () => { bump(); resolve(); };
-    img.src = src;
-  });
   const reveal = () => {
     if (revealed) return;
     revealed = true;
@@ -4698,9 +4713,11 @@ function runBootLoader() {
     loadDeferredAssets();
   };
 
+  // Advance the bar as each existing load settles.
+  waits.forEach((p) => p.then(bump));
   // Safety valve: a stalled asset must never trap the player behind the splash.
   const safety = setTimeout(reveal, 8000);
-  Promise.all(critical.map(loadOne)).then(() => {
+  Promise.all(waits).then(() => {
     clearTimeout(safety);
     reveal();
   });
