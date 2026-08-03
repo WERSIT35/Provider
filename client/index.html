@@ -19,7 +19,16 @@
       })();
     </script>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="styles.css?v=20260710-1" />
+    <!-- Start these fetches during HTML parse instead of waiting for main.js to
+         run. FREESPINS_INFO in particular is a CSS background on a display:none
+         panel, so the browser would otherwise not request it until the panel is
+         shown mid-game — where it painted in progressively. Paths are relative
+         so they resolve through the <base href> above to the same URLs main.js
+         preloads; a mismatch here would double-fetch. -->
+    <link rel="preload" as="image" href="assets/symbols/Background.webp" />
+    <link rel="preload" as="image" href="assets/symbols/FREESPINS_INFO-removebg-preview.webp" />
+    <link rel="preload" as="image" href="assets/symbols/BET-removebg-preview.webp" />
+    <link rel="stylesheet" href="styles.css?v=20260803-2" />
   </head>
   <body>
     <div id="bootLoader" class="boot-loader" role="progressbar" aria-label="Loading game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -151,15 +160,15 @@
                 </div>
                 <label class="ante-toggle" for="anteToggle">
                   <input id="anteToggle" type="checkbox" />
-                  <img class="ante-toggle-img" id="anteToggleImg" src="assets/symbols/ANTE_INACTIVE-removebg-preview.png" alt="Ante Bet 1.25x" />
+                  <img class="ante-toggle-img" id="anteToggleImg" src="assets/symbols/ANTE_INACTIVE-removebg-preview.webp" alt="Ante Bet 1.25x" />
                 </label>
               </div>
               <button id="spinBtn" type="button" class="img-btn img-btn-spin" aria-label="Spin">
-                <img src="assets/symbols/SPIN.png" alt="Spin" />
+                <img src="assets/symbols/SPIN.webp" alt="Spin" />
               </button>
               <div class="deck-right">
                 <button id="buyFreeBtn" type="button" class="img-btn img-btn-buy" aria-label="Buy Free Spins">
-                  <img src="assets/symbols/BUY_FEATURE-removebg-preview.png" alt="Buy Free Spins" />
+                  <img src="assets/symbols/BUY_FEATURE-removebg-preview.webp" alt="Buy Free Spins" />
                 </button>
                 <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
                 <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
@@ -346,8 +355,8 @@
     <script src="engine/spin-engine.js?v=20260523-1"></script>
     <script src="engine/simulator.js?v=20260523-1"></script>
     <script src="engine/spin-lock.js?v=20260523-1"></script>
-    <script src="engine/audio.js?v=20260622-4"></script>
-    <script src="engine/ambiance.js?v=20260622-4"></script>
-    <script src="main.js?v=20260622-5"></script>
+    <script src="engine/audio.js?v=20260803-1"></script>
+    <script src="engine/ambiance.js?v=20260803-1"></script>
+    <script src="main.js?v=20260803-2"></script>
   </body>
 </html>

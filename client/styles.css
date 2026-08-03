@@ -82,7 +82,7 @@ body::after {
      temple shows above, below and around it. */
   background:
     linear-gradient(180deg, rgba(20, 13, 11, 0.66), rgba(10, 7, 6, 0.82)),
-    url("assets/symbols/Background.png") center / cover no-repeat,
+    url("assets/symbols/Background.webp") center / cover no-repeat,
     var(--bg-0);
   box-shadow: var(--shadow-hard);
   display: grid;
@@ -322,51 +322,78 @@ button:disabled {
    and a pop on each increase. */
 .bonus-multi-badge {
   position: absolute;
-  top: 12px;
-  left: 50%;
+  /* Anchored to the TOP EDGE OF THE BOARD, not the panel. --board-y/--board-h
+     are published by ReelCanvasRenderer.publishBoardBox() as percentages of
+     .vault-window, so this tracks the letterbox at every viewport size. The
+     fallbacks keep it sane for the one frame before the first resize() lands.
+     Previously this was `top: 12px`, which floated the badge in the dead space
+     above the grid whenever the board was letterboxed. */
+  top: calc(var(--board-y, 0%) + var(--board-h, 100%) * 0.02);
+  left: calc(var(--board-x, 0%) + var(--board-w, 100%) * 0.5);
   transform: translateX(-50%);
   z-index: 7;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  padding: 6px 20px;
-  border-radius: 14px;
+  /* Scales with the board instead of sitting at a fixed 6px/20px. */
+  padding: clamp(3px, 0.7vmin, 8px) clamp(10px, 2.4vmin, 24px);
+  border-radius: clamp(8px, 1.4vmin, 16px);
   text-align: center;
   pointer-events: none;
   --badge-glow: rgba(255, 226, 138, 0.4);
   background: linear-gradient(180deg, rgba(26, 20, 46, 0.92), rgba(12, 10, 26, 0.96));
   border: 1px solid rgba(255, 226, 138, 0.5);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 16px var(--badge-glow);
+}
+
+/* The pulse used to animate `box-shadow` on the badge itself, which is not a
+   composited property — it repainted the badge every frame for the WHOLE free
+   spins round. Same look, but the wide-glow state now lives on a pseudo-element
+   that only cross-fades its opacity, which the compositor handles on the GPU. */
+.bonus-multi-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 32px var(--badge-glow);
   animation: bonusBadgePulse 2.2s ease-in-out infinite;
 }
 
 .bonus-multi-badge-label {
-  font: 800 0.56rem/1 "SF Pro Display", "Segoe UI", sans-serif;
+  font: 800 clamp(0.42rem, 1.3vmin, 0.6rem)/1 "SF Pro Display", "Segoe UI", sans-serif;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #cbb985;
 }
 .bonus-multi-badge-value {
-  font: 900 1.55rem/1 "SF Pro Display", "Segoe UI", sans-serif;
+  font: 900 clamp(1rem, 3.6vmin, 1.7rem)/1 "SF Pro Display", "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
   color: #ffe28a;
   text-shadow: 0 0 14px rgba(255, 226, 138, 0.6);
   will-change: transform;
 }
 
-.bonus-multi-badge[data-tier="rare"] { --badge-glow: rgba(155, 231, 255, 0.5); border-color: rgba(155, 231, 255, 0.55); animation-duration: 1.9s; }
+.bonus-multi-badge[data-tier="rare"] { --badge-glow: rgba(155, 231, 255, 0.5); border-color: rgba(155, 231, 255, 0.55); }
 .bonus-multi-badge[data-tier="rare"] .bonus-multi-badge-value { color: #bfeaff; text-shadow: 0 0 16px rgba(155, 231, 255, 0.65); }
-.bonus-multi-badge[data-tier="epic"] { --badge-glow: rgba(190, 214, 255, 0.55); border-color: rgba(190, 214, 255, 0.62); animation-duration: 1.6s; }
+.bonus-multi-badge[data-tier="epic"] { --badge-glow: rgba(190, 214, 255, 0.55); border-color: rgba(190, 214, 255, 0.62); }
 .bonus-multi-badge[data-tier="epic"] .bonus-multi-badge-value { color: #d8e4ff; text-shadow: 0 0 18px rgba(190, 214, 255, 0.7); }
-.bonus-multi-badge[data-tier="legendary"] { --badge-glow: rgba(255, 165, 224, 0.6); border-color: rgba(255, 165, 224, 0.68); animation-duration: 1.35s; }
+.bonus-multi-badge[data-tier="legendary"] { --badge-glow: rgba(255, 165, 224, 0.6); border-color: rgba(255, 165, 224, 0.68); }
 .bonus-multi-badge[data-tier="legendary"] .bonus-multi-badge-value { color: #ffc6ec; text-shadow: 0 0 20px rgba(255, 165, 224, 0.78); }
-.bonus-multi-badge[data-tier="mythic"] { --badge-glow: rgba(255, 205, 130, 0.7); border-color: rgba(255, 210, 140, 0.78); animation-duration: 1.1s; }
+.bonus-multi-badge[data-tier="mythic"] { --badge-glow: rgba(255, 205, 130, 0.7); border-color: rgba(255, 210, 140, 0.78); }
 .bonus-multi-badge[data-tier="mythic"] .bonus-multi-badge-value { color: #ffd98c; text-shadow: 0 0 24px rgba(255, 210, 140, 0.88); }
 
+/* Higher tiers pulse faster. Targets ::after, which is where the animation now
+   lives (see the box-shadow → opacity note above). */
+.bonus-multi-badge[data-tier="rare"]::after { animation-duration: 1.9s; }
+.bonus-multi-badge[data-tier="epic"]::after { animation-duration: 1.6s; }
+.bonus-multi-badge[data-tier="legendary"]::after { animation-duration: 1.35s; }
+.bonus-multi-badge[data-tier="mythic"]::after { animation-duration: 1.1s; }
+
 @keyframes bonusBadgePulse {
-  0%, 100% { box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px var(--badge-glow); }
-  50%      { box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 32px var(--badge-glow); }
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
 }
 
 /* Pop the value (not the badge) on each increase so it never collides with the
@@ -387,16 +414,16 @@ button:disabled {
 @media (max-width: 720px) {
   body.public-mode .ribbon-detail { display: none; }
   body.public-mode .ribbon-compact { display: inline-flex; }
-  body.public-mode .status-ribbon { justify-content: flex-end; gap: 6px; }
+  body.public-mode .status-ribbon { justify-content: flex-end; gap: clamp(4px, 1.4vw, 8px); }
   /* Branded header on the left, info icon on the right, in one thin row. */
-  body.public-mode .altar-top { align-items: center; justify-content: space-between; padding: 2px 0; }
+  body.public-mode .altar-top { align-items: center; justify-content: space-between; padding: 0; }
   body.public-mode .title-cluster .title-kicker { display: none; }
-  body.public-mode .title-cluster h1 { font-size: 1.1rem; }
-  body.public-mode .title-tagline { font-size: 0.56rem; }
+  body.public-mode .title-cluster h1 { font-size: calc(1.1rem * var(--ui)); }
 
-  body.public-mode .bonus-multi-badge { top: 6px; padding: 4px 16px; border-radius: 12px; }
-  body.public-mode .bonus-multi-badge-value { font-size: 1.3rem; }
-  body.public-mode .bonus-multi-badge-label { font-size: 0.52rem; }
+  /* No `top` here — the badge is anchored to the board box (see .bonus-multi-badge).
+     A fixed `top: 6px` pinned it to the panel, so on a portrait phone, where the
+     6/5 board is letterboxed inside a taller window, the badge sat ~104px ABOVE
+     the grid. Sizing stays proportional via the clamps on the base rule. */
 }
 
 /* ============================================================================
@@ -588,42 +615,118 @@ body.public-mode .sanctum {
   overflow: hidden;
 }
 
+/* ── ONE SCALING CONTAINER ─────────────────────────────────────────────────
+   .altar is the single layout root: it owns the whole viewport and every
+   dimension below it is derived from the scale tokens declared here, so the
+   header, HUD, board and bottom bar grow and shrink together as one unit.
+
+   The tokens are viewport-relative on purpose. vmin drives anything that must
+   stay usable in BOTH orientations (tap targets), vh drives the vertical
+   chrome budget, and every clamp() carries a floor so nothing collapses on a
+   320px phone and a ceiling so nothing sprawls on a 4K monitor.
+
+   There is deliberately NO max-width in px here. The old rule capped the game
+   at 1040px, which on a 1920px screen left ~440px of dead backdrop down each
+   side while the board itself stayed small. */
 body.public-mode .altar {
-  width: min(100vw, 1040px);
-  max-width: 1040px;
+  /* Vertical rhythm between the stacked rows. */
+  --gap: clamp(3px, 0.9vh, 10px);
+  /* Chrome scale: one number every control derives from. */
+  --ui: clamp(0.72, min(100vw / 480, 100vh / 900), 1.25);
+  /* Tap-target sizing. Driven by vh, not vmin: these are stacked vertically, so
+     the height budget is what decides whether the board or the chrome wins. On
+     a 1920x1080 desktop vmin is 1080, which made every control hit its ceiling
+     and left the chrome eating ~430px — the board got only 650px of 1080.
+     vw is folded in via min() so ultra-wide short windows stay sane. */
+  --btn: clamp(30px, min(6.4vh, 9vw), 54px);
+  --spin: clamp(52px, min(11.5vh, 17vw), 104px);
+  --radius: clamp(8px, 1.4vmin, 18px);
+
+  width: 100vw;
+  max-width: 100vw;
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
   max-height: 100dvh;
-  margin: 0 auto;
+  margin: 0;
   border-radius: 0;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 8px;
-  /* Pad for notches / home indicator on phones; falls back to 0 on desktop. */
-  padding: max(8px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
-    max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  /* FLEX, not grid-with-fixed-rows. `grid-template-rows: auto minmax(0,1fr)`
+     assigns rows by child ORDER, and .altar-top is display:none in landscape —
+     which promoted .altar-core into the `auto` row and left it content-sized
+     (190px of a 390px viewport), collapsing the board to 2px. Flex assigns the
+     free space by flex-grow, so a hidden header simply drops out. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  /* Pad for notches / home indicator on phones; falls back to the clamp floor. */
+  padding:
+    max(clamp(2px, 0.6vh, 8px), env(safe-area-inset-top))
+    max(clamp(4px, 1.2vw, 18px), env(safe-area-inset-right))
+    max(clamp(2px, 0.6vh, 8px), env(safe-area-inset-bottom))
+    max(clamp(4px, 1.2vw, 18px), env(safe-area-inset-left));
   overflow: hidden;
 }
 
-body.public-mode .vault-shell {
-  width: min(100%, 920px);
-  margin: 0 auto;
+/* The admin three-column shell (320px | 1fr | 340px, align-items:start) is
+   meaningless in player view — the side panels are display:none, so the fixed
+   320px column would have swallowed the game. Flatten it to a single stretching
+   column that takes all the height the header leaves. */
+body.public-mode .altar-top {
+  flex: 0 0 auto;
+}
+body.public-mode .altar-core {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
 }
 
-body.public-mode .vault-window {
-  min-height: 0;
+/* The vertical stack. FLEX, not grid-with-counted-rows: the previous
+   `grid-template-rows: auto auto minmax(0,1fr) auto` had to match the number of
+   VISIBLE children, and several rows here toggle `hidden` at runtime (round-id
+   bar, bonus nodes). When the count drifted, the 1fr landed on the wrong row and
+   the board was left with only its content height. Flex assigns the free space
+   by flex-grow, so hidden children simply drop out and the board still wins. */
+body.public-mode .vault-shell {
+  width: 100%;
+  max-width: none;
   height: 100%;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* THE BOARD ROW — the only row that grows. Everything else is content-sized, so
+   whatever the chrome does not use belongs to the grid. `min-height: 0` is what
+   lets it shrink on short viewports rather than pushing the deck off-screen. */
+body.public-mode .vault-window {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
   width: 100%;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: center;
-  padding: 8px;
-  margin: 0 auto;
-  /* Size container so the board below can fit itself to the AVAILABLE box
-     (cqw/cqh) and keep its aspect ratio, letterboxing/pillarboxing into
-     whatever space the surrounding chrome leaves. */
+  padding: clamp(2px, 0.5vmin, 8px);
+  margin: 0;
+  /* Now that flex gives this a DEFINITE resolved height, cqh below is real.
+     Previously this sat in an auto row, so cqh resolved against an indefinite
+     height — which is what collapsed the board to ~2px in landscape. */
   container-type: size;
+}
+
+/* Everything that is not the board holds its natural height. */
+body.public-mode .hud-bar,
+body.public-mode .round-id-bar,
+body.public-mode .hud-message-rail,
+body.public-mode .ritual-deck,
+body.public-mode .control-toolbar,
+body.public-mode .game-footer {
+  flex: 0 0 auto;
 }
 
 body.public-mode .img-btn-spin {
@@ -632,13 +735,17 @@ body.public-mode .img-btn-spin {
 }
 
 body.public-mode .reels-stage {
-  /* Keep the intended 6/5 board shape on EVERY viewport, not just the ones the
-     specialized media queries below cover. Setting both width:100% and
-     height:100% (the old rule) makes the browser ignore aspect-ratio, so the
-     board stretched to the container's shape on tablets, landscape phones, and
-     short desktop windows. Bind whichever axis is limiting instead: 120cqh is
-     6/5 * 100cqh, so min() picks the width that fits both dimensions →
-     pillarbox on wide-short containers, letterbox on tall-narrow ones. */
+  /* Keep the engine's true 6/5 board shape on EVERY viewport. Setting both
+     width:100% and height:100% makes the browser ignore aspect-ratio, so the
+     board would stretch to the container's shape. Bind whichever axis is
+     limiting instead: 120cqh is 6/5 * 100cqh, so min() picks the width that
+     fits both dimensions → pillarbox on wide-short containers, letterbox on
+     tall-narrow ones. Because .vault-window now has a definite height, both
+     cq units are meaningful in every orientation.
+
+     This is the ONLY place the board's size is decided. The per-breakpoint
+     overrides that used to re-declare width/height/aspect (and disagreed with
+     each other — desktop said 3/2 while the canvas draws 6/5) are gone. */
   aspect-ratio: 6 / 5;
   width: min(100cqw, 120cqh);
   height: auto;
@@ -658,14 +765,14 @@ body.public-mode .altar-top {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 4px 0 2px;
+  gap: clamp(6px, 1.6vw, 12px);
+  padding: 0;
   min-height: 0;
 }
 
 body.public-mode .title-cluster .title-kicker { display: none; }
 body.public-mode .title-cluster h1 {
-  font-size: 1.05rem;
+  /* font-size is set proportionally in the chrome block (1.05rem * --ui). */
   letter-spacing: 0.18em;
   margin: 0;
 }
@@ -677,7 +784,7 @@ body.public-mode .status-ribbon {
   width: auto;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: clamp(4px, 1.2vw, 10px);
 }
 body.public-mode .title-cluster { min-width: 0; }
 
@@ -719,81 +826,28 @@ body.public-mode #betNode {
   display: none;
 }
 body.public-mode .status-ribbon-item {
-  padding: 4px 10px;
-  font-size: 0.74rem;
+  font-size: calc(0.74rem * var(--ui));
 }
 
-body.public-mode .altar-core {
-  grid-template-columns: 1fr;
-  height: 100%;
-  min-height: 0;
-  align-items: stretch;
-}
-
-body.public-mode .vault-shell {
-  height: 100%;
-  min-height: 0;
-  /* Flex column so any number of stacked rows (banner, HUD, rail, reels,
-     controls, toolbar, footer) lay out cleanly and the reels absorb all the
-     leftover vertical space. */
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-body.public-mode .vault-window {
-  flex: 1 1 auto;
-  height: auto;
-  min-height: 0;
-}
+/* NOTE: .altar-core / .vault-shell / .vault-window used to be re-declared here
+   with a second, slightly different set of values. Two sources of truth for the
+   same boxes is what let the board's sizing drift out of sync in the first
+   place, so they now live once, in the ONE SCALING CONTAINER block above. */
 
 body.public-mode .reels-canvas {
   width: 100% !important;
   height: 100% !important;
 }
 
-/* ----------------------------------------------------------------------------
-   Desktop / wide-landscape player view. Give the reel board the lion's share of
-   the vertical space and a reference-style (Pragmatic) 3:2 shape so cells are
-   large and slightly wider than tall — much bigger symbols than the default
-   full-width/short board. Scoped to desktop so the mobile stack is untouched.
----------------------------------------------------------------------------- */
+/* On any roomy viewport the board is height-bound, so let the temple backdrop
+   show through the side margins instead of a grey box around the reel frame.
+   Purely cosmetic — no sizing here. All dimensions come from the scale tokens
+   on .altar, so there is nothing per-breakpoint left to declare. */
 @media (min-width: 1000px) and (min-height: 700px) {
-  /* Board sized by HEIGHT (fills the reclaimed vertical space) with a 3:2 shape;
-     width derives from that, capped at the container and centred. */
-  body.public-mode .reels-stage {
-    height: 100%;
-    width: auto;
-    max-width: 100%;
-    aspect-ratio: 3 / 2;
-    margin: 0 auto;
-  }
-
-  /* The board no longer fills the full window width, so drop the window's own
-     dark fill and let the temple backdrop show in the side margins around the
-     reel frame (the reels-stage keeps its own framed background). */
   body.public-mode .vault-window {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-  }
-
-  /* Compact the surrounding chrome so .vault-window (flex:1) absorbs more height. */
-  body.public-mode .vault-shell { gap: 6px; }
-  body.public-mode .hud-message-rail { min-height: 16px; }
-  body.public-mode .hud-bar { padding: 6px 14px; }
-  body.public-mode .ritual-deck { gap: 10px; padding-bottom: 0; }
-  body.public-mode .img-btn-spin {
-    max-width: 104px;
-    max-height: 104px;
-  }
-  body.public-mode .img-btn-buy,
-  body.public-mode .ante-toggle {
-    height: 56px;
-  }
-  body.public-mode .control-toolbar {
-    padding-top: 2px;
-    padding-bottom: 2px;
   }
 }
 
@@ -802,104 +856,184 @@ body.public-mode .reels-canvas {
    already a vertical stack (title → HUD → reels → controls); here we size the
    controls for one-thumb play and keep them in the bottom thumb zone.
 ---------------------------------------------------------------------------- */
-@media (max-width: 720px) and (orientation: portrait) {
-  /* Symbol size on a 6-wide grid is capped by boardWidth/6, so reclaim every
-     spare horizontal pixel: trim the side padding to the safe-area minimum. */
+/* ── PROPORTIONAL CHROME ───────────────────────────────────────────────────
+   Every row that is not the board, sized from the .altar scale tokens. These
+   replace ~10 per-breakpoint blocks that each hard-coded px heights and often
+   disagreed with each other. Nothing here is a raw pixel dimension, so the
+   whole stack reflows proportionally instead of stepping at breakpoints. */
+
+body.public-mode .hud-bar {
+  padding: clamp(3px, 0.7vh, 9px) clamp(6px, 2vw, 16px);
+  gap: clamp(4px, 1.4vw, 10px);
+  border-radius: var(--radius);
+}
+body.public-mode .hud-node span {
+  font-size: calc(0.58rem * var(--ui));
+}
+body.public-mode .hud-node strong {
+  font-size: calc(1rem * var(--ui));
+}
+
+body.public-mode .hud-message-rail {
+  min-height: clamp(8px, 1.6vh, 20px);
+}
+
+/* The header is pure branding — on any short viewport it is the first thing to
+   give up height to the board. */
+body.public-mode .altar-top {
+  padding: 0;
+  min-height: 0;
+}
+body.public-mode .title-tagline { display: none; }
+/* Header controls scale with the height budget too — on a 768px-tall desktop
+   the header was 58px, and because the board is height-bound there, every
+   header pixel costs 1.2px of board width. */
+body.public-mode .status-ribbon .ribbon-detail {
+  padding: clamp(3px, 0.7vh, 8px) clamp(8px, 1.6vw, 14px);
+  font-size: calc(0.7rem * var(--ui));
+  min-height: 0;
+}
+body.public-mode .status-ribbon-item {
+  padding: clamp(2px, 0.5vh, 6px) clamp(6px, 1.4vw, 12px);
+}
+body.public-mode .icon-btn {
+  width: clamp(26px, 4.6vh, 40px);
+  height: clamp(26px, 4.6vh, 40px);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+/* THE BOTTOM CONTROL BAR — deck + toolbar + footer are docked to the bottom of
+   the stack (they are the last flex children) and every height is viewport
+   relative, so the cluster keeps the same visual weight from a 320px phone to a
+   4K monitor instead of eating 35% of a small screen. */
+body.public-mode .ritual-deck {
+  /* Three columns ALWAYS in player view: bet+ante | spin | buy. The unscoped
+     admin rules at max-width:980/520px collapse this to 2 columns and then 1,
+     which stacked the controls into a ~235px tower on a 375px phone and left
+     the board with barely a sixth of the screen. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(4px, 1.6vw, 14px);
+  padding: 0;
+}
+
+body.public-mode .img-btn-spin {
+  width: var(--spin);
+  height: var(--spin);
+  max-width: var(--spin);
+  max-height: var(--spin);
+  padding: 0;
+}
+body.public-mode .img-btn-spin img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+body.public-mode .img-btn-buy,
+body.public-mode .ante-toggle {
+  height: var(--btn);
+  max-height: var(--btn);
+}
+body.public-mode .img-btn-buy img,
+body.public-mode .ante-toggle-img {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+body.public-mode .bet-stepper {
+  height: var(--btn);
+  max-height: var(--btn);
+  min-width: 0;
+}
+body.public-mode .bet-display {
+  font-size: calc(0.95rem * var(--ui));
+}
+
+body.public-mode .control-toolbar {
+  gap: clamp(6px, 2vw, 14px);
+  padding: 0;
+}
+body.public-mode .tool-btn {
+  height: clamp(26px, 4.4vh, 40px);
+  min-width: clamp(26px, 4.4vh, 40px);
+  min-height: 0;
+  padding: 0 clamp(6px, 1.8vw, 14px);
+}
+body.public-mode .tool-btn .tool-glyph { font-size: calc(1.1rem * var(--ui)); }
+body.public-mode .tool-btn .tool-label { font-size: calc(0.68rem * var(--ui)); }
+
+body.public-mode .game-footer {
+  min-height: clamp(22px, 3.6vh, 38px);
+  padding: clamp(2px, 0.4vh, 6px) clamp(8px, 2.4vw, 18px);
+  gap: clamp(10px, 5vw, 30px);
+  border-radius: var(--radius);
+}
+body.public-mode .footer-cell span { font-size: calc(0.58rem * var(--ui)); }
+body.public-mode .footer-cell strong { font-size: calc(0.94rem * var(--ui)); }
+
+body.public-mode .title-cluster h1 {
+  font-size: calc(1.05rem * var(--ui));
+}
+
+/* Portrait phones/tablets. The board is width-bound here, so the only job left
+   is to reclaim horizontal pixels — symbol size is boardWidth/6, so every pixel
+   of side padding costs symbol size. No sizing overrides: the board rule and the
+   scale tokens already handle it. */
+@media (orientation: portrait) {
   body.public-mode .altar {
-    gap: 6px;
-    padding-left: max(4px, env(safe-area-inset-left));
-    padding-right: max(4px, env(safe-area-inset-right));
+    padding-left: max(2px, env(safe-area-inset-left));
+    padding-right: max(2px, env(safe-area-inset-right));
+    /* A 6/5 board on a tall phone is WIDTH-bound: at 390px wide it can only be
+       325px tall, so a 844px viewport has ~230px of slack the board physically
+       cannot use. Rather than let that pool as empty backdrop above and below
+       the grid (the "large empty areas" this refactor is fixing), spend it on
+       the bottom controls — which is also where a thumb wants them. Still no
+       fixed pixels: both tokens are bound by width AND height so they cannot
+       overflow a short or narrow phone. */
+    --spin: clamp(72px, min(30vw, 15vh), 148px);
+    --btn: clamp(40px, min(15vw, 8vh), 68px);
   }
 
-  /* The reels take all the free vertical space between the HUD and controls. */
-  body.public-mode .vault-shell {
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    gap: 6px;
+  /* On a narrow phone the deck's side columns are ~130px, which is not enough
+     for the bet stepper and the ante pill SIDE BY SIDE — the stepper collapsed
+     to a 53px square and clipped its −/+ controls. Stack them instead so each
+     gets the full column width. Still three columns overall, so the spin button
+     stays centred and the deck never becomes the tall tower it was before. */
+  body.public-mode .deck-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: clamp(3px, 0.9vh, 8px);
+  }
+  body.public-mode .deck-left .bet-stepper,
+  body.public-mode .deck-left .ante-toggle {
+    width: 100%;
+    max-width: none;
   }
 
-  /* Full-bleed board: drop the window's inner padding + dark fill so the 6/5 board
-     spans the full screen width (biggest possible symbols) and the space around it
-     shows the temple backdrop rather than a grey box. Centre the board in the
-     window (grid place-items) so the reclaimed vertical space sits evenly. */
+  /* Full-bleed board: drop the window's inner padding + dark fill so the 6/5
+     board spans the full screen width and the space around it shows the temple
+     backdrop rather than a grey box. */
   body.public-mode .vault-window {
-    padding: 2px;
+    padding: 0;
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-    display: grid;
-    place-items: center;
-  }
-
-  /* Portrait is always width-bound (tall, narrow window), so bind WIDTH and let
-     height derive from the aspect — this yields an exact 6/5 box with square,
-     evenly-spaced cells (no stretched grid), and no max-* clamp to break the
-     ratio. max-height is only a safety net for unusually short viewports. */
-  body.public-mode .reels-stage {
-    width: 100%;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-    aspect-ratio: 6 / 5;
-    margin: 0;
-  }
-
-  /* Trim the chrome above the board so the board + spin button dominate. */
-  body.public-mode .hud-message-rail { min-height: 20px; }
-  body.public-mode .hud-bar { padding: 6px 10px; }
-
-  /* Bigger, thumb-friendly spin button anchored at the bottom. */
-  body.public-mode .img-btn-spin {
-    max-width: clamp(108px, 32vw, 148px);
-    max-height: clamp(108px, 32vw, 148px);
-  }
-
-  /* Keep flanking controls comfortably tappable (>= 44px) and roomy. */
-  body.public-mode .ritual-deck {
-    gap: 8px;
-    padding-bottom: 2px;
-  }
-  body.public-mode .img-btn-buy,
-  body.public-mode .ante-toggle {
-    height: 56px;
-  }
-  body.public-mode .hud-node strong {
-    font-size: 1rem;
   }
 }
 
-/* Very small phones — trim chrome so the reels stay as large as possible. */
-@media (max-width: 380px) and (orientation: portrait) {
-  body.public-mode .hud-bar {
-    padding: 6px 8px;
-    gap: 6px;
-  }
-  body.public-mode .img-btn-spin {
-    max-width: clamp(92px, 28vw, 120px);
-    max-height: clamp(92px, 28vw, 120px);
-  }
-}
-
-/* Landscape on phones (short viewport): keep it usable but secondary. Shrink
-   vertical chrome so the reels don't get crushed; controls stay at the bottom. */
+/* Landscape on short viewports: the header is the first thing to go, since the
+   board is height-bound and every vertical pixel is board size. */
 @media (orientation: landscape) and (max-height: 560px) {
-  body.public-mode .altar {
-    gap: 4px;
-    padding-top: max(4px, env(safe-area-inset-top));
-    padding-bottom: max(4px, env(safe-area-inset-bottom));
-  }
   body.public-mode .altar-top {
     display: none;
   }
-  body.public-mode .hud-bar {
-    padding: 4px 10px;
-  }
-  body.public-mode .img-btn-spin {
-    max-width: clamp(72px, 12vh, 104px);
-    max-height: clamp(72px, 12vh, 104px);
-  }
-  body.public-mode .img-btn-buy,
-  body.public-mode .ante-toggle {
-    height: 48px;
+  body.public-mode .hud-message-rail {
+    display: none;
   }
 }
 
@@ -1635,10 +1769,12 @@ body.crazy-mode-on .vault-window {
 
 .vault-aura {
   position: absolute;
-  left: 50%;
-  top: 14px;
-  width: min(520px, 86%);
-  height: 180px;
+  /* Glow sits over the top of the BOARD, tracking the same box as the badge
+     (was a fixed 520x180px block offset 14px from the panel). */
+  left: calc(var(--board-x, 0%) + var(--board-w, 100%) * 0.5);
+  top: var(--board-y, 0%);
+  width: calc(var(--board-w, 100%) * 0.86);
+  height: calc(var(--board-h, 100%) * 0.3);
   transform: translateX(-50%);
   border-radius: 50%;
   background:
@@ -1849,13 +1985,16 @@ body.crazy-mode-on .vault-window {
 
 .win-callout {
   position: absolute;
-  left: 50%;
-  top: 46%;
+  /* Centred on the BOARD, not the panel — so it stays over the reels when the
+     board is letterboxed. min-width was a fixed 320px, which overflowed a
+     320-375px phone; it is now a fraction of the board itself. */
+  left: calc(var(--board-x, 0%) + var(--board-w, 100%) * 0.5);
+  top: calc(var(--board-y, 0%) + var(--board-h, 100%) * 0.46);
   transform: translate(-50%, -50%);
-  min-width: 320px;
-  max-width: calc(100% - 40px);
-  border-radius: 14px;
-  padding: 22px 36px 24px;
+  min-width: min(320px, 80%);
+  max-width: calc(var(--board-w, 100%) - 6%);
+  border-radius: clamp(8px, 1.4vmin, 16px);
+  padding: clamp(10px, 2.6vmin, 24px) clamp(16px, 4.5vmin, 38px);
   background: linear-gradient(180deg, rgba(20, 28, 50, 0.92), rgba(8, 12, 24, 0.96));
   border: 1px solid rgba(170, 210, 255, 0.26);
   text-align: center;
@@ -2130,7 +2269,10 @@ button.img-btn,
      land dead-on the circles. */
   width: min(100%, 260px);
   aspect-ratio: 776 / 183;
-  background: url("/assets/symbols/BET-removebg-preview.png") center / 100% 100% no-repeat;
+  /* Relative, not root-absolute: index.html injects a <base href> so the game
+     works under a sub-path, and a leading "/" would resolve to a different URL
+     than the one main.js preloads — defeating the preload. */
+  background: url("assets/symbols/BET-removebg-preview.webp") center / 100% 100% no-repeat;
   user-select: none;
   margin: 0 auto;
 }
@@ -2389,7 +2531,9 @@ pre {
 
 .feature-screen-panel {
   position: relative;
-  width: min(560px, 92%);
+  /* Sized off the board so the panel keeps the same proportion to the reels at
+     every viewport (was a flat 560px cap). */
+  width: min(560px, var(--board-w, 100%) * 0.94, 92%);
   aspect-ratio: 2 / 1;
   display: flex;
   flex-direction: column;
@@ -2397,8 +2541,12 @@ pre {
   justify-content: center;
   padding: 8% 12% 10%;
   border: 0;
+  /* Relative path (see .bet-stepper) so this matches the URL main.js preloads.
+     This panel lives inside a display:none subtree until it is shown, so the
+     browser will not fetch this background on its own — the preload is the
+     only reason it is warm by the time the panel appears. */
   background:
-    url("/assets/symbols/FREESPINS_INFO-removebg-preview.png") center / contain no-repeat;
+    url("assets/symbols/FREESPINS_INFO-removebg-preview.webp") center / contain no-repeat;
   text-align: center;
   animation: hushCurtain 0.38s cubic-bezier(0.18, 0.84, 0.22, 1);
 }
@@ -2535,7 +2683,10 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .ritual-deck {
+  /* Admin dev view only — the player view keeps its 3-column deck at every
+     width (see the proportional-chrome block). Unscoped, this collapsed the
+     player's bet/spin/buy row into a tall stack on phones. */
+  body:not(.public-mode) .ritual-deck {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2555,7 +2706,8 @@ pre {
 }
 
 @media (max-width: 520px) {
-  .ritual-deck {
+  /* Admin dev view only — see the note on the 980px rule above. */
+  body:not(.public-mode) .ritual-deck {
     grid-template-columns: 1fr;
   }
 }
@@ -2842,7 +2994,7 @@ body {
   /* Clean, static temple backdrop: the image is shown FULLY and clearly — no dark
      scrim, no colour wash, no animated overlays. One fixed, viewport-covering image
      fills the whole game; the reel table and controls float on top. */
-  background: url("assets/symbols/Background.png") center / cover no-repeat fixed;
+  background: url("assets/symbols/Background.webp") center / cover no-repeat fixed;
   background-color: #050a14;
 }
 
@@ -2909,18 +3061,30 @@ body.app-ready .boot-loader {
 }
 
 /* ── Graceful degradation on weak devices ──────────────────────────────────
-   ReelCanvasRenderer publishes its quality tier onto <body>; these rules cash
-   that in for the cheapest CSS wins. `background-attachment: fixed` is a notable
-   mobile repaint cost, so mid/low scroll the backdrop with the page instead. Low
-   tier also drops the expensive backdrop-blur/heavy hero art entirely. */
+   ReelCanvasRenderer publishes its quality tier onto <body> (perf-mid/perf-low)
+   plus a separate perf-handheld flag for any touch device; these rules cash that
+   in for the cheapest CSS wins.
+
+   `background-attachment: fixed` forces the backdrop to be re-rasterized against
+   the viewport and is a well-known mobile repaint cost, so anything that is not
+   a desktop scrolls it with the page instead. */
 body.perf-mid,
-body.perf-low {
+body.perf-low,
+body.perf-handheld {
   background-attachment: scroll;
 }
 body.perf-low .stage-character { display: none; }
+
+/* backdrop-filter is a live resample of everything behind the element. `.hud-bar`
+   carries one permanently and sits directly over the reels, so on a phone it is
+   re-blurring a moving canvas every single frame. Dropped on ALL handhelds, not
+   just devices that have already been demoted to perf-low. */
 body.perf-low *,
 body.perf-low *::before,
-body.perf-low *::after {
+body.perf-low *::after,
+body.perf-handheld *,
+body.perf-handheld *::before,
+body.perf-handheld *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -3520,308 +3684,17 @@ pre,
 .confirm-btn:active { transform: scale(0.97); }
 
 /* ===========================================================================
-   LIVING AMBIANCE — moving backdrop, deity mascot, lightning, god-rays, coins.
-   All built by client/engine/ambiance.js. Transform/opacity only (cheap).
+   AMBIANCE STACKING CONTEXT
+
+   The ~300 lines of ambiance styling that used to live here (moving nebula
+   backdrop, drifting deco gems, deity mascot, lightning, god-rays, coin
+   shower) were removed. Ambiance.init() in client/engine/ambiance.js returns
+   unconditionally, so none of those elements are ever built — but the rules
+   were still parsed on every load, and several of the infinite keyframes
+   animated margin-left/top, which force layout rather than compositing.
+
+   These two rules are kept because they apply to REAL elements and define the
+   stacking order of the game itself, not the ambiance layer.
    =========================================================================== */
-
-/* Keep the actual game above the fixed backdrop. */
 .sanctum { position: relative; z-index: 1; }
-
-.fx-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-  --fx-px: 0;
-  --fx-py: 0;
-}
-
-.fx-nebula {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.5;
-  mix-blend-mode: screen;
-  will-change: transform;
-}
-.fx-nebula-1 {
-  width: 60vw; height: 60vw; left: -12vw; top: -16vh;
-  background: radial-gradient(circle, rgba(99, 162, 255, 0.5), transparent 62%);
-  animation: fxDrift1 26s ease-in-out infinite;
-  transform: translate(calc(var(--fx-px) * 26px), calc(var(--fx-py) * 26px));
-}
-.fx-nebula-2 {
-  width: 64vw; height: 64vw; right: -16vw; top: -8vh;
-  background: radial-gradient(circle, rgba(120, 240, 220, 0.4), transparent 62%);
-  animation: fxDrift2 32s ease-in-out infinite;
-  transform: translate(calc(var(--fx-px) * -34px), calc(var(--fx-py) * 22px));
-}
-.fx-nebula-3 {
-  width: 70vw; height: 70vw; left: 18vw; bottom: -34vh;
-  background: radial-gradient(circle, rgba(180, 120, 255, 0.34), transparent 64%);
-  animation: fxDrift1 38s ease-in-out infinite reverse;
-  transform: translate(calc(var(--fx-px) * 18px), calc(var(--fx-py) * -18px));
-}
-@keyframes fxDrift1 { 0%,100% { margin-left: 0; margin-top: 0; } 50% { margin-left: 4vw; margin-top: 3vh; } }
-@keyframes fxDrift2 { 0%,100% { margin-left: 0; margin-top: 0; } 50% { margin-left: -5vw; margin-top: 4vh; } }
-
-.fx-stars {
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(1.4px 1.4px at 12% 22%, rgba(220,235,255,0.8), transparent),
-    radial-gradient(1.6px 1.6px at 68% 12%, rgba(200,230,255,0.7), transparent),
-    radial-gradient(1.2px 1.2px at 42% 64%, rgba(255,240,210,0.7), transparent),
-    radial-gradient(1.5px 1.5px at 84% 48%, rgba(210,225,255,0.65), transparent),
-    radial-gradient(1.3px 1.3px at 26% 82%, rgba(230,240,255,0.7), transparent),
-    radial-gradient(1.2px 1.2px at 92% 78%, rgba(255,235,215,0.6), transparent),
-    radial-gradient(1.4px 1.4px at 56% 36%, rgba(215,232,255,0.6), transparent);
-  animation: fxTwinkle 6s ease-in-out infinite;
-  transform: translate(calc(var(--fx-px) * 8px), calc(var(--fx-py) * 8px));
-}
-@keyframes fxTwinkle { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
-
-.fx-floaters { position: absolute; inset: 0; }
-.fx-floater {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, var(--c) 55%, transparent 75%);
-  box-shadow: 0 0 12px var(--c);
-  transform: translate(calc(var(--fx-px) * 16px), calc(var(--fx-py) * 16px));
-  animation: fxFloat var(--dur, 14s) ease-in-out var(--delay, 0s) infinite;
-  will-change: transform, opacity;
-}
-@keyframes fxFloat {
-  0%   { transform: translate(calc(var(--fx-px) * 16px), 0) scale(0.9); }
-  50%  { transform: translate(calc(var(--fx-px) * 16px + var(--drift, 20px)), -38px) scale(1.1); }
-  100% { transform: translate(calc(var(--fx-px) * 16px), 0) scale(0.9); }
-}
-
-.fx-spark {
-  position: fixed;
-  width: 10px; height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  pointer-events: none;
-  background: radial-gradient(circle, #fff, rgba(155,231,255,0.8) 45%, transparent 70%);
-  animation: fxSpark 0.7s ease-out forwards;
-  z-index: 2;
-}
-@keyframes fxSpark {
-  0% { transform: scale(0.4); opacity: 1; box-shadow: 0 0 0 0 rgba(155,231,255,0.6); }
-  100% { transform: scale(3.4); opacity: 0; box-shadow: 0 0 0 18px rgba(155,231,255,0); }
-}
-
-/* The ambiance stage fills the game frame but sits UNDER the reel window so
-   nothing ever paints over the reels (the reel window gets a higher z-index). */
-.fx-stage {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-/* Keep the reel window (and its callouts) above the ambiance stage. */
 .vault-window { position: relative; z-index: 2; }
-
-/* Fun decoration ON the altar frame — drifting gem images + glowing orbs,
-   biased to the edges so they frame the reels (and sit behind them). */
-.fx-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.fx-deco-item {
-  position: absolute;
-  will-change: transform, opacity;
-  animation: decoFloat var(--dur, 14s) ease-in-out var(--delay, 0s) infinite;
-}
-.fx-deco-gem {
-  object-fit: contain;
-  opacity: 0.42;
-  filter: drop-shadow(0 0 7px rgba(150, 200, 255, 0.45)) saturate(1.1);
-}
-.fx-deco-orb {
-  border-radius: 50%;
-  opacity: 0.5;
-  background: radial-gradient(circle at 35% 30%, #fff, var(--c) 55%, transparent 76%);
-  box-shadow: 0 0 12px var(--c);
-}
-@keyframes decoFloat {
-  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.32; }
-  50% { transform: translateY(-22px) rotate(calc(var(--spin, 1) * 18deg)); opacity: 0.6; }
-}
-
-/* ---- Deity mascot — positioned beside/above the reels by ambiance.js ---- */
-.mascot {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: clamp(64px, 13vw, 140px);
-  height: clamp(78px, 16vw, 168px);
-  z-index: 3;
-  pointer-events: none;
-  --fx-px: 0; --fx-py: 0;
-  transform: translate(calc(var(--fx-px) * 10px), calc(var(--fx-py) * 8px));
-  animation: mascotFloat 5.5s ease-in-out infinite;
-}
-.mascot-figure {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.mascot-orb {
-  position: absolute;
-  bottom: 6%;
-  width: 64%;
-  height: 64%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 38% 30%, rgba(255,255,255,0.95), rgba(155,210,255,0.7) 38%, rgba(70,110,220,0.5) 66%, transparent 78%);
-  box-shadow: 0 0 26px rgba(120,190,255,0.7), inset 0 0 18px rgba(255,255,255,0.5);
-  animation: mascotPulse 3.4s ease-in-out infinite;
-}
-.mascot-crown {
-  position: absolute;
-  top: 0;
-  width: 70%;
-  height: auto;
-  filter: drop-shadow(0 0 10px rgba(255,216,111,0.8)) drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-  animation: mascotFloat 4.5s ease-in-out infinite reverse;
-}
-.mascot-art {
-  width: 100%; height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5));
-}
-.mascot-aura {
-  position: absolute;
-  inset: -22%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(150,205,255,0.34), rgba(120,180,255,0.12) 50%, transparent 70%);
-  filter: blur(6px);
-  animation: mascotAura 4s ease-in-out infinite;
-}
-.mascot-rays {
-  position: absolute;
-  inset: -45%;
-  border-radius: 50%;
-  background: repeating-conic-gradient(from 0deg, rgba(255,236,180,0.16) 0deg 8deg, transparent 8deg 22deg);
-  opacity: 0.35;
-  animation: mascotSpin 22s linear infinite;
-  mix-blend-mode: screen;
-}
-.mascot-orbit {
-  position: absolute;
-  inset: 0;
-  animation: mascotSpin 12s linear infinite;
-}
-.orbit-gem {
-  position: absolute;
-  width: 12%;
-  height: 12%;
-  border-radius: 50%;
-  top: 44%; left: 44%;
-  background: radial-gradient(circle at 35% 30%, #fff, #9be7ff 55%, transparent 76%);
-  box-shadow: 0 0 10px #9be7ff;
-}
-.orbit-gem-1 { transform: translate(0, -340%); }
-.orbit-gem-2 { transform: rotate(120deg) translate(0, -340%); background: radial-gradient(circle at 35% 30%, #fff, #ffd86f 55%, transparent 76%); box-shadow: 0 0 10px #ffd86f; }
-.orbit-gem-3 { transform: rotate(240deg) translate(0, -340%); background: radial-gradient(circle at 35% 30%, #fff, #ff7fa8 55%, transparent 76%); box-shadow: 0 0 10px #ff7fa8; }
-
-@keyframes mascotFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-@keyframes mascotPulse { 0%,100% { box-shadow: 0 0 22px rgba(120,190,255,0.6), inset 0 0 16px rgba(255,255,255,0.45); } 50% { box-shadow: 0 0 40px rgba(150,205,255,0.95), inset 0 0 22px rgba(255,255,255,0.65); } }
-@keyframes mascotAura { 0%,100% { opacity: 0.6; transform: scale(0.96); } 50% { opacity: 1; transform: scale(1.06); } }
-@keyframes mascotSpin { to { transform: rotate(360deg); } }
-
-/* Mascot reaction states */
-.mascot.is-charging .mascot-orb { animation: mascotCharge 0.6s ease-out; }
-@keyframes mascotCharge { 0% { transform: scale(1); } 40% { transform: scale(0.86); } 100% { transform: scale(1); } }
-.mascot.is-casting { animation: mascotShake 0.55s ease-in-out; }
-.mascot.is-casting .mascot-orb { box-shadow: 0 0 60px rgba(180,225,255,1), inset 0 0 28px rgba(255,255,255,0.9); }
-@keyframes mascotShake { 0%,100% { transform: translate(0,0); } 20% { transform: translate(-3px,1px) rotate(-2deg); } 60% { transform: translate(3px,-1px) rotate(2deg); } }
-.mascot.is-celebrating { animation: mascotCheer 1.4s ease-in-out; }
-.mascot.is-celebrating .mascot-rays { opacity: 0.9; }
-.mascot.is-celebrating .mascot-aura { background: radial-gradient(circle, rgba(255,228,150,0.6), rgba(255,200,120,0.2) 50%, transparent 72%); }
-@keyframes mascotCheer { 0%,100% { transform: scale(1) translateY(0); } 30% { transform: scale(1.16) translateY(-10px); } 60% { transform: scale(1.08) translateY(-4px); } }
-
-/* ---- Transient spectacle overlay (inside the reel window) --------------- */
-.fx-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  overflow: hidden;
-  pointer-events: none;
-  border-radius: inherit;
-}
-.fx-overlay.fx-flash::after {
-  content: "";
-  position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 30%, rgba(220,240,255,0.6), rgba(180,210,255,0.18) 45%, transparent 70%);
-  animation: fxFlash 0.32s ease-out forwards;
-}
-@keyframes fxFlash { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
-
-.fx-bolt {
-  position: absolute;
-  top: -4%;
-  left: var(--x, 50%);
-  width: 4px;
-  height: 108%;
-  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(170,220,255,0.9) 40%, rgba(120,180,255,0.2));
-  filter: drop-shadow(0 0 8px rgba(170,220,255,0.95));
-  clip-path: polygon(40% 0, 60% 0, 48% 28%, 70% 30%, 40% 62%, 56% 60%, 30% 100%, 46% 56%, 28% 58%, 52% 26%, 34% 28%);
-  transform: translateX(-50%) scaleY(0);
-  transform-origin: top;
-  animation: fxBolt 0.42s ease-out var(--delay, 0ms) forwards;
-}
-.fx-bolt-2 { width: 5px; opacity: 0.9; }
-.fx-bolt-3 { width: 3px; opacity: 0.85; }
-@keyframes fxBolt {
-  0% { transform: translateX(-50%) scaleY(0); opacity: 0; }
-  18% { transform: translateX(-50%) scaleY(1); opacity: 1; }
-  40% { opacity: 0.5; }
-  55% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-.fx-overlay.fx-rays::before {
-  content: "";
-  position: absolute;
-  left: 50%; top: -40%;
-  width: 180%; height: 180%;
-  transform: translateX(-50%);
-  background: repeating-conic-gradient(from 0deg at 50% 0%, rgba(255,232,160,0.0) 0deg 6deg, rgba(255,232,160,0.22) 6deg 9deg, rgba(255,232,160,0.0) 9deg 16deg);
-  animation: fxRays 1.5s ease-out forwards;
-  mix-blend-mode: screen;
-}
-@keyframes fxRays { 0% { opacity: 0; transform: translateX(-50%) rotate(-6deg); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) rotate(6deg); } }
-
-.fx-coin {
-  position: absolute;
-  top: -8%;
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  transform: scale(var(--scale, 1));
-  background: radial-gradient(circle at 36% 30%, #fff6cf, #ffcf52 46%, #b87a1e 80%);
-  box-shadow: 0 0 8px rgba(255,206,82,0.7), inset 0 -3px 4px rgba(150,90,20,0.6);
-  animation: fxCoinFall var(--dur, 1.6s) ease-in var(--delay, 0s) forwards;
-}
-.fx-coin-violet { background: radial-gradient(circle at 36% 30%, #fff, #c79bff 46%, #6a3bd0 80%); box-shadow: 0 0 8px rgba(180,140,255,0.8), inset 0 -3px 4px rgba(70,40,140,0.6); }
-@keyframes fxCoinFall {
-  0% { top: -8%; opacity: 0; transform: translateX(0) scale(var(--scale,1)) rotate(0); }
-  10% { opacity: 1; }
-  100% { top: 108%; opacity: 0.9; transform: translateX(var(--sway, 0)) scale(var(--scale,1)) rotate(var(--rot, 360deg)); }
-}
-
-/* In the player view the mascot tucks into the top-left corner of the reels;
-   on wider screens it can sit a touch larger. Admin keeps it modest. */
-@media (max-width: 720px) {
-  .mascot { width: clamp(54px, 16vw, 100px); height: clamp(66px, 19vw, 120px); opacity: 0.95; }
-}
-
-/* Respect reduced motion: hold everything still (JS already skips spawning
-   floaters/coins/lightning, but freeze the ambient loops too). */
-@media (prefers-reduced-motion: reduce) {
-  .fx-nebula, .fx-stars, .fx-floater, .mascot, .mascot-crown,
-  .mascot-orb, .mascot-aura, .mascot-rays, .mascot-orbit { animation: none !important; }
-}

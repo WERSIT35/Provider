@@ -54,7 +54,9 @@
     loading: new Map(), // name -> Promise
     lastPlay: new Map(), // name -> timestamp (debounce identical rapid triggers)
     listeners: new Set(), // change subscribers (UI sync)
-    warmed: false // whether the audio pipeline has been pre-warmed
+    warmed: false, // whether the audio pipeline has been pre-warmed
+    suspended: false, // parked because the tab/app is in the background
+    wasPlaying: false // music state to restore when we come back
   };
 
   function ensureContext() {
@@ -192,7 +194,11 @@
       }
     },
     win_tick: {
-      minGap: 8,
+      // The win-meter count-up drives this every ~16ms, so a minGap below that
+      // meant a fresh oscillator + gain node ~60x a second for the whole
+      // count-up. 45ms still reads as a continuous ticking run but builds a
+      // third of the audio graph.
+      minGap: 45,
       synth: (c, d, o = {}) => {
         const f = clamp(520 + (o.progress || 0) * 900, 520, 1700);
         tone(c, d, { type: "triangle", freq: f, dur: 0.04, gain: 0.12 });
@@ -458,6 +464,11 @@
     const def = SFX[name];
     if (!def) return;
     if (prefs.muted) return;
+    // Parked in the background: drop the sound rather than resuming the context.
+    // Timer-driven game state (autoplay, win count-ups) keeps advancing while
+    // hidden, and without this every one of those steps would un-suspend the
+    // audio hardware we just parked.
+    if (state.suspended) return;
     const ctx = ensureContext();
     if (!ctx) return;
     if (ctx.state === "suspended") ctx.resume();
@@ -514,6 +525,38 @@
     return () => state.listeners.delete(fn);
   }
 
+  // --- background suspend ----------------------------------------------------
+  // The music scheduler re-arms a setTimeout every 130ms for the entire session
+  // and the AudioContext is never suspended, so a backgrounded game kept the
+  // audio render thread and the hardware clock alive indefinitely. Worse, a
+  // hidden tab clamps setTimeout to ~1s while the scheduler only looks 0.35s
+  // ahead, so it under-schedules and then burst-catches-up on every tick.
+  //
+  // suspendAudio() parks all of it; resumeAudio() puts it back exactly as it
+  // was. `wasPlaying` remembers whether music was running so we don't start it
+  // for a player who had muted or never triggered the first gesture.
+  function suspendAudio() {
+    if (state.suspended) return;
+    state.suspended = true;
+    state.wasPlaying = Boolean(music);
+    stopMusic();
+    const ctx = state.ctx;
+    if (ctx && ctx.state === "running") {
+      try { ctx.suspend(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function resumeAudio() {
+    if (!state.suspended) return;
+    state.suspended = false;
+    const ctx = state.ctx;
+    if (ctx && ctx.state === "suspended") {
+      try { ctx.resume(); } catch (e) { /* ignore */ }
+    }
+    if (state.wasPlaying && !prefs.muted && state.unlocked) startMusic();
+    state.wasPlaying = false;
+  }
+
   // Self-install a one-shot unlock on the first user gesture as a safety net,
   // even if main.js forgets to call unlock().
   function installAutoUnlock() {
@@ -535,6 +578,10 @@
     onChange,
     startMusic,
     stopMusic,
+    suspendAudio,
+    resumeAudio,
+    isSuspended: () => Boolean(state.suspended),
+    contextState: () => (state.ctx ? state.ctx.state : "none"),
     isMuted: () => prefs.muted,
     getVolume: () => prefs.volume,
     names: () => Object.keys(SFX)

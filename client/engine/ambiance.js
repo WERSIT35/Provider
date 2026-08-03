@@ -23,7 +23,7 @@
 
   // Optional real-character art. Leave null to use the CSS idol.
   const MASCOT_IMG = null; // e.g. "assets/mascot/zeus.png"
-  const CROWN_IMG = "assets/symbols/Crown.png";
+  const CROWN_IMG = "assets/symbols/Crown.webp";
 
   const reduceMotion = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -139,7 +139,7 @@
       node.style.setProperty("--delay", `${-Math.random() * 16}s`);
       node.style.setProperty("--spin", `${Math.random() < 0.5 ? -1 : 1}`);
       if (useImg) {
-        node.src = `assets/symbols/${gems[i % gems.length]}.png`;
+        node.src = `assets/symbols/${gems[i % gems.length]}.webp`;
         node.alt = "";
         node.classList.add("fx-deco-gem");
       } else {

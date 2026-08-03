@@ -8,6 +8,7 @@
     "start": "npx --yes http-server client -p 3000 -c-1 -o",
     "start:dev-server": "node backend/server.js",
     "simulate": "node math/simulate.js",
+    "assets:optimize": "node tools/optimize-assets.js",
     "test:api": "node tools/api-test.js",
     "test:rtp-parity": "node tools/rtp-parity.js",
     "test:spin-lock": "node tools/spin-lock-test.js",
@@ -15,5 +16,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.3"
   }
 }

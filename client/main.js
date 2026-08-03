@@ -160,27 +160,49 @@ const payouts = {
 };
 const scatterPayouts = { 4: 6, 5: 10, 6: 200 };
 
+// All art is WebP, generated from the source PNGs by `npm run assets:optimize`
+// (tools/optimize-assets.js). The PNGs stay in the repo as the authoring
+// originals; only the .webp files are ever fetched by the game.
 const symbolAssets = {
-  TOP_CROWN: "assets/symbols/Crown.png",
-  HOURGLASS: "assets/symbols/HourGlass.png",
-  RING: "assets/symbols/Ring.png",
-  CHALICE: "assets/symbols/Chaile.png",
-  RED_GEM: "assets/symbols/RedGem.png",
-  PURPLE_TRIANGLE: "assets/symbols/PurpleGem.png",
-  YELLOW_HEX: "assets/symbols/YellowGem.png",
-  GREEN_TRIANGLE: "assets/symbols/GreenGem.png",
-  BLUE_DIAMOND: "assets/symbols/BlueGem.png",
-  REEL: "assets/symbols/REEL.png",
+  TOP_CROWN: "assets/symbols/Crown.webp",
+  HOURGLASS: "assets/symbols/HourGlass.webp",
+  RING: "assets/symbols/Ring.webp",
+  CHALICE: "assets/symbols/Chaile.webp",
+  RED_GEM: "assets/symbols/RedGem.webp",
+  PURPLE_TRIANGLE: "assets/symbols/PurpleGem.webp",
+  YELLOW_HEX: "assets/symbols/YellowGem.webp",
+  GREEN_TRIANGLE: "assets/symbols/GreenGem.webp",
+  BLUE_DIAMOND: "assets/symbols/BlueGem.webp",
+  REEL: "assets/symbols/REEL.webp",
   // Multiplier art is now ONE token per rarity tier (numbers are drawn in code
   // onto the blank center plate — see the MULTI draw block below). The generic
   // MULTI key falls back to the Common token if a tier image fails to load.
-  MULTI: "assets/symbols/Common.png",
-  MULTI_COMMON: "assets/symbols/Common.png",
-  MULTI_RARE: "assets/symbols/Rare.png",
-  MULTI_EPIC: "assets/symbols/Epic.png",
-  MULTI_LEGENDARY: "assets/symbols/Legendary.png",
-  MULTI_MYTHIC: "assets/symbols/Mythic.png",
-  SCATTER: "assets/symbols/Scatter.png"
+  MULTI: "assets/symbols/Common.webp",
+  MULTI_COMMON: "assets/symbols/Common.webp",
+  MULTI_RARE: "assets/symbols/Rare.webp",
+  MULTI_EPIC: "assets/symbols/Epic.webp",
+  MULTI_LEGENDARY: "assets/symbols/Legendary.webp",
+  MULTI_MYTHIC: "assets/symbols/Mythic.webp",
+  SCATTER: "assets/symbols/Scatter.webp"
+};
+
+// Art that is NOT drawn on the canvas: <img> buttons and CSS backgrounds. None
+// of it used to be preloaded, so the free-spins panel and the active-ante plate
+// were fetched at the moment they first appeared and painted in progressively
+// mid-game. Routing them through the same loader as the symbols means the boot
+// bar waits for them too and nothing is ever fetched after the game reveals.
+//
+// IMPORTANT: these strings must byte-match the URLs in index.html/styles.css,
+// otherwise the browser treats them as different resources and the preload is
+// wasted. See the note on <base href> in index.html.
+const uiAssets = {
+  UI_SPIN: "assets/symbols/SPIN.webp",
+  UI_BACKGROUND: "assets/symbols/Background.webp",
+  UI_BET: "assets/symbols/BET-removebg-preview.webp",
+  UI_ANTE_ACTIVE: "assets/symbols/ANTE_ACTIVE-removebg-preview.webp",
+  UI_ANTE_INACTIVE: "assets/symbols/ANTE_INACTIVE-removebg-preview.webp",
+  UI_BUY_FEATURE: "assets/symbols/BUY_FEATURE-removebg-preview.webp",
+  UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
@@ -368,12 +390,34 @@ const prefersReducedMotion = () =>
 // trade visual richness for framerate on weaker hardware. Each tier maps to the
 // three knobs that actually move the needle: backing-store resolution (maxDpr),
 // a ceiling on particle density (fxCeil), and how hard idle frames are throttled.
+// Quality tiers. "high" is the full desktop experience; "mid"/"low" progressively
+// trade visual richness for framerate on weaker hardware. Four knobs:
+//   maxDpr         — backing-store resolution cap (fill rate).
+//   fxCeil         — ceiling on particle density.
+//   idleThrottleMs — minimum gap between frames when nothing is animating.
+//   maxFrameMs     — minimum gap between frames when something IS animating.
+// idleThrottleMs is now non-zero on every tier: the board is never truly static
+// (symbols float, the fog gradients drift), so an untricked "high" tier meant a
+// full redraw at 60fps forever — the single biggest source of phone heat. ~20fps
+// idle keeps the ambient motion readable at a third of the work.
 const TIER_PROFILES = {
-  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 50 },
-  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 33 },
-  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 0  }
+  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 66, maxFrameMs: 33 },
+  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 50, maxFrameMs: 33 },
+  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 50, maxFrameMs: 0  }
 };
 const TIER_RANK = { low: 0, mid: 1, high: 2 };
+
+// True on phones/tablets: a coarse primary pointer with no hover is the reliable
+// signal, with touch-point count and viewport size as corroboration for browsers
+// that report the media queries oddly. Deliberately NOT user-agent sniffing.
+function isHandheld() {
+  const mm = window.matchMedia;
+  const coarse = Boolean(mm && mm("(pointer: coarse)").matches);
+  const noHover = Boolean(mm && mm("(hover: none)").matches);
+  const touch = Number(navigator.maxTouchPoints) > 0;
+  const smallScreen = Math.min(window.screen?.width || 0, window.screen?.height || 0) <= 900;
+  return (coarse && noHover) || (touch && smallScreen);
+}
 
 // Coarse device-capability guess, used only as the STARTING tier. The runtime FPS
 // governor (see ReelCanvasRenderer.monitorPerformance) can drop it further if real
@@ -398,7 +442,7 @@ function tierOverride() {
 
 function detectDeviceTier() {
   const forced = tierOverride();
-  if (forced) return forced;
+  if (forced) return forced;   // QA override wins over every heuristic below.
   const nav = window.navigator || {};
   // NaN when the API isn't exposed (deviceMemory is Chromium-only). We compare
   // with <= so an *absent* signal never demotes — NaN <= n is always false — which
@@ -407,9 +451,17 @@ function detectDeviceTier() {
   const cores = Number(nav.hardwareConcurrency);
   const conn = nav.connection || {};
   const et = conn.effectiveType || "";
-  if (conn.saveData || /(^|\b)(slow-2g|2g)$/.test(et) || mem <= 2 || cores <= 2) return "low";
-  if (/(^|\b)3g$/.test(et) || mem <= 4 || cores <= 4) return "mid";
-  return "high";
+  let tier = "high";
+  if (conn.saveData || /(^|\b)(slow-2g|2g)$/.test(et) || mem <= 2 || cores <= 2) tier = "low";
+  else if (/(^|\b)3g$/.test(et) || mem <= 4 || cores <= 4) tier = "mid";
+  // Cap handhelds at "mid" regardless of reported specs. The checks above are
+  // all desktop-shaped: a modern phone reports 8 cores, and iOS never exposes
+  // deviceMemory at all (NaN, which never demotes), so phones were landing on
+  // "high" and getting the full desktop budget — uncapped framerate, DPR 2 and
+  // 100% FX density. That is why they ran hot. A phone with a genuinely weak
+  // signal still falls through to "low".
+  if (tier === "high" && isHandheld()) tier = "mid";
+  return tier;
 }
 
 class ReelCanvasRenderer {
@@ -437,6 +489,10 @@ class ReelCanvasRenderer {
     this._frameSamples = [];
     this._governorCheckedAt = performance.now();
     this._lastDrawAt = 0;
+    // rAF bookkeeping: the handle so the loop can be cancelled when the tab is
+    // hidden, and the flag that keeps it cancelled until we resume.
+    this._rafId = 0;
+    this._paused = false;
     this.images = new Map();
     this.board = {
       matrix: Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => "BLUE_DIAMOND")),
@@ -474,12 +530,25 @@ class ReelCanvasRenderer {
     //    the hot particle loop blits instead of building a gradient every frame.
     //  • stageCacheBack/Front: the fully-static stage (background + table frame +
     //    lanes) baked to offscreen canvases and blitted once per frame.
+    //  • symbolSprites: each symbol bitmap pre-scaled to ~2x its on-screen cell
+    //    size, so the 30 per-frame cell blits are near-1:1 instead of resampling
+    //    the full-resolution source art every time.
     this.glowSprites = new Map();
+    this.symbolSprites = new Map();
     this.stageCacheBack = null;
     this.stageCacheFront = null;
     this.time = 0;
     this.lastTick = performance.now();
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    // Debounced: resize() throws away the stage cache, the glow sprites and the
+    // pre-scaled symbol bitmaps, all of which then get re-baked. On mobile the
+    // URL bar collapsing/expanding fires this observer repeatedly, so running it
+    // per-callback meant rebuilding several full-size offscreen canvases many
+    // times during a single scroll gesture.
+    this._resizeTimer = 0;
+    this.resizeObserver = new ResizeObserver(() => {
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => this.resize(), 150);
+    });
     const parent = this.canvas.parentElement;
     if (parent) this.resizeObserver.observe(parent);
     this.preloadSymbols();
@@ -488,17 +557,46 @@ class ReelCanvasRenderer {
   }
 
   preloadSymbols() {
-    // Load every symbol image exactly once and remember a per-asset load promise
-    // so the boot loader can drive its progress bar from THESE loads instead of
-    // re-requesting the same URLs with a second `new Image()` (which it used to
-    // do purely to track completion). Handlers are attached before `.src` so a
-    // synchronously-cached image still resolves.
+    // Load every image the game will ever need — canvas symbols AND the <img>
+    // buttons / CSS backgrounds in uiAssets — exactly once, and remember a
+    // per-asset promise so the boot loader can drive its progress bar from
+    // THESE loads instead of re-requesting the same URLs with a second
+    // `new Image()`. Handlers are attached before `.src` so a synchronously
+    // cached image still resolves.
+    //
+    // The uiAssets entries are deliberately loaded here even though nothing on
+    // the canvas draws them: warming the HTTP cache under the identical URL is
+    // what stops the free-spins panel and the ante plate from streaming in the
+    // first time they are shown. Their HTMLImageElements go into `this.images`
+    // too, so they stay referenced and cannot be evicted mid-session.
     this.imageLoads = new Map();
-    Object.entries(symbolAssets).forEach(([name, src]) => {
+    Object.entries({ ...symbolAssets, ...uiAssets }).forEach(([name, src]) => {
       const image = new Image();
       image.decoding = "async";
       this.imageLoads.set(name, new Promise((resolve) => {
-        image.onload = image.onerror = () => resolve();
+        const settle = () => resolve();
+        // `decode()` is the important one: onload only means the bytes arrived,
+        // while decode() resolves once the bitmap is rasterized and ready to
+        // paint. Waiting on onload alone is what let a fully "loaded" image
+        // still paint in progressively.
+        //
+        // Two escape hatches, both load-bearing:
+        //  • document.hidden — Chrome defers image decoding entirely while the
+        //    document is hidden, so awaiting decode() there never resolves and
+        //    the boot gate hangs until its safety timeout. That is a real case:
+        //    a game opened in a background tab, or a casino iframe that starts
+        //    hidden. Nothing is painting, so there is nothing to pop in either.
+        //  • the cap — decode() also rejects on a broken image, and a decode
+        //    slow enough to hit 2s is not worth holding the player behind the
+        //    splash for.
+        // resolve() is idempotent, so a late decode after either is harmless.
+        image.onload = () => {
+          if (typeof image.decode !== "function" || document.hidden) return settle();
+          const cap = setTimeout(settle, 2000);
+          const done = () => { clearTimeout(cap); settle(); };
+          image.decode().then(done, done);
+        };
+        image.onerror = settle;
       }));
       image.src = src;
       this.images.set(name, image);
@@ -512,10 +610,15 @@ class ReelCanvasRenderer {
     const p = TIER_PROFILES[this.tier];
     this.maxDpr = p.maxDpr;
     this.idleThrottleMs = p.idleThrottleMs;
+    this.maxFrameMs = p.maxFrameMs;
     const body = document.body;
     if (body) {
       body.classList.toggle("perf-low", this.tier === "low");
       body.classList.toggle("perf-mid", this.tier === "mid");
+      // Published separately from the tier so CSS can drop the expensive
+      // always-on effects (fixed background, backdrop blur) on any handheld,
+      // not only when the device has been demoted all the way to perf-low.
+      body.classList.toggle("perf-handheld", isHandheld());
     }
   }
 
@@ -565,11 +668,50 @@ class ReelCanvasRenderer {
     // downgrade (and low-end devices) actually cash in for a steadier framerate.
     scale = Math.min(scale, TIER_PROFILES[this.tier].fxCeil);
     this.fxScale = scale;
-    // Layout/DPR changed → rebuild the static stage cache and colour sprites
-    // (they were baked at the old size/resolution).
+    // Layout/DPR changed → rebuild everything that was baked at the old
+    // size/resolution: the static stage, the colour glow sprites, the pre-scaled
+    // symbol bitmaps, and the memoized ambient gradients.
     this.stageCacheBack = null;
     this.stageCacheFront = null;
     this.glowSprites.clear();
+    this.symbolSprites.clear();
+    this._fogKey = null;
+    this._meshKey = null;
+    this.publishBoardBox();
+  }
+
+  /** Publish the board's real on-screen box as CSS custom properties so overlays
+   *  can anchor to the GRID rather than to the surrounding panel.
+   *
+   *  The board is letterboxed/pillarboxed inside .vault-window (it holds a 6/5
+   *  aspect while the window is whatever shape the layout leaves), so the two
+   *  boxes rarely match. Overlays used to be positioned in raw pixels against
+   *  the window — `top: 12px` on the multiplier badge — which put them in the
+   *  dead space above the board on any viewport where the letterbox was tall.
+   *  With these vars, CSS can express "the top edge of the actual grid".
+   *
+   *  Written on .vault-window so the values are scoped to the board's own
+   *  stacking context, and only when they actually change — this runs from
+   *  resize(), which a ResizeObserver drives. */
+  publishBoardBox() {
+    const stage = this.canvas.closest(".reels-stage") || this.canvas;
+    const host = this.canvas.closest(".vault-window");
+    if (!host) return;
+    const s = stage.getBoundingClientRect();
+    const h = host.getBoundingClientRect();
+    if (!s.width || !h.width) return;
+    // Offsets of the board inside the window, as a fraction of the window — so
+    // the CSS stays resolution independent and needs no second unit conversion.
+    const next = {
+      "--board-w": `${(100 * s.width / h.width).toFixed(3)}%`,
+      "--board-h": `${(100 * s.height / h.height).toFixed(3)}%`,
+      "--board-x": `${(100 * (s.left - h.left) / h.width).toFixed(3)}%`,
+      "--board-y": `${(100 * (s.top - h.top) / h.height).toFixed(3)}%`
+    };
+    for (const [k, v] of Object.entries(next)) {
+      if (this._boardBox?.[k] !== v) host.style.setProperty(k, v);
+    }
+    this._boardBox = next;
   }
 
   /** Scale a particle/effect count by fxScale, never below `min` so an effect
@@ -588,6 +730,37 @@ class ReelCanvasRenderer {
     const c = cvs.getContext("2d");
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     return { cvs, ctx: c, w, h };
+  }
+
+  /** A symbol bitmap pre-scaled to roughly the size it is actually drawn at.
+   *
+   *  The source art is 256px square (and the reel/scatter plates larger still)
+   *  but a grid cell is only ~60-100 CSS px, so drawing straight from the source
+   *  made the browser resample the full bitmap on every one of the 30 cell blits,
+   *  every frame. Baking each symbol once per layout into a right-sized offscreen
+   *  canvas turns that into a near-1:1 blit.
+   *
+   *  Cached by symbol key and invalidated with the stage caches on resize, so the
+   *  bake size always tracks the current cell size and DPR. Returns the original
+   *  image if it is not yet decoded or is already small enough to be free.
+   */
+  getSymbolSprite(key, img, drawW, drawH) {
+    if (!img?.complete || !img.naturalWidth) return img;
+    // Bake at 2x the draw size so the result still holds up during the scale-up
+    // that pulse/slam effects apply, then clamp to the source's own resolution —
+    // upscaling here would cost memory and buy nothing.
+    const targetW = Math.min(img.naturalWidth, Math.max(1, Math.round(drawW * 2)));
+    const targetH = Math.min(img.naturalHeight, Math.max(1, Math.round(drawH * 2)));
+    // Already close to 1:1 — the bake would not pay for itself.
+    if (img.naturalWidth <= targetW * 1.25) return img;
+
+    let sprite = this.symbolSprites.get(key);
+    if (sprite && sprite.w === targetW && sprite.h === targetH) return sprite.cvs;
+
+    const { cvs, ctx } = this.makeOffscreen(targetW, targetH);
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+    this.symbolSprites.set(key, { cvs, w: targetW, h: targetH });
+    return cvs;
   }
 
   /** Pre-rendered soft radial glow for `color`, cached by colour string. The
@@ -1567,15 +1740,21 @@ class ReelCanvasRenderer {
   }
 
   loop() {
+    this._rafId = 0;
     const now = performance.now();
-    // Idle throttle: when nothing is animating the stage is just the (cached)
-    // static board, so on mid/low tiers we redraw it at a reduced cadence instead
-    // of a full 60fps to save CPU/battery. High tier and any busy frame always
-    // render. We still schedule every rAF so we react instantly when work starts.
+    // Two throttles, both expressed as a minimum gap since the last real draw:
+    //   • idleThrottleMs — nothing is animating, so the stage is essentially the
+    //     cached static board plus slow ambient drift. ~20fps is indistinguishable
+    //     here and costs a third of the CPU. Applies on EVERY tier now.
+    //   • maxFrameMs — a cap on busy frames too, used on handhelds/low-end. The
+    //     spin animation reads fine at 30fps and the halved frame count is the
+    //     difference between a warm phone and a hot one.
+    // We always re-arm the rAF, so we still react on the very next frame when
+    // work starts — the throttle only skips the expensive draw().
     const busy = this.isVisuallyBusy();
-    const throttle = this.idleThrottleMs;
-    if (!busy && throttle && now - this._lastDrawAt < throttle) {
-      requestAnimationFrame(() => this.loop());
+    const throttle = busy ? this.maxFrameMs : this.idleThrottleMs;
+    if (throttle && now - this._lastDrawAt < throttle) {
+      this._scheduleFrame();
       return;
     }
     const rawDelta = now - this.lastTick;
@@ -1593,7 +1772,40 @@ class ReelCanvasRenderer {
       console.error("[reelRenderer.draw] exception (continuing loop):", err);
     }
     // Schedule the next frame UNCONDITIONALLY, even if draw threw.
-    requestAnimationFrame(() => this.loop());
+    this._scheduleFrame();
+  }
+
+  /** Arm the next frame, keeping the handle so it can actually be cancelled.
+   *  Guarded against double-arming: two live rAF chains would fork the loop
+   *  permanently and there would be no way to get back to one. */
+  _scheduleFrame() {
+    if (this._rafId || this._paused) return;
+    this._rafId = requestAnimationFrame(() => this.loop());
+  }
+
+  /** Stop rendering entirely. Used when the tab/app is hidden — a backgrounded
+   *  game has no reason to burn battery, and while most browsers stop firing rAF
+   *  on hidden documents, Android WebViews and casino iframe wrappers do not
+   *  reliably do so. Explicit beats incidental. */
+  pauseRendering() {
+    this._paused = true;
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = 0;
+    }
+  }
+
+  /** Resume after pauseRendering(). Resets the tick clock first: `lastTick` is
+   *  minutes stale after a long background, and feeding that delta in would jump
+   *  every time-driven animation forward in a single frame. */
+  resumeRendering() {
+    if (!this._paused) return;
+    this._paused = false;
+    this.lastTick = performance.now();
+    this._lastDrawAt = 0;
+    this._frameSamples = [];
+    this._governorCheckedAt = performance.now();
+    this._scheduleFrame();
   }
 
   getLayout() {
@@ -1789,10 +2001,17 @@ class ReelCanvasRenderer {
     const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
     ctx.clearRect(0, 0, width, height);
 
-    const driftA = Math.sin(this.time * 0.00017);
-    const driftB = Math.cos(this.time * 0.00013);
-    const idleWave = Math.sin(this.time * 0.0012);
-    const idleWave2 = Math.cos(this.time * 0.00092);
+    // The two ambient gradients below are pure functions of these four waves, and
+    // they used to be rebuilt from scratch on EVERY frame — two gradient objects
+    // plus two toFixed() string allocations, forever, even on a fully idle board.
+    // Quantizing the waves to 1/12 steps makes the inputs repeat for ~20 frames
+    // at a time so the gradient objects can be memoized below. The motion is a
+    // very slow drift across a huge soft glow; the steps are invisible.
+    const q12 = (v) => Math.round(v * 12) / 12;
+    const driftA = q12(Math.sin(this.time * 0.00017));
+    const driftB = q12(Math.cos(this.time * 0.00013));
+    const idleWave = q12(Math.sin(this.time * 0.0012));
+    const idleWave2 = q12(Math.cos(this.time * 0.00092));
     const glowX = width * (0.5 + driftA * 0.08);
     const glowY = height * (0.2 + driftB * 0.04);
 
@@ -1804,18 +2023,28 @@ class ReelCanvasRenderer {
     }
     ctx.drawImage(this.stageCacheBack.cvs, 0, 0, width, height);
 
-    const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
-    amberFog.addColorStop(0, "rgba(120, 198, 255, 0.24)");
-    amberFog.addColorStop(0.5, "rgba(86, 124, 255, 0.16)");
-    amberFog.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = amberFog;
+    const fogKey = `${driftA}|${driftB}|${width}|${height}`;
+    if (this._fogKey !== fogKey) {
+      const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
+      amberFog.addColorStop(0, "rgba(120, 198, 255, 0.24)");
+      amberFog.addColorStop(0.5, "rgba(86, 124, 255, 0.16)");
+      amberFog.addColorStop(1, "rgba(0, 0, 0, 0)");
+      this._fogGrad = amberFog;
+      this._fogKey = fogKey;
+    }
+    ctx.fillStyle = this._fogGrad;
     ctx.fillRect(0, 0, width, height);
 
-    const meshGlow = ctx.createLinearGradient(0, 0, width, height);
-    meshGlow.addColorStop(0, `rgba(129, 198, 255, ${(0.06 + (idleWave + 1) * 0.015).toFixed(3)})`);
-    meshGlow.addColorStop(0.5, "rgba(128, 171, 255, 0.02)");
-    meshGlow.addColorStop(1, `rgba(111, 227, 210, ${(0.05 + (idleWave2 + 1) * 0.012).toFixed(3)})`);
-    ctx.fillStyle = meshGlow;
+    const meshKey = `${idleWave}|${idleWave2}|${width}|${height}`;
+    if (this._meshKey !== meshKey) {
+      const meshGlow = ctx.createLinearGradient(0, 0, width, height);
+      meshGlow.addColorStop(0, `rgba(129, 198, 255, ${(0.06 + (idleWave + 1) * 0.015).toFixed(3)})`);
+      meshGlow.addColorStop(0.5, "rgba(128, 171, 255, 0.02)");
+      meshGlow.addColorStop(1, `rgba(111, 227, 210, ${(0.05 + (idleWave2 + 1) * 0.012).toFixed(3)})`);
+      this._meshGrad = meshGlow;
+      this._meshKey = meshKey;
+    }
+    ctx.fillStyle = this._meshGrad;
     ctx.fillRect(0, 0, width, height);
 
     // Static vignette + table frame/core + inner grid/ember + lane structure
@@ -2289,7 +2518,8 @@ class ReelCanvasRenderer {
           const decoyImg = reveal?.decoy ? this.images.get(reveal.decoy) : null;
           if (decoyImg?.complete && decoyImg.naturalWidth) {
             ctx.globalAlpha = blastFade;
-            ctx.drawImage(decoyImg, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
+            const decoySprite = this.getSymbolSprite(reveal.decoy, decoyImg, iconW, iconH);
+            ctx.drawImage(decoySprite, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
           }
         } else if (img?.complete && img.naturalWidth) {
           ctx.globalAlpha = blastFade * revealAlpha;
@@ -2303,7 +2533,11 @@ class ReelCanvasRenderer {
             if (iconW / iconH > ar) drawW = iconH * ar;
             else drawH = iconW / ar;
           }
-          ctx.drawImage(img, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
+          // Blit the pre-scaled sprite rather than resampling the source art on
+          // every cell, every frame. Keyed by the image key actually resolved
+          // above (a multiplier tier image, or the symbol itself).
+          const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
+          ctx.drawImage(sprite, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
         } else {
           ctx.fillStyle = "rgba(255, 238, 200, 0.9)";
           ctx.font = `${Math.max(10, coreR * 0.22)}px Trebuchet MS, sans-serif`;
@@ -3130,6 +3364,9 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
 
     const trails = [];
     const startTime = performance.now() + delay;
+    // Framerate-independent trail emission — see the budget check in tick().
+    const TRAIL_INTERVAL_MS = 55;
+    let lastTrailAt = 0;
 
     function tick(now) {
       const elapsed = now - startTime;
@@ -3150,7 +3387,13 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
       orb.style.opacity = String(fadeIn * fadeOut);
       orb.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale.toFixed(3)})`;
 
-      if (tRaw < 0.95 && Math.random() < 0.55) {
+      // Emit trail nodes on a time budget rather than a per-frame probability.
+      // At ~55% per frame this created and destroyed up to ~33 DOM nodes per
+      // second PER orb, and several orbs fly at once — a lot of style/layout
+      // churn for a decorative streak. One every ~55ms looks the same and is
+      // independent of framerate, so it no longer emits more on a fast device.
+      if (tRaw < 0.95 && now - lastTrailAt >= TRAIL_INTERVAL_MS) {
+        lastTrailAt = now;
         const trail = document.createElement("div");
         trail.className = "soul-trail";
         trail.style.setProperty("--soul-color", tier.accent);
@@ -4564,10 +4807,13 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 
 const anteToggleImg = $("anteToggleImg");
 if (el.anteToggle && anteToggleImg) {
+  // Read from uiAssets so this URL can never drift from the one the boot loader
+  // preloads — the active plate used to be fetched on the first toggle, which
+  // made it pop in mid-session.
   const updateAnteImg = () => {
     anteToggleImg.src = el.anteToggle.checked
-      ? "assets/symbols/ANTE_ACTIVE-removebg-preview.png"
-      : "assets/symbols/ANTE_INACTIVE-removebg-preview.png";
+      ? uiAssets.UI_ANTE_ACTIVE
+      : uiAssets.UI_ANTE_INACTIVE;
   };
   el.anteToggle.addEventListener("change", updateAnteImg);
   updateAnteImg();
@@ -4681,31 +4927,27 @@ el.symbolLegend.textContent = "Top Crown, Hourglass, Ring, Chalice, Red Gem, Pur
 el.payoutRuleText.textContent = "High-volatility pays-anywhere model. Wild multipliers and scatter-triggered bonus spins drive peak wins.";
 el.multiplierInfo.textContent = "Loading...";
 el.activeMultiplier.textContent = "1x";
-// Boot loader: gate the reveal on the assets the first frame actually needs, show
-// real progress, then pull the heavy non-critical art in the background. The
-// renderer already loaded the symbol art once in preloadSymbols(), so we WATCH
-// its existing load promises rather than re-requesting the URLs — every asset is
+// Boot loader: gate the reveal on EVERY image the game can ever show, so nothing
+// is fetched once the player is in. It used to wait on a hand-picked list of 12
+// symbols, which left the free-spins panel, the active-ante plate and the page
+// backgrounds to be fetched on first use — they visibly streamed in mid-session.
+// The renderer already loaded all of it once in preloadSymbols(), so we WATCH its
+// existing load promises rather than re-requesting the URLs; every asset is
 // fetched exactly once.
 function runBootLoader() {
   const bar = document.getElementById("bootLoaderBar");
   const pctEl = document.getElementById("bootLoaderPct");
   const loader = document.getElementById("bootLoader");
-  // Symbol art owned by the renderer — reuse its per-asset load promises.
-  const criticalKeys = [
-    "BLUE_DIAMOND", "GREEN_TRIANGLE", "YELLOW_HEX", "PURPLE_TRIANGLE", "RED_GEM",
-    "CHALICE", "RING", "HOURGLASS", "TOP_CROWN", "REEL", "MULTI_COMMON", "SCATTER"
-  ];
-  const waits = criticalKeys
-    .map((key) => reelRenderer.imageLoads?.get(key))
-    .filter(Boolean);
-  // The on-screen spin control is a DOM <img> owned by the document (not the
-  // renderer), so wait on that element's own load instead of a fresh Image.
-  const spinImg = el.spinBtn?.querySelector("img");
-  if (spinImg) {
-    waits.push(spinImg.complete
+  // Everything in symbolAssets + uiAssets, decoded and ready to paint.
+  const waits = Array.from(reelRenderer.imageLoads?.values() || []);
+  // The on-screen <img> buttons are owned by the document, not the renderer.
+  // Their URLs are already in uiAssets (so the bytes are shared), but wait on
+  // the elements too so the reveal cannot beat their own decode.
+  document.querySelectorAll(".img-btn img, .ante-toggle-img").forEach((img) => {
+    waits.push(img.complete
       ? Promise.resolve()
-      : new Promise((resolve) => { spinImg.onload = spinImg.onerror = () => resolve(); }));
-  }
+      : new Promise((resolve) => { img.onload = img.onerror = () => resolve(); }));
+  });
   const total = waits.length || 1;
   let done = 0;
   let revealed = false;
@@ -4730,7 +4972,11 @@ function runBootLoader() {
   // Advance the bar as each existing load settles.
   waits.forEach((p) => p.then(bump));
   // Safety valve: a stalled asset must never trap the player behind the splash.
-  const safety = setTimeout(reveal, 8000);
+  // Generous now that the bar waits on the FULL manifest — the whole payload is
+  // ~500KB of WebP, so anything past this is a genuinely broken connection, not
+  // a slow one. Firing early would reveal a half-loaded game, which is the exact
+  // bug this gating exists to prevent.
+  const safety = setTimeout(reveal, 20000);
   Promise.all(waits).then(() => {
     clearTimeout(safety);
     reveal();
@@ -4747,6 +4993,37 @@ function loadDeferredAssets() {
     hero.src = hero.dataset.src;
   }
 }
+
+// Stop burning battery while the player is not looking. Nothing in the client
+// listened for this before: the render loop ran until unload and the Web Audio
+// scheduler kept re-arming, so a game left open in a background tab (or a phone
+// with the screen locked) kept the CPU and the audio hardware busy indefinitely.
+//
+// Browsers usually stop firing rAF on a hidden document, but "usually" is not a
+// guarantee — Android WebViews and the casino iframe wrappers the platform
+// launches into do not reliably do it — so we cancel the frame explicitly.
+// `pagehide` covers the iOS case where the tab is frozen without ever going
+// through visibilitychange.
+function installVisibilityGuards() {
+  const park = () => {
+    reelRenderer.pauseRendering();
+    window.Sound?.suspendAudio?.();
+  };
+  const wake = () => {
+    reelRenderer.resumeRendering();
+    window.Sound?.resumeAudio?.();
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) park();
+    else wake();
+  });
+  window.addEventListener("pagehide", park);
+  // bfcache restore re-shows the page without a visibilitychange event.
+  window.addEventListener("pageshow", () => {
+    if (!document.hidden) wake();
+  });
+}
+installVisibilityGuards();
 
 runBootLoader();
 initSession().catch((err) => {
