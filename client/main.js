@@ -4739,6 +4739,8 @@ function runBootLoader() {
 
 // Non-critical, heavy art loaded only after the game is visible: the ~5MB hero
 // character (skipped entirely on low-tier devices, where CSS also hides it).
+// The hero <img> is currently commented out in index.html, so this is a no-op
+// until the art is re-enabled.
 function loadDeferredAssets() {
   const hero = document.getElementById("stageCharacter");
   if (hero && hero.dataset.src && !document.body.classList.contains("perf-low")) {
