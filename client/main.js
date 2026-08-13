@@ -629,7 +629,10 @@ class ReelCanvasRenderer {
     const next = this.tier === "high" ? "mid" : this.tier === "mid" ? "low" : null;
     if (!next) return false;
     this.applyTier(next);
-    this.resize(); // re-derive dpr + fxScale + rebuild caches at the new budget
+    // Forced: a downgrade can move fxCeil without moving the backing store (on a
+    // dpr-1 device high→mid changes maxDpr 2→1.5, which changes nothing), and
+    // the new FX budget still has to be cashed in.
+    this.resize(true); // re-derive dpr + fxScale + rebuild caches at the new budget
     return true;
   }
 
@@ -652,12 +655,30 @@ class ReelCanvasRenderer {
     if (medianMs > 30) this.downgradeTier();
   }
 
-  resize() {
+  /** @param {boolean} [force] rebuild the caches even if the backing store is
+   *  unchanged — used by a quality-tier change, where fxCeil moves but the
+   *  pixel dimensions may not. */
+  resize(force) {
     const box = this.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
     this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
-    this.canvas.width = Math.round(box.width * this.dpr);
-    this.canvas.height = Math.round(box.height * this.dpr);
+    const nextW = Math.round(box.width * this.dpr);
+    const nextH = Math.round(box.height * this.dpr);
+    // A ResizeObserver fires for ANY layout nudge near the board — a message
+    // banner, a HUD node un-hiding, a mobile URL bar sliding away. The rebuild
+    // below re-rasterizes every symbol sprite and both stage caches, which lands
+    // as a frame hitch; doing that mid-spin is exactly the "assets are loading
+    // during gameplay" glitch (#26). If the backing store did not actually
+    // change, there is nothing to rebuild — just re-publish the board box (which
+    // is cheap and already diffed) and leave the caches alone.
+    if (!force && nextW === this.canvas.width && nextH === this.canvas.height) {
+      this.publishBoardBox();
+      return;
+    }
+    // Assigning to canvas.width/height resets the 2D context, so the transform
+    // and every cache below have to be re-established whenever we get here.
+    this.canvas.width = nextW;
+    this.canvas.height = nextH;
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // Thin particle bursts on small canvases (phones) and when the player asked
     // for reduced motion. CSS-px width is the proxy for "how much room/power".
@@ -2759,6 +2780,9 @@ function normalizeStepMultiplierIds(steps = []) {
 }
 
 const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCount: cols });
+// Exposed for tooling only (tools/layout-check.js instruments the sprite caches
+// to assert nothing rebuilds them mid-round). Nothing in the game reads this.
+window.__reelRenderer = reelRenderer;
 
 function winTier(waysWins = [], bet = 1) {
   let totalAmount = 0;
@@ -3021,6 +3045,40 @@ function setControls(disabled) {
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
 
+/** True while ANY round occupies the spin lifecycle — base game, base autoplay,
+ *  free-spin autoplay, buy-feature or a resumed bonus. This is the single
+ *  predicate that answers "may a new round start?" (#28); it ORs four signals
+ *  because the paths that drive a round do not all own the lock:
+ *    spinLock       — a manual spin or an autoplay run, incl. its network window
+ *    roundAnimating — a round being played out by ANY caller
+ *    autoplayActive — base autoplay between its spins
+ *    bonusAutoplay  — free-spin autoplay between its spins */
+function isRoundInFlight() {
+  return Boolean(
+    state.bonusAutoplay ||
+    state.autoplayActive ||
+    state.roundAnimating ||
+    spinLock.isLocked()
+  );
+}
+
+// Lifecycle counters. Three integers, incremented at the two decision points in
+// spin(); nothing in the game reads them. They exist because #28's acceptance
+// criterion ("a press never starts a second round") is otherwise unobservable
+// from outside: a leaked manual spin during a bonus looks exactly like a
+// legitimate free spin, and free-spin counts move on their own via retriggers.
+// Separating manual from autoplay starts makes the invariant exact.
+const lifecycleStats = { startedManual: 0, startedAuto: 0, blockedPresses: 0 };
+
+// Read-only lifecycle view for tooling (tools/spin-e2e.js waits on `inFlight` to
+// know when a round has genuinely settled — the button's `is-spinning` cue is
+// dropped as soon as the result arrives, well before the reels finish).
+window.__spinLifecycle = {
+  get phase() { return spinLock.phase; },
+  get inFlight() { return isRoundInFlight(); },
+  get stats() { return { ...lifecycleStats }; }
+};
+
 function requestFastStop() {
   // Fire during ANY in-flight phase (starting OR animating), not just once the
   // reels are visibly animating. A 2nd press in the pre-animation window
@@ -3028,7 +3086,12 @@ function requestFastStop() {
   // reset in spin() runs before the first await, so this latch survives into
   // dropOff() and animateRound(). Drops created after the flag is set are born
   // compressed; any in-flight drop is accelerated by the renderer call below.
-  if (!spinLock.isLocked()) return false; // nothing in flight
+  // "In flight" means the lock is held OR a round is visibly animating. Both
+  // halves matter: the lock covers the pre-animation window (dropOff + network),
+  // while roundAnimating covers any path that animates a round without owning
+  // the lock. Gating on the lock alone left fast-stop dead during buy-feature
+  // and session-resume bonuses, which never acquired it.
+  if (!spinLock.isLocked() && !state.roundAnimating) return false; // nothing in flight
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
   reelRenderer.requestFastStop?.(); // no-op if no drop exists yet (_accelerateDrop guards)
@@ -4354,27 +4417,39 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
 
 async function spin(options = {}) {
   if (!state.sessionId) return;
-  if (state.bonusAutoplay && !options.autoplay) return;
-  // A manual spin tap while autoplay is running stops the autoplay rather than
-  // queueing another spin (matches production slots).
-  if (state.autoplayActive && !options.autoplay) {
-    stopAutoplay();
+  const manual = !options.autoplay;
+
+  // ── ONE GATE FOR EVERY MANUAL PRESS ──────────────────────────────────────
+  // Issue #28 in one rule: while ANY round is in flight — base game, base
+  // autoplay, free-spin autoplay, buy-feature, resumed bonus — a press can only
+  // ever ACCELERATE the round already on screen. It never starts one, never
+  // queues one, and is never silently swallowed.
+  //
+  // isRoundInFlight() is the single source of truth for "is the lifecycle busy?"
+  // The old code returned early on bonusAutoplay/autoplayActive, so during free
+  // spins the spin button did nothing at all: the bonus was the one place
+  // speed-up was dead.
+  if (manual && isRoundInFlight()) {
+    // A manual press also cancels BASE autoplay (matches production slots). The
+    // free-spin autoplay is not cancellable — those spins are owed to the player
+    // — so it only ever speeds up. Either way the current round still finishes:
+    // stopping is about what comes next, never about aborting what is running.
+    if (state.autoplayActive) stopAutoplay();
+    lifecycleStats.blockedPresses += 1;
+    requestFastStop();
     return;
   }
-  // Lifecycle lock. Autoplay spins are already serialized by their driving
-  // loop (and manual interference is blocked by the guards above), so only
-  // manual spins contend for the lock. Acquire BEFORE any await so a rapid
-  // double-tap can never slip a second spin through the network window.
-  const manual = !options.autoplay;
-  if (manual) {
-    if (!spinLock.tryAcquire()) {
-      // Already in flight (starting OR animating): a 2nd press accelerates the
-      // CURRENT spin from this instant — it never starts or queues a new spin.
-      // So at most two presses are ever needed: one to start, one to speed up.
-      requestFastStop();
-      return;
-    }
+  // Acquire BEFORE any await so a rapid double-tap can never slip a second spin
+  // through the network window. Autoplay spins are serialized by their driving
+  // loop, which holds the lock for the whole run.
+  if (manual && !spinLock.tryAcquire()) {
+    lifecycleStats.blockedPresses += 1;
+    requestFastStop();
+    return;
   }
+  // Past this point a round IS starting.
+  if (manual) lifecycleStats.startedManual += 1;
+  else lifecycleStats.startedAuto += 1;
   state.fastStopRequested = false;
   el.spinBtn?.classList.remove("is-fast-stopping");
   setControls(true);
@@ -4443,6 +4518,12 @@ async function spin(options = {}) {
 
 async function autoplayBonus() {
   if (state.bonusAutoplay) return;
+  // The whole bonus is ONE atomic lifecycle: no other round may begin until the
+  // last free spin has resolved. Reached from a manual spin the lock is already
+  // held by that spin (which keeps it until the bonus returns); reached from
+  // buy-feature or a resumed session it is held by that caller. Only if nobody
+  // holds it do we take it ourselves, and then we are the one who releases it.
+  const ownsLock = !spinLock.isLocked() && spinLock.tryAcquire();
   state.bonusAutoplay = true;
   setControls(true);
   let total = 0;
@@ -4462,6 +4543,11 @@ async function autoplayBonus() {
     pushGameMessage(`Bonus autoplay complete. Total bonus win: ${fmt(total)}.`, "bonus");
   } finally {
     state.bonusAutoplay = false;
+    // Clear any fast-stop latched on the final free spin so the next base-game
+    // spin does not inherit it and play out instantly.
+    state.fastStopRequested = false;
+    el.spinBtn?.classList.remove("is-fast-stopping");
+    if (ownsLock) spinLock.release();
     setControls(false);
   }
 }
@@ -4494,7 +4580,15 @@ function updateAutoplayUi() {
 // (it runs the bonus autoplay, then returns and we continue).
 async function startAutoplay(count) {
   if (state.autoplayActive || state.bonusAutoplay || !state.sessionId) return;
+  // Dismiss the picker on any outcome, including the refusal below — leaving it
+  // open after a choice was made reads as a dead control.
   el.autoplayPopover?.classList.add("hidden");
+  // Hold the lock for the WHOLE run, not per spin: the run is a single
+  // lifecycle as far as "may another round start?" is concerned, and holding it
+  // is also what lets animateRound() promote to the ANIMATING phase (and so
+  // makes fast-stop work) on autoplay spins, which do not acquire it themselves.
+  // A round already in flight means the run simply does not begin.
+  if (!spinLock.tryAcquire()) return;
   state.autoplayActive = true;
   state.autoplayLeft = count;
   state.autoplayInitial = count;
@@ -4510,6 +4604,9 @@ async function startAutoplay(count) {
   } finally {
     state.autoplayActive = false;
     state.autoplayLeft = 0;
+    state.fastStopRequested = false;
+    el.spinBtn?.classList.remove("is-fast-stopping");
+    spinLock.release();
     updateAutoplayUi();
     setControls(false);
   }
@@ -4542,6 +4639,12 @@ async function buyFreeSpins() {
   const cost = Number((bet * costMultiplier).toFixed(2));
   const ok = await confirmBuy({ cost, currency: state.currency || "GEL", costMultiplier });
   if (!ok) return;
+  // A bought feature is a round like any other and must own the lifecycle for
+  // its whole duration — the paid base round AND the free spins that follow.
+  // Without this the bought round animated with the lock idle, so a tap during
+  // it started a real concurrent spin (state.bonusAutoplay is not set yet at
+  // that point, so the bonus guard did not cover this window).
+  if (!spinLock.tryAcquire()) return;
   setControls(true);
   try {
     pulseBanner("Buying Free Spins...", "bonus", 900);
@@ -4557,6 +4660,9 @@ async function buyFreeSpins() {
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Buy error: ${err.message}`, "error");
   } finally {
+    spinLock.release();
+    state.fastStopRequested = false;
+    el.spinBtn?.classList.remove("is-fast-stopping");
     if (!state.bonusAutoplay) setControls(false);
   }
 }
@@ -4726,6 +4832,10 @@ async function initSession() {
   state.gameId = payload.game_id || state.gameId;
   el.sessionId.textContent = state.sessionId.slice(0, 8);
   el.balance.textContent = fmt(payload.balance);
+  // Claim the Round ID row NOW, while the board is still idle. In platform mode
+  // it is guaranteed to appear after the first spin, and un-hiding it then would
+  // shrink the board mid-animation. Reserving it up front makes that a no-op.
+  if (_platform.enabled && el.roundIdBar) el.roundIdBar.classList.remove("hidden");
   el.betSelect.innerHTML = "";
   (payload.allowed_bets || []).forEach((b) => {
     const option = document.createElement("option");

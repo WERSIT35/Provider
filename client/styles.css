@@ -418,7 +418,7 @@ button:disabled {
   /* Branded header on the left, info icon on the right, in one thin row. */
   body.public-mode .altar-top { align-items: center; justify-content: space-between; padding: 0; }
   body.public-mode .title-cluster .title-kicker { display: none; }
-  body.public-mode .title-cluster h1 { font-size: calc(1.1rem * var(--ui)); }
+  body.public-mode .title-cluster h1 { font-size: calc(1.1 * var(--ui)); }
 
   /* No `top` here — the badge is anchored to the board box (see .bonus-multi-badge).
      A fixed `top: 6px` pinned it to the panel, so on a portrait phone, where the
@@ -631,8 +631,31 @@ body.public-mode .sanctum {
 body.public-mode .altar {
   /* Vertical rhythm between the stacked rows. */
   --gap: clamp(3px, 0.9vh, 10px);
-  /* Chrome scale: one number every control derives from. */
-  --ui: clamp(0.72, min(100vw / 480, 100vh / 900), 1.25);
+  /* Chrome scale: the SCALED ROOT EM every control derives from. Use it as
+     `calc(<multiple> * var(--ui))` — e.g. `calc(0.58 * var(--ui))` is "0.58rem,
+     scaled" — and `calc(<px> * var(--ui) / 16)` for pixel quantities.
+
+     This is a LENGTH, deliberately. It used to be the unitless ratio
+     `clamp(0.72, min(100vw / 480, 100vh / 900), 1.25)`, which is invalid CSS:
+     `100vw / 480` is a length (a viewport unit divided by a number), so the
+     clamp mixed a length against the unitless bounds 0.72 and 1.25. Every
+     `calc(Xrem * var(--ui))` built on it was therefore invalid at computed-value
+     time and fell back to `inherit` — which is why the whole proportional-chrome
+     system silently did nothing and HUD labels rendered at the inherited 16px
+     instead of ~9px, crowding and ellipsizing the bar (#25's "controls and
+     spacing become awkward"). Folding the 16px in keeps every existing
+     multiplier's meaning identical while making the token valid:
+       11.52px = 0.72 * 16   |   100vw / 30 = (100vw / 480) * 16
+       20px    = 1.25 * 16   |   100vh / 56.25 = (100vh / 900) * 16
+
+     The ramp is then re-calibrated against the phone rather than the old 480px
+     reference. Because the token never actually worked, its numbers had only
+     ever been checked against the inherited 16px fallback; a literal port put
+     HUD micro-labels at 7.5px on a 390px phone, which fails #25's "readable
+     controls, not too small on mobile". The floor and the width reference are
+     raised so a 390px phone lands near 14px (labels ~9.5px, values ~15px) and a
+     desktop caps at 21px. */
+  --ui: clamp(12.5px, min(100vw / 28, 100vh / 52), 21px);
   /* Tap-target sizing. Driven by vh, not vmin: these are stacked vertically, so
      the height budget is what decides whether the board or the chrome wins. On
      a 1920x1080 desktop vmin is 1080, which made every control hit its ceiling
@@ -641,6 +664,12 @@ body.public-mode .altar {
   --btn: clamp(30px, min(6.4vh, 9vw), 54px);
   --spin: clamp(52px, min(11.5vh, 17vw), 104px);
   --radius: clamp(8px, 1.4vmin, 18px);
+  /* Reserved heights for the two chrome rows that change CONTENT during play —
+     the message rail and the HUD strip. Both are a FIXED budget, never content
+     driven, so nothing they display can resize the board. See the
+     .hud-message-rail and .hud-bar rules for the bugs that forced this. */
+  --rail: clamp(16px, 2.4vh, 28px);
+  --hud-h: clamp(38px, 5.6vh, 62px);
 
   width: 100vw;
   max-width: 100vw;
@@ -826,7 +855,7 @@ body.public-mode #betNode {
   display: none;
 }
 body.public-mode .status-ribbon-item {
-  font-size: calc(0.74rem * var(--ui));
+  font-size: calc(0.74 * var(--ui));
 }
 
 /* NOTE: .altar-core / .vault-shell / .vault-window used to be re-declared here
@@ -862,20 +891,121 @@ body.public-mode .reels-canvas {
    disagreed with each other. Nothing here is a raw pixel dimension, so the
    whole stack reflows proportionally instead of stepping at breakpoints. */
 
+/* ZERO-REFLOW HUD BAR.
+   Entering the bonus un-hides three more nodes (Bonus Total / Free Spins /
+   Multiplier), taking the bar from 3 columns to 6. `grid-auto-flow: column`
+   already keeps that to ONE row — but on a narrow phone six columns are too
+   tight for labels like "BONUS TOTAL", so the label WRAPPED to a second line
+   inside its node and the bar grew ~16px anyway. The board is centered in the
+   space below, so it jumped 8px down on bonus entry and 8px back up on exit.
+
+   The row height is therefore pinned to the scale tokens and the node contents
+   are single-line and clipped. Three nodes or six, the bar is the same height. */
 body.public-mode .hud-bar {
-  padding: clamp(3px, 0.7vh, 9px) clamp(6px, 2vw, 16px);
+  padding: 0 clamp(6px, 2vw, 16px);
   gap: clamp(4px, 1.4vw, 10px);
   border-radius: var(--radius);
+  height: var(--hud-h);
+  min-height: var(--hud-h);
+  max-height: var(--hud-h);
+  align-items: center;
+  overflow: hidden;
+}
+body.public-mode .hud-node {
+  min-width: 0;
+  justify-content: center;
+  gap: 0;
+}
+body.public-mode .hud-node span,
+body.public-mode .hud-node strong {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 body.public-mode .hud-node span {
-  font-size: calc(0.58rem * var(--ui));
+  font-size: calc(0.68 * var(--ui));
+  /* The labels are the part that ran out of room first. Tighten the tracking as
+     the bar gets busier rather than letting them wrap or ellipsize away. */
+  letter-spacing: 0.08em;
+  line-height: 1.25;
 }
 body.public-mode .hud-node strong {
-  font-size: calc(1rem * var(--ui));
+  font-size: calc(1.05 * var(--ui));
+  line-height: 1.2;
 }
 
+/* ZERO-REFLOW MESSAGE RAIL.
+   The rail reserved only 8-20px while the banner inside it is ~18-24px tall and
+   was a normal in-flow child, so every pulseBanner() grew the rail by a handful
+   of pixels and every expiry shrank it back. .vault-window is the flex row that
+   absorbs that delta, so the BOARD resized twice per message — and in the bonus
+   a banner fires on every single free spin ("Auto Free Spin..."), which is why
+   the jump reads as a bonus-only bug. Worse, each resize tripped the renderer's
+   ResizeObserver, which used to clear and re-rasterize every symbol sprite
+   mid-animation (the "assets reloading during play" hitch, #26).
+
+   So: the rail holds a FIXED height from the scale token, and the banner is
+   taken out of flow inside it. Showing or hiding a message now cannot change
+   any layout box, in the base game or the bonus. */
 body.public-mode .hud-message-rail {
-  min-height: clamp(8px, 1.6vh, 20px);
+  position: relative;
+  flex: 0 0 var(--rail);
+  height: var(--rail);
+  min-height: var(--rail);
+  max-height: var(--rail);
+  overflow: visible;
+}
+/* Same zero-reflow contract for the Round ID strip. It is written fresh after
+   EVERY resolved round (platform mode), and its base styling is `flex-wrap:
+   wrap` + `word-break: break-all` — so a round ref one character too long for
+   the viewport wrapped to a second line and resized the board mid-round, again
+   once per free spin. In player view it is one fixed-height line, clipped. */
+body.public-mode .round-id-bar {
+  flex-wrap: nowrap;
+  height: var(--rail);
+  min-height: var(--rail);
+  max-height: var(--rail);
+  padding: 0 calc(8 * var(--ui) / 16);
+  margin-top: 0;
+  gap: calc(6 * var(--ui) / 16);
+  overflow: hidden;
+}
+body.public-mode .round-id-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  word-break: normal;
+  padding: 0 calc(5 * var(--ui) / 16);
+  font-size: calc(0.7 * var(--ui));
+}
+body.public-mode .round-id-label,
+body.public-mode .round-id-copy,
+body.public-mode .round-id-copied {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: calc(0.58 * var(--ui));
+}
+body.public-mode .round-id-copy {
+  padding: calc(2 * var(--ui) / 16) calc(7 * var(--ui) / 16);
+}
+
+body.public-mode .vault-banner {
+  position: absolute;
+  /* Centered with `inset: 0` + auto margins on a fit-content box, NOT with a
+     translate(-50%,-50%). The `bannerMsgIn` entry animation owns `transform`,
+     so any centering that also lived there would be wiped for the 0.28s the
+     animation runs and the banner would visibly slide out of place. */
+  inset: 0;
+  width: fit-content;
+  height: fit-content;
+  margin: auto;
+  /* Scaled off --ui so the banner always fits inside the reserved rail rather
+     than dictating it. Kept in sync with the --rail clamp above. */
+  font-size: calc(0.62 * var(--ui));
+  padding: calc(3 * var(--ui) / 16) calc(12 * var(--ui) / 16);
+  max-width: 100%;
 }
 
 /* The header is pure branding — on any short viewport it is the first thing to
@@ -890,7 +1020,7 @@ body.public-mode .title-tagline { display: none; }
    header pixel costs 1.2px of board width. */
 body.public-mode .status-ribbon .ribbon-detail {
   padding: clamp(3px, 0.7vh, 8px) clamp(8px, 1.6vw, 14px);
-  font-size: calc(0.7rem * var(--ui));
+  font-size: calc(0.7 * var(--ui));
   min-height: 0;
 }
 body.public-mode .status-ribbon-item {
@@ -938,6 +1068,19 @@ body.public-mode .ante-toggle {
   height: var(--btn);
   max-height: var(--btn);
 }
+/* Cap the Buy Feature button's WIDTH, not just its height. `.img-btn-buy` is
+   `width: 100%` inside `deck-right`, which is a `1fr` column of the control
+   deck — so on a 1920px desktop the button's box measured 875px wide while the
+   `object-fit: contain` art inside it drew a ~130px pill. The hit target was
+   therefore ~6x wider than anything visible, and a stray click most of a screen
+   away from the button opened the Buy Free Spins flow. BUY_FEATURE is 800x271
+   (2.95:1), so width = height * 2.95 makes the box exactly the painted pill.
+   `min()` keeps it from overflowing a narrow deck column, where `object-fit:
+   contain` letterboxes as before. The ANTE pill was already capped this way. */
+body.public-mode .img-btn-buy {
+  width: min(100%, calc(var(--btn) * 2.95));
+  margin: 0 auto;
+}
 body.public-mode .img-btn-buy img,
 body.public-mode .ante-toggle-img {
   height: 100%;
@@ -951,21 +1094,27 @@ body.public-mode .bet-stepper {
   min-width: 0;
 }
 body.public-mode .bet-display {
-  font-size: calc(0.95rem * var(--ui));
+  font-size: calc(0.95 * var(--ui));
 }
 
 body.public-mode .control-toolbar {
   gap: clamp(6px, 2vw, 14px);
   padding: 0;
 }
+/* Tap targets. The floor was 26px, which is well under the ~44px that touch
+   guidance (and #25's "buttons remain accessible and not too small on mobile")
+   asks for — and 26px is exactly what a landscape phone got, where these are the
+   turbo and reset controls. vmin rather than vh so the floor does not collapse
+   just because the viewport is short; the height budget is protected by the cap,
+   not by starving the target. */
 body.public-mode .tool-btn {
-  height: clamp(26px, 4.4vh, 40px);
-  min-width: clamp(26px, 4.4vh, 40px);
+  height: clamp(36px, 6vmin, 44px);
+  min-width: clamp(36px, 6vmin, 44px);
   min-height: 0;
-  padding: 0 clamp(6px, 1.8vw, 14px);
+  padding: 0 clamp(8px, 2vw, 16px);
 }
-body.public-mode .tool-btn .tool-glyph { font-size: calc(1.1rem * var(--ui)); }
-body.public-mode .tool-btn .tool-label { font-size: calc(0.68rem * var(--ui)); }
+body.public-mode .tool-btn .tool-glyph { font-size: calc(1.1 * var(--ui)); }
+body.public-mode .tool-btn .tool-label { font-size: calc(0.68 * var(--ui)); }
 
 body.public-mode .game-footer {
   min-height: clamp(22px, 3.6vh, 38px);
@@ -973,11 +1122,11 @@ body.public-mode .game-footer {
   gap: clamp(10px, 5vw, 30px);
   border-radius: var(--radius);
 }
-body.public-mode .footer-cell span { font-size: calc(0.58rem * var(--ui)); }
-body.public-mode .footer-cell strong { font-size: calc(0.94rem * var(--ui)); }
+body.public-mode .footer-cell span { font-size: calc(0.58 * var(--ui)); }
+body.public-mode .footer-cell strong { font-size: calc(0.94 * var(--ui)); }
 
 body.public-mode .title-cluster h1 {
-  font-size: calc(1.05rem * var(--ui));
+  font-size: calc(1.05 * var(--ui));
 }
 
 /* Portrait phones/tablets. The board is width-bound here, so the only job left
@@ -1034,6 +1183,35 @@ body.public-mode .title-cluster h1 {
   }
   body.public-mode .hud-message-rail {
     display: none;
+  }
+  /* Every vertical pixel here is board size, and this orientation has the
+     OPPOSITE problem to portrait: the 6/5 board is height-bound, so it
+     pillarboxes and leaves a wide empty band down each side while stacked
+     chrome rows starve it. So fold the duplicated rows away and spend the
+     reclaimed height on the board.
+
+     The bottom CREDIT/BET strip exists because portrait's HUD has no room for
+     Balance and Bet. Landscape has room to spare — three nodes across 844px —
+     so promote them back into the HUD and drop the strip. Same information,
+     one row instead of two. */
+  body.public-mode .game-footer {
+    display: none;
+  }
+  body.public-mode #balanceNode,
+  body.public-mode #betNode {
+    display: flex;
+  }
+  /* The Round ID is a support/compliance readout, not something read mid-spin,
+     and .altar-top is already hidden at this size for the same reason. It stays
+     available in portrait and on every larger viewport. */
+  body.public-mode .round-id-bar {
+    display: none;
+  }
+  /* 5.6vh floors at 38px here, which is a tenth of a 390px viewport for two
+     short lines of text. Tighten the floor; the nodes are still single-line and
+     clipped, so the bar cannot grow when the bonus nodes appear. */
+  body.public-mode .altar {
+    --hud-h: clamp(30px, 8.5vh, 44px);
   }
 }
 
@@ -2698,7 +2876,11 @@ pre {
     font-size: 1.5rem;
   }
 
-  .vault-banner {
+  /* Admin dev view only. In player view the banner is centered in the reserved
+     message rail via `inset: 0; margin: auto` — a px `top` and a stretched
+     width would knock it off that centering (the same trap that once floated
+     the multiplier badge ~100px above the grid). */
+  body:not(.public-mode) .vault-banner {
     top: 8px;
     width: calc(100% - 16px);
   }

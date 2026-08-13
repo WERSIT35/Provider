@@ -12,6 +12,9 @@
     "test:api": "node tools/api-test.js",
     "test:rtp-parity": "node tools/rtp-parity.js",
     "test:spin-lock": "node tools/spin-lock-test.js",
+    "test:layout": "node tools/layout-check.js",
+    "test:spin-e2e": "node tools/spin-e2e.js",
+    "test:client": "npm run test:spin-lock && npm run test:layout && npm run test:spin-e2e",
     "build": "echo \"No build step - static site\" && exit 0"
   },
   "engines": {
