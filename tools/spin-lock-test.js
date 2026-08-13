@@ -116,6 +116,130 @@ function check(name, cond) {
   check("...with the fast-stop flag cleared", state.fastStopRequested === false);
 }
 
+// --- The full press gate, incl. BONUS rounds (GitHub #28) -------------------
+// The lock alone is not the whole rule. main.js drives rounds from four places
+// and only some of them own the lock, so spin() gates on the OR of four signals.
+// This models that gate exactly (see the `busy` block in client/main.js spin())
+// and pins the behaviour the bonus used to get wrong: during free spins the
+// press was returned early and swallowed, so speed-up was dead in the bonus.
+function makeGame() {
+  const lock = createSpinLock();
+  const g = {
+    lock,
+    roundAnimating: false,
+    autoplayActive: false,
+    bonusAutoplay: false,
+    fastStopRequested: false,
+    autoplayStopped: false,
+    spinsStarted: 0,
+    /** Mirrors requestFastStop(): in flight = lock held OR a round on screen. */
+    requestFastStop() {
+      if (!lock.isLocked() && !g.roundAnimating) return false;
+      g.fastStopRequested = true;
+      return true;
+    },
+    /** Mirrors the manual branch of spin(). */
+    press() {
+      const busy =
+        g.bonusAutoplay || g.autoplayActive || g.roundAnimating || lock.isLocked();
+      if (busy) {
+        if (g.autoplayActive) { g.autoplayActive = false; g.autoplayStopped = true; }
+        return g.requestFastStop() ? "faststop" : "ignored";
+      }
+      if (!lock.tryAcquire()) return g.requestFastStop() ? "faststop" : "ignored";
+      g.spinsStarted += 1;
+      g.fastStopRequested = false;
+      return "start";
+    }
+  };
+  return g;
+}
+
+// Free-spin autoplay: entered from a manual spin, so the manual spin holds the
+// lock across the whole bonus.
+{
+  const g = makeGame();
+  check("bonus: manual spin starts the triggering round", g.press() === "start");
+  g.lock.markAnimating();
+  g.roundAnimating = true;
+  // ...trigger resolves, bonus autoplay takes over (manual spin still holds lock)
+  g.bonusAutoplay = true;
+  check("bonus: press during a free spin fast-stops it", g.press() === "faststop");
+  check("bonus: ...and the flag is actually latched", g.fastStopRequested === true);
+  check("bonus: no second spin was started", g.spinsStarted === 1);
+  // Between free spins the reels are momentarily idle but the bonus is not over.
+  g.roundAnimating = false;
+  check("bonus: press BETWEEN free spins never starts a base spin",
+    g.press() === "faststop");
+  check("bonus: still exactly one owner", g.spinsStarted === 1);
+}
+
+// Buy-feature: nobody had the lock during the bought round, which let a tap
+// start a real concurrent spin. buyFreeSpins() now acquires it.
+{
+  const g = makeGame();
+  check("buy: buyFreeSpins acquires the lock", g.lock.tryAcquire() === true);
+  g.lock.markAnimating();
+  g.roundAnimating = true;
+  check("buy: press during the bought round fast-stops it", g.press() === "faststop");
+  check("buy: no concurrent spin started", g.spinsStarted === 0);
+  g.bonusAutoplay = true; // free spins begin, lock still held by buyFreeSpins
+  check("buy: press during the bought bonus fast-stops", g.press() === "faststop");
+  check("buy: still no concurrent spin", g.spinsStarted === 0);
+}
+
+// Resumed bonus (session restored mid-bonus): autoplayBonus() takes the lock.
+{
+  const g = makeGame();
+  check("resume: autoplayBonus acquires the lock", g.lock.tryAcquire() === true);
+  g.bonusAutoplay = true;
+  g.lock.markAnimating();
+  g.roundAnimating = true;
+  check("resume: press fast-stops the resumed free spin", g.press() === "faststop");
+  check("resume: no spin started", g.spinsStarted === 0);
+}
+
+// Base autoplay: a press stops the run AND speeds up the round on screen.
+{
+  const g = makeGame();
+  check("autoplay: startAutoplay acquires the lock", g.lock.tryAcquire() === true);
+  g.autoplayActive = true;
+  g.lock.markAnimating();
+  g.roundAnimating = true;
+  check("autoplay: press fast-stops the current spin", g.press() === "faststop");
+  check("autoplay: ...and cancels the run", g.autoplayStopped === true);
+  check("autoplay: the running round was not aborted into a new spin",
+    g.spinsStarted === 0);
+}
+
+// Rapid input across a WHOLE bonus lifecycle: exactly one round is ever owned.
+{
+  const g = makeGame();
+  g.press();            // manual trigger spin
+  g.lock.markAnimating();
+  g.roundAnimating = true;
+  const phases = [
+    () => {},                                   // triggering round animating
+    () => { g.bonusAutoplay = true; },          // bonus begins
+    () => { g.roundAnimating = false; },        // between free spins
+    () => { g.roundAnimating = true; },         // next free spin animating
+    () => { g.bonusAutoplay = false; g.roundAnimating = false; } // bonus over
+  ];
+  let started = 0;
+  for (const advance of phases) {
+    advance();
+    for (let i = 0; i < 10; i++) if (g.press() === "start") started += 1;
+  }
+  // Only the final phase (bonus over, lock released below) could ever start one,
+  // and the lock is still held by the manual spin, so nothing new may begin.
+  check("rapid input across a full bonus starts no extra spins", started === 0);
+  check("exactly one round owned for the whole bonus", g.spinsStarted === 1);
+
+  g.lock.release(); // manual spin's finally, after the bonus returned
+  check("only once the bonus completes does a press start a new spin",
+    g.press() === "start");
+}
+
 if (failures === 0) {
   console.log("\nspin-lock: PASS");
   process.exit(0);
