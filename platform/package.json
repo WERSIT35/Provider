@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "dev:seed": "tsx scripts/dev-seed.ts",
     "start:seed": "tsx scripts/dev-seed.ts",
+    "dev:seed:demo-operator": "tsx scripts/seed-demo-operator.ts",
     "e2e": "tsx scripts/e2e-operator.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",

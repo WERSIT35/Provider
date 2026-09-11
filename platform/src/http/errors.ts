@@ -17,7 +17,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   TOKEN_EXPIRED: 401,
   INVALID_BET: 400,
   INSUFFICIENT_FUNDS: 402,
-  CONFIG_NOT_APPROVED: 409
+  CONFIG_NOT_APPROVED: 409,
+  OPERATOR_GAME_NOT_FOUND: 404,
+  WEBHOOK_NOT_CONFIGURED: 502,
+  WEBHOOK_CALL_FAILED: 502
 };
 
 export function sendDomainError(reply: FastifyReply, err: unknown, requestId: string): FastifyReply {

@@ -99,4 +99,25 @@ describe("Admin API (RBAC + tenant scoping)", () => {
     const recon = await app.inject({ method: "GET", url: "/admin/v1/reports/reconciliation", headers: { authorization: `Bearer ${token}` } });
     expect((recon.json() as { ok: boolean }).ok).toBe(true);
   });
+
+  it("serves a tenant-scoped overview: distinct players, sessions, and recent transactions", async () => {
+    const token = operatorToken(opAId);
+    const res = await app.inject({ method: "GET", url: "/admin/v1/reports/overview", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      operator_id: string;
+      distinct_players: number;
+      sessions_total: number;
+      sessions_active: number;
+      rounds: number;
+      recent_transactions: Array<{ operator_id: string }>;
+    };
+    expect(body.operator_id).toBe(opAId);
+    expect(body.distinct_players).toBe(1); // only p_a played on operator A
+    expect(body.sessions_total).toBe(1);
+    expect(body.sessions_active).toBe(1);
+    expect(body.rounds).toBe(5);
+    expect(body.recent_transactions.length).toBeGreaterThan(0);
+    expect(body.recent_transactions.every((t) => t.operator_id === opAId)).toBe(true);
+  });
 });

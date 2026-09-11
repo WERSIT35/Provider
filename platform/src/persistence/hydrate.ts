@@ -7,7 +7,7 @@ import type { TxRecord } from "../modules/wallet/transaction-store";
 import type { AdjustmentRecord } from "../modules/rounds/round-adjustment.store";
 import type { Session } from "../modules/session/session.service";
 import type { DisputeRecord } from "../modules/disputes/dispute.service";
-import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame } from "../modules/management/management.types";
+import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame, OperatorWebhook } from "../modules/management/management.types";
 import type { AdminAccount } from "../modules/admin/admin-account";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 
@@ -17,7 +17,7 @@ import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wal
  * chains and seq counters continue seamlessly.
  */
 export async function hydrateContainer(c: Container, p: Persistence): Promise<void> {
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts] =
+  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts] =
     await Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
@@ -25,6 +25,7 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
       p.loadTable("games"),
       p.loadTable("math_configs"),
       p.loadTable("operator_games"),
+      p.loadTable("operator_webhooks"),
       p.loadTable("player_sessions"),
       p.loadTable("rounds"),
       p.loadTable("wallet_transactions"),
@@ -43,7 +44,8 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
     credentials: credentials as unknown as Array<ApiCredential & { hmac_secret?: string | null }>,
     games: games as unknown as Game[],
     mathConfigs: mathConfigs as unknown as MathConfig[],
-    operatorGames: operatorGames as unknown as OperatorGame[]
+    operatorGames: operatorGames as unknown as OperatorGame[],
+    webhooks: webhooks as unknown as Array<OperatorWebhook & { secret?: string | null }>
   });
   c.sessions.hydrate(sessions as unknown as Session[]);
   c.roundsRepo.hydrate(rounds as unknown as RoundRecord[]);

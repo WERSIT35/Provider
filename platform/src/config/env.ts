@@ -23,6 +23,15 @@ const EnvSchema = z.object({
   BOOTSTRAP_ADMIN_USERNAME: z.string().min(1).default("admin"),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).default("change-me-admin"),
   TOTP_ISSUER: z.string().min(1).default("Provider Platform"),
+  // Require TOTP 2FA enrollment/verification during admin login. Defaults on
+  // (safe for production); set to "false" to skip the authenticator step
+  // entirely — e.g. for quick local testing. NOTE: z.coerce.boolean() would
+  // treat the STRING "false" as truthy (any non-empty string), so this is an
+  // explicit string comparison instead.
+  ADMIN_TOTP_REQUIRED: z
+    .string()
+    .default("true")
+    .transform((v) => v.toLowerCase() !== "false"),
   // Operator HMAC request signing: max allowed clock skew, and per-key rate limit.
   HMAC_SKEW_SECONDS: z.coerce.number().int().positive().max(300).default(30),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),

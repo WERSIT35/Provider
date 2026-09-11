@@ -1,0 +1,25 @@
+{
+  "name": "demo-operator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo casino (Operator) website — a real, runnable licensee site proving the platform's launch + wallet-webhook integration over the wire.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

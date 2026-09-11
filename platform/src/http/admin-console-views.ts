@@ -284,14 +284,55 @@ async function loadGames() {
   const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
   try { const d = await api('/admin/v1/operator-games' + qs); const rows = d.operator_games || [];
     if (!rows.length) { el.innerHTML = '<p class="muted">no game assignments</p>'; return; }
-    el.innerHTML = '<table><tr><th>assignment</th><th>game_id</th><th>currency</th><th>bets</th><th>status</th><th></th></tr>' +
+    el.innerHTML = '<table><tr><th>assignment</th><th>game_id</th><th>currency</th><th>bets</th><th>license</th><th>lobby name</th><th>sort</th><th>in lobby</th><th></th></tr>' +
       rows.map(g => '<tr><td><code>' + g.id.slice(0,8) + '…</code></td><td>' + g.game_id.slice(0,8) + '…</td><td>' + g.currency + '</td><td>' + g.allowed_bets.join(', ') + '</td>' +
         '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
-        '<td><button class="ghost" data-id="' + g.id + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button></td></tr>').join('') + '</table>';
+        '<td>' + esc(g.display_name || '—') + '</td><td>' + g.sort_order + '</td>' +
+        '<td>' + (g.lobby_enabled ? '<span class="ok">yes</span>' : '<span class="err">no</span>') + '</td>' +
+        '<td><button class="ghost" data-id="' + g.id + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button> ' +
+        '<span data-operator><button class="ghost" data-disp="' + g.id + '">Edit display</button></span></td></tr>').join('') + '</table>';
     el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
+    el.querySelectorAll('button[data-disp]').forEach(b => b.addEventListener('click', () => editGameDisplay(b.dataset.disp, rows.find(r => r.id === b.dataset.disp))));
+    applyScopeVisibility();
   } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
 }
 async function toggleGame(id, to) { try { await api('/admin/v1/operator-games/' + id + '/status', { method: 'POST', body: { status: to } }); loadGames(); } catch (e) { alert(e.message); } }
+async function editGameDisplay(id, current) {
+  const display_name = prompt('Display name in your lobby (blank to clear):', (current && current.display_name) || '');
+  if (display_name === null) return;
+  const thumbnail_url = prompt('Thumbnail URL (blank to clear):', (current && current.thumbnail_url) || '');
+  if (thumbnail_url === null) return;
+  const sortRaw = prompt('Sort order (number):', String((current && current.sort_order) || 0));
+  if (sortRaw === null) return;
+  const lobby_enabled = confirm('Show this game in your lobby? OK = yes, Cancel = hide it.');
+  try {
+    await api('/admin/v1/operator-games/' + id, { method: 'PATCH', body: {
+      display_name: display_name.trim() ? display_name.trim() : null,
+      thumbnail_url: thumbnail_url.trim() ? thumbnail_url.trim() : null,
+      sort_order: Number(sortRaw) || 0,
+      lobby_enabled
+    } });
+    loadGames();
+  } catch (e) { alert(e.message); }
+}
+async function loadWebhook() {
+  const cur = $('webhookCurrent'); if (!cur || !state.operatorId) return;
+  try { const d = await api('/admin/v1/operators/' + state.operatorId + '/webhook');
+    cur.textContent = d.webhook ? ('Configured: ' + d.webhook.url + ' (secret ···' + d.webhook.secret_last4 + ', updated ' + (d.webhook.updated_at || '').replace('T',' ').slice(0,19) + ')') : 'Not configured yet.';
+    const input = $('webhookUrl'); if (input && d.webhook) input.value = d.webhook.url;
+  } catch (e) { cur.textContent = e.message; }
+}
+async function saveWebhook() {
+  const url = ($('webhookUrl').value || '').trim(); const out = $('webhookResult');
+  if (!url) { flash(out, 'enter a callback URL', false); return; }
+  const rotate_secret = $('webhookRotate').checked;
+  try {
+    const d = await api('/admin/v1/operators/' + state.operatorId + '/webhook', { method: 'PUT', body: { url, rotate_secret } });
+    flash(out, d.secret ? ('Saved. New secret (shown once): ' + d.secret) : 'Saved.', true);
+    $('webhookRotate').checked = false;
+    loadWebhook();
+  } catch (e) { flash(out, e.message, false); }
+}
 `;
 
 export const DISPUTES_JS = /* js */ `

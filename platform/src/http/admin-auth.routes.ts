@@ -37,6 +37,9 @@ function bad(reply: FastifyReply, req: FastifyRequest, status: number, code: str
 const adminAuthRoutes: FastifyPluginAsync = async (app) => {
   const c = app.container;
   const secret = c.config.adminSecret;
+  // undefined === required, so existing behavior/tests are unchanged unless a
+  // config explicitly opts out (see PlatformConfig.totpRequired).
+  const totpRequired = c.config.totpRequired !== false;
 
   // Issue the final admin session token from an account (same shape admin.routes verifies).
   const mintSession = (a: AdminAccount): { token: string; scope: string; role: string } => {
@@ -71,15 +74,17 @@ const adminAuthRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // First login: force password reset and/or TOTP enrollment before any session.
-    if (account.must_set_password || !account.totp_enrolled) {
+    if (account.must_set_password || (totpRequired && !account.totp_enrolled)) {
       const ticket = signToken(secret, { purpose: "setup", admin_id: account.id }, SETUP_TTL_SECONDS);
       return reply.send({
         setup_required: true,
         ticket,
         needs_password: account.must_set_password,
-        needs_totp: !account.totp_enrolled
+        needs_totp: totpRequired && !account.totp_enrolled
       });
     }
+
+    if (!totpRequired) return reply.send(mintSession(account));
 
     const mfa_token = signToken(secret, { purpose: "mfa", admin_id: account.id }, MFA_TTL_SECONDS);
     return reply.send({ mfa_required: true, mfa_token });
@@ -134,8 +139,9 @@ const adminAuthRoutes: FastifyPluginAsync = async (app) => {
     if (!account) return reply;
     c.adminAccounts.setPassword(account.id, parsed.data.new_password);
     const updated = accountFor(account.id)!;
-    // Password done. If TOTP already enrolled (unusual on first login), finish now.
-    if (updated.totp_enrolled) return reply.send({ done: true, ...mintSession(updated) });
+    // Password done. Finish now if TOTP isn't required, or is already enrolled
+    // (unusual on first login) — otherwise on to TOTP enrollment.
+    if (!totpRequired || updated.totp_enrolled) return reply.send({ done: true, ...mintSession(updated) });
     return reply.send({ done: false, needs_totp: true });
   });
 

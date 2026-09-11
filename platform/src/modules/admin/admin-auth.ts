@@ -42,10 +42,14 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "operators.read",
     "games.read",
     "disputes.read",
-    "players.read"
+    "players.read",
+    "credentials.read",
+    "webhook.read"
   ]),
   // Operator admins run their own tenant: read their data, verify rounds, toggle
-  // their own games on/off, look up players, and RAISE disputes (provider executes).
+  // their own games on/off (and configure their own lobby display + wallet
+  // webhook + rotate their own API key), look up players, and RAISE disputes
+  // (provider executes).
   operator_admin: new Set([
     "rounds.read",
     "rounds.verify",
@@ -55,7 +59,11 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "games.toggle",
     "players.read",
     "disputes.read",
-    "disputes.raise"
+    "disputes.raise",
+    "credentials.read",
+    "credentials.rotate",
+    "webhook.read",
+    "webhook.write"
   ]),
   operator_finance: new Set([
     "reports.read",

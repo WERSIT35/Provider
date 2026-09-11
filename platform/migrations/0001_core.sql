@@ -85,9 +85,27 @@ CREATE TABLE operator_games (
   jurisdiction   text NOT NULL DEFAULT 'GE',
   allowed_bets   jsonb NOT NULL,
   status         text NOT NULL DEFAULT 'enabled',
+  -- Casino-controlled slots-section display, independent of the provider-controlled
+  -- entitlement `status` above.
+  display_name   text,
+  thumbnail_url  text,
+  sort_order     integer NOT NULL DEFAULT 0,
+  lobby_enabled  boolean NOT NULL DEFAULT true,
   created_at     timestamptz NOT NULL
 );
 CREATE INDEX ix_opgames_operator ON operator_games (operator_id);
+
+-- One wallet callback per casino (seamless-wallet model — the casino holds player
+-- funds; the platform signs debit/credit/rollback/balance calls to this URL).
+CREATE TABLE operator_webhooks (
+  operator_id  text PRIMARY KEY,
+  url          text NOT NULL,
+  -- Raw shared secret, needed in plaintext to SIGN outgoing calls. DEV/SKELETON
+  -- ONLY — production keeps this in a secret manager (same caveat as hmac_secret above).
+  secret       text,
+  secret_last4 text NOT NULL,
+  updated_at   timestamptz NOT NULL
+);
 
 -- ── Play & money (durable mirror of the in-memory system of record) ────────────
 CREATE TABLE player_sessions (

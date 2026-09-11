@@ -42,7 +42,10 @@ const cfg = {
   hmacSkewSeconds: 30,
   rateLimitPerMin: 10_000,
   bootstrapAdminUsername: BOOTSTRAP_USER,
-  bootstrapAdminPassword: BOOTSTRAP_PASS
+  bootstrapAdminPassword: BOOTSTRAP_PASS,
+  // Local dev convenience: skip the authenticator-enrollment step entirely.
+  // Set ADMIN_TOTP_REQUIRED=true to exercise the real 2FA flow locally.
+  totpRequired: (process.env.ADMIN_TOTP_REQUIRED ?? "false").toLowerCase() === "true"
 };
 
 async function main(): Promise<void> {
@@ -175,8 +178,10 @@ async function main(): Promise<void> {
       `  Operator Portal (client admin):      ${base}/admin`,
       `  Player demo (launch):                ${base}/play?lt=${playerToken}`,
       "",
-      "  Sign in with username + password, then enroll an authenticator (2FA)",
-      "  on first login. Seeded logins:",
+      cfg.totpRequired
+        ? "  Sign in with username + password, then enroll an authenticator (2FA)"
+        : "  Sign in with username + password (2FA is OFF — set ADMIN_TOTP_REQUIRED=true to turn it back on)",
+      cfg.totpRequired ? "  on first login. Seeded logins:" : "  Seeded logins:",
       "",
       `    PROVIDER  → username: ${BOOTSTRAP_USER}   password: ${BOOTSTRAP_PASS}   (at /provider)`,
       operatorAdmin

@@ -30,6 +30,11 @@ export interface PlatformConfig {
   bootstrapAdminUsername?: string;
   bootstrapAdminPassword?: string;
   totpIssuer?: string;
+  // Gate on TOTP 2FA enrollment/verification during admin login. Defaults to
+  // true (undefined === required) so existing tests/production behavior is
+  // unchanged; local dev/demo entry points (dev-seed.ts, seed-demo-operator.ts)
+  // pass false explicitly to skip the authenticator step entirely.
+  totpRequired?: boolean;
 }
 
 /**
@@ -64,7 +69,7 @@ export interface Container {
 
 export function buildContainer(
   config: PlatformConfig,
-  overrides: { wallet?: WalletAdapter; persistence?: Persistence } = {}
+  overrides: { wallet?: WalletAdapter; walletFactory?: (mgmt: ManagementService) => WalletAdapter; persistence?: Persistence } = {}
 ): Container {
   const persistence = overrides.persistence ?? NullPersistence;
   const engine = new EngineService();
@@ -73,7 +78,9 @@ export function buildContainer(
   const rounds = new InMemoryRoundRepository(persistence);
   const ledger = new RoundLedgerService(rounds, audit);
   const sessions = new SessionService(mgmt, config.launchSecret, persistence);
-  const wallet = overrides.wallet ?? new SandboxWallet();
+  // walletFactory exists because a WebhookWallet needs `mgmt`, which is only
+  // available once buildContainer is already underway (constructor-order chicken/egg).
+  const wallet = overrides.walletFactory ? overrides.walletFactory(mgmt) : (overrides.wallet ?? new SandboxWallet());
   if (wallet instanceof SandboxWallet) wallet.usePersistence(persistence);
   const resolver = new AuthoritativeResolver(engine);
   const transactions = new InMemoryTransactionStore(persistence);
