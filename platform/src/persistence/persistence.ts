@@ -72,9 +72,17 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "created_at" }
   ),
   operator_games: spec(
-    ["id", "operator_id", "game_id", "math_config_id", "currency", "jurisdiction", "allowed_bets", "status", "created_at"],
+    [
+      "id", "operator_id", "game_id", "math_config_id", "currency", "jurisdiction", "allowed_bets", "status",
+      "display_name", "thumbnail_url", "sort_order", "lobby_enabled", "created_at"
+    ],
     ["id"],
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
+  ),
+  operator_webhooks: spec(
+    ["operator_id", "url", "secret", "secret_last4", "updated_at"],
+    ["operator_id"],
+    { orderBy: "updated_at" }
   ),
   player_sessions: spec(
     ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "created_at"],

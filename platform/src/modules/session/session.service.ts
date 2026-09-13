@@ -103,6 +103,13 @@ export class SessionService {
     return s ? { ...s } : null;
   }
 
+  /** Tenant-scoped read: every session (active or closed) opened for an operator. */
+  listByOperator(operatorId: string): Session[] {
+    return Array.from(this.sessions.values())
+      .filter((s) => s.operator_id === operatorId)
+      .map((s) => ({ ...s }));
+  }
+
   /** Sync engine-driven game state (free spins, persistent multiplier) post-round. */
   applyResult(sessionId: string, result: SpinResult): void {
     const s = this.sessions.get(sessionId);

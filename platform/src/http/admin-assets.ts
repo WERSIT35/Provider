@@ -102,7 +102,7 @@ export const CONSOLE_JS = /* js */ `
 const CONSOLE = window.__CONSOLE__ || { kind: "provider", expectedScope: "provider", title: "Console" };
 const TOKEN_KEY = "adminToken:" + CONSOLE.kind;
 const SCOPE_KEY = "adminScope:" + CONSOLE.kind;
-const state = { token: localStorage.getItem(TOKEN_KEY) || "", scope: localStorage.getItem(SCOPE_KEY) || null, operators: [], games: [], mathConfigs: [] };
+const state = { token: localStorage.getItem(TOKEN_KEY) || "", scope: localStorage.getItem(SCOPE_KEY) || null, operatorId: null, operators: [], games: [], mathConfigs: [] };
 
 const $ = (id) => document.getElementById(id);
 const fmtMoney = (n) => Number(n ?? 0).toFixed(2);
@@ -197,6 +197,7 @@ function wireAuth() {
     if (status === 423) return flash(err, "account locked after failed attempts — try again later", false);
     if (status === 403) return flash(err, "this account is disabled", false);
     if (status !== 200) return flash(err, (data && data.error && data.error.message) || "invalid username or password", false);
+    if (data.token) return finishAuth(data.token, data.scope); // TOTP disabled — session minted immediately
     if (data.setup_required) {
       auth.ticket = data.ticket; auth.needsPassword = data.needs_password;
       if (data.needs_password) { auth.step = "setpw"; renderAuth(); }
@@ -247,12 +248,15 @@ function finishAuth(token, scope) {
   auth = { step: "login", ticket: null, mfaToken: null, secret: null, otpauth: null, needsPassword: false };
   afterSignIn();
 }
-function afterSignIn() {
+async function afterSignIn() {
   const pill = $("scopePill"); if (pill) pill.textContent = (state.scope || "?") + " · signed in";
   const nav = $("nav"); if (nav) nav.hidden = false;
   const so = $("signOutBtn"); if (so) so.hidden = false;
   renderAuth();
   applyScopeVisibility();
+  if (state.scope !== "provider") {
+    try { const me = await api("/admin/v1/me"); state.operatorId = me.operator_id; } catch {}
+  }
   const initial = (location.hash || "#dashboard").slice(1);
   show(VIEWS.includes(initial) ? initial : "dashboard");
 }
@@ -281,7 +285,7 @@ function show(view) {
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   if (view === "dashboard") refreshDashboard();
   if (view === "inspector") { const i = $("roundRefInput"); if (i) i.focus(); }
-  if (view === "games") loadGames();
+  if (view === "games") { loadGames(); if (state.scope !== "provider") loadWebhook(); }
   if (view === "disputes") loadDisputes();
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
   if (view === "onboarding") refreshOnboardingDropdowns();
@@ -306,11 +310,17 @@ async function refreshDashboard() {
     const summary = await api("/admin/v1/reports/summary");
     const rtp = await api("/admin/v1/reports/rtp");
     const recon = await api("/admin/v1/reports/reconciliation");
+    let overview = null;
+    try { overview = await api("/admin/v1/reports/overview"); } catch {}
     setHTML("overviewCards",
+      (overview ? (cardHtml("players", overview.distinct_players) + cardHtml("sessions (active)", overview.sessions_total + " (" + overview.sessions_active + ")")) : "") +
       cardHtml("rounds", summary.rounds) + cardHtml("total bet", fmtMoney(summary.total_bet)) +
       cardHtml("total win", fmtMoney(summary.total_win)) + cardHtml("GGR", fmtMoney(summary.ggr)) +
       cardHtml("hold %", summary.hold_percent) + cardHtml("RTP % (actual)", rtp.actual_rtp_percent) +
       cardHtml("reconciliation", recon.ok ? "✅ ok" : "⚠ drift"));
+    if ($("recentTxList") && overview) {
+      setHTML("recentTxList", tableHtml(overview.recent_transactions, ["type", "amount", "currency", "status", "round_ref", "created_at"]));
+    }
   } catch (e) { setHTML("overviewCards", '<span class="err">'+e.message+'</span>'); }
   if (state.scope === "provider" && $("operatorsList")) {
     try { const data = await api("/admin/v1/operators"); state.operators = data.operators || []; renderOperators(); }

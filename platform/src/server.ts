@@ -36,7 +36,8 @@ async function main(): Promise<void> {
       rateLimitPerMin: env.RATE_LIMIT_PER_MIN,
       bootstrapAdminUsername: env.BOOTSTRAP_ADMIN_USERNAME,
       bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD,
-      totpIssuer: env.TOTP_ISSUER
+      totpIssuer: env.TOTP_ISSUER,
+      totpRequired: env.ADMIN_TOTP_REQUIRED
     },
     { persistence }
   );

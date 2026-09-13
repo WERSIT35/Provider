@@ -9,7 +9,8 @@ import type {
   Environment,
   Game,
   MathConfig,
-  OperatorGame
+  OperatorGame,
+  OperatorWebhook
 } from "./management.types";
 
 const now = (): string => new Date().toISOString();
@@ -19,6 +20,12 @@ const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex
 export interface IssuedCredential {
   credential: ApiCredential;
   api_secret: string;
+}
+
+/** `secret` is present only when a new webhook secret was just (re)generated. */
+export interface WebhookConfigResult {
+  webhook: OperatorWebhook;
+  secret: string | null;
 }
 
 /**
@@ -42,6 +49,9 @@ export class ManagementService {
   private readonly games = new Map<string, Game>();
   private readonly mathConfigs = new Map<string, MathConfig>();
   private readonly operatorGames = new Map<string, OperatorGame>();
+  private readonly webhooks = new Map<string, OperatorWebhook>(); // operator_id -> config
+  // Raw webhook secret, needed in plaintext to SIGN outgoing calls (mirrors secretVault above).
+  private readonly webhookSecretVault = new Map<string, string>(); // operator_id -> raw secret
 
   constructor(
     private readonly audit: AuditRepository,
@@ -56,6 +66,7 @@ export class ManagementService {
     games: Game[];
     mathConfigs: MathConfig[];
     operatorGames: OperatorGame[];
+    webhooks?: Array<OperatorWebhook & { secret?: string | null }>;
   }): void {
     for (const o of data.operators) {
       this.operators.set(o.id, o);
@@ -70,6 +81,11 @@ export class ManagementService {
     for (const g of data.games) this.games.set(g.id, g);
     for (const m of data.mathConfigs) this.mathConfigs.set(m.id, m);
     for (const og of data.operatorGames) this.operatorGames.set(og.id, og);
+    for (const w of data.webhooks ?? []) {
+      const { secret, ...webhook } = w;
+      this.webhooks.set(webhook.operator_id, webhook as OperatorWebhook);
+      if (secret) this.webhookSecretVault.set(webhook.operator_id, secret);
+    }
   }
 
   // Write-through helpers (no-ops unless a Persistence is attached).
@@ -81,6 +97,9 @@ export class ManagementService {
   private saveGame(g: Game): void { this.persistence.save("games", g); }
   private saveMathConfig(m: MathConfig): void { this.persistence.save("math_configs", m); }
   private saveOperatorGame(og: OperatorGame): void { this.persistence.save("operator_games", og); }
+  private saveWebhook(w: OperatorWebhook): void {
+    this.persistence.save("operator_webhooks", { ...w, secret: this.webhookSecretVault.get(w.operator_id) ?? null });
+  }
 
   private record(operatorId: string | null, action: string, targetType: string, targetId: string, actorId = "provider-admin"): void {
     this.audit.append({
@@ -328,7 +347,11 @@ export class ManagementService {
       jurisdiction: input.jurisdiction ?? "GE",
       allowed_bets: [...input.allowed_bets],
       status: "enabled",
-      created_at: now()
+      created_at: now(),
+      display_name: null,
+      thumbnail_url: null,
+      sort_order: 0,
+      lobby_enabled: true
     };
     this.operatorGames.set(rec.id, rec);
     this.saveOperatorGame(rec);
@@ -380,6 +403,27 @@ export class ManagementService {
     return { ...og };
   }
 
+  /**
+   * Casino-controlled slots-section display config for one of their entitlements
+   * (display name override, thumbnail, sort order, lobby visibility). Independent
+   * of the provider-controlled entitlement `status`.
+   */
+  updateOperatorGameDisplay(
+    operatorGameId: string,
+    patch: { display_name?: string | null; thumbnail_url?: string | null; sort_order?: number; lobby_enabled?: boolean },
+    actorId = "system"
+  ): OperatorGame {
+    const og = this.operatorGames.get(operatorGameId);
+    if (!og) throw new Error("OPERATOR_GAME_NOT_FOUND");
+    if (patch.display_name !== undefined) og.display_name = patch.display_name;
+    if (patch.thumbnail_url !== undefined) og.thumbnail_url = patch.thumbnail_url;
+    if (patch.sort_order !== undefined) og.sort_order = patch.sort_order;
+    if (patch.lobby_enabled !== undefined) og.lobby_enabled = patch.lobby_enabled;
+    this.saveOperatorGame(og);
+    this.record(og.operator_id, "operator.game.display_update", "operator_game", og.id, actorId);
+    return { ...og };
+  }
+
   /** Tenant-scoped read of an operator's issued credentials (secrets never returned). */
   listCredentials(operatorId: string): ApiCredential[] {
     return Array.from(this.credentials.values())
@@ -398,5 +442,40 @@ export class ManagementService {
         og.status === "enabled"
     );
     return found ? { ...found } : null;
+  }
+
+  // ── Casino wallet webhook (seamless-wallet callback) ──────────────────────────
+  /**
+   * Set/update the casino's wallet callback URL. A secret is generated the first
+   * time a webhook is configured for an operator, or whenever `rotateSecret` is
+   * true; otherwise the existing secret is kept and `secret` comes back null (the
+   * raw secret is only ever returned once, same convention as issueCredential).
+   */
+  setWebhook(operatorId: string, url: string, rotateSecret = false): WebhookConfigResult {
+    this.getOperator(operatorId);
+    const needsSecret = rotateSecret || !this.webhookSecretVault.has(operatorId);
+    const secret = needsSecret ? randomBytes(32).toString("hex") : this.webhookSecretVault.get(operatorId)!;
+    if (needsSecret) this.webhookSecretVault.set(operatorId, secret);
+    const webhook: OperatorWebhook = {
+      operator_id: operatorId,
+      url,
+      secret_last4: secret.slice(-4),
+      updated_at: now()
+    };
+    this.webhooks.set(operatorId, webhook);
+    this.saveWebhook(webhook);
+    this.record(operatorId, "operator.webhook.set", "operator_webhook", operatorId);
+    return { webhook: { ...webhook }, secret: needsSecret ? secret : null };
+  }
+
+  /** Read-only webhook config (no secret) for the admin API. */
+  getWebhookConfig(operatorId: string): OperatorWebhook | null {
+    const w = this.webhooks.get(operatorId);
+    return w ? { ...w } : null;
+  }
+
+  /** Raw webhook secret for signing outgoing calls (WebhookWallet only). */
+  getWebhookSecret(operatorId: string): string | null {
+    return this.webhookSecretVault.get(operatorId) ?? null;
   }
 }

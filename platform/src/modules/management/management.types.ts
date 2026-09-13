@@ -68,6 +68,28 @@ export interface OperatorGame {
   currency: string;
   jurisdiction: string;
   allowed_bets: number[];
+  /** Provider-controlled entitlement status — disabling blocks new sessions (findOperatorGame). */
   status: "enabled" | "disabled";
   created_at: string;
+  // Casino-controlled lobby/slots-section display (independent of the provider's
+  // entitlement status above — a casino can hide a still-licensed game from its
+  // own lobby without the provider revoking the license).
+  display_name: string | null;
+  thumbnail_url: string | null;
+  sort_order: number;
+  lobby_enabled: boolean;
+}
+
+/**
+ * A casino's wallet callback endpoint (seamless-wallet model — the casino holds
+ * player funds). The platform signs every debit/credit/rollback/balance call to
+ * this URL with the shared secret below (same HMAC scheme as the operator API,
+ * see src/lib/security/hmac.ts), so the raw secret must stay available for
+ * signing (unlike an ApiCredential, which only ever needs to be verified against).
+ */
+export interface OperatorWebhook {
+  operator_id: string;
+  url: string;
+  secret_last4: string;
+  updated_at: string;
 }

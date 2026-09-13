@@ -102,3 +102,49 @@ describe("Admin login (password + TOTP 2FA)", () => {
     expect(ticket).toBeTruthy();
   });
 });
+
+describe("Admin login with totpRequired: false (2FA disabled)", () => {
+  beforeEach(async () => {
+    container = buildContainer({ ...CONFIG, totpRequired: false });
+    seedBootstrapAdmin(container);
+    app = buildApp({ logger: createLogger({ level: "silent", pretty: false, env: "test" }), container });
+    await app.ready();
+  });
+
+  it("an already-set-up account (must_set_password=false) gets a session straight from step 1 — no mfa, no setup", async () => {
+    const login = await post("/admin/v1/auth/login", { username: "root", password: "bootstrap-pw-123" });
+    expect(login.statusCode).toBe(200);
+    const body = login.json() as { token?: string; mfa_required?: boolean; setup_required?: boolean };
+    expect(body.mfa_required).toBeUndefined();
+    expect(body.setup_required).toBeUndefined();
+    expect(body.token).toBeTruthy();
+
+    const res = await app.inject({ method: "GET", url: "/admin/v1/operators", headers: { authorization: `Bearer ${body.token}` } });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("a brand-new account still must set a new password once, but skips TOTP entirely", async () => {
+    const created = container.adminAccounts.create({ username: "op2", scope: "operator", operator_id: "op-2", role: "operator_admin" });
+    const login = await post("/admin/v1/auth/login", { username: "op2", password: created.temp_password });
+    expect(login.statusCode).toBe(200);
+    const { setup_required, ticket, needs_password, needs_totp } = login.json() as {
+      setup_required: boolean;
+      ticket: string;
+      needs_password: boolean;
+      needs_totp: boolean;
+    };
+    expect(setup_required).toBe(true);
+    expect(needs_password).toBe(true);
+    expect(needs_totp).toBe(false);
+
+    const pw = await post("/admin/v1/auth/first-login/password", { ticket, new_password: "brand-new-pw-1" });
+    expect(pw.statusCode).toBe(200);
+    const { done, token } = pw.json() as { done: boolean; token: string };
+    expect(done).toBe(true); // no TOTP step, session minted immediately
+    expect(token).toBeTruthy();
+
+    // Subsequent logins also skip mfa entirely.
+    const relogin = await post("/admin/v1/auth/login", { username: "op2", password: "brand-new-pw-1" });
+    expect((relogin.json() as { token: string }).token).toBeTruthy();
+  });
+});

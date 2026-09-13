@@ -148,6 +148,35 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     return { ggr_by_day: app.container.reporting.ggrByDay(resolveOperatorScope(claims, q.operator_id)) };
   });
 
+  // Extends roundsSummary with player/session activity + recent transactions —
+  // for the "what actually happened on this operator's site" dashboard view.
+  app.get("/admin/v1/reports/overview", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "reports.read");
+    if (!claims) return reply;
+    const q = req.query as { operator_id?: string };
+    const operatorId = resolveOperatorScope(claims, q.operator_id);
+    if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
+    const rounds = app.container.reporting.listRounds(operatorId);
+    const summary = app.container.reporting.roundsSummary(operatorId);
+    const sessions = app.container.sessions.listByOperator(operatorId);
+    const recent_transactions = app.container.transactions
+      .list({ operator_id: operatorId })
+      .sort((a, b) => b.seq - a.seq)
+      .slice(0, 20);
+    return {
+      operator_id: operatorId,
+      distinct_players: new Set(rounds.map((r) => r.operator_player_id)).size,
+      sessions_total: sessions.length,
+      sessions_active: sessions.filter((s) => s.status === "active").length,
+      rounds: summary.rounds,
+      total_bet: summary.total_bet,
+      total_win: summary.total_win,
+      ggr: summary.ggr,
+      hold_percent: summary.hold_percent,
+      recent_transactions
+    };
+  });
+
   app.get("/admin/v1/reports/reconciliation", { preHandler: auth }, async (req, reply) => {
     const claims = guard(req, reply, "reports.read");
     if (!claims) return reply;
@@ -528,17 +557,20 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // List an operator's credentials (secrets never returned) so the portal can manage them.
+  // List an operator's credentials (secrets never returned). Provider may inspect
+  // any tenant; a casino may only ever list its own ("GET /casino/credentials").
   app.get("/admin/v1/operators/:operatorId/credentials", { preHandler: auth }, async (req, reply) => {
-    const claims = guard(req, reply, "operators.read");
+    const claims = guard(req, reply, "credentials.read");
     if (!claims) return reply;
-    if (claims.scope !== "provider") {
-      return reply.code(403).send(envelope("FORBIDDEN", "provider scope required", req.id));
-    }
     const { operatorId } = req.params as { operatorId: string };
+    if (claims.scope === "operator" && claims.operator_id !== operatorId) {
+      return reply.code(403).send(envelope("FORBIDDEN", "cannot read another casino's credentials", req.id));
+    }
     return { credentials: app.container.mgmt.listCredentials(operatorId) };
   });
 
+  // Revoking a credential outright stays provider-only (immediate + permanent);
+  // a casino that needs a new key self-serves via rotate below.
   app.post("/admin/v1/operators/:operatorId/credentials/:apiKeyId/revoke", { preHandler: auth }, async (req, reply) => {
     if (!requireProvider(req, reply)) return reply;
     const { operatorId, apiKeyId } = req.params as { operatorId: string; apiKeyId: string };
@@ -549,15 +581,52 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Rotate: provider may rotate any tenant's key; a casino may rotate its own
+  // ("GET /casino/credentials / rotate their own key").
   app.post("/admin/v1/operators/:operatorId/credentials/:apiKeyId/rotate", { preHandler: auth }, async (req, reply) => {
-    if (!requireProvider(req, reply)) return reply;
+    const claims = guard(req, reply, "credentials.rotate");
+    if (!claims) return reply;
     const { operatorId, apiKeyId } = req.params as { operatorId: string; apiKeyId: string };
+    if (claims.scope === "operator" && claims.operator_id !== operatorId) {
+      return reply.code(403).send(envelope("FORBIDDEN", "cannot rotate another casino's credentials", req.id));
+    }
     try {
       const issued = app.container.mgmt.rotateCredential(operatorId, apiKeyId);
       return { credential: issued.credential, api_secret: issued.api_secret, notice: "The api_secret is shown exactly once. Store it now." };
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
+  });
+
+  // ── Casino wallet webhook (self-service) ──────────────────────────────────────
+  // A casino registers/rotates the URL its own wallet calls come back to.
+  app.put("/admin/v1/operators/:operatorId/webhook", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "webhook.write");
+    if (!claims) return reply;
+    const { operatorId } = req.params as { operatorId: string };
+    if (claims.scope === "operator" && claims.operator_id !== operatorId) {
+      return reply.code(403).send(envelope("FORBIDDEN", "cannot modify another casino's webhook", req.id));
+    }
+    const body = (req.body ?? {}) as { url?: string; rotate_secret?: boolean };
+    if (!body.url) return reply.code(422).send(envelope("VALIDATION", "url required", req.id));
+    try {
+      const result = app.container.mgmt.setWebhook(operatorId, body.url, Boolean(body.rotate_secret));
+      return result.secret
+        ? { webhook: result.webhook, secret: result.secret, notice: "The webhook secret is shown exactly once. Store it now." }
+        : { webhook: result.webhook };
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  app.get("/admin/v1/operators/:operatorId/webhook", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "webhook.read");
+    if (!claims) return reply;
+    const { operatorId } = req.params as { operatorId: string };
+    if (claims.scope === "operator" && claims.operator_id !== operatorId) {
+      return reply.code(403).send(envelope("FORBIDDEN", "cannot read another casino's webhook", req.id));
+    }
+    return { webhook: app.container.mgmt.getWebhookConfig(operatorId) };
   });
 
   // ── Game on/off ───────────────────────────────────────────────────────────────
@@ -585,6 +654,31 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     }
     try {
       return { operator_game: app.container.mgmt.setOperatorGameStatus(id, body.status, claims.admin_id) };
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  // Casino-controlled slots-section display config (name override, thumbnail,
+  // sort order, lobby visibility) — independent of the provider's entitlement
+  // status above. Operators may configure their OWN assignments; provider any.
+  app.patch("/admin/v1/operator-games/:id", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "games.toggle");
+    if (!claims) return reply;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as {
+      display_name?: string | null;
+      thumbnail_url?: string | null;
+      sort_order?: number;
+      lobby_enabled?: boolean;
+    };
+    const og = app.container.mgmt.getOperatorGame(id);
+    if (!og) return reply.code(404).send(envelope("OPERATOR_GAME_NOT_FOUND", "no such assignment", req.id));
+    if (claims.scope === "operator" && claims.operator_id !== og.operator_id) {
+      return reply.code(404).send(envelope("OPERATOR_GAME_NOT_FOUND", "no such assignment", req.id));
+    }
+    try {
+      return { operator_game: app.container.mgmt.updateOperatorGameDisplay(id, body, claims.admin_id) };
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
