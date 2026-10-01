@@ -159,9 +159,9 @@
                 <button id="psMenuBtn" type="button" class="ps-icon-btn" aria-label="Settings" aria-haspopup="dialog">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
                 </button>
-                <!-- rulesBtn / soundToggle: the ids main.js already binds, so
-                     rules and the persisted mute setting work unchanged. -->
-                <button id="rulesBtn" type="button" class="ps-icon-btn" aria-label="Game info" aria-haspopup="dialog">
+                <!-- soundToggle keeps the id main.js binds, so the persisted
+                     mute setting works unchanged. -->
+                <button id="psInfoBtn" type="button" class="ps-icon-btn" aria-label="Game info" aria-haspopup="dialog">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
                 </button>
                 <button id="soundToggle" type="button" class="ps-icon-btn" aria-label="Sound" aria-pressed="true">
@@ -425,22 +425,6 @@
         <div class="confirm-actions">
           <button type="button" id="buyCancelBtn" class="confirm-btn confirm-btn-cancel">Cancel</button>
           <button type="button" id="buyConfirmBtn" class="confirm-btn confirm-btn-confirm">Buy</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="rules-modal hidden" id="rulesModal" aria-hidden="true">
-      <div class="rules-dialog">
-        <div class="rules-header">
-          <h2 id="rulesTitle">Game Rules</h2>
-          <button id="rulesCloseBtn" type="button" class="rules-close">Close</button>
-        </div>
-        <div class="rules-meta" id="rulesMeta">Loading rules...</div>
-        <ul class="rules-list" id="rulesList"></ul>
-        <div class="rules-footer">
-          <button id="rulesPrevBtn" type="button">Prev</button>
-          <span id="rulesPageLabel">Page 1/1</span>
-          <button id="rulesNextBtn" type="button">Next</button>
         </div>
       </div>
     </section>

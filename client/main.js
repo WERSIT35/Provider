@@ -68,15 +68,10 @@ const el = {
   simLiveBonusWin: $("simLiveBonusWin"),
   simLiveBaselineRtp: $("simLiveBaselineRtp"),
   simLiveBaselineNet: $("simLiveBaselineNet"),
-  rulesBtn: $("rulesBtn"),
-  rulesModal: $("rulesModal"),
-  rulesTitle: $("rulesTitle"),
-  rulesMeta: $("rulesMeta"),
-  rulesList: $("rulesList"),
-  rulesPrevBtn: $("rulesPrevBtn"),
-  rulesNextBtn: $("rulesNextBtn"),
-  rulesPageLabel: $("rulesPageLabel"),
-  rulesCloseBtn: $("rulesCloseBtn"),
+  psMenuBtn: $("psMenuBtn"),
+  psInfoBtn: $("psInfoBtn"),
+  psInfoModal: $("psInfoModal"),
+  psTickerText: $("psTickerText"),
   symbolLegend: $("symbolLegend"),
   payoutRuleText: $("payoutRuleText"),
   multiplierInfo: $("multiplierInfo"),
@@ -105,7 +100,6 @@ const state = {
   sessionId: null,
   gameId: "bananax",
   rules: null,
-  rulesPageIndex: 0,
   bonusAutoplay: false,
   simulationAbort: null,
   featureResolver: null,
@@ -4808,6 +4802,7 @@ async function spin(options = {}) {
   state.fastStopRequested = false;
   el.spinBtn?.classList.remove("is-fast-stopping");
   setControls(true);
+  ticker.roundStart();
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
@@ -4868,6 +4863,7 @@ async function spin(options = {}) {
     // blocked until the whole lifecycle (including bonus autoplay) settles.
     if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
+    ticker.roundEnd();
   }
 }
 
@@ -5144,36 +5140,10 @@ async function loadRules() {
     state.rules = rules;
     const allowed = rules.features?.multipliers?.allowed_values || [];
     renderMultiplierInfo(allowed);
-    renderRulesPage();
+    ticker.refresh();
   } catch (err) {
     pushGameMessage(`Rules load failed: ${err.message}`, "error");
   }
-}
-
-function renderRulesPage() {
-  const pages = state.rules?.rules_pages;
-  if (!Array.isArray(pages) || pages.length === 0) {
-    el.rulesTitle.textContent = "Game Rules";
-    el.rulesMeta.textContent = "Rules are not available.";
-    el.rulesList.innerHTML = "";
-    el.rulesPageLabel.textContent = "Page 0/0";
-    el.rulesPrevBtn.disabled = true;
-    el.rulesNextBtn.disabled = true;
-    return;
-  }
-
-  const page = pages[state.rulesPageIndex];
-  el.rulesTitle.textContent = page?.title || "Game Rules";
-  el.rulesMeta.textContent = `RTP ${Number(state.rules.rtp?.theoretical_percent || 0).toFixed(2)}% | Volatility ${(state.rules.volatility || "").toUpperCase()}`;
-  el.rulesList.innerHTML = "";
-  (page?.points || []).forEach((point) => {
-    const li = document.createElement("li");
-    li.textContent = point;
-    el.rulesList.appendChild(li);
-  });
-  el.rulesPageLabel.textContent = `Page ${state.rulesPageIndex + 1}/${pages.length}`;
-  el.rulesPrevBtn.disabled = state.rulesPageIndex === 0;
-  el.rulesNextBtn.disabled = state.rulesPageIndex === pages.length - 1;
 }
 
 async function initSession() {
@@ -5276,7 +5246,6 @@ if (el.anteToggle) {
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight();
   });
 }
-el.spinBtn.addEventListener("click", spin);
 el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
 
@@ -5327,33 +5296,285 @@ if (el.testCelebrateBtn) el.testCelebrateBtn.addEventListener("click", () => run
 if (el.testCatchBtn) el.testCatchBtn.addEventListener("click", () => runVisualTest("catch"));
 if (el.crazyToggleBtn) el.crazyToggleBtn.addEventListener("click", () => setCrazyMode(!state.crazyMode));
 el.featureScreen.addEventListener("click", dismissFeature);
-function openRules() {
-  el.rulesModal.classList.remove("hidden");
-  renderRulesPage();
+// ═══ PLAYER SHELL INTERACTION ═══════════════════════════════════════════════
+// The info/settings modal, the HUD ticker and the spin input (tap vs hold).
+// Pure UI: every action goes through the existing spin() / startAutoplay() /
+// setTurbo() lifecycle, so the spin lock (#28) still decides what may start.
+
+// ── Info / settings modal ──
+// Until the info copy is written, the Game Rules page is generated from the
+// rules file (rules_pages + RTP), so RTP, the max win and the malfunction
+// clause stay reachable. Authored content wins: generation only runs while the
+// section holds nothing but its heading.
+function renderInfoRules() {
+  const section = el.psInfoModal?.querySelector('[data-ps-section-id="rules"]');
+  const rules = state.rules;
+  if (!section || !rules || section.dataset.generated === "1") return;
+  if ([...section.children].some((n) => n.tagName !== "H3")) return;
+  const frag = document.createDocumentFragment();
+  const meta = document.createElement("p");
+  meta.className = "ps-rules-meta";
+  meta.textContent = `RTP ${Number(rules.rtp?.theoretical_percent || 0).toFixed(2)}% · Volatility ${String(rules.volatility || "").toUpperCase()}`;
+  frag.appendChild(meta);
+  (rules.rules_pages || []).forEach((page) => {
+    const h = document.createElement("h4");
+    h.textContent = page?.title || "";
+    const ul = document.createElement("ul");
+    (page?.points || []).forEach((point) => {
+      const li = document.createElement("li");
+      li.textContent = point;
+      ul.appendChild(li);
+    });
+    frag.append(h, ul);
+  });
+  section.appendChild(frag);
+  section.dataset.generated = "1";
 }
-el.rulesBtn.addEventListener("click", openRules);
-el.rulesCloseBtn.addEventListener("click", () => el.rulesModal.classList.add("hidden"));
-el.rulesPrevBtn.addEventListener("click", () => {
-  if (!state.rules || state.rulesPageIndex <= 0) return;
-  state.rulesPageIndex -= 1;
-  renderRulesPage();
+
+const psModal = (() => {
+  const root = el.psInfoModal;
+  if (!root) return { open() {}, close() {}, isOpen: () => false };
+  const tabs = [...root.querySelectorAll(".ps-modal__tab")];
+  const sections = [...root.querySelectorAll(".ps-modal__section")];
+  const dots = [...root.querySelectorAll(".ps-dot")];
+  const body = root.querySelector(".ps-modal__body");
+  const ids = tabs.map((t) => t.dataset.psSection);
+  let current = ids[0];
+  let opener = null;
+
+  function show(id) {
+    current = ids.includes(id) ? id : ids[0];
+    tabs.forEach((t) => {
+      if (t.dataset.psSection === current) t.setAttribute("aria-current", "page");
+      else t.removeAttribute("aria-current");
+    });
+    sections.forEach((s) => { s.hidden = s.dataset.psSectionId !== current; });
+    dots.forEach((d) => d.classList.toggle("is-active", d.dataset.psDot === current));
+    if (body) body.scrollTop = 0;
+    if (current === "rules") renderInfoRules();
+  }
+  function step(delta) {
+    show(ids[(ids.indexOf(current) + delta + ids.length) % ids.length]);
+  }
+  function focusables() {
+    return [...root.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")]
+      .filter((n) => !n.disabled && n.getClientRects().length > 0);
+  }
+  // Capture phase: while the modal is open it owns the keyboard (Esc, paging,
+  // and Tab, which must not escape to the game behind it).
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      step(e.key === "ArrowRight" ? 1 : -1);
+      root.querySelector(".ps-modal__tab[aria-current='page']")?.focus();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const f = focusables();
+    if (!f.length) return;
+    const first = f[0];
+    const last = f[f.length - 1];
+    const inside = root.contains(document.activeElement);
+    if (e.shiftKey && (!inside || document.activeElement === first)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+  function open(id, trigger) {
+    opener = trigger || document.activeElement;
+    show(id);
+    root.hidden = false;
+    document.addEventListener("keydown", onKey, true);
+    // Keyboard users land on the section they asked for.
+    (root.querySelector(".ps-modal__tab[aria-current='page']") || root).focus();
+    window.Sound?.play("click");
+  }
+  function close() {
+    if (root.hidden) return;
+    root.hidden = true;
+    document.removeEventListener("keydown", onKey, true);
+    if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+    opener = null;
+  }
+  root.addEventListener("click", (e) => {
+    if (e.target === root || e.target.closest("[data-ps-close]")) {
+      close();
+      return;
+    }
+    const tab = e.target.closest("[data-ps-section]");
+    if (tab) {
+      show(tab.dataset.psSection);
+      return;
+    }
+    const dot = e.target.closest("[data-ps-dot]");
+    if (dot) show(dot.dataset.psDot);
+  });
+  return { open, close, isOpen: () => !root.hidden };
+})();
+
+el.psMenuBtn?.addEventListener("click", () => psModal.open("settings", el.psMenuBtn));
+el.psInfoBtn?.addEventListener("click", () => psModal.open("rules", el.psInfoBtn));
+
+// ── HUD ticker ──
+// Idle: rotates every 5s through messages built from the rules file, so they
+// can never drift from the math. In a round: steps aside for the round's own
+// text (good luck / autoplay / free spins left, then live wins), holds the
+// result, then resumes rotating. Single line, clipped, fixed box: rewriting it
+// cannot move the board.
+const ticker = (() => {
+  const node = el.psTickerText;
+  let idleIdx = 0;
+  let rotateTimer = 0;
+  let settleTimer = 0;
+  let inRound = false;
+  const set = (text) => {
+    if (node && node.textContent !== text) node.textContent = text;
+  };
+  function idleMessages() {
+    const minMatch = Number(state.rules?.layout?.min_match_count) || 8;
+    const cap = Number(state.rules?.max_win_cap_multiplier) || 20000;
+    return [
+      "Hold space for turbo spin",
+      `Minimum ${minMatch} matching symbols to win`,
+      `Win up to ${cap.toLocaleString("en-US")}× bet`
+    ];
+  }
+  function rotate() {
+    const m = idleMessages();
+    set(m[idleIdx % m.length]);
+    idleIdx += 1;
+  }
+  function idle() {
+    clearTimeout(settleTimer);
+    clearInterval(rotateTimer);
+    rotate();
+    rotateTimer = setInterval(rotate, 5000);
+  }
+  function say(text) {
+    clearTimeout(settleTimer);
+    clearInterval(rotateTimer);
+    rotateTimer = 0;
+    set(text);
+  }
+  function roundStart() {
+    inRound = true;
+    if (state.bonusAutoplay) say(`Free spin · ${el.freeSpins?.textContent || 0} left`);
+    else if (state.autoplayActive) {
+      say(state.autoplayLeft === Infinity ? "Autoplay · press spin to stop" : `Autoplay · ${state.autoplayLeft} left`);
+    } else say("Good luck!");
+  }
+  function roundEnd() {
+    inRound = false;
+    const win = Number(el.lastWin?.textContent || 0);
+    if (win > 0) say(`Win ${fmt(win)}`);
+    // Hold the result; in autoplay the next roundStart() cancels this first.
+    settleTimer = setTimeout(idle, win > 0 ? 3000 : 800);
+  }
+  // The win meter has many writers (step wins, count-ups, round end), so follow
+  // the element rather than hooking each one.
+  if (el.lastWin && "MutationObserver" in window) {
+    new MutationObserver(() => {
+      const v = Number(el.lastWin.textContent || 0);
+      if (inRound && v > 0) say(`Win ${el.lastWin.textContent}`);
+    }).observe(el.lastWin, { childList: true, characterData: true, subtree: true });
+  }
+  // Rules arrive after boot; re-show the current idle message with real values.
+  function refresh() {
+    if (inRound || !rotateTimer) return;
+    idleIdx = Math.max(0, idleIdx - 1);
+    rotate();
+  }
+  return { idle, roundStart, roundEnd, refresh };
+})();
+ticker.idle();
+
+// ── Spin input: tap vs hold ──
+// Tap (< SPIN_HOLD_MS) = one spin, on release. Hold (≥ SPIN_HOLD_MS) = turbo on
+// + endless autoplay, started the moment the hold is recognised. While a round
+// or an autoplay run is in flight a press is never a hold: it acts at once
+// through spin(), which stops autoplay (the current round still finishes) and
+// fast-stops — the #28 rule that a press can only ever accelerate.
+// Dragging off the button cancels a press, as with any button.
+const SPIN_HOLD_MS = 400;
+const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0 };
+
+function spinHoldStart(source) {
+  if (spinHold.active || el.spinBtn.disabled) return;
+  spinHold.active = true;
+  spinHold.source = source;
+  spinHold.fired = false;
+  if (isRoundInFlight()) {
+    spinHold.fired = true;
+    spin();
+    return;
+  }
+  spinHold.timer = setTimeout(() => {
+    spinHold.fired = true;
+    if (isRoundInFlight()) {
+      spin();
+      return;
+    }
+    if (!state.turbo) setTurbo(true);
+    startAutoplay(Infinity);
+  }, SPIN_HOLD_MS);
+}
+
+function spinHoldEnd(commit) {
+  if (!spinHold.active) return;
+  clearTimeout(spinHold.timer);
+  spinHold.active = false;
+  spinHold.endedAt = performance.now();
+  if (commit && !spinHold.fired) spin();
+}
+
+el.spinBtn.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  spinHoldStart("pointer");
 });
-el.rulesNextBtn.addEventListener("click", () => {
-  const max = (state.rules?.rules_pages || []).length - 1;
-  if (state.rulesPageIndex >= max) return;
-  state.rulesPageIndex += 1;
-  renderRulesPage();
+el.spinBtn.addEventListener("pointerup", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(true);
 });
-el.rulesModal.addEventListener("click", (e) => { if (e.target === el.rulesModal) el.rulesModal.classList.add("hidden"); });
+el.spinBtn.addEventListener("pointerleave", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(false);
+});
+el.spinBtn.addEventListener("pointercancel", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(false);
+});
+// No long-press context menu on touch: a hold here means autoplay.
+el.spinBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+// Pointer presses are handled above. A click with detail 0 is keyboard
+// activation (Enter on the focused button) or a scripted click; the guard
+// drops the click a Space release on the focused button may still produce.
+el.spinBtn.addEventListener("click", (e) => {
+  if (e.detail !== 0) return;
+  if (performance.now() - spinHold.endedAt < 80) return;
+  spin();
+});
 
 window.addEventListener("keydown", (e) => {
-  const tag = e.target?.tagName;
-  const typing = e.target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON";
-  if ((e.key === " " || e.key === "Spacebar") && !typing && !el.spinBtn.disabled) {
-    e.preventDefault();
-    spin();
-  }
+  if (e.code !== "Space" || psModal.isOpen()) return;
+  const t = e.target;
+  const typing = t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t?.tagName || "");
+  if (typing && t !== el.spinBtn) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  spinHoldStart("key");
 });
+window.addEventListener("keyup", (e) => {
+  if (e.code !== "Space" || spinHold.source !== "key") return;
+  e.preventDefault();
+  spinHoldEnd(true);
+});
+// Losing focus mid-hold (alt-tab) must not leave a hold armed.
+window.addEventListener("blur", () => spinHoldEnd(false));
 
 // Seed the idle board with a varied mix (not a flat wall of one symbol) so the
 // first impression looks like a real slot. Engine spins remain authoritative.

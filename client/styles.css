@@ -261,10 +261,7 @@ button:disabled {
 }
 
 #simulateBtn,
-#simulateBonusBtn,
-#rulesPrevBtn,
-#rulesNextBtn,
-#rulesCloseBtn {
+#simulateBonusBtn {
   background: linear-gradient(180deg, #ecdcb7, #b89c6d);
 }
 
@@ -1545,6 +1542,48 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   background: var(--steel-edge);
 }
 .ps-dot.is-active { background: var(--accent-laser); box-shadow: var(--glow-laser); }
+/* The dots are also a pager. An 8px dot is too small to hit, so the hit area
+   is a transparent ring around it. */
+.ps-dot {
+  position: relative;
+  cursor: pointer;
+}
+.ps-dot::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* Generated Game Rules page (renderInfoRules in main.js). */
+.ps-rules-meta {
+  margin: 0 0 14px;
+  font: 600 0.78rem / 1.2 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--win-gold);
+}
+.ps-modal__section h4 {
+  margin: 18px 0 6px;
+  font: 700 0.86rem / 1.2 var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-hud);
+}
+.ps-modal__section ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--text-muted);
+}
+.ps-modal__section li + li { margin-top: 4px; }
+
+/* Spin is press-and-hold (turbo autoplay): stop touch browsers from turning a
+   hold into a scroll, a text selection or a callout. */
+.vx-spin {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 
 /* Phones: sections become pages with a scrolling tab strip on top; the dots
    show where you are. */
@@ -1765,8 +1804,7 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
 
 .spin-log-list,
 #caughtLines,
-#lineExamples,
-.rules-list {
+#lineExamples {
   margin: 0;
   padding-left: 18px;
 }
@@ -1964,8 +2002,7 @@ body.crazy-mode-on .vault-window {
 
 .spin-log-list li,
 #caughtLines li,
-#lineExamples li,
-.rules-list li {
+#lineExamples li {
   margin-bottom: 7px;
   color: #e9ddc4;
 }
@@ -2745,42 +2782,6 @@ pre {
   font-size: 0.84rem;
 }
 
-.rules-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(0, 0, 0, 0.72);
-}
-
-.rules-dialog {
-  width: min(760px, 100%);
-  border-radius: 6px;
-  padding: 18px;
-  border: 1px solid rgba(245, 196, 120, 0.18);
-  background: linear-gradient(180deg, rgba(36, 23, 18, 0.98), rgba(12, 9, 8, 1));
-}
-
-.rules-header,
-.rules-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.rules-meta {
-  margin: 10px 0 12px;
-  color: var(--ink-soft);
-}
-
-.rules-list {
-  max-height: 360px;
-  overflow: auto;
-}
-
 @media (max-width: 1340px) {
   .altar-core {
     grid-template-columns: 280px minmax(0, 1fr);
@@ -3247,10 +3248,7 @@ button {
 }
 
 #simulateBtn,
-#simulateBonusBtn,
-#rulesPrevBtn,
-#rulesNextBtn,
-#rulesCloseBtn {
+#simulateBonusBtn {
   background: linear-gradient(180deg, #9fbfff, #546ed5);
 }
 
@@ -3326,11 +3324,6 @@ body.admin-mode .hud-bar {
 }
 body.admin-mode .hud-node strong {
   font-size: 1.22rem;
-}
-
-.rules-modal {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Win-combine finale: fly raw win + multiplier together → BANG → total. */
@@ -3626,14 +3619,6 @@ body.admin-mode .hud-node strong {
   0%   { color: inherit; text-shadow: none; }
   30%  { color: #fff; text-shadow: 0 0 12px var(--soul-glow, rgba(255, 226, 138, 0.9)); transform: scale(1.18); }
   100% { color: inherit; text-shadow: none; transform: scale(1); }
-}
-
-.rules-dialog {
-  border-radius: 16px;
-  border-color: rgba(168, 205, 255, 0.28);
-  background: linear-gradient(180deg, rgba(18, 30, 56, 0.84), rgba(10, 17, 33, 0.86));
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 pre,
