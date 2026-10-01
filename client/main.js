@@ -317,6 +317,19 @@ const DROP_PHYSICS = {
   out: { v0: 0.06, vMax: Infinity }
 };
 
+// Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
+// Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
+const MOTION = {
+  stretch: 0.07,      // max vertical stretch while falling fast
+  squash: 0.14,       // vertical squash on the landing impact
+  breathBase: 0.08,   // winning symbols' resting swell during the hold
+  breathDepth: 0.07,  // extra swell at the top of each breath
+  breathMs: 1100,     // one breath (in + out)
+  breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
+  spotlight: 0.5      // how far non-winning symbols step back during the hold
+};
+const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathDepth: 0, breathRipple: 0 });
+
 // Symbol sprite cache band (see getSymbolSprite): reuse a bake while the wanted
 // size is within [min, max] of it; new bakes are made at headroom × wanted.
 const SPRITE_BAND = { min: 0.75, max: 1.5, headroom: 1.2 };
@@ -1181,6 +1194,12 @@ class ReelCanvasRenderer {
   }
 
   requestFastStop() {
+    // Columns still in the air now land together with the sped-up drop: one
+    // thud at that landing instead of the rest of the waterfall.
+    if (this._columnStops?.size) {
+      this.cancelColumnStops();
+      this._queueColumnStop(0, (FAST_STOP_SETTLE_MS - 20) * DROP_PHYSICS.in.fallEnd);
+    }
     // Speed the current drop(s) up to a smooth quick landing (no teleport).
     this._accelerateDrop(this.fx.drop, FAST_STOP_SETTLE_MS - 20);
     this._accelerateDrop(this.fx.heavyDrop, FAST_STOP_SETTLE_MS - 20);
@@ -1527,6 +1546,7 @@ class ReelCanvasRenderer {
       : [];
     this.setBoard(matrix, { multipliers });
     this.fx.drop = { start: performance.now(), duration: dropDuration, map: dropMap, heavy: heavyCells };
+    this.scheduleColumnStops(dropMap, dropDuration);
     if (peakTier && heavyKeyMatchesDropMap) {
       this.fx.heavyDrop = {
         start: performance.now(),
@@ -1785,12 +1805,16 @@ class ReelCanvasRenderer {
     duration = Math.round(duration * turboScale()); // turbo speeds the celebration hold
     this.setBoard(matrix, { winning, multipliers });
     if (!winning.length) return;
-    this.fx.pulse = {
-      start: performance.now(),
-      duration
-    };
+    const start = performance.now();
+    this.fx.pulse = { start, duration, phase: this.breathPhases(winning) };
+    // Cluster spotlight: everything that did not win steps back for the hold.
+    // Owned by this call, so a multiplier-catch spotlight that replaced it in
+    // the meantime is left alone.
+    const spot = { start, duration, set: new Set(this.board.winningSet), intensity: MOTION.spotlight, cluster: true };
+    this.fx.spotlight = spot;
     await animationSleep(duration);
     this.fx.pulse = null;
+    if (this.fx.spotlight === spot) this.fx.spotlight = null;
   }
 
   async multiplierCatch(multipliers = [], duration = 620) {
@@ -2046,6 +2070,96 @@ class ReelCanvasRenderer {
     return -Math.sin(settleT * Math.PI) * damp * rowStep * p.bounceCells;
   }
 
+  /** Reduced-motion aware amplitudes for this frame (read once per draw). */
+  motion() {
+    return this._reducedMotion ? MOTION_REDUCED : MOTION;
+  }
+
+  /** Landing squash-and-stretch for a dropping symbol, on the same clock as
+   *  cellOffset(): stretched along the fall as it speeds up, squashed flat on
+   *  the impact at fallEnd, then springing back through the bounce. sx is the
+   *  inverse of sy, so the symbol keeps its area and reads as elastic rather
+   *  than as changing size. Writes into a reused object: this runs for every
+   *  cell, every frame. */
+  dropDeform(row, col) {
+    const out = this._deform || (this._deform = { sx: 1, sy: 1 });
+    out.sx = 1;
+    out.sy = 1;
+    const drop = this.fx.drop;
+    if (!drop || drop.exit) return out;
+    const count = Number(drop.map?.[`${row}-${col}`] || 0);
+    if (count <= 0) return out;
+    const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / drop.duration;
+    if (progress <= 0 || progress >= 1) return out;
+    const m = this.motion();
+    const p = DROP_PHYSICS.in;
+    if (progress < p.fallEnd) {
+      const t = progress / p.fallEnd;
+      out.sy = 1 + m.stretch * t * t; // grows with speed under gravity
+    } else {
+      const s = (progress - p.fallEnd) / (1 - p.fallEnd);
+      // Impact squash, then a damped spring back (a small over-stretch mid-way).
+      out.sy = 1 - m.squash * Math.cos(s * Math.PI * 1.5) * (1 - s) ** 2;
+    }
+    out.sx = 1 / out.sy;
+    return out;
+  }
+
+  /** Breath phase per winning cell: lags with distance from the cluster
+   *  centre, so each breath ripples outward through the cluster. */
+  breathPhases(winning) {
+    const centre = this.computeCentroid(winning);
+    const dists = winning.map((p) => {
+      const c = this.cellCenter(p.row, p.col);
+      return Math.hypot(c.x - centre.x, c.y - centre.y);
+    });
+    const maxD = Math.max(1, ...dists);
+    const phases = new Map();
+    winning.forEach((p, i) => phases.set(`${p.row}-${p.col}`, (dists[i] / maxD) * Math.PI * MOTION.breathRipple));
+    return phases;
+  }
+
+  /** Per-column landing thud, in sync with the column waterfall: one
+   *  reel_stop per column that actually received symbols, fired when that
+   *  column's last symbol hits its floor (its stagger delay + the fall to
+   *  fallEnd). Columns a tumble left untouched stay silent. On a fast-stop the
+   *  board lands at once, so it gets one thud instead of a stack of them. */
+  scheduleColumnStops(dropMap, duration) {
+    this.cancelColumnStops();
+    const landAt = new Map(); // col → ms from now
+    for (const [key, count] of Object.entries(dropMap || {})) {
+      const n = Number(count || 0);
+      if (n <= 0) continue;
+      const [row, col] = key.split("-").map(Number);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+      const t = this.dropDelay(row, col, n) + duration * DROP_PHYSICS.in.fallEnd;
+      landAt.set(col, Math.max(landAt.get(col) || 0, t));
+    }
+    if (!landAt.size) return;
+    if (state.fastStopRequested) {
+      this._queueColumnStop(0, Math.max(...landAt.values()));
+      return;
+    }
+    for (const [col, t] of landAt) this._queueColumnStop(col, t);
+  }
+
+  _queueColumnStop(col, ms) {
+    if (!this._columnStops) this._columnStops = new Set();
+    const id = setTimeout(() => {
+      this._columnStops.delete(id);
+      // index raises the synth's pitch a step per reel, so the waterfall
+      // reads left to right by ear as well as by eye.
+      window.Sound?.play("reel_stop", { index: col });
+    }, Math.max(0, Math.round(ms)));
+    this._columnStops.add(id);
+  }
+
+  cancelColumnStops() {
+    if (!this._columnStops) return;
+    this._columnStops.forEach(clearTimeout);
+    this._columnStops.clear();
+  }
+
   dropDelay(row, col, count) {
     // Fast-stop collapses the whole board in at once — no cascade.
     if (state.fastStopRequested) return 0;
@@ -2183,6 +2297,8 @@ class ReelCanvasRenderer {
 
   draw() {
     const ctx = this.ctx;
+    // Once per frame, not per cell: matchMedia is not free.
+    this._reducedMotion = prefersReducedMotion();
     const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
     ctx.clearRect(0, 0, width, height);
 
@@ -2588,7 +2704,16 @@ class ReelCanvasRenderer {
         const floatOffset = Math.sin(this.time * 0.0016 + r * 0.5 + c * 0.7) * radius * 0.05;
         const yFloat = y + floatOffset;
         const idlePulse = 1 + Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
-        const pulseScale = isWinner ? 1 + pulseGlow * 0.16 : 1;
+        // Winners breathe during the hold: a resting swell plus a slow in-out,
+        // phase-lagged from the cluster centre (breathPhases) so it ripples.
+        let pulseScale = 1;
+        if (isWinner && this.fx.pulse) {
+          const m = this.motion();
+          const lag = this.fx.pulse.phase?.get(key) || 0;
+          const w = ((performance.now() - this.fx.pulse.start) / m.breathMs) * Math.PI * 2 - lag;
+          const breath = 0.5 - 0.5 * Math.cos(w);
+          pulseScale = 1 + pulseGlow * (m.breathBase + m.breathDepth * breath);
+        }
         const isMultiCaught = symbol === "MULTI" && Boolean(this.fx.multiCatch?.set?.has(key));
         const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.26 : 1;
         // Vertical squash if a heavy impact just landed on this cell.
@@ -2603,6 +2728,9 @@ class ReelCanvasRenderer {
             squashX = 1 + 0.12 * env * impact.heaviness;
           }
         }
+        const deform = this.dropDeform(r, c);
+        squashX *= deform.sx;
+        squashY *= deform.sy;
         const baseScale = pulseScale * catchScale * idlePulse * chargeShrink;
         // Heavy-drop concealment: while a high-tier multiplier is falling,
         // hide its symbol entirely so the player only sees the descending
@@ -2638,10 +2766,17 @@ class ReelCanvasRenderer {
         );
         const iconW = iconBase * squashX;
         const iconH = iconBase * squashY;
+        // A squashed symbol stays planted on its floor instead of shrinking
+        // toward its centre; a stretched one stays centred on its fall path.
+        const iconCy = yFloat + Math.max(0, iconBase - iconH) * 0.5;
+        // 4d: during the cluster spotlight, symbols outside the cluster step back.
+        const spotDim = spotlightAlpha > 0 && this.fx.spotlight?.cluster && !isSpotlit
+          ? 1 - spotlightAlpha * 0.75
+          : 1;
 
         // Spotlight halo: brighten cells on the spotlight set during big
         // events, working with the dim overlay to draw the eye in.
-        if (isSpotlit && spotlightAlpha > 0.05) {
+        if (isSpotlit && spotlightAlpha > 0.05 && !this.fx.spotlight.cluster) {
           const sp = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 2.4);
           sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
           sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
@@ -2668,15 +2803,14 @@ class ReelCanvasRenderer {
           // Halo breathes with the celebration pulse so the held cluster reads
           // as actively celebrating, not statically lit. A floor keeps it
           // clearly marked even at the shimmer's low point.
+          // Blitted from the cached glow sprite (vault gold) instead of
+          // allocating a radial gradient per winner per frame.
           const haloPulse = 0.55 + 0.45 * pulseGlow;
-          const halo = ctx.createRadialGradient(x, yFloat, coreR * 0.28, x, yFloat, ringR * 1.55);
-          halo.addColorStop(0, `rgba(215, 236, 255, ${0.6 * blastFade * haloPulse})`);
-          halo.addColorStop(0.35, `rgba(150, 188, 255, ${0.24 * blastFade * haloPulse})`);
-          halo.addColorStop(1, "rgba(150, 188, 255, 0)");
-          ctx.fillStyle = halo;
-          ctx.beginPath();
-          ctx.arc(x, yFloat, ringR * 1.52, 0, Math.PI * 2);
-          ctx.fill();
+          const glow = this.getGlowSprite(THEME.glow.win);
+          const haloR = ringR * 1.55;
+          ctx.globalAlpha = 0.85 * blastFade * haloPulse;
+          ctx.drawImage(glow.cvs, x - haloR, yFloat - haloR, haloR * 2, haloR * 2);
+          ctx.globalAlpha = 1;
         }
 
         if (isSlamColumn) {
@@ -2702,12 +2836,12 @@ class ReelCanvasRenderer {
           // visually "replaced" by the multiplier on the BANG impact.
           const decoyImg = reveal?.decoy ? this.images.get(reveal.decoy) : null;
           if (decoyImg?.complete && decoyImg.naturalWidth) {
-            ctx.globalAlpha = blastFade;
+            ctx.globalAlpha = blastFade * spotDim;
             const decoySprite = this.getSymbolSprite(reveal.decoy, decoyImg, iconW, iconH);
-            ctx.drawImage(decoySprite, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
+            ctx.drawImage(decoySprite, x - iconW / 2, iconCy - iconH / 2, iconW, iconH);
           }
         } else if (img?.complete && img.naturalWidth) {
-          ctx.globalAlpha = blastFade * revealAlpha;
+          ctx.globalAlpha = blastFade * revealAlpha * spotDim;
           // SCATTER art is a rectangular (wide) tile, not a square sprite. Draw
           // it at its true aspect ratio contained inside the icon box so it is
           // never stretched; every other symbol still fills the square box.
@@ -2722,7 +2856,7 @@ class ReelCanvasRenderer {
           // every cell, every frame. Keyed by the image key actually resolved
           // above (a multiplier tier image, or the symbol itself).
           const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
-          ctx.drawImage(sprite, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
+          ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
         } else {
           ctx.fillStyle = THEME.text.label;
           ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
@@ -4365,8 +4499,9 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // A multiplier landing on the first board ALWAYS plays its full reveal
   // (lightning + BANG), even when the opening board isn't itself a win — so the
   // player never sees a multiplier appear silently.
+  // Landing thuds are per column now, scheduled by the renderer's drop in
+  // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
   await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
-  window.Sound?.play("reel_stop", { index: 0 });
   // Note: multiplier drop sounds are fired by the renderer at each multiplier's
   // BANG moment (spawnHeavyImpact) so they stay perfectly in sync with the
   // visual landing — see ReelCanvasRenderer.spawnHeavyImpact.
