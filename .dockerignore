@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+node_modules
+platform/node_modules
+demo-operator/node_modules
+platform/dist
+demo-operator/dist
+npm-debug.log*
+tmp-server-*.log
+.env
+*.local

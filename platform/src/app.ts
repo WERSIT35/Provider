@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyBaseLogger, type FastifyError } from "fastify";
+import Fastify, { LogController, type FastifyInstance, type FastifyBaseLogger, type FastifyError } from "fastify";
 import { randomUUID } from "node:crypto";
 import type { Container } from "./container";
 import healthRoutes from "./modules/health/health.routes";
@@ -42,7 +42,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   const app = Fastify({
     loggerInstance: deps.logger,
     requestIdHeader: "x-request-id",
-    requestIdLogLabel: "request_id",
+    logController: new LogController({ requestIdLogLabel: "request_id" }),
     genReqId: () => randomUUID(),
     trustProxy: true
   });

@@ -15,6 +15,12 @@
     "test:layout": "node tools/layout-check.js",
     "test:spin-e2e": "node tools/spin-e2e.js",
     "test:client": "npm run test:spin-lock && npm run test:layout && npm run test:spin-e2e",
+    "operator:launch": "node tools/operator-launch.js",
+    "verify:platform": "npm --prefix platform run typecheck && npm --prefix platform test && npm --prefix platform run build",
+    "verify:demo-operator": "npm --prefix demo-operator run typecheck && npm --prefix demo-operator test",
+    "audit:prod": "npm --prefix platform audit --omit=dev && npm --prefix demo-operator audit --omit=dev && npm audit --omit=dev",
+    "verify:release": "npm run verify:platform && npm run verify:demo-operator && npm run test:client && npm run audit:prod",
+    "docker:build:platform": "docker build -f platform/Dockerfile -t bananax-platform .",
     "build": "echo \"No build step - static site\" && exit 0"
   },
   "engines": {

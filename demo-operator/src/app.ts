@@ -7,6 +7,9 @@ import apiRoutes from "./http/api.routes";
 import walletRoutes from "./http/wallet.routes";
 import siteRoutes from "./http/site";
 
+import adminRoutes from "./http/admin.routes";
+import { ProviderStore } from "./store/provider-store";
+
 // Same raw-body-preserving JSON parser as platform/src/app.ts — needed so the
 // wallet webhook's HMAC signature can be verified over the exact bytes signed.
 declare module "fastify" {
@@ -18,14 +21,16 @@ declare module "fastify" {
 export interface BuildAppDeps {
   config: DemoOperatorConfig;
   store?: PlayerStore;
-  platform?: IPlatformClient;
+  providerStore?: ProviderStore;
+  platformFactory?: (provider: any, cfg: any) => IPlatformClient;
   logger?: boolean;
 }
 
 export function buildApp(deps: BuildAppDeps): FastifyInstance {
   const { config } = deps;
   const store = deps.store ?? new PlayerStore();
-  const platform = deps.platform ?? new PlatformClient(config);
+  const providerStore = deps.providerStore ?? new ProviderStore(config);
+  const platformFactory = deps.platformFactory ?? ((p: any, c: any) => new PlatformClient(p, c));
 
   const app = Fastify({
     logger: deps.logger ?? true,
@@ -47,9 +52,10 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
 
   app.get("/health", async () => ({ ok: true }));
 
-  app.register(apiRoutes(store, platform, config));
-  app.register(walletRoutes(store, config));
+  app.register(apiRoutes(store, providerStore, config, platformFactory));
+  app.register(walletRoutes(store, providerStore));
   app.register(siteRoutes(config));
+  app.register(adminRoutes(store, providerStore));
 
   app.setErrorHandler((err: FastifyError, _req, reply) => {
     const status = err.statusCode ?? 500;

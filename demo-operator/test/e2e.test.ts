@@ -4,7 +4,7 @@ import { buildApp as buildPlatformApp } from "../../platform/src/app";
 import { createLogger } from "../../platform/src/lib/logger";
 import { WebhookWallet } from "../../platform/src/modules/wallet/webhook-wallet";
 import { buildApp as buildDemoOperatorApp } from "../src/app";
-import { PlatformClient } from "../src/lib/platform-client";
+import { ProviderStore } from "../src/store/provider-store";
 import type { DemoOperatorConfig } from "../src/config";
 
 /**
@@ -20,6 +20,7 @@ describe("End-to-end: platform + demo-operator over real HTTP", () => {
   let container: Container;
   let demoApp: ReturnType<typeof buildDemoOperatorApp>;
   let cfg: DemoOperatorConfig;
+  let providerStore: ProviderStore;
   let operatorId: string;
   let operatorAdminToken: string;
 
@@ -76,7 +77,8 @@ describe("End-to-end: platform + demo-operator over real HTTP", () => {
       sessionSecret: "e2e-player-session-secret",
       startingBalance: 1000
     };
-    demoApp = buildDemoOperatorApp({ config: cfg, platform: new PlatformClient(cfg), logger: false });
+    providerStore = new ProviderStore(cfg);
+    demoApp = buildDemoOperatorApp({ config: cfg, providerStore, logger: false });
     await demoApp.listen({ host: "127.0.0.1", port: 0 });
     const demoAddr = demoApp.server.address();
     if (!demoAddr || typeof demoAddr === "string") throw new Error("demo-operator not listening");
@@ -85,8 +87,11 @@ describe("End-to-end: platform + demo-operator over real HTTP", () => {
     // patch cfg.webhookSecret so demo-operator's own HMAC verification uses the
     // secret the platform actually signs with (mirrors the two-step dance the
     // real seed script does — see platform/scripts/seed-demo-operator.ts).
-    const webhook = container.mgmt.setWebhook(op.id, `http://127.0.0.1:${demoAddr.port}/wallet`);
+    const webhook = container.mgmt.setWebhook(op.id, `http://127.0.0.1:${demoAddr.port}/wallet/default-provider`);
     (cfg as { webhookSecret: string }).webhookSecret = webhook.secret as string;
+    // The ProviderStore copied cfg when it was built, so hand it the real secret too.
+    const { id: providerId, ...provider } = providerStore.getById("default-provider")!;
+    providerStore.update(providerId, { ...provider, webhookSecret: webhook.secret as string });
   });
 
   afterAll(async () => {
@@ -110,7 +115,7 @@ describe("End-to-end: platform + demo-operator over real HTTP", () => {
     expect(lobbyGames[0].display_name).toBe("Banana X (E2E)");
 
     // 3) Launch — this is a REAL signed HTTP call from demo-operator to platform.
-    const play = await demoApp.inject({ method: "POST", url: "/api/play/bananax", headers: { authorization: `Bearer ${token}` } });
+    const play = await demoApp.inject({ method: "POST", url: "/api/play/default-provider/bananax", headers: { authorization: `Bearer ${token}` } });
     expect(play.statusCode).toBe(200);
     const { launch_url } = play.json() as { launch_url: string };
     const launchToken = new URL(launch_url).searchParams.get("lt") as string;

@@ -4,29 +4,52 @@ on:
   push:
     paths:
       - "platform/**"
+      - "demo-operator/**"
+      - "tools/**"
       - "client/engine/**"
       - "client/math/**"
+      - "client/index.html"
+      - "client/main.js"
+      - "client/styles.css"
+      - "package.json"
+      - "package-lock.json"
+      - ".dockerignore"
+      - "platform/Dockerfile"
       - ".github/workflows/platform-ci.yml"
   pull_request:
     paths:
       - "platform/**"
+      - "demo-operator/**"
+      - "tools/**"
       - "client/engine/**"
       - "client/math/**"
+      - "client/index.html"
+      - "client/main.js"
+      - "client/styles.css"
+      - "package.json"
+      - "package-lock.json"
+      - ".dockerignore"
+      - "platform/Dockerfile"
 
 jobs:
-  build-test:
+  release-check:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: platform
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: platform/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            platform/package-lock.json
+            demo-operator/package-lock.json
       - run: npm ci
+      - run: npm ci
+        working-directory: platform
+      - run: npm ci
+        working-directory: demo-operator
+      - run: npm run verify:release
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

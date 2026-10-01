@@ -12,8 +12,146 @@ export default function siteRoutes(cfg: DemoOperatorConfig): FastifyPluginAsync 
     app.get("/", async (_req, reply) => {
       reply.type("text/html").send(PAGE(cfg));
     });
+    app.get("/back-office", async (_req, reply) => {
+      reply.type("text/html").send(ADMIN_PAGE(cfg));
+    });
   };
 }
+
+const ADMIN_PAGE = (cfg: DemoOperatorConfig): string => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Casino Back Office</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e8eaf0; --muted:#8b93a7; --accent:#4caf78; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:20px; align-items:center; }
+  header h1 { font-size:18px; margin:0; }
+  nav button { background:transparent; border:none; color:var(--muted); font-weight:600; padding:8px 4px; border-bottom:2px solid transparent; cursor:pointer; }
+  nav button.active { color:var(--text); border-color:var(--accent); }
+  main { max-width:1000px; margin:0 auto; padding:20px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+  input { background:#0c0e12; border:1px solid var(--line); color:var(--text); padding:6px 10px; border-radius:4px; margin-right:5px; }
+  button.action { background:var(--accent); color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; }
+  button.danger { background:#e2574c; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎰 Casino Back Office</h1>
+  <nav id="nav">
+    <button data-view="players" class="active">Players</button>
+    <button data-view="transactions">Transactions</button>
+    <button data-view="providers">Providers</button>
+  </nav>
+</header>
+<main>
+  <section id="playersView">
+    <div class="panel">
+      <h2>Registered Players</h2>
+      <div id="playersList">loading...</div>
+    </div>
+  </section>
+
+  <section id="transactionsView" hidden>
+    <div class="panel">
+      <h2>All Transactions</h2>
+      <div id="transactionsList">loading...</div>
+    </div>
+  </section>
+
+  <section id="providersView" hidden>
+    <div class="panel">
+      <h2>Connected Providers</h2>
+      <div id="providersList">loading...</div>
+      <h3 style="margin-top:30px;">Add Provider</h3>
+      <div>
+        <input id="pName" placeholder="Name" />
+        <input id="pPlatformUrl" placeholder="Platform URL" />
+        <input id="pOperatorId" placeholder="Operator ID" />
+        <input id="pApiKeyId" placeholder="API Key ID" />
+        <input id="pApiSecret" placeholder="API Secret" />
+        <input id="pWebhookSecret" placeholder="Webhook Secret" />
+        <input id="pAdminToken" placeholder="Admin Token" />
+        <button class="action" onclick="addProvider()">Add</button>
+      </div>
+      <p id="pErr" style="color:#e2574c;"></p>
+    </div>
+  </section>
+</main>
+<script>
+  async function api(path, opts={}) {
+    const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'request failed');
+    return data;
+  }
+  function $(id) { return document.getElementById(id); }
+
+  const VIEWS = ['players', 'transactions', 'providers'];
+  function show(view) {
+    VIEWS.forEach(v => $(v + 'View').hidden = true);
+    $(view + 'View').hidden = false;
+    document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    if (view === 'players') loadPlayers();
+    if (view === 'transactions') loadTransactions();
+    if (view === 'providers') loadProviders();
+  }
+  document.querySelectorAll('#nav button[data-view]').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
+
+  async function loadPlayers() {
+    try {
+      const d = await api('/api/admin/players');
+      $('playersList').innerHTML = '<table><tr><th>ID</th><th>Email</th><th>Balance</th><th>Joined</th></tr>' +
+        d.players.map(p => '<tr><td>' + p.id + '</td><td>' + p.email + '</td><td>' + p.balance + '</td><td>' + p.createdAt + '</td></tr>').join('') + '</table>';
+    } catch (e) { $('playersList').textContent = e.message; }
+  }
+
+  async function loadTransactions() {
+    try {
+      const d = await api('/api/admin/transactions');
+      $('transactionsList').innerHTML = '<table><tr><th>ID</th><th>Player</th><th>Type</th><th>Amount</th><th>Round</th><th>Date</th></tr>' +
+        d.transactions.map(t => '<tr><td>' + t.id + '</td><td>' + t.playerId + '</td><td>' + t.type + '</td><td>' + t.amount + ' ' + t.currency + '</td><td>' + t.roundRef + '</td><td>' + t.createdAt + '</td></tr>').join('') + '</table>';
+    } catch (e) { $('transactionsList').textContent = e.message; }
+  }
+
+  async function loadProviders() {
+    try {
+      const d = await api('/api/admin/providers');
+      $('providersList').innerHTML = '<table><tr><th>Name</th><th>URL</th><th>Operator ID</th><th>Actions</th></tr>' +
+        d.providers.map(p => '<tr><td>' + p.name + '</td><td>' + p.platformUrl + '</td><td>' + p.operatorId + '</td>' +
+        '<td><button class="action danger" onclick="deleteProvider(\\'' + p.id + '\\')">Delete</button></td></tr>').join('') + '</table>';
+    } catch (e) { $('providersList').textContent = e.message; }
+  }
+
+  async function addProvider() {
+    const body = {
+      name: $('pName').value, platformUrl: $('pPlatformUrl').value, operatorId: $('pOperatorId').value,
+      apiKeyId: $('pApiKeyId').value, apiSecret: $('pApiSecret').value, webhookSecret: $('pWebhookSecret').value,
+      adminToken: $('pAdminToken').value
+    };
+    try {
+      await api('/api/admin/providers', { method: 'POST', body: JSON.stringify(body) });
+      $('pErr').textContent = '';
+      loadProviders();
+    } catch (e) { $('pErr').textContent = e.message; }
+  }
+
+  async function deleteProvider(id) {
+    if (!confirm('Delete provider?')) return;
+    try {
+      await api('/api/admin/providers/' + id, { method: 'DELETE' });
+      loadProviders();
+    } catch(e) { alert(e.message); }
+  }
+
+  // Init
+  show('players');
+</script>
+</body></html>`;
 
 const PAGE = (cfg: DemoOperatorConfig): string => `<!doctype html>
 <html lang="en"><head>
@@ -189,18 +327,18 @@ async function loadLobby() {
         : '<div class="thumb-fallback">🎰</div>';
       return '<div class="game-card">' + thumb +
         '<div class="body"><b>' + escHtml(name) + '</b><span class="muted">bets: ' + g.allowed_bets.join(', ') + ' ' + g.currency + '</span>' +
-        '<button data-code="' + g.game_code + '">Play</button></div></div>';
+        '<button data-provider="' + g.provider_id + '" data-code="' + g.game_code + '">Play</button></div></div>';
     }).join('');
-    el.querySelectorAll('button[data-code]').forEach(b => b.addEventListener('click', () => play(b.dataset.code)));
+    el.querySelectorAll('button[data-code]').forEach(b => b.addEventListener('click', () => play(b.dataset.provider, b.dataset.code)));
   } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-async function play(gameCode) {
+async function play(providerId, gameCode) {
   show('play');
   $('playErr').textContent = ''; const frame = $('gameFrame'); frame.hidden = true;
   try {
-    const d = await api('/api/play/' + encodeURIComponent(gameCode), { method: 'POST' });
+    const d = await api('/api/play/' + encodeURIComponent(providerId) + '/' + encodeURIComponent(gameCode), { method: 'POST' });
     frame.src = d.launch_url; frame.hidden = false;
   } catch (e) { $('playErr').textContent = e.message; }
 }
