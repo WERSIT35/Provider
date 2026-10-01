@@ -19,7 +19,7 @@ const PAGE = (cfg: DemoOperatorConfig): string => `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Lucky Bananas Casino (Demo Operator)</title>
+<title>Lumina Sandbox Casino</title>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e8eaf0; --muted:#8b93a7; --accent:#f5c518; --ok:#4caf78; --err:#e2574c; }
   * { box-sizing: border-box; }
@@ -54,7 +54,7 @@ const PAGE = (cfg: DemoOperatorConfig): string => `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>🍌 Lucky <span>Bananas</span> Casino <span class="muted" style="font-weight:400;font-size:12px;">— demo operator</span></h1>
+  <h1>Lumina <span>Sandbox</span> Casino <span class="muted" style="font-weight:400;font-size:12px;">— demo operator</span></h1>
   <div class="row" id="headerRight"></div>
 </header>
 <main>

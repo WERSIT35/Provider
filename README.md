@@ -1,6 +1,6 @@
-# Banana X — Slot Game & Provider Platform
+# Vault 20K — Slot Game & Provider Platform
 
-A server-authoritative slot game (**Banana X** — 5×4, symbols-pay-anywhere, profile-driven RTP)
+A server-authoritative slot game (**Vault 20K** — 6×5, symbols-pay-anywhere, profile-driven RTP)
 **plus** a full provider platform (RGS + operator control plane) built around it.
 
 The repository contains **two distinct backends** and **one shared math engine**. Understanding
@@ -136,7 +136,7 @@ ignore.) Three consumers load these exact files in this exact order so results a
 > If you add / remove / reorder an engine file, update the `ENGINE_FILES` array in **both**
 > `tools/rtp-parity.js` **and** `platform/src/lib/engine-loader.ts`.
 
-**Active game profile (Banana X):**
+**Active game profile (Vault 20K):**
 
 - Layout `5×4`, symbols pay anywhere (minimum **8** matches), **High** volatility, max win cap
   **20000×** bet.

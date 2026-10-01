@@ -1,20 +1,114 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   VAULT 20K — DESIGN TOKENS  (Lumina Games)
+   The single source of truth for colour and type. main.js reads these at boot
+   into THEME, so the canvas and the DOM cannot drift apart.
+
+   RULE: colour tokens are 6-digit hex ONLY. THEME.alpha() derives every
+   translucent canvas colour from them and rejects anything else. For CSS
+   transparency use color-mix(in srgb, var(--token) N%, transparent).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Family names are aliases: swapping in a licensed face later is a one-line
+   src change and nothing else in the codebase references the real name.
+   Inter + Oswald, SIL OFL 1.1 — licences live next to the files. */
+@font-face {
+  font-family: "Vault UI";
+  src: url("assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vault Display";
+  src: url("assets/fonts/oswald-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg-0: #060505;
-  --bg-1: #150f0d;
-  --bg-2: #261a16;
-  --panel: rgba(23, 16, 14, 0.92);
-  --panel-soft: rgba(30, 20, 17, 0.82);
-  --panel-deep: rgba(11, 8, 7, 0.97);
-  --ink: #f4ead1;
-  --ink-soft: #cab89c;
-  --line: rgba(245, 214, 169, 0.12);
-  --line-strong: rgba(245, 196, 120, 0.28);
-  --sun: #eeb76a;
-  --coral: #ea7d63;
-  --jade: #77d0a8;
-  --wine: #6e3146;
-  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.28);
-  --shadow-hard: 0 34px 74px rgba(0, 0, 0, 0.46);
+  color-scheme: dark;
+
+  /* — Surfaces: the vault, darkest → lightest — */
+  --bg-vault-door:     #07080A; /* page backdrop, behind everything */
+  --bg-gunmetal:       #111418; /* board well / reel table core */
+  --bg-panel:          #191D22; /* HUD panels, modals */
+  --bg-panel-raised:   #22272E; /* hover / pressed controls */
+  --steel-edge:        #3A414A; /* hairlines, frames */
+  --steel-brushed:     #6B7480; /* brushed-steel mid tone, disabled ink */
+  --steel-sheen:       #B7BFC9; /* specular edge on bezels and frames */
+
+  /* — Practical light — */
+  --tungsten:          #FFB86B; /* warm lamp glow: idle fog, spin flash */
+  --tungsten-soft:     #FFD9A8;
+
+  /* — Accent: security laser — */
+  --accent-laser:      #FF2A3A;
+  --accent-laser-deep: #A30A16;
+  --accent-laser-hot:  #FF7A84; /* beam core; laser-coloured text on dark */
+
+  /* — Wins: vault gold — */
+  --win-gold:          #F2C14E;
+  --win-gold-bright:   #FFE7A3;
+  --win-gold-deep:     #9C6B12;
+
+  /* — Text — */
+  --text-hud:          #EEF1F4;
+  --text-muted:        #8E98A4;
+  --text-dim:          #5A636E;
+
+  /* — Signal — */
+  --signal-ok:         #3FD68A; /* armed / connected */
+  --signal-warn:       #FFB020;
+
+  /* — Win tiers (see WIN_TIERS in main.js) — */
+  --tier-nice:         #B7BFC9;
+  --tier-big:          #F2C14E;
+  --tier-mega:         #FF2A3A;
+  --tier-epic:         #FFE7A3;
+  --tier-max:          #FFFFFF;
+
+  /* — Multiplier rarity: cold steel → hot laser — */
+  --mult-common:       #9AA8B6;
+  --mult-rare:         #4FC3F7;
+  --mult-epic:         #FF7A2B;
+  --mult-legendary:    #F2C14E;
+  --mult-mythic:       #FF2A3A;
+
+  /* — Type — */
+  --font-ui:      "Vault UI", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Vault Display", "Arial Narrow", "Roboto Condensed", Impact, sans-serif;
+
+  /* — Elevation & glow — */
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --shadow-hard: 0 34px 80px rgba(0, 0, 0, 0.65);
+  --glow-laser:  0 0 18px color-mix(in srgb, var(--accent-laser) 55%, transparent);
+  --glow-gold:   0 0 22px color-mix(in srgb, var(--win-gold) 60%, transparent);
+
+  /* — Legacy aliases. ~20 existing rules still read these; each one is retired
+       as its component is rebuilt. Do not add new uses. — */
+  --bg-0: var(--bg-vault-door);
+  --bg-1: var(--bg-gunmetal);
+  --bg-2: var(--bg-panel);
+  --panel:       color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  --panel-soft:  color-mix(in srgb, var(--bg-panel) 72%, transparent);
+  --panel-deep:  color-mix(in srgb, var(--bg-gunmetal) 95%, transparent);
+  --ink:         var(--text-hud);
+  --ink-soft:    var(--text-muted);
+  --line:        color-mix(in srgb, var(--steel-sheen) 14%, transparent);
+  --line-strong: color-mix(in srgb, var(--steel-sheen) 32%, transparent);
+  --sun:   var(--win-gold);
+  --coral: var(--accent-laser);
+  --jade:  var(--signal-ok);
+  --wine:  var(--accent-laser-deep);
+}
+
+/* Balances, bets and wins: industrial display face, fixed-width digits so a
+   counting value never jitters sideways. */
+.u-num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.02em;
 }
 
 * {
@@ -28,10 +122,10 @@ body {
 }
 
 body {
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   color: var(--ink);
   background:
-    radial-gradient(circle at 50% -10%, rgba(238, 183, 106, 0.08), transparent 36%),
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--tungsten) 8%, transparent), transparent 36%),
     linear-gradient(180deg, var(--bg-0), var(--bg-1) 34%, var(--bg-2));
   overflow-x: hidden;
   /* Mobile input hardening: no double-tap zoom delay, no rubber-band/pull-to-
@@ -1511,18 +1605,18 @@ body.crazy-mode-on .vault-window {
   letter-spacing: 0.02em;
   color: #fff;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
-  background: linear-gradient(180deg, #4fd17d, #1a8c46);
-  box-shadow: 0 8px 24px rgba(50, 200, 110, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+  background: linear-gradient(180deg, var(--steel-sheen), var(--steel-brushed));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
   will-change: transform, opacity;
 }
 .win-chip[data-tier="great"] {
-  background: linear-gradient(180deg, #ffd86f, #d29520);
-  box-shadow: 0 10px 28px rgba(255, 200, 80, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.3) inset;
+  background: linear-gradient(180deg, var(--accent-laser), var(--accent-laser-deep));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--win-gold) 55%, transparent), 0 0 0 1px rgba(255, 255, 255, 0.3) inset;
   font-size: 1.18rem;
 }
 .win-chip[data-tier="medium"] {
-  background: linear-gradient(180deg, #6ed0ff, #2f6fd0);
-  box-shadow: 0 9px 26px rgba(96, 180, 255, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.28) inset;
+  background: linear-gradient(180deg, var(--win-gold), var(--win-gold-deep));
+  box-shadow: 0 9px 26px color-mix(in srgb, var(--win-gold) 50%, transparent), 0 0 0 1px rgba(255, 255, 255, 0.28) inset;
 }
 .win-chip.is-rising {
   animation: winChipRise 220ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
@@ -2239,72 +2333,45 @@ body.crazy-mode-on .vault-window {
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4)) drop-shadow(0 0 18px rgba(255, 200, 120, 0.4));
 }
 
-/* Tier variants */
-.win-callout.callout-tier-small .win-callout-label {
-  color: #b9c8e3;
-  letter-spacing: 0.28em;
-}
-.win-callout.callout-tier-small .win-callout-amount {
-  background: linear-gradient(180deg, #ffffff, #cfe1ff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  font-size: 1.7rem;
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.3));
-}
+/* Tier variants. main.js sets data-tier from WIN_TIERS; this maps it to the
+   matching :root token, so a tier's colour has exactly one home. */
+.win-callout { --tier-color: var(--tier-nice); }
+.win-callout[data-tier="big"]  { --tier-color: var(--tier-big); }
+.win-callout[data-tier="mega"] { --tier-color: var(--tier-mega); }
+.win-callout[data-tier="epic"] { --tier-color: var(--tier-epic); }
+.win-callout[data-tier="max"]  { --tier-color: var(--tier-max); }
 
-.win-callout.callout-tier-medium {
-  border-color: rgba(255, 209, 102, 0.5);
-  box-shadow: 0 24px 60px rgba(255, 170, 60, 0.18), inset 0 1px 0 rgba(255, 220, 150, 0.16);
-}
-.win-callout.callout-tier-medium .win-callout-label { color: #ffd99d; }
-.win-callout.callout-tier-medium .win-callout-amount {
-  font-size: 2.1rem;
-  background: linear-gradient(180deg, #ffffff, #ffd99d 55%, #ffae5a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-
-.win-callout.callout-tier-great {
-  border-color: rgba(255, 209, 102, 0.7);
-  background: linear-gradient(180deg, rgba(58, 40, 18, 0.94), rgba(20, 12, 6, 0.98));
+.win-callout[data-tier] {
+  border-color: color-mix(in srgb, var(--tier-color) 60%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--tier-color) 14%, var(--bg-panel)),
+    color-mix(in srgb, var(--bg-vault-door) 96%, transparent));
   box-shadow:
-    0 28px 80px rgba(255, 170, 60, 0.32),
-    inset 0 1px 0 rgba(255, 220, 150, 0.22),
-    inset 0 0 0 1px rgba(255, 209, 102, 0.18);
+    0 28px 80px color-mix(in srgb, var(--tier-color) 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--tier-color) 25%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--tier-color) 18%, transparent);
 }
-.win-callout.callout-tier-great .win-callout-label {
-  color: #ffd166;
+.win-callout[data-tier] .win-callout-label {
+  font-family: var(--font-display);
+  font-weight: 700;
   letter-spacing: 0.36em;
-  text-shadow: 0 0 14px rgba(255, 209, 102, 0.6);
+  color: var(--tier-color);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--tier-color) 60%, transparent);
 }
-.win-callout.callout-tier-great .win-callout-amount {
-  font-size: 2.6rem;
-  background: linear-gradient(180deg, #ffffff 0%, #ffe9b6 40%, #ffb347 100%);
+.win-callout[data-tier] .win-callout-amount {
+  font-family: var(--font-display);
+  font-weight: 700;
+  background: linear-gradient(180deg, #FFFFFF 0%, var(--win-gold-bright) 45%, var(--win-gold) 100%);
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 0 24px rgba(255, 180, 80, 0.65));
+  filter:
+    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 24px color-mix(in srgb, var(--tier-color) 55%, transparent));
 }
-
-.win-callout.callout-tier-epic {
-  border-color: rgba(255, 132, 184, 0.7);
-  background: linear-gradient(180deg, rgba(48, 18, 38, 0.95), rgba(20, 8, 22, 0.98));
-  box-shadow:
-    0 30px 90px rgba(255, 132, 184, 0.36),
-    inset 0 1px 0 rgba(255, 200, 230, 0.22),
-    inset 0 0 0 1px rgba(255, 132, 184, 0.22);
-}
-.win-callout.callout-tier-epic .win-callout-label {
-  color: #ff9ec8;
-  letter-spacing: 0.42em;
-  text-shadow: 0 0 18px rgba(255, 158, 200, 0.7);
-}
-.win-callout.callout-tier-epic .win-callout-amount {
-  font-size: 3.0rem;
-  background: linear-gradient(180deg, #ffffff 0%, #ffd9ec 35%, #ff7faf 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 28px rgba(255, 132, 184, 0.7));
-}
+.win-callout[data-tier="big"]  .win-callout-amount { font-size: 2.2rem; }
+.win-callout[data-tier="mega"] .win-callout-amount { font-size: 2.6rem; }
+.win-callout[data-tier="epic"] .win-callout-amount,
+.win-callout[data-tier="max"]  .win-callout-amount { font-size: 3rem; }
 
 .win-callout.callout-tier-bonus {
   border-color: rgba(141, 233, 163, 0.6);
@@ -3151,33 +3218,13 @@ pre {
   90% { transform: translate(1px, 0); }
 }
 
-/* Futuristic Liquid Glass Theme Overrides */
-:root {
-  --bg-0: #060a14;
-  --bg-1: #0a1020;
-  --bg-2: #0f1830;
-  --panel: rgba(14, 22, 40, 0.62);
-  --panel-soft: rgba(18, 27, 48, 0.5);
-  --panel-deep: rgba(8, 14, 30, 0.76);
-  --ink: #e8f1ff;
-  --ink-soft: #adc2e2;
-  --line: rgba(170, 206, 255, 0.2);
-  --line-strong: rgba(155, 204, 255, 0.42);
-  --sun: #9dcfff;
-  --coral: #ff7fa8;
-  --jade: #77f1d0;
-  --wine: #4c4ea3;
-  --shadow-soft: 0 18px 40px rgba(0, 7, 20, 0.45);
-  --shadow-hard: 0 34px 80px rgba(0, 6, 20, 0.62);
-}
-
 body {
-  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   /* Clean, static temple backdrop: the image is shown FULLY and clearly — no dark
      scrim, no colour wash, no animated overlays. One fixed, viewport-covering image
      fills the whole game; the reel table and controls float on top. */
   background: url("assets/symbols/Background.webp") center / cover no-repeat fixed;
-  background-color: #050a14;
+  background-color: var(--bg-vault-door);
 }
 
 /* ── Boot loader ───────────────────────────────────────────────────────────
@@ -3192,7 +3239,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 40%, #10192b, #050a14 70%);
+  background: radial-gradient(circle at 50% 40%, var(--bg-panel), var(--bg-vault-door) 70%);
   transition: opacity 0.45s ease;
 }
 .boot-loader__inner {
@@ -3203,12 +3250,13 @@ body {
   width: min(320px, 68vw);
 }
 .boot-loader__title {
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 30px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #eeb76a;
-  text-shadow: 0 0 18px rgba(238, 183, 106, 0.45);
+  color: var(--win-gold);
+  text-shadow: var(--glow-gold);
 }
 .boot-loader__track {
   width: 100%;
@@ -3221,15 +3269,16 @@ body {
   width: 0%;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #eeb76a, #ffd9a0);
-  box-shadow: 0 0 12px rgba(238, 183, 106, 0.6);
+  background: linear-gradient(90deg, var(--accent-laser-deep), var(--accent-laser));
+  box-shadow: var(--glow-laser);
   transition: width 0.25s ease;
 }
 .boot-loader__pct {
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--text-muted);
 }
 /* Keep the game UI out of sight until assets are ready, then fade both. */
 body:not(.app-ready) .sanctum { opacity: 0; }
@@ -3880,3 +3929,171 @@ pre,
    =========================================================================== */
 .sanctum { position: relative; z-index: 1; }
 .vault-window { position: relative; z-index: 2; }
+
+/* ── Big-win celebration (big-win.js) ─────────────────────────────────────────
+   position:fixed + contain:strict: opening it, its per-frame amount text and
+   its tier changes cannot reflow or repaint anything in the game underneath.
+   Shown by toggling .is-open (opacity/visibility, never display), so the
+   particle canvas keeps its backing store between wins.
+   z-index: above the buy-confirm modal (9000), below the win chips, soul layer
+   and boot loader (9500+). */
+.big-win-overlay {
+  --bw-color: var(--tier-big);
+  position: fixed;
+  inset: 0;
+  z-index: 9200;
+  contain: strict;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 46%, color-mix(in srgb, var(--bw-color) 16%, transparent), transparent 62%),
+    color-mix(in srgb, var(--bg-vault-door) 80%, transparent);
+  transition: opacity 0.24s ease, visibility 0s linear 0.24s;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+.big-win-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.24s ease;
+}
+.big-win-overlay[data-tier="big"]  { --bw-color: var(--tier-big); }
+.big-win-overlay[data-tier="mega"] { --bw-color: var(--tier-mega); }
+.big-win-overlay[data-tier="epic"] { --bw-color: var(--tier-epic); }
+.big-win-overlay[data-tier="max"]  { --bw-color: var(--tier-max); }
+
+.bw-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Security-laser sweeps from LASER BREACH up. Transform-only, so they run on
+   the compositor; only animated while open. */
+.bw-lasers {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.bw-lasers::before,
+.bw-lasers::after {
+  content: "";
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: 0;
+  height: 2px;
+  background: var(--accent-laser-hot);
+  box-shadow:
+    0 0 10px 2px color-mix(in srgb, var(--accent-laser) 80%, transparent),
+    0 0 34px 6px color-mix(in srgb, var(--accent-laser) 35%, transparent);
+}
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers {
+  opacity: 1;
+}
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers::before {
+  animation: bwLaserSweepA 2.4s ease-in-out infinite alternate;
+}
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers::after {
+  animation: bwLaserSweepB 3.1s ease-in-out infinite alternate;
+}
+@keyframes bwLaserSweepA {
+  from { transform: translateY(14vh) rotate(-5deg); }
+  to   { transform: translateY(86vh) rotate(4deg); }
+}
+@keyframes bwLaserSweepB {
+  from { transform: translateY(80vh) rotate(6deg); }
+  to   { transform: translateY(20vh) rotate(-3deg); }
+}
+
+.bw-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 1.4vmin, 14px);
+  padding: 0 16px;
+  max-width: 100%;
+  text-align: center;
+  will-change: transform;
+}
+/* Static plate behind the figures: a dark core for contrast (gold text over a
+   gold coin fountain is otherwise mud at MOTHERLODE) inside a tier-coloured
+   halo. Kept off the per-frame text so the count never re-rasterizes a blur. */
+.bw-stage::before {
+  content: "";
+  position: absolute;
+  inset: -30% -12%;
+  z-index: -1;
+  background: radial-gradient(ellipse at center,
+    color-mix(in srgb, var(--bg-vault-door) 72%, transparent) 0%,
+    color-mix(in srgb, var(--bg-vault-door) 45%, transparent) 34%,
+    color-mix(in srgb, var(--bw-color) 24%, transparent) 52%,
+    transparent 70%);
+  transition: background 0.3s ease;
+}
+.bw-label {
+  min-height: 1em; /* reserved, so the amount doesn't jump when the label appears */
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 10vmin, 96px);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--bw-color);
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 3px 0 rgba(0, 0, 0, 0.55),
+    0 0 26px color-mix(in srgb, var(--bw-color) 65%, transparent);
+}
+.bw-amount {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(44px, 16vmin, 168px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+  background: linear-gradient(180deg,
+    #FFFFFF 0%, var(--win-gold-bright) 38%, var(--win-gold) 72%, var(--win-gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* A dark edge, not a shadow: text-shadow cannot sit under clipped gradient text. */
+  -webkit-text-stroke: 2px color-mix(in srgb, var(--bg-vault-door) 75%, transparent);
+  paint-order: stroke fill;
+}
+.bw-hint {
+  margin-top: clamp(6px, 2vmin, 20px);
+  font: 600 clamp(11px, 1.8vmin, 14px) / 1 var(--font-ui);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.3s ease 0.2s;
+}
+.big-win-overlay.is-done .bw-hint { opacity: 0.85; }
+
+/* Reduced motion: no particles, no lasers, no shake (big-win.js also skips the
+   count and the bursts), just a slower fade to the final state. */
+@media (prefers-reduced-motion: reduce) {
+  .bw-canvas,
+  .bw-lasers { display: none; }
+  .big-win-overlay { transition: opacity 0.4s ease, visibility 0s linear 0.4s; }
+  .big-win-overlay.is-open { transition: opacity 0.4s ease; }
+}
+.big-win-overlay.is-reduced .bw-canvas,
+.big-win-overlay.is-reduced .bw-lasers { display: none; }

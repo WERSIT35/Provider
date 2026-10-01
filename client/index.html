@@ -9,8 +9,8 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#060505" />
-    <title>Banana X</title>
+    <meta name="theme-color" content="#07080A" />
+    <title>Vault 20K · Lumina Games</title>
     <script>
       (function () {
         var path = location.pathname.replace(/index\.html$/, "");
@@ -28,12 +28,14 @@
     <link rel="preload" as="image" href="assets/symbols/Background.webp" />
     <link rel="preload" as="image" href="assets/symbols/FREESPINS_INFO-removebg-preview.webp" />
     <link rel="preload" as="image" href="assets/symbols/BET-removebg-preview.webp" />
-    <link rel="stylesheet" href="styles.css?v=20260803-2" />
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin-wght-normal.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-latin-wght-normal.woff2" crossorigin />
+    <link rel="stylesheet" href="styles.css?v=20261001-1" />
   </head>
   <body>
     <div id="bootLoader" class="boot-loader" role="progressbar" aria-label="Loading game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="boot-loader__inner">
-        <div class="boot-loader__title">Banana X</div>
+        <div class="boot-loader__title">Vault 20K</div>
         <div class="boot-loader__track"><div class="boot-loader__bar" id="bootLoaderBar"></div></div>
         <div class="boot-loader__pct" id="bootLoaderPct">0%</div>
       </div>
@@ -46,8 +48,8 @@
         -->
         <div class="altar-top">
           <div class="title-cluster">
-            <span class="title-kicker">Fantasma Games</span>
-            <h1>Banana X</h1>
+            <span class="title-kicker">Lumina Games</span>
+            <h1>Vault 20K</h1>
             <span class="title-tagline">Hit multipliers to boost your tumble win</span>
           </div>
           <div class="status-ribbon">
@@ -310,6 +312,20 @@
       </section>
     </main>
 
+    <!-- Big-win celebration (big-win.js). Outside .sanctum and fixed-position,
+         so nothing it does can reflow the game. Shown via .is-open only. -->
+    <div class="big-win-overlay" id="bigWinOverlay" role="dialog" aria-modal="true"
+         aria-label="Big win" aria-hidden="true" tabindex="-1">
+      <canvas class="bw-canvas" data-bw-canvas aria-hidden="true"></canvas>
+      <div class="bw-lasers" aria-hidden="true"></div>
+      <div class="bw-stage" data-bw-stage aria-hidden="true">
+        <div class="bw-label" data-bw-label></div>
+        <div class="bw-amount" data-bw-amount>0.00</div>
+        <div class="bw-hint">Tap to continue</div>
+      </div>
+      <p class="visually-hidden" data-bw-announce aria-live="assertive"></p>
+    </div>
+
     <section class="confirm-modal hidden" id="buyConfirmModal" aria-hidden="true" aria-modal="true" role="dialog">
       <div class="confirm-dialog">
         <h2 class="confirm-title">Buy Feature?</h2>
@@ -357,6 +373,7 @@
     <script src="engine/spin-lock.js?v=20260523-1"></script>
     <script src="engine/audio.js?v=20260803-1"></script>
     <script src="engine/ambiance.js?v=20260803-1"></script>
-    <script src="main.js?v=20260803-2"></script>
+    <script src="big-win.js?v=20261001-1"></script>
+    <script src="main.js?v=20261001-1"></script>
   </body>
 </html>

@@ -338,26 +338,172 @@ function setSigned(target, value) {
   if (value < 0) target.classList.add("negative");
 }
 
-const symbolTone = {
-  TOP_CROWN: ["#9ce4ff", "#3f7cff"],
-  HOURGLASS: ["#96fff8", "#2fa0c6"],
-  RING: ["#f2b8ff", "#8b5cf6"],
-  CHALICE: ["#b8d6ff", "#4d7dff"],
-  RED_GEM: ["#ff8cb4", "#dc3f7a"],
-  PURPLE_TRIANGLE: ["#d4bcff", "#7e56ff"],
-  YELLOW_HEX: ["#bff6ff", "#3aa2ff"],
-  GREEN_TRIANGLE: ["#b4ffd9", "#29b68f"],
-  BLUE_DIAMOND: ["#98e8ff", "#2e8bff"],
-  MULTI: ["#d8f6ff", "#5ea1ff"],
-  SCATTER: ["#ffd2ff", "#8b5cf6"]
-};
+// ─── THEME ──────────────────────────────────────────────────────────────────
+// Canvas mirror of the design tokens in styles.css (:root). CSS is the source
+// of truth: every value below is READ from the computed tokens at boot, and the
+// literals are only fallbacks for a stylesheet that failed to load. A palette
+// change is therefore a one-line CSS edit and the canvas follows automatically.
+// main.js is a parser-blocking script placed after the stylesheet, so the
+// tokens are resolved by the time this runs.
+// Purely presentational: nothing here touches SlotEngine or its RNG.
+const THEME = (() => {
+  const css = getComputedStyle(document.documentElement);
+  const HEX6 = /^#[0-9a-f]{6}$/i;
+  const tok = (name, fallback) => {
+    const v = css.getPropertyValue(name).trim();
+    if (HEX6.test(v)) return v.toLowerCase();
+    if (v) console.warn(`[THEME] ${name} must be #rrggbb, got "${v}"; using fallback`);
+    return fallback;
+  };
+  const str = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  // #rrggbb + alpha → rgba(). The only way canvas code should make a translucent
+  // colour, so every alpha variant stays tied to a token.
+  const alpha = (hex, a) => {
+    const n = parseInt(String(hex).slice(1), 16);
+    return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  };
+  const deepFreeze = (o) => {
+    Object.values(o).forEach((v) => { if (v && typeof v === "object") deepFreeze(v); });
+    return Object.freeze(o);
+  };
+
+  const c = {
+    vaultDoor:     tok("--bg-vault-door",     "#07080a"),
+    gunmetal:      tok("--bg-gunmetal",       "#111418"),
+    panel:         tok("--bg-panel",          "#191d22"),
+    panelRaised:   tok("--bg-panel-raised",   "#22272e"),
+    steelEdge:     tok("--steel-edge",        "#3a414a"),
+    steelBrushed:  tok("--steel-brushed",     "#6b7480"),
+    steelSheen:    tok("--steel-sheen",       "#b7bfc9"),
+    tungsten:      tok("--tungsten",          "#ffb86b"),
+    tungstenSoft:  tok("--tungsten-soft",     "#ffd9a8"),
+    laser:         tok("--accent-laser",      "#ff2a3a"),
+    laserDeep:     tok("--accent-laser-deep", "#a30a16"),
+    laserHot:      tok("--accent-laser-hot",  "#ff7a84"),
+    gold:          tok("--win-gold",          "#f2c14e"),
+    goldBright:    tok("--win-gold-bright",   "#ffe7a3"),
+    goldDeep:      tok("--win-gold-deep",     "#9c6b12"),
+    textHud:       tok("--text-hud",          "#eef1f4"),
+    textMuted:     tok("--text-muted",        "#8e98a4"),
+    textDim:       tok("--text-dim",          "#5a636e"),
+    signalOk:      tok("--signal-ok",         "#3fd68a"),
+    signalWarn:    tok("--signal-warn",       "#ffb020")
+  };
+
+  const multTier = (name, fallback, glowA) => {
+    const accent = tok(name, fallback);
+    return { accent, glow: alpha(accent, glowA) };
+  };
+
+  const font = {
+    ui:      str("--font-ui", 'system-ui, "Segoe UI", sans-serif'),
+    display: str("--font-display", '"Arial Narrow", Impact, sans-serif')
+  };
+
+  return deepFreeze({
+    color: c,
+    font,
+    alpha,
+    /** ctx.font string: THEME.canvasFont(700, 24) → display face; pass font.ui for body text. */
+    canvasFont: (weight, px, family = font.display) => `${weight} ${Math.round(px)}px ${family}`,
+
+    // Ambient stage behind the board (draw()). Hex bases; draw() applies the
+    // animated alpha via THEME.alpha so the gradient memo keys stay stable.
+    stage: {
+      fogCore:   alpha(c.tungsten, 0.16),   // warm lamp pool, top-centre
+      fogMid:    alpha(c.laserDeep, 0.07),  // faint red security spill
+      fogEdge:   "rgba(0, 0, 0, 0)",
+      meshA:     c.steelSheen,              // + idle-wave alpha
+      meshMid:   alpha(c.steelEdge, 0.02),
+      meshB:     c.laserDeep,               // + idle-wave alpha
+      spinFlash: c.tungsten,                // + burst alpha
+      vignette:  alpha(c.vaultDoor, 0.85),
+      cellWell:  alpha(c.gunmetal, 0.72),
+      cellEdge:  alpha(c.steelSheen, 0.10)
+    },
+
+    // Glow-sprite colours (getGlowSprite takes #rrggbb and adds its own alpha).
+    glow: {
+      win:     c.gold,
+      winHot:  c.goldBright,
+      scatter: c.laser,
+      laser:   c.laser,
+      steel:   c.steelSheen
+    },
+
+    // Particle palettes: picked with Math.random() — never SlotEngine.RNG.
+    particles: {
+      breach: [c.laserHot, c.tungsten, c.tungstenSoft, "#ffffff"], // tumble "breach" burst
+      sparks: [c.tungstenSoft, c.goldBright, "#ffffff"],           // metal-on-metal impact
+      gold:   [c.gold, c.goldBright, c.goldDeep],                   // win fountains
+      dust:   c.steelBrushed                                        // landing dust
+    },
+
+    // Win-figure text rendered on canvas.
+    text: {
+      winFill:      c.gold,
+      winHighlight: c.goldBright,
+      winStroke:    c.goldDeep,
+      winShadow:    alpha(c.vaultDoor, 0.85),
+      label:        c.textHud,
+      labelMuted:   c.textMuted
+    },
+
+    // Per-symbol [light, deep] glow pair, same keys and shape as the old
+    // symbolTone. Premiums read warm (gold/tungsten); gems keep their hue
+    // identity (players tell symbols apart by colour first) but in a colder,
+    // steel-desaturated key; scatter owns the laser red.
+    symbolGlow: {
+      TOP_CROWN:       [c.goldBright, c.gold],
+      HOURGLASS:       [c.tungstenSoft, c.tungsten],
+      RING:            [c.goldBright, c.goldDeep],
+      CHALICE:         [c.tungstenSoft, c.goldDeep],
+      RED_GEM:         ["#ff9aa2", "#c4202f"],
+      PURPLE_TRIANGLE: ["#c9b8f0", "#6c4fc4"],
+      YELLOW_HEX:      ["#fff0b8", "#c99a1a"],
+      GREEN_TRIANGLE:  ["#a8f0cf", "#1f9a6e"],
+      BLUE_DIAMOND:    ["#a9dcf7", "#2a77c4"],
+      MULTI:           [c.textHud, c.steelSheen],
+      SCATTER:         [c.laserHot, c.laser]
+    },
+
+    // Multiplier rarity, cold → hot. Shape matches MULTIPLIER_TIER_DEFS.
+    multiplier: {
+      common:    multTier("--mult-common",    "#9aa8b6", 0.50),
+      rare:      multTier("--mult-rare",      "#4fc3f7", 0.52),
+      epic:      multTier("--mult-epic",      "#ff7a2b", 0.56),
+      legendary: multTier("--mult-legendary", "#f2c14e", 0.62),
+      mythic:    multTier("--mult-mythic",    "#ff2a3a", 0.66)
+    },
+
+    // Win-tier colours, consumed by WIN_TIERS.
+    winTier: {
+      nice: tok("--tier-nice", "#b7bfc9"),
+      big:  tok("--tier-big",  "#f2c14e"),
+      mega: tok("--tier-mega", "#ff2a3a"),
+      epic: tok("--tier-epic", "#ffe7a3"),
+      max:  tok("--tier-max",  "#ffffff")
+    },
+
+    // Resolves when both faces are usable. The boot loader waits on it so
+    // canvas text never paints in a fallback font and then swaps.
+    fontsReady: document.fonts
+      ? Promise.all([
+          document.fonts.load(`600 16px ${font.ui}`),
+          document.fonts.load(`700 16px ${font.display}`)
+        ]).then(() => undefined, () => undefined)
+      : Promise.resolve()
+  });
+})();
+
+const symbolTone = THEME.symbolGlow;
 
 const MULTIPLIER_TIER_DEFS = [
-  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], accent: "#7dd3fc", glow: "rgba(125, 211, 252, 0.5)" },
-  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], accent: "#a78bfa", glow: "rgba(167, 139, 250, 0.52)" },
-  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], accent: "#fb923c", glow: "rgba(251, 146, 60, 0.56)" },
-  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], accent: "#facc15", glow: "rgba(250, 204, 21, 0.62)" },
-  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], accent: "#f472b6", glow: "rgba(244, 114, 182, 0.66)" }
+  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], ...THEME.multiplier.common },
+  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], ...THEME.multiplier.rare },
+  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], ...THEME.multiplier.epic },
+  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], ...THEME.multiplier.legendary },
+  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], ...THEME.multiplier.mythic }
 ];
 
 const MULTIPLIER_TIER_BY_VALUE = new Map(
@@ -2047,9 +2193,9 @@ class ReelCanvasRenderer {
     const fogKey = `${driftA}|${driftB}|${width}|${height}`;
     if (this._fogKey !== fogKey) {
       const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
-      amberFog.addColorStop(0, "rgba(120, 198, 255, 0.24)");
-      amberFog.addColorStop(0.5, "rgba(86, 124, 255, 0.16)");
-      amberFog.addColorStop(1, "rgba(0, 0, 0, 0)");
+      amberFog.addColorStop(0, THEME.stage.fogCore);
+      amberFog.addColorStop(0.5, THEME.stage.fogMid);
+      amberFog.addColorStop(1, THEME.stage.fogEdge);
       this._fogGrad = amberFog;
       this._fogKey = fogKey;
     }
@@ -2059,9 +2205,9 @@ class ReelCanvasRenderer {
     const meshKey = `${idleWave}|${idleWave2}|${width}|${height}`;
     if (this._meshKey !== meshKey) {
       const meshGlow = ctx.createLinearGradient(0, 0, width, height);
-      meshGlow.addColorStop(0, `rgba(129, 198, 255, ${(0.06 + (idleWave + 1) * 0.015).toFixed(3)})`);
-      meshGlow.addColorStop(0.5, "rgba(128, 171, 255, 0.02)");
-      meshGlow.addColorStop(1, `rgba(111, 227, 210, ${(0.05 + (idleWave2 + 1) * 0.012).toFixed(3)})`);
+      meshGlow.addColorStop(0, THEME.alpha(THEME.stage.meshA, (0.06 + (idleWave + 1) * 0.015).toFixed(3)));
+      meshGlow.addColorStop(0.5, THEME.stage.meshMid);
+      meshGlow.addColorStop(1, THEME.alpha(THEME.stage.meshB, (0.05 + (idleWave2 + 1) * 0.012).toFixed(3)));
       this._meshGrad = meshGlow;
       this._meshKey = meshKey;
     }
@@ -2076,7 +2222,7 @@ class ReelCanvasRenderer {
     if (this.fx.spinBurst) {
       const t = clamp((performance.now() - this.fx.spinBurst.start) / this.fx.spinBurst.duration, 0, 1);
       const a = (1 - t) * 0.22;
-      ctx.fillStyle = `rgba(255, 205, 139, ${a.toFixed(3)})`;
+      ctx.fillStyle = THEME.alpha(THEME.stage.spinFlash, a.toFixed(3));
       ctx.fillRect(0, 0, width, height);
     }
 
@@ -2560,8 +2706,8 @@ class ReelCanvasRenderer {
           const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
           ctx.drawImage(sprite, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
         } else {
-          ctx.fillStyle = "rgba(255, 238, 200, 0.9)";
-          ctx.font = `${Math.max(10, coreR * 0.22)}px Trebuchet MS, sans-serif`;
+          ctx.fillStyle = THEME.text.label;
+          ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(symbol.slice(0, 2), x, yFloat);
@@ -2569,8 +2715,8 @@ class ReelCanvasRenderer {
 
         if (symbol === "TOP_CROWN") {
           const crownGlow = ctx.createRadialGradient(x, yFloat - coreR * 0.36, 0, x, yFloat - coreR * 0.36, coreR * 0.75);
-          crownGlow.addColorStop(0, "rgba(185, 218, 255, 0.26)");
-          crownGlow.addColorStop(1, "rgba(185, 218, 255, 0)");
+          crownGlow.addColorStop(0, THEME.alpha(THEME.glow.winHot, 0.26));
+          crownGlow.addColorStop(1, THEME.alpha(THEME.glow.winHot, 0));
           ctx.fillStyle = crownGlow;
           ctx.beginPath();
           ctx.arc(x, yFloat - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
@@ -2583,10 +2729,12 @@ class ReelCanvasRenderer {
           const tier = multiTier || getMultiplierTier(multiValueNum);
           const value = `${multiValueNum}x`;
           ctx.fillStyle = tier.accent;
-          ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+          // 700 is the display face's heaviest weight; asking for more makes
+          // some browsers synthesize a smeared faux-bold.
+          ctx.font = THEME.canvasFont(700, Math.max(18, coreR * 0.62));
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
+          ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
           ctx.lineWidth = Math.max(2.4, coreR * 0.1);
           ctx.strokeText(value, x, yFloat + coreR * 0.02);
           ctx.fillText(value, x, yFloat + coreR * 0.02);
@@ -2784,15 +2932,101 @@ const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCou
 // to assert nothing rebuilds them mid-round). Nothing in the game reads this.
 window.__reelRenderer = reelRenderer;
 
-function winTier(waysWins = [], bet = 1) {
-  let totalAmount = 0;
-  waysWins.forEach((w) => { totalAmount += Number(w?.amount || 0); });
-  const winX = bet > 0 ? totalAmount / bet : 0;
-  // Tier purely by payout magnitude (× bet). Calmer thresholds so the
-  // strongest celebration is reserved for genuinely big wins.
-  if (winX >= 20) return "blast-great";
-  if (winX >= 5) return "blast-medium";
-  return "blast-small";
+// ─── WIN TIERS ──────────────────────────────────────────────────────────────
+// The ONE place a win's size becomes presentation. Everything that reacts to
+// "how big was that" (big-win overlay label + colour, sound, screen shake,
+// cluster blast strength, win-chip and spin-log styling, ambiance) reads a
+// tier from here. Thresholds are × bet; ordered high → low, first match wins.
+// Overlay colour lives in CSS: big-win.js sets data-tier and styles.css maps
+// it to the matching --tier-* token. `color` mirrors that token for canvas use
+// (via THEME, so it is the same value).
+// Presentation only: nothing here feeds back into the engine.
+//   overlay  — the round-end win opens the full-screen celebration (big-win.js)
+//   sfx      — Sound key (step reveal, and the overlay's tier-up)
+//   shake    — shakeVault strength for the step reveal, or null for none
+//   blast    — renderer intensity for the cluster (particles, explode, bloom)
+//   flash    — full-board jackpotFlash on the winning step
+//   countMs  — overlay only: time for the count to cross this tier's span
+//   fx       — overlay only: celebration effect set ("coins" | "sparks" | "motherlode")
+const WIN_TIERS = Object.freeze([
+  Object.freeze({ key: "epic",  minX: 50, label: "MOTHERLODE",    color: THEME.winTier.epic, overlay: true,  sfx: "win_mega",  shake: "strong", blast: "blast-great",  flash: true,  countMs: 2200, fx: "motherlode" }),
+  Object.freeze({ key: "mega",  minX: 25, label: "LASER BREACH",  color: THEME.winTier.mega, overlay: true,  sfx: "win_mega",  shake: "normal", blast: "blast-great",  flash: false, countMs: 1500, fx: "sparks" }),
+  Object.freeze({ key: "big",   minX: 10, label: "VAULT CRACKED", color: THEME.winTier.big,  overlay: true,  sfx: "win_big",   shake: null,     blast: "blast-medium", flash: false, countMs: 1800, fx: "coins" }),
+  // "Heartbeat" wins: no overlay (no UI interruption), but the cluster still
+  // gets the medium burst so dry spells keep a pulse.
+  Object.freeze({ key: "nice",  minX: 5,  label: null,            color: THEME.winTier.nice, overlay: false, sfx: "win_small", shake: null,     blast: "blast-medium", flash: false }),
+  Object.freeze({ key: "small", minX: 0,  label: null,            color: THEME.winTier.nice, overlay: false, sfx: "win_small", shake: null,     blast: "blast-small",  flash: false })
+]);
+
+// Max win is the engine's cap EVENT, not a threshold, so it sits outside the
+// ladder. The overlay counts up through the normal tiers and lands on this.
+const WIN_TIER_MAX = Object.freeze({
+  key: "max", minX: Infinity, label: "MAX WIN", color: THEME.winTier.max, overlay: true,
+  sfx: "max_win", shake: "strong", blast: "blast-great", flash: true, countMs: 0, fx: "motherlode"
+});
+
+function getWinTier(amount, bet) {
+  const x = bet > 0 ? Number(amount || 0) / bet : 0;
+  return WIN_TIERS.find((t) => x >= t.minX) || WIN_TIERS[WIN_TIERS.length - 1];
+}
+
+// Tier for one tumble step. win_total is the step's raw ways total (the sum
+// of its ways_wins), the same figure the old per-step thresholds used.
+function stepWinTier(step, bet) {
+  return getWinTier(Number(step?.win_total || 0), bet);
+}
+
+// ─── Big-win celebration ────────────────────────────────────────────────────
+// The full-screen overlay (big-win.js) for round wins on an overlay tier. It
+// runs INSIDE the round, so the spin lock stays held until it is dismissed.
+const BIG_WIN_TIERS = WIN_TIERS.filter((t) => t.overlay);
+
+const bigWin = new BigWinController({
+  root: document.getElementById("bigWinOverlay"),
+  format: fmt,
+  palette: {
+    gold: THEME.color.gold,
+    goldBright: THEME.color.goldBright,
+    goldDeep: THEME.color.goldDeep,
+    diamond: THEME.color.textHud,
+    diamondEdge: THEME.color.steelSheen,
+    sparks: THEME.particles.breach
+  },
+  maxDpr: reelRenderer.maxDpr,
+  fxScale: TIER_PROFILES[reelRenderer.tier].fxCeil,
+  hooks: {
+    // The overlay shakes its own stage, and the board underneath is dimmed and
+    // paused, so only sound is routed out here.
+    onTier: (tier) => window.Sound?.play(tier.sfx),
+    onTick: (value, total) => window.Sound?.play("win_tick", { progress: total > 0 ? value / total : 1 })
+  }
+});
+
+/** Celebrate a settled round win. Resolves once the player (or the
+ *  auto-dismiss) closes the overlay. */
+async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
+  // Follow any FPS-governor downgrade that happened since boot.
+  bigWin.field.maxDpr = reelRenderer.maxDpr;
+  const inAutoplay = state.autoplayActive || state.bonusAutoplay;
+  // Auto-dismiss everywhere: a player who never taps must not leave the round,
+  // and the spin lock, held open forever. Autoplay and free spins move on fast.
+  const autoDismissMs = inAutoplay ? (state.turbo ? 800 : 1800) : 4000;
+  // The overlay covers the board, so stop drawing it: no point spending
+  // battery and heat on frames nobody can see. installVisibilityGuards() knows
+  // not to wake it while the overlay is up.
+  reelRenderer.pauseRendering();
+  try {
+    return await bigWin.play({
+      amount,
+      bet,
+      tiers: BIG_WIN_TIERS,
+      finalTier,
+      speed: state.turbo || state.fastStopRequested ? 0.35 : 1,
+      autoDismissMs
+    });
+  } finally {
+    if (!document.hidden) reelRenderer.resumeRendering();
+  }
 }
 
 function maxMultiplierInStep(step = {}) {
@@ -3091,6 +3325,12 @@ function requestFastStop() {
   // while roundAnimating covers any path that animates a round without owning
   // the lock. Gating on the lock alone left fast-stop dead during buy-feature
   // and session-resume bonuses, which never acquired it.
+  // During the big-win celebration a press means what a tap on the overlay
+  // means: first press skips the count, the next one dismisses it.
+  if (bigWin.active) {
+    bigWin.advance();
+    return true;
+  }
   if (!spinLock.isLocked() && !state.roundAnimating) return false; // nothing in flight
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
@@ -3649,48 +3889,6 @@ function pulseBanner(text, tone = "info", duration = 860) {
   }, duration);
 }
 
-function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
-  if (!el.winCallout || !el.winCalloutAmount || !el.winCalloutLabel) return;
-  if (state.calloutTimer) {
-    clearTimeout(state.calloutTimer);
-    state.calloutTimer = null;
-  }
-  el.winCalloutLabel.textContent = label;
-  el.winCalloutAmount.textContent = fmt(amount);
-  // Infer a tier from the amount/bet ratio if not explicitly provided. Drives
-  // the callout's color, glow, and size via CSS.
-  let inferredTier = tier;
-  if (!inferredTier) {
-    const bet = Number(el.betSelect?.value || 1) || 1;
-    const x = Number(amount || 0) / bet;
-    inferredTier = x >= 100 ? "epic" : x >= 50 ? "great" : x >= 12 ? "medium" : "small";
-  }
-  el.winCallout.classList.remove(
-    "hidden", "live-callout",
-    "callout-tier-small", "callout-tier-medium",
-    "callout-tier-great", "callout-tier-epic", "callout-tier-bonus"
-  );
-  el.winCallout.classList.add(`callout-tier-${inferredTier}`);
-  // Win reveal sound, keyed to the visual tier. "Multiplier Catch" / "Max Win"
-  // callouts have their own dedicated sounds fired at their source, so don't
-  // double up here.
-  if (label !== "Multiplier Catch" && !/^Max Win/.test(label)) {
-    const sfx = inferredTier === "epic" || inferredTier === "great"
-      ? "win_mega"
-      : inferredTier === "medium"
-        ? "win_big"
-        : "win_small";
-    window.Sound?.play(sfx);
-  }
-  void el.winCallout.offsetWidth;
-  el.winCallout.classList.add("live-callout");
-  state.calloutTimer = setTimeout(() => {
-    el.winCallout.classList.add("hidden");
-    el.winCallout.classList.remove("live-callout");
-    state.calloutTimer = null;
-  }, duration);
-}
-
 // Immediately hide the win callout (used before the combine finale so only one
 // message is ever on screen).
 function hideWinCallout() {
@@ -3873,10 +4071,7 @@ function spinCardTier(entry) {
   const bet = Number(entry?.bet || 0);
   const win = Number(entry?.totalWin || 0);
   if (win <= 0) return "loss";
-  const x = bet > 0 ? win / bet : 0;
-  if (x >= 50) return "great";
-  if (x >= 12) return "medium";
-  return "small";
+  return winChipTierFromStrength(getWinTier(win, bet).blast);
 }
 
 function renderSpinCardInto(li, entry) {
@@ -4170,10 +4365,12 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       const prevWinTotal = Number(prev?.win_total || 0);
       if (prevWinning.length > 0 && prevWinTotal > 0) {
         await animationSleep(140);
-        const prevTier = winTier(prev?.ways_wins || [], bet);
+        const prevWinTier = stepWinTier(prev, bet);
+        const prevTier = prevWinTier.blast;
         pushGameMessage(`Tumble ${i} triggered.`, "info");
-        // Shake only on great-tier tumble (no shake on routine medium/small).
-        if (prevTier === "blast-great") shakeVault("normal");
+        // The breach itself gets a light shake on any tier that shakes; the
+        // tier's full-strength shake already fired when the win was revealed.
+        if (prevWinTier.shake) shakeVault("normal");
         // Win chip + cluster celebration fire IN PARALLEL with the explode so
         // the floating amount visually emerges from the cluster at the same
         // moment its symbols disappear. The chip + meter use the SCALED
@@ -4221,7 +4418,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         // multipliers may persist on a non-winning matrix; nothing to do.
       }
     }
-    const tier = winTier(step?.ways_wins || [], bet);
+    const stepTier = stepWinTier(step, bet);
+    const tier = stepTier.blast;
     const stepWin = Number(step?.win_total || 0);
     // Celebration hold for the caught cluster. Every win here is an 8+ catch
     // (min match = 8), so the headline opening catch is held for the full
@@ -4245,27 +4443,18 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);
     if ((step.winning_positions || []).length && stepWin > 0) {
-      const winX = bet > 0 ? stepWin / bet : 0;
-      const label = winX >= 100
-        ? "Epic Win"
-        : tier === "blast-great"
-          ? "Great Win"
-          : tier === "blast-medium"
-            ? "Big Win"
-            : "Win";
       // No per-step popups. Across a tumble chain, showing the amount every
       // step (and stacking banners/callouts) is noisy and repetitive — so steps
-      // only update the running meter + play a tiered sound. Exactly ONE win
+      // only update the running meter + play the tier's sound. Exactly ONE win
       // message is shown at the end of the spin (the finale below).
-      window.Sound?.play(winX >= 50 ? "win_mega" : winX >= 12 ? "win_big" : "win_small");
-      pushGameMessage(`${label}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
-      // Shake only on great-tier (and stronger above 100x). Medium wins stay calm.
-      if (tier === "blast-great") shakeVault(winX >= 100 ? "strong" : "normal");
-      if (winX >= 100) {
+      window.Sound?.play(stepTier.sfx);
+      pushGameMessage(`${stepTier.label || "Win"}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
+      if (stepTier.shake) shakeVault(stepTier.shake);
+      if (stepTier.flash) {
         await reelRenderer.jackpotFlash({
           duration: 520,
-          colorA: "rgba(170, 225, 255, 0.32)",
-          colorB: "rgba(255, 214, 136, 0.28)"
+          colorA: THEME.alpha(THEME.color.laser, 0.30),
+          colorB: THEME.alpha(THEME.color.gold, 0.28)
         });
       }
     }
@@ -4329,23 +4518,22 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   let messageShown = false;
   if (maxWinEvt) {
     const capX = Number(maxWinEvt.cap_x || 0);
-    window.Sound?.play("max_win");
-    showWinCallout(totalWinAmt, `Max Win ${capX.toLocaleString()}×`, 2200);
-    window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
-    shakeVault("strong");
-    await reelRenderer.jackpotFlash({
-      duration: 1200, colorA: "rgba(255, 80, 60, 0.5)", colorB: "rgba(255, 220, 100, 0.4)"
-    });
+    window.Ambiance?.react("win", { tier: WIN_TIER_MAX.blast, amountX: totalWinX });
     pushGameMessage(`Max win cap (${capX}×) reached.`, "bonus");
     messageShown = true;
+    // Counts up through every tier, then lands on MAX WIN.
+    await celebrateBigWin(totalWinAmt, bet, {
+      finalTier: { ...WIN_TIER_MAX, label: `${WIN_TIER_MAX.label} ${capX.toLocaleString()}×` }
+    });
   } else if (appliedMult >= 50 && totalWinAmt > 0) {
-    // Big multiplier win → the combine overlay IS the single grand finale
-    // (Win × Multiplier = Total in one cohesive reveal).
+    // Big multiplier win → the combine sequence reveals Win × Multiplier =
+    // Total; if that total is an overlay tier, the celebration follows it.
     const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
     hideWinCallout();
     await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
     window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
+    if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
 
   // Near-miss / no-win / bonus-trigger only touch the admin log (no over-reel
@@ -4356,18 +4544,16 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } else if (totalWinAmt <= 0) {
     pushGameMessage("No win this spin.", "info");
   } else {
-    // Plain win (no big-multiplier finale): show ONE callout for a notable win.
+    // Plain win (no big-multiplier finale): overlay tiers get the full-screen
+    // celebration; anything smaller already had its moment on the board.
     if (!messageShown) {
-      const label = totalWinX >= 50 ? "Epic Win"
-        : totalWinX >= 25 ? "Huge Win"
-        : totalWinX >= 12 ? "Big Win"
-        : totalWinX >= 5 ? "Nice Win"
-        : null;
-      if (label) {
-        showWinCallout(totalWinAmt, label, totalWinX >= 25 ? 1300 : 1000);
-        if (totalWinX >= 20) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+      const roundTier = getWinTier(totalWinAmt, bet);
+      if (roundTier.overlay) {
+        if (roundTier.blast === "blast-great") {
+          window.Ambiance?.react("win", { tier: roundTier.blast, amountX: totalWinX });
+        }
         messageShown = true;
-        if (totalWinX >= 25) await animationSleep(totalWinX >= 50 ? 900 : 600);
+        await celebrateBigWin(totalWinAmt, bet);
       }
     }
     pushGameMessage(`Total spin win: ${fmt(totalWinAmt)}.`, "win");
@@ -5049,7 +5235,9 @@ function runBootLoader() {
   const pctEl = document.getElementById("bootLoaderPct");
   const loader = document.getElementById("bootLoader");
   // Everything in symbolAssets + uiAssets, decoded and ready to paint.
-  const waits = Array.from(reelRenderer.imageLoads?.values() || []);
+  // Fonts are critical too: canvas text drawn before they load would paint in
+  // the fallback face and then visibly swap.
+  const waits = [THEME.fontsReady, ...Array.from(reelRenderer.imageLoads?.values() || [])];
   // The on-screen <img> buttons are owned by the document, not the renderer.
   // Their URLs are already in uiAssets (so the bytes are shared), but wait on
   // the elements too so the reveal cannot beat their own decode.
@@ -5120,7 +5308,9 @@ function installVisibilityGuards() {
     window.Sound?.suspendAudio?.();
   };
   const wake = () => {
-    reelRenderer.resumeRendering();
+    // The big-win overlay keeps the board paused while it is up; celebrateBigWin
+    // resumes it on dismiss.
+    if (!bigWin.active) reelRenderer.resumeRendering();
     window.Sound?.resumeAudio?.();
   };
   document.addEventListener("visibilitychange", () => {
