@@ -9,11 +9,8 @@ const $ = (id) => document.getElementById(id);
 })();
 
 const el = {
-  sessionId: $("sessionId"),
   balance: $("balance"),
   betView: $("betView"),
-  winningLines: $("winningLines"),
-  winningLinesMobile: $("winningLinesMobile"),
   lastWin: $("lastWin"),
   betNode: $("betNode"),
   freeSpins: $("freeSpins"),
@@ -22,9 +19,6 @@ const el = {
   activeMultiplierNode: $("activeMultiplierNode"),
   bonusMultiBadge: $("bonusMultiBadge"),
   bonusMultiBadgeValue: $("bonusMultiBadgeValue"),
-  infoToggle: $("infoToggle"),
-  infoPopover: $("infoPopover"),
-  rulesBtnMobile: $("rulesBtnMobile"),
   bonusTotal: $("bonusTotal"),
   bonusTotalNode: $("bonusTotalNode"),
   betSelect: $("betSelect"),
@@ -83,13 +77,9 @@ const el = {
   rulesNextBtn: $("rulesNextBtn"),
   rulesPageLabel: $("rulesPageLabel"),
   rulesCloseBtn: $("rulesCloseBtn"),
-  lineCount: $("lineCount"),
   symbolLegend: $("symbolLegend"),
   payoutRuleText: $("payoutRuleText"),
   multiplierInfo: $("multiplierInfo"),
-  winCallout: $("winCallout"),
-  winCalloutLabel: $("winCalloutLabel"),
-  winCalloutAmount: $("winCalloutAmount"),
   testDropBtn: $("testDropBtn"),
   testExplodeBtn: $("testExplodeBtn"),
   testCelebrateBtn: $("testCelebrateBtn"),
@@ -123,7 +113,6 @@ const state = {
   activityLog: [],
   spinSeq: 0,
   bannerTimer: null,
-  calloutTimer: null,
   testBusy: false,
   forcedMultiplierLock: null,
   spinFlownSouls: new Set(),
@@ -196,12 +185,7 @@ const symbolAssets = {
 // otherwise the browser treats them as different resources and the preload is
 // wasted. See the note on <base href> in index.html.
 const uiAssets = {
-  UI_SPIN: "assets/symbols/SPIN.webp",
   UI_BACKGROUND: "assets/symbols/Background.webp",
-  UI_BET: "assets/symbols/BET-removebg-preview.webp",
-  UI_ANTE_ACTIVE: "assets/symbols/ANTE_ACTIVE-removebg-preview.webp",
-  UI_ANTE_INACTIVE: "assets/symbols/ANTE_INACTIVE-removebg-preview.webp",
-  UI_BUY_FEATURE: "assets/symbols/BUY_FEATURE-removebg-preview.webp",
   UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
 };
 
@@ -213,12 +197,14 @@ const ANIMATION_TIMING = {
   // Tune these live if a slower, more cinematic feel is preferred.
   spinBurst: 420,
   oldBoardDropOff: 820,
-  introDrop: 820,
+  // Heavier-gravity pass: the fall itself is ~29% quicker (fallEnd 0.6 of a
+  // shorter drop) and the time saved goes to a sharper landing.
+  introDrop: 700,
   // Tumble cascade refill fall duration. The drop now runs AFTER the explosion
   // has fully finished (see the deliberate win beat below), so the refill reads
   // as a clean gravity drop into the cleared cells rather than overlapping the
   // burst. Tune live for feel.
-  tumbleDrop: 640,
+  tumbleDrop: 560,
   // Deliberate win beat (no overlap): the caught cluster is CELEBRATED (held +
   // glowing) for a clear moment, THEN it explodes, and only once the explosion
   // fully finishes do the refill symbols drop in. celebrateHoldFirst is the
@@ -310,18 +296,22 @@ const easeOutBounce = (t) => {
 // then coasts at vMax — and gravity is re-solved so it STILL lands exactly at τ=1
 // (continuous with the uncapped case at the boundary vMax = 2 − v0).
 const DROP_PHYSICS = {
-  // Drop-in: a touch of initial velocity, gravity to the slot by fallEnd, then a
-  // small restitution-damped bounce over the remaining time settles it.
-  in:  { v0: 0.16, vMax: 2.6, fallEnd: 0.72, bounceCells: 0.09 },
-  // Drop-out: falls cleanly out of frame — near rest, then accelerates. No bounce.
-  out: { v0: 0.06, vMax: Infinity }
+  // Drop-in: starts almost at rest and accelerates hard (pure gravity, so it is
+  // still speeding up when it hits), reaches the slot by fallEnd, then settles
+  // in `hops` hard, fast-damped bounces. bounceCells is the first hop's height
+  // in rows; bounceDecay is how quickly the hops die.
+  in:  { v0: 0.04, vMax: Infinity, fallEnd: 0.6, bounceCells: 0.15, bounceDecay: 3, hops: 2 },
+  // Drop-out: an anticipation wind-up over the first `windup` of the exit (a
+  // short crouch, then a lift of windupLift rows that eases to a stop), then
+  // gravity takes the symbol out of frame from rest at that apex. No bounce.
+  out: { v0: 0, vMax: Infinity, windup: 0.18, windupLift: 0.12 }
 };
 
 // Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
 // Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
 const MOTION = {
-  stretch: 0.07,      // max vertical stretch while falling fast
-  squash: 0.14,       // vertical squash on the landing impact
+  stretch: 0.12,      // max vertical stretch while falling fast
+  squash: 0.2,        // vertical squash on the landing impact
   breathBase: 0.08,   // winning symbols' resting swell during the hold
   breathDepth: 0.07,  // extra swell at the top of each breath
   breathMs: 1100,     // one breath (in + out)
@@ -332,7 +322,9 @@ const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathD
 
 // Symbol sprite cache band (see getSymbolSprite): reuse a bake while the wanted
 // size is within [min, max] of it; new bakes are made at headroom × wanted.
-const SPRITE_BAND = { min: 0.75, max: 1.5, headroom: 1.2 };
+// max 1.6 covers the 20% landing squash (bake 1.2x / wanted 0.8x = 1.5x) with
+// room to spare; at 1.5 every landing symbol sat on the edge and rebaked.
+const SPRITE_BAND = { min: 0.75, max: 1.6, headroom: 1.2 };
 
 function gravityFallFraction(tau, v0 = 0, vMax = Infinity) {
   tau = clamp(tau, 0, 1);
@@ -2052,11 +2044,22 @@ class ReelCanvasRenderer {
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
     if (drop.exit) {
-      // Drop-out (#22): symbols fall OUT of the board under gravity — near rest at
-      // first, then accelerating, for the "floor dropped out" feel. See
-      // gravityFallFraction for the kinematics.
+      // Drop-out (#22) with anticipation: over the first `w` of the exit the
+      // symbol crouches (sinks a hair while dropDeform squashes it), then lifts
+      // and eases to a stop at the apex. From there gravity takes it out of the
+      // board, so position and velocity are continuous across the hand-off.
       const p = DROP_PHYSICS.out;
-      return exitDistance * gravityFallFraction(progress, p.v0, p.vMax);
+      const w = this.windupFraction();
+      const lift = rowStep * p.windupLift;
+      if (progress < w) {
+        const u = progress / w;
+        return u < 0.4
+          ? rowStep * 0.02 * Math.sin((Math.PI * u) / 0.4)
+          : -lift * easeOutCubic((u - 0.4) / 0.6);
+      }
+      const apex = w > 0 ? lift : 0;
+      const q = (progress - w) / (1 - w);
+      return -apex + (exitDistance + apex) * gravityFallFraction(q, p.v0, p.vMax);
     }
     // Drop-in (#22): symbols accelerate downward under gravity into their slot,
     // landing by `fallEnd`, then a single damped bounce (restitution) settles them.
@@ -2065,9 +2068,18 @@ class ReelCanvasRenderer {
       const s = gravityFallFraction(progress / p.fallEnd, p.v0, p.vMax);
       return lerp(-distance, 0, s);
     }
+    // Heavy landing: `hops` bounces off the floor. |sin| has a hard corner at
+    // each floor contact, which is what makes it read as an impact rather
+    // than a float, and the steep decay settles it fast.
     const settleT = (progress - p.fallEnd) / (1 - p.fallEnd);
-    const damp = (1 - settleT) ** 2;
-    return -Math.sin(settleT * Math.PI) * damp * rowStep * p.bounceCells;
+    const damp = (1 - settleT) ** p.bounceDecay;
+    return -Math.abs(Math.sin(settleT * Math.PI * p.hops)) * damp * rowStep * p.bounceCells;
+  }
+
+  /** Share of an exit drop spent on the anticipation wind-up. None on a
+   *  fast-stop (the player asked for speed) or under reduced motion. */
+  windupFraction() {
+    return this._reducedMotion || state.fastStopRequested ? 0 : DROP_PHYSICS.out.windup;
   }
 
   /** Reduced-motion aware amplitudes for this frame (read once per draw). */
@@ -2086,20 +2098,39 @@ class ReelCanvasRenderer {
     out.sx = 1;
     out.sy = 1;
     const drop = this.fx.drop;
-    if (!drop || drop.exit) return out;
+    if (!drop) return out;
     const count = Number(drop.map?.[`${row}-${col}`] || 0);
     if (count <= 0) return out;
     const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / drop.duration;
     if (progress <= 0 || progress >= 1) return out;
     const m = this.motion();
+    if (drop.exit) {
+      // Wind-up: crouch (squash) first, stretch up out of it, and keep
+      // stretching as gravity takes over on the way out.
+      const w = this.windupFraction();
+      if (progress < w) {
+        const u = progress / w;
+        out.sy = u < 0.4
+          ? 1 - m.squash * 0.45 * Math.sin((Math.PI * u) / 0.4)
+          : 1 + m.stretch * 0.35 * ((u - 0.4) / 0.6);
+      } else {
+        const q = (progress - w) / (1 - w);
+        out.sy = 1 + m.stretch * (0.35 + 0.65 * q);
+      }
+      out.sx = 1 / out.sy;
+      return out;
+    }
     const p = DROP_PHYSICS.in;
     if (progress < p.fallEnd) {
       const t = progress / p.fallEnd;
       out.sy = 1 + m.stretch * t * t; // grows with speed under gravity
     } else {
+      // Squash on every floor contact, a little stretch at each hop's apex,
+      // both dying with the bounce itself.
       const s = (progress - p.fallEnd) / (1 - p.fallEnd);
-      // Impact squash, then a damped spring back (a small over-stretch mid-way).
-      out.sy = 1 - m.squash * Math.cos(s * Math.PI * 1.5) * (1 - s) ** 2;
+      const env = (1 - s) ** p.bounceDecay;
+      const contact = Math.abs(Math.cos(Math.PI * p.hops * s)) ** 4;
+      out.sy = 1 - m.squash * contact * env + m.stretch * 0.5 * (1 - contact) * env;
     }
     out.sx = 1 / out.sy;
     return out;
@@ -4041,18 +4072,6 @@ function pulseBanner(text, tone = "info", duration = 860) {
   }, duration);
 }
 
-// Immediately hide the win callout (used before the combine finale so only one
-// message is ever on screen).
-function hideWinCallout() {
-  if (!el.winCallout) return;
-  if (state.calloutTimer) {
-    clearTimeout(state.calloutTimer);
-    state.calloutTimer = null;
-  }
-  el.winCallout.classList.add("hidden");
-  el.winCallout.classList.remove("live-callout");
-}
-
 function shakeVault(strength = "normal") {
   if (!el.vaultWindow) return;
   // Players who asked the OS to reduce motion get no screen shake.
@@ -4682,7 +4701,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     // Big multiplier win → the combine sequence reveals Win × Multiplier =
     // Total; if that total is an overlay tier, the celebration follows it.
     const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
-    hideWinCallout();
     await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
     window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
@@ -4730,8 +4748,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     multiplier: state.bonusMultiplierCarry,
     bonusTotal: payload.bonus_round_win || 0
   });
-  el.winningLines.textContent = String((payload.ways_wins || []).length);
-  if (el.winningLinesMobile) el.winningLinesMobile.textContent = String((payload.ways_wins || []).length);
   const finalStep = steps[steps.length - 1] || {};
   renderCaughtLines(payload.ways_wins || [], finalStep.multipliers || payload.multipliers || []);
   pushSpinLog(payload, bet);
@@ -5126,7 +5142,6 @@ async function loadRules() {
     const engine = await getEngine();
     const rules = engine.getDecoratedRules();
     state.rules = rules;
-    el.lineCount.textContent = String(rules.layout?.pays || "symbols_pay_anywhere").replaceAll("_", " ");
     const allowed = rules.features?.multipliers?.allowed_values || [];
     renderMultiplierInfo(allowed);
     renderRulesPage();
@@ -5169,7 +5184,6 @@ async function initSession() {
   state.sessionId = payload.session_id;
   state.currency = payload.currency || "GEL";
   state.gameId = payload.game_id || state.gameId;
-  el.sessionId.textContent = state.sessionId.slice(0, 8);
   el.balance.textContent = fmt(payload.balance);
   // Claim the Round ID row NOW, while the board is still idle. In platform mode
   // it is guaranteed to appear after the first spin, and un-hiding it then would
@@ -5254,18 +5268,13 @@ function stepBet(direction) {
 if (el.betDownBtn) el.betDownBtn.addEventListener("click", () => stepBet(-1));
 if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 
-const anteToggleImg = $("anteToggleImg");
-if (el.anteToggle && anteToggleImg) {
-  // Read from uiAssets so this URL can never drift from the one the boot loader
-  // preloads — the active plate used to be fetched on the first toggle, which
-  // made it pop in mid-session.
-  const updateAnteImg = () => {
-    anteToggleImg.src = el.anteToggle.checked
-      ? uiAssets.UI_ANTE_ACTIVE
-      : uiAssets.UI_ANTE_INACTIVE;
-  };
-  el.anteToggle.addEventListener("change", updateAnteImg);
-  updateAnteImg();
+// Ante disables Buy Free Spins (game rules; the engine refuses it too), so the
+// gold button must stop looking clickable the moment Ante is switched on, not
+// only when the controls next refresh at spin time.
+if (el.anteToggle) {
+  el.anteToggle.addEventListener("change", () => {
+    el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight();
+  });
 }
 el.spinBtn.addEventListener("click", spin);
 el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
@@ -5277,8 +5286,6 @@ if (el.soundToggle) {
     const muted = window.Sound ? window.Sound.isMuted() : false;
     el.soundToggle.classList.toggle("is-muted", muted);
     el.soundToggle.setAttribute("aria-pressed", String(!muted));
-    const glyph = el.soundToggle.querySelector(".sound-glyph");
-    if (glyph) glyph.innerHTML = muted ? "&#128263;" : "&#128266;";
   };
   el.soundToggle.addEventListener("click", () => {
     if (!window.Sound) return;
@@ -5321,27 +5328,10 @@ if (el.testCatchBtn) el.testCatchBtn.addEventListener("click", () => runVisualTe
 if (el.crazyToggleBtn) el.crazyToggleBtn.addEventListener("click", () => setCrazyMode(!state.crazyMode));
 el.featureScreen.addEventListener("click", dismissFeature);
 function openRules() {
-  el.infoPopover?.classList.add("hidden");
-  el.infoToggle?.setAttribute("aria-expanded", "false");
   el.rulesModal.classList.remove("hidden");
   renderRulesPage();
 }
 el.rulesBtn.addEventListener("click", openRules);
-if (el.rulesBtnMobile) el.rulesBtnMobile.addEventListener("click", openRules);
-if (el.infoToggle) {
-  el.infoToggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const open = el.infoPopover?.classList.toggle("hidden") === false;
-    el.infoToggle.setAttribute("aria-expanded", String(open));
-  });
-  // Tap outside closes the info popover.
-  document.addEventListener("click", (e) => {
-    if (!el.infoPopover || el.infoPopover.classList.contains("hidden")) return;
-    if (el.infoPopover.contains(e.target) || e.target === el.infoToggle) return;
-    el.infoPopover.classList.add("hidden");
-    el.infoToggle.setAttribute("aria-expanded", "false");
-  });
-}
 el.rulesCloseBtn.addEventListener("click", () => el.rulesModal.classList.add("hidden"));
 el.rulesPrevBtn.addEventListener("click", () => {
   if (!state.rules || state.rulesPageIndex <= 0) return;

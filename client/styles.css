@@ -205,40 +205,6 @@ body::after {
   }
 }
 
-.altar-top {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.title-cluster {
-  display: grid;
-  gap: 4px;
-}
-
-.title-kicker {
-  color: var(--sun);
-  text-transform: uppercase;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.title-cluster h1 {
-  margin: 0;
-  font-size: 2.4rem;
-  font-weight: 900;
-}
-
-.status-ribbon {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.status-ribbon-item,
 .oracle-band,
 .archive-band,
 .codex-band,
@@ -253,15 +219,6 @@ body::after {
   box-shadow: inset 0 1px 0 rgba(255, 245, 221, 0.04), var(--shadow-soft);
 }
 
-.status-ribbon-item {
-  min-width: 122px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  display: grid;
-  gap: 2px;
-}
-
-.status-ribbon-item span,
 .meter-node span,
 .header-readout span,
 .summary-grid span,
@@ -303,111 +260,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
-#spinBtn:not(.img-btn) {
-  background: linear-gradient(180deg, #f4c978, #d48739);
-}
-
-#buyFreeBtn:not(.img-btn) {
-  background: linear-gradient(180deg, #82d7b9, #458f6d);
-}
-
 #simulateBtn,
 #simulateBonusBtn,
-#rulesBtn,
 #rulesPrevBtn,
 #rulesNextBtn,
 #rulesCloseBtn {
-  background: linear-gradient(180deg, #ecdcb7, #b89c6d);
-}
-
-/* Compact mobile header — a single info icon reveals Ways / Winning Symbols /
-   Rules in a popover, so the verbose ribbon cards can be hidden on phones. */
-.ribbon-compact {
-  display: none;
-  position: relative;
-  align-items: center;
-  gap: 8px;
-}
-
-.icon-btn {
-  min-height: 0;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font: 800 1rem/1 "SF Pro Display", "Segoe UI", serif;
-  font-style: italic;
-  color: #e8f0ff;
-  background: linear-gradient(180deg, rgba(40, 54, 86, 0.9), rgba(16, 24, 44, 0.95));
-  border: 1px solid rgba(170, 210, 255, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-/* Sound on/off toggle — lives in the status ribbon, visible in both views. */
-.sound-toggle {
-  flex: 0 0 auto;
-  cursor: pointer;
-}
-.sound-toggle .sound-glyph {
-  font-size: 0.95rem;
-  line-height: 1;
-  filter: drop-shadow(0 0 6px rgba(120, 200, 255, 0.35));
-}
-.sound-toggle:hover:not(:disabled) {
-  filter: brightness(1.12);
-  transform: translateY(-1px);
-}
-.sound-toggle.is-muted {
-  border-color: rgba(255, 130, 130, 0.4);
-  background: linear-gradient(180deg, rgba(60, 30, 36, 0.9), rgba(28, 14, 18, 0.95));
-}
-.sound-toggle.is-muted .sound-glyph {
-  filter: grayscale(0.7) brightness(0.85);
-}
-
-.info-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 30;
-  min-width: 188px;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(20, 30, 54, 0.97), rgba(8, 14, 30, 0.98));
-  border: 1px solid rgba(165, 203, 255, 0.28);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.info-row span {
-  color: #8aa0c2;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font: 800 0.64rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-}
-.info-row strong {
-  color: #f4f7ff;
-  font: 800 0.84rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-}
-
-.info-rules-btn {
-  min-height: 0;
-  margin-top: 2px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  font-size: 0.82rem;
   background: linear-gradient(180deg, #ecdcb7, #b89c6d);
 }
 
@@ -501,57 +358,11 @@ button:disabled {
   100% { transform: scale(1); }
 }
 
-/* Mobile player view — maximum minimization of the top chrome so the game
-   board owns the screen. Title is dropped; Ways / Winning Symbols / Rules fold
-   into the info icon; Bet is dropped from the HUD (the bet stepper already
-   shows it) and the multiplier lives in the badge over the reels. */
-@media (max-width: 720px) {
-  body.public-mode .ribbon-detail { display: none; }
-  body.public-mode .ribbon-compact { display: inline-flex; }
-  body.public-mode .status-ribbon { justify-content: flex-end; gap: clamp(4px, 1.4vw, 8px); }
-  /* Branded header on the left, info icon on the right, in one thin row. */
-  body.public-mode .altar-top { align-items: center; justify-content: space-between; padding: 0; }
-  body.public-mode .title-cluster .title-kicker { display: none; }
-  body.public-mode .title-cluster h1 { font-size: calc(1.1 * var(--ui)); }
-
-  /* No `top` here — the badge is anchored to the board box (see .bonus-multi-badge).
-     A fixed `top: 6px` pinned it to the panel, so on a portrait phone, where the
-     6/5 board is letterboxed inside a taller window, the badge sat ~104px ABOVE
-     the grid. Sizing stays proportional via the clamps on the base rule. */
-}
-
 /* ============================================================================
    Production-feel makeover (inspired by Pragmatic layouts): branded header
    wordmark, bottom control toolbar (autoplay + turbo), persistent Balance·Bet
    footer, and a richer themed reel frame.
 ============================================================================ */
-
-/* Branded header — gold wordmark + tagline. */
-.title-cluster h1 {
-  background: linear-gradient(180deg, #ffe9a8 0%, #ffce5e 45%, #d68a2e 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 12px rgba(255, 180, 70, 0.22);
-  letter-spacing: 0.04em;
-}
-.title-tagline {
-  display: block;
-  margin-top: 2px;
-  font: 800 0.66rem/1.1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #9fb4d6;
-}
-
-/* Bottom control toolbar — thumb-zone icon row. */
-.control-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 2px 0;
-}
 .tool-wrap { position: relative; }
 
 .tool-btn {
@@ -627,36 +438,6 @@ button:disabled {
   font: 800 0.9rem/1 "SF Pro Display", "Segoe UI", sans-serif;
   color: #0c1226;
   background: linear-gradient(180deg, #ecdcb7, #b89c6d);
-}
-
-/* Persistent Balance · Bet footer (Pragmatic CREDIT/BET strip). */
-.game-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  padding: 6px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(170, 210, 255, 0.16);
-  background: linear-gradient(180deg, rgba(14, 20, 38, 0.7), rgba(6, 10, 20, 0.82));
-}
-.footer-cell { display: flex; align-items: baseline; gap: 6px; }
-.footer-cell span {
-  font: 800 0.6rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #8aa0c2;
-}
-.footer-cell strong {
-  font: 800 0.96rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  font-variant-numeric: tabular-nums;
-  color: #f4f7ff;
-}
-
-/* Toolbar + footer are player-view chrome; keep the admin dev view unchanged. */
-body.admin-mode .control-toolbar,
-body.admin-mode .game-footer {
-  display: none;
 }
 
 /* Richer themed reel frame — warmer inner glow reads more premium. */
@@ -789,14 +570,6 @@ body.public-mode .altar {
     max(clamp(4px, 1.2vw, 18px), env(safe-area-inset-left));
   overflow: hidden;
 }
-
-/* The admin three-column shell (320px | 1fr | 340px, align-items:start) is
-   meaningless in player view — the side panels are display:none, so the fixed
-   320px column would have swallowed the game. Flatten it to a single stretching
-   column that takes all the height the header leaves. */
-body.public-mode .altar-top {
-  flex: 0 0 auto;
-}
 body.public-mode .altar-core {
   flex: 1 1 auto;
   min-height: 0;
@@ -812,16 +585,9 @@ body.public-mode .altar-core {
    bar, bonus nodes). When the count drifted, the 1fr landed on the wrong row and
    the board was left with only its content height. Flex assigns the free space
    by flex-grow, so hidden children simply drop out and the board still wins. */
-body.public-mode .vault-shell {
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
+/* The vertical stack (HUD → round id → rail → board) now lives in .ps-center,
+   and .vault-shell is the player-shell grid. Both are declared ONCE, in the
+   PLAYER SHELL block below. */
 
 /* THE BOARD ROW — the only row that grows. Everything else is content-sized, so
    whatever the chrome does not use belongs to the grid. `min-height: 0` is what
@@ -845,16 +611,8 @@ body.public-mode .vault-window {
 /* Everything that is not the board holds its natural height. */
 body.public-mode .hud-bar,
 body.public-mode .round-id-bar,
-body.public-mode .hud-message-rail,
-body.public-mode .ritual-deck,
-body.public-mode .control-toolbar,
-body.public-mode .game-footer {
+body.public-mode .hud-message-rail {
   flex: 0 0 auto;
-}
-
-body.public-mode .img-btn-spin {
-  justify-self: center;
-  align-self: center;
 }
 
 body.public-mode .reels-stage {
@@ -878,67 +636,6 @@ body.public-mode .reels-stage {
   margin: auto;
 }
 
-body.public-mode .altar-top {
-  /* Force a clean title-left / controls-right row at ALL widths. The unscoped
-     narrow-width rules (max-width:980px/720px) flip .altar-top to a stacked
-     grid for the admin ribbon's cards; in the player view that wrongly stacks
-     the header buttons under the title, so override with higher specificity. */
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(6px, 1.6vw, 12px);
-  padding: 0;
-  min-height: 0;
-}
-
-body.public-mode .title-cluster .title-kicker { display: none; }
-body.public-mode .title-cluster h1 {
-  /* font-size is set proportionally in the chrome block (1.05rem * --ui). */
-  letter-spacing: 0.18em;
-  margin: 0;
-}
-
-body.public-mode .status-ribbon {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  width: auto;
-  align-items: center;
-  justify-content: flex-end;
-  gap: clamp(4px, 1.2vw, 10px);
-}
-body.public-mode .title-cluster { min-width: 0; }
-
-/* The ANTE toggle is a wide pill PNG; without a width cap it grows past its
-   deck column and gets clipped at the right edge. Cap it and let the contained
-   image scale down so it always sits fully inside the control deck. */
-body.public-mode .ante-toggle {
-  flex: 0 1 auto;
-  width: auto;
-  max-width: clamp(88px, 26vw, 132px);
-  min-width: 0;
-}
-body.public-mode .ante-toggle-img {
-  width: 100%;
-  object-fit: contain;
-}
-body.public-mode .deck-left,
-body.public-mode .deck-right {
-  min-width: 0;
-  overflow: hidden;
-  justify-content: center;
-}
-/* The BET pill uses `margin: 0 auto`, which on a flex row absorbs ALL free
-   space and shoves the ANTE pill to the (clipped) edge. Drop the auto margin in
-   player view and let the bet+ante group sit together, centered. */
-body.public-mode .bet-stepper {
-  margin: 0;
-  flex: 0 1 auto;
-  max-width: min(60%, 220px);
-}
-
 /* In player view the multiplier lives in the animated badge over the reels and
    Balance/Bet live in the persistent bottom footer + the bet stepper, so those
    HUD columns are redundant — hide them (admin view keeps the full HUD). The
@@ -947,9 +644,6 @@ body.public-mode #activeMultiplierNode,
 body.public-mode #balanceNode,
 body.public-mode #betNode {
   display: none;
-}
-body.public-mode .status-ribbon-item {
-  font-size: calc(0.74 * var(--ui));
 }
 
 /* NOTE: .altar-core / .vault-shell / .vault-window used to be re-declared here
@@ -1101,100 +795,6 @@ body.public-mode .vault-banner {
   padding: calc(3 * var(--ui) / 16) calc(12 * var(--ui) / 16);
   max-width: 100%;
 }
-
-/* The header is pure branding — on any short viewport it is the first thing to
-   give up height to the board. */
-body.public-mode .altar-top {
-  padding: 0;
-  min-height: 0;
-}
-body.public-mode .title-tagline { display: none; }
-/* Header controls scale with the height budget too — on a 768px-tall desktop
-   the header was 58px, and because the board is height-bound there, every
-   header pixel costs 1.2px of board width. */
-body.public-mode .status-ribbon .ribbon-detail {
-  padding: clamp(3px, 0.7vh, 8px) clamp(8px, 1.6vw, 14px);
-  font-size: calc(0.7 * var(--ui));
-  min-height: 0;
-}
-body.public-mode .status-ribbon-item {
-  padding: clamp(2px, 0.5vh, 6px) clamp(6px, 1.4vw, 12px);
-}
-body.public-mode .icon-btn {
-  width: clamp(26px, 4.6vh, 40px);
-  height: clamp(26px, 4.6vh, 40px);
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-}
-
-/* THE BOTTOM CONTROL BAR — deck + toolbar + footer are docked to the bottom of
-   the stack (they are the last flex children) and every height is viewport
-   relative, so the cluster keeps the same visual weight from a 320px phone to a
-   4K monitor instead of eating 35% of a small screen. */
-body.public-mode .ritual-deck {
-  /* Three columns ALWAYS in player view: bet+ante | spin | buy. The unscoped
-     admin rules at max-width:980/520px collapse this to 2 columns and then 1,
-     which stacked the controls into a ~235px tower on a 375px phone and left
-     the board with barely a sixth of the screen. */
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(4px, 1.6vw, 14px);
-  padding: 0;
-}
-
-body.public-mode .img-btn-spin {
-  width: var(--spin);
-  height: var(--spin);
-  max-width: var(--spin);
-  max-height: var(--spin);
-  padding: 0;
-}
-body.public-mode .img-btn-spin img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-body.public-mode .img-btn-buy,
-body.public-mode .ante-toggle {
-  height: var(--btn);
-  max-height: var(--btn);
-}
-/* Cap the Buy Feature button's WIDTH, not just its height. `.img-btn-buy` is
-   `width: 100%` inside `deck-right`, which is a `1fr` column of the control
-   deck — so on a 1920px desktop the button's box measured 875px wide while the
-   `object-fit: contain` art inside it drew a ~130px pill. The hit target was
-   therefore ~6x wider than anything visible, and a stray click most of a screen
-   away from the button opened the Buy Free Spins flow. BUY_FEATURE is 800x271
-   (2.95:1), so width = height * 2.95 makes the box exactly the painted pill.
-   `min()` keeps it from overflowing a narrow deck column, where `object-fit:
-   contain` letterboxes as before. The ANTE pill was already capped this way. */
-body.public-mode .img-btn-buy {
-  width: min(100%, calc(var(--btn) * 2.95));
-  margin: 0 auto;
-}
-body.public-mode .img-btn-buy img,
-body.public-mode .ante-toggle-img {
-  height: 100%;
-  width: 100%;
-  object-fit: contain;
-}
-
-body.public-mode .bet-stepper {
-  height: var(--btn);
-  max-height: var(--btn);
-  min-width: 0;
-}
-body.public-mode .bet-display {
-  font-size: calc(0.95 * var(--ui));
-}
-
-body.public-mode .control-toolbar {
-  gap: clamp(6px, 2vw, 14px);
-  padding: 0;
-}
 /* Tap targets. The floor was 26px, which is well under the ~44px that touch
    guidance (and #25's "buttons remain accessible and not too small on mobile")
    asks for — and 26px is exactly what a landscape phone got, where these are the
@@ -1209,19 +809,6 @@ body.public-mode .tool-btn {
 }
 body.public-mode .tool-btn .tool-glyph { font-size: calc(1.1 * var(--ui)); }
 body.public-mode .tool-btn .tool-label { font-size: calc(0.68 * var(--ui)); }
-
-body.public-mode .game-footer {
-  min-height: clamp(22px, 3.6vh, 38px);
-  padding: clamp(2px, 0.4vh, 6px) clamp(8px, 2.4vw, 18px);
-  gap: clamp(10px, 5vw, 30px);
-  border-radius: var(--radius);
-}
-body.public-mode .footer-cell span { font-size: calc(0.58 * var(--ui)); }
-body.public-mode .footer-cell strong { font-size: calc(0.94 * var(--ui)); }
-
-body.public-mode .title-cluster h1 {
-  font-size: calc(1.05 * var(--ui));
-}
 
 /* Portrait phones/tablets. The board is width-bound here, so the only job left
    is to reclaim horizontal pixels — symbol size is boardWidth/6, so every pixel
@@ -1238,24 +825,7 @@ body.public-mode .title-cluster h1 {
        the bottom controls — which is also where a thumb wants them. Still no
        fixed pixels: both tokens are bound by width AND height so they cannot
        overflow a short or narrow phone. */
-    --spin: clamp(72px, min(30vw, 15vh), 148px);
-    --btn: clamp(40px, min(15vw, 8vh), 68px);
-  }
-
-  /* On a narrow phone the deck's side columns are ~130px, which is not enough
-     for the bet stepper and the ante pill SIDE BY SIDE — the stepper collapsed
-     to a 53px square and clipped its −/+ controls. Stack them instead so each
-     gets the full column width. Still three columns overall, so the spin button
-     stays centred and the deck never becomes the tall tower it was before. */
-  body.public-mode .deck-left {
-    flex-direction: column;
-    align-items: stretch;
-    gap: clamp(3px, 0.9vh, 8px);
-  }
-  body.public-mode .deck-left .bet-stepper,
-  body.public-mode .deck-left .ante-toggle {
-    width: 100%;
-    max-width: none;
+    /* Portrait --spin is derived from the spare height in PLAYER SHELL. */
   }
 
   /* Full-bleed board: drop the window's inner padding + dark fill so the 6/5
@@ -1272,9 +842,6 @@ body.public-mode .title-cluster h1 {
 /* Landscape on short viewports: the header is the first thing to go, since the
    board is height-bound and every vertical pixel is board size. */
 @media (orientation: landscape) and (max-height: 560px) {
-  body.public-mode .altar-top {
-    display: none;
-  }
   body.public-mode .hud-message-rail {
     display: none;
   }
@@ -1288,13 +855,8 @@ body.public-mode .title-cluster h1 {
      Balance and Bet. Landscape has room to spare — three nodes across 844px —
      so promote them back into the HUD and drop the strip. Same information,
      one row instead of two. */
-  body.public-mode .game-footer {
-    display: none;
-  }
-  body.public-mode #balanceNode,
-  body.public-mode #betNode {
-    display: flex;
-  }
+  /* Balance and Bet live in the deck's status readouts at every size now, so
+     they are no longer promoted into the HUD here. */
   /* The Round ID is a support/compliance readout, not something read mid-spin,
      and .altar-top is already hidden at this size for the same reason. It stays
      available in portrait and on every larger viewport. */
@@ -1307,6 +869,705 @@ body.public-mode .title-cluster h1 {
   body.public-mode .altar {
     --hud-h: clamp(30px, 8.5vh, 44px);
   }
+}
+
+/* ── PLAYER SHELL (Pragmatic-style) ──────────────────────────────────────────
+   The player view is one grid of NAMED areas around the board:
+
+        desktop / landscape                      portrait
+     ┌──────┬─────────────┬──────┐          ┌─────────────────┐
+     │      │             │ logo │          │      logo       │
+     │ left │   center    ├──────┤          │     center      │
+     │ buy  │   (board)   │      │          │     (board)     │
+     │ ante │             │mascot│          ├────────┬────────┤
+     ├──────┴─────────────┴──────┤          │  buy   │  ante  │
+     │ sys │   status   │  spin  │          ├────────┴────────┤
+     └─────┴────────────┴────────┘          │  spin (−  ●  +) │
+                                            │ sys  │  status  │
+                                            └─────────────────┘
+
+   Zero-reflow contract:
+     • Every track size comes from a scale token, never from content. The only
+       flexible track is the board's, and nothing else can grow into it.
+     • Zones are placed by grid-area NAME, not by child order, so hiding
+       something (a slot, a bonus node) can never shift the board
+       to another track. Row-counted layouts broke exactly that way before
+       (see the ONE SCALING CONTAINER notes).
+     • Text that changes during play (ticker, balance, bet) is single-line,
+       clipped and tabular inside a fixed-size box.
+
+   Art: the logo and mascot .ps-slot boxes paint var(--slot-art), contained and
+   centred. Set it on the slot, e.g.
+   `.ps-slot--logo { --slot-art: url(assets/ui/logo.webp); }`, and drop
+   `data-empty` from the element to hide the placeholder label. The controls
+   (spin, buy, ante) are vector: no raster art at all. */
+
+body.public-mode .altar {
+  --side-w: clamp(150px, 20vw, 380px);          /* left + right columns */
+  --deck-h: clamp(52px, 9vh, 96px);             /* bottom control deck */
+  --sub-h: clamp(28px, 4.6vh, 40px);            /* autoplay / turbo row under spin */
+  --feat-h: clamp(40px, 9vh, 96px);             /* buy + ante buttons */
+  --bet-btn: calc(var(--spin) * 0.46);          /* − / + beside spin */
+  --sys-btn: clamp(30px, 5vh, 44px);            /* menu / info / sound */
+}
+
+body.public-mode .vault-shell {
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--side-w);
+  grid-template-rows: minmax(0, 1fr) var(--deck-h);
+  grid-template-areas:
+    "left center right"
+    "deck deck   deck";
+  gap: var(--gap);
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+/* ── Zones ── */
+body.public-mode .ps-left {
+  grid-area: left;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--gap) * 3);
+}
+/* The board column: the vertical stack the ONE SCALING CONTAINER block
+   describes (HUD, round id, message rail, board). The board row is the only
+   one that grows. */
+body.public-mode .ps-center {
+  grid-area: center;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+body.public-mode .ps-right {
+  grid-area: right;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 0.32fr) minmax(0, 1fr);
+  gap: var(--gap);
+}
+body.public-mode .ps-deck {
+  grid-area: deck;
+  position: relative;
+  z-index: 2; /* the spin cluster rises over the bottom of the side columns */
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--side-w);
+  /* One row, pinned to the deck height. Without it the implicit row sizes to
+     its tallest content (the spin cluster) and pushes the deck off-screen. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: center;
+  height: var(--deck-h);
+  min-height: 0;
+  padding: 0 clamp(6px, 1.2vw, 18px);
+  border-radius: var(--radius);
+  border: 1px solid var(--steel-edge);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--steel-sheen) 7%, transparent), transparent 40%),
+    color-mix(in srgb, var(--bg-gunmetal) 92%, transparent);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 color-mix(in srgb, var(--steel-sheen) 18%, transparent);
+}
+
+/* ── Art slots ── */
+.ps-slot {
+  --slot-art: none;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--slot-art) center / contain no-repeat;
+}
+.ps-slot[data-empty] {
+  border: 1px dashed color-mix(in srgb, var(--steel-sheen) 22%, transparent);
+  border-radius: var(--radius, 12px);
+  background-color: color-mix(in srgb, var(--bg-panel) 55%, transparent);
+}
+.ps-slot-label {
+  font: 600 calc(0.6 * var(--ui, 14px)) / 1 var(--font-ui);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.ps-slot:not([data-empty]) .ps-slot-label { display: none; }
+
+/* ── Buy / ante (vector) ──
+   Both sit in a --feat-h tall box and size their type from it, so they scale
+   with the layout like every other control. Width follows height, so the hit
+   area is exactly the painted pill, never a column-wide strip. */
+body.public-mode .ps-feature {
+  width: 100%;
+  height: var(--feat-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  --fs: calc(var(--feat-h) * 0.26);
+}
+.vx-buy,
+.vx-ante {
+  height: 100%;
+  width: min(100%, calc(var(--feat-h, 64px) * 3.2));
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Buy Feature: the one gold object on the screen, so it reads as premium. */
+.vx-buy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.08em;
+  padding: 0 1em;
+  border: 1px solid var(--win-gold-deep);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #FFFFFF 45%, transparent), transparent 46%),
+    linear-gradient(180deg, var(--win-gold-bright), var(--win-gold) 48%, var(--win-gold-deep));
+  color: var(--bg-gunmetal);
+  font-size: var(--fs, 16px);
+  line-height: 1;
+  text-shadow: 0 1px 0 color-mix(in srgb, #FFFFFF 40%, transparent);
+  box-shadow:
+    0 6px 18px color-mix(in srgb, var(--win-gold) 30%, transparent),
+    inset 0 -3px 0 color-mix(in srgb, var(--win-gold-deep) 70%, transparent);
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+.vx-buy__kicker { font-size: 0.62em; font-weight: 600; letter-spacing: 0.32em; opacity: 0.8; }
+.vx-buy__label { font-size: 1.2em; font-weight: 700; letter-spacing: 0.1em; }
+.vx-buy:hover:not(:disabled) {
+  transform: none;
+  filter: brightness(1.08);
+  box-shadow:
+    0 6px 26px color-mix(in srgb, var(--win-gold) 55%, transparent),
+    inset 0 -3px 0 color-mix(in srgb, var(--win-gold-deep) 70%, transparent);
+}
+.vx-buy:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+.vx-buy:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 3px; }
+.vx-buy:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.85) brightness(0.6);
+  box-shadow: none;
+}
+
+/* Ante Bet: a switch. The real checkbox stays in the DOM (main.js and the
+   keyboard drive it); the track and knob are its painted state. */
+.vx-ante {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0 1em 0 0.8em;
+  border: 1px solid var(--steel-edge);
+  background: linear-gradient(180deg, var(--bg-panel-raised), var(--bg-gunmetal));
+  color: var(--text-muted);
+  font-size: var(--fs, 16px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.vx-ante__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.vx-ante__track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 2.3em;
+  height: 1.3em;
+  border-radius: 999px;
+  background: var(--bg-vault-door);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: background 0.2s ease;
+}
+.vx-ante__knob {
+  position: absolute;
+  top: 0.15em;
+  left: 0.15em;
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--steel-sheen), var(--steel-brushed));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: transform 0.2s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.vx-ante__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.05;
+  text-align: left;
+}
+.vx-ante__title { font-weight: 700; letter-spacing: 0.12em; white-space: nowrap; }
+.vx-ante__sub {
+  font: 600 0.5em / 1.3 var(--font-ui);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vx-ante:has(.vx-ante__input:checked) {
+  border-color: color-mix(in srgb, var(--signal-ok) 70%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--signal-ok) 30%, transparent);
+  color: var(--text-hud);
+}
+.vx-ante__input:checked + .vx-ante__track { background: var(--signal-ok); }
+.vx-ante__input:checked + .vx-ante__track .vx-ante__knob {
+  transform: translateX(1em);
+  background: radial-gradient(circle at 40% 35%, #FFFFFF, var(--steel-sheen));
+}
+.vx-ante:has(.vx-ante__input:focus-visible) { outline: 2px solid var(--accent-laser); outline-offset: 3px; }
+.vx-ante:has(.vx-ante__input:disabled) { opacity: 0.5; cursor: not-allowed; }
+
+body.public-mode .ps-slot--logo,
+body.public-mode .ps-slot--mascot {
+  width: 100%;
+  height: 100%;
+}
+
+/* The two global `button` rules (58px min-height, bevel shadows, hover lift)
+   style the legacy admin buttons. The shell's own buttons opt out here so
+   each one is exactly the size and surface its own rule gives it. */
+.ps-icon-btn,
+.ps-bet-btn,
+.ps-modal__tab,
+.vx-spin,
+.vx-buy {
+  min-height: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+.ps-modal__tab:hover:not(:disabled) { transform: none; filter: none; }
+
+/* ── Deck: system buttons ── */
+body.public-mode .ps-deck-sys {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 0.8vw, 12px);
+  min-width: 0;
+}
+.ps-icon-btn {
+  width: var(--sys-btn, 40px);
+  height: var(--sys-btn, 40px);
+  min-width: 0;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--steel-edge);
+  background: radial-gradient(circle at 50% 30%, var(--bg-panel-raised), var(--bg-gunmetal));
+  color: var(--steel-sheen);
+  cursor: pointer;
+}
+.ps-icon-btn svg {
+  width: 56%;
+  height: 56%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ps-icon-btn:hover { color: var(--text-hud); border-color: var(--steel-brushed); }
+.ps-icon-btn:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 2px; }
+.ps-icon-btn[aria-pressed="false"] .ps-sound-wave { opacity: 0; }
+
+/* ── Deck: status (ticker + readouts) ── */
+body.public-mode .ps-deck-status {
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  justify-items: center;
+  overflow: hidden;
+}
+.ps-ticker {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 calc(0.6 * var(--ui, 14px)) / 1 var(--font-ui);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ps-readouts {
+  display: flex;
+  justify-content: center;
+  gap: clamp(14px, 4vw, 48px);
+  min-width: 0;
+  max-width: 100%;
+}
+.ps-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  min-width: 0;
+  white-space: nowrap;
+}
+.ps-readout span {
+  font: 600 calc(0.58 * var(--ui, 14px)) / 1 var(--font-ui);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--win-gold);
+}
+.ps-readout strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(1 * var(--ui, 14px));
+  font-weight: 600;
+  color: var(--text-hud);
+}
+
+/* ── Deck: spin cluster ──
+   Bottom-aligned in a fixed-height deck and allowed to overflow UPWARD, so the
+   spin button can be larger than the deck (the Pragmatic look) without the
+   deck, and therefore the board, ever changing size. */
+body.public-mode .ps-deck-spin {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: clamp(2px, 0.6vh, 8px);
+}
+body.public-mode .ps-spin-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1vw, 14px);
+}
+/* Spin: a vector disc. Gunmetal face, brushed-steel ring, gold on hover and
+   laser while a round is fast-stopping. main.js toggles .is-spinning (round in
+   flight) and .is-fast-stopping on it; both are compositor-only animations. */
+.vx-spin {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--spin, 96px);
+  height: var(--spin, 96px);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: max(2px, calc(var(--spin, 96px) * 0.035)) solid var(--steel-brushed);
+  background:
+    radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--steel-sheen) 22%, transparent), transparent 55%),
+    radial-gradient(circle at 50% 50%, var(--bg-panel-raised), var(--bg-vault-door) 78%);
+  color: var(--steel-sheen);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.6),
+    inset 0 2px 0 color-mix(in srgb, var(--steel-sheen) 35%, transparent),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.vx-spin__icon {
+  width: 64%;
+  height: 64%;
+  overflow: visible;
+}
+.vx-spin__arrow path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.vx-spin__arrow .vx-spin__head {
+  fill: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.vx-spin:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  color: var(--win-gold);
+  border-color: var(--win-gold);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.6),
+    0 0 22px color-mix(in srgb, var(--win-gold) 45%, transparent),
+    inset 0 2px 0 color-mix(in srgb, var(--win-gold-bright) 40%, transparent),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
+}
+.vx-spin:active:not(:disabled) { transform: scale(0.95); }
+.vx-spin:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 4px; }
+.vx-spin.is-spinning .vx-spin__icon { animation: vxSpinTurn 0.9s linear infinite; }
+.vx-spin.is-fast-stopping {
+  color: var(--accent-laser-hot);
+  border-color: var(--accent-laser);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.6),
+    0 0 26px color-mix(in srgb, var(--accent-laser) 55%, transparent),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
+}
+.vx-spin.is-fast-stopping .vx-spin__icon { animation-duration: 0.35s; }
+.vx-spin:disabled { cursor: default; opacity: 0.55; }
+@keyframes vxSpinTurn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .vx-spin.is-spinning .vx-spin__icon { animation: none; }
+}
+.ps-bet-btn {
+  width: var(--bet-btn, 44px);
+  height: var(--bet-btn, 44px);
+  min-width: 0;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--steel-brushed);
+  background: radial-gradient(circle at 50% 30%, var(--bg-panel-raised), var(--bg-gunmetal));
+  color: var(--text-hud);
+  font: 600 calc(var(--bet-btn, 44px) * 0.6) / 1 var(--font-display);
+  cursor: pointer;
+}
+.ps-bet-btn:hover { border-color: var(--steel-sheen); }
+.ps-bet-btn:disabled { opacity: 0.4; cursor: default; }
+body.public-mode .ps-spin-sub {
+  height: var(--sub-h);
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1vw, 12px);
+}
+body.public-mode .ps-spin-sub .tool-btn {
+  height: var(--sub-h);
+  min-width: var(--sub-h);
+  padding: 0 clamp(8px, 1.2vw, 14px);
+}
+/* Kept for main.js (it writes the bet here); the Bet readout shows it. */
+body.public-mode .ps-bet-display { display: none; }
+
+/* ── Portrait: stack it ── */
+@media (orientation: portrait) {
+  /* Portrait boards are WIDTH-bound: at full width a 6/5 board is 5/6 of the
+     viewport width tall, and no taller. Every row below therefore takes a
+     share of the height the board cannot use (--slack), floored so tap targets
+     survive on small phones. Fixed vh tokens here shrank a 768x1024 tablet
+     board from 712px wide to 467px. */
+  body.public-mode .altar {
+    --slack: calc(100dvh - 100vw * 5 / 6 - var(--hud-h) - var(--rail) - 8 * var(--gap));
+    --logo-h: clamp(28px, calc(var(--slack) * 0.16), 120px);
+    --feat-h: clamp(36px, calc(var(--slack) * 0.16), 80px);
+    --status-h: clamp(32px, calc(var(--slack) * 0.12), 52px);
+    --sub-h: clamp(28px, calc(var(--slack) * 0.09), 40px);
+    --spin: clamp(64px, min(30vw, calc(var(--slack) * 0.44)), 148px);
+    --deck-h: calc(var(--spin) + var(--sub-h) + var(--status-h) + 2 * var(--gap));
+  }
+  body.public-mode .vault-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: var(--logo-h) minmax(0, 1fr) var(--feat-h) var(--deck-h);
+    grid-template-areas:
+      "logo   logo"
+      "center center"
+      "buy    ante"
+      "deck   deck";
+  }
+  /* The side columns dissolve so their slots join the grid directly. */
+  body.public-mode .ps-left,
+  body.public-mode .ps-right { display: contents; }
+  body.public-mode .ps-feature--buy { grid-area: buy; }
+  body.public-mode .ps-feature--ante { grid-area: ante; }
+  body.public-mode .ps-slot--logo { grid-area: logo; }
+  body.public-mode .ps-slot--mascot { display: none; }
+
+  body.public-mode .ps-deck {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--status-h);
+    grid-template-areas:
+      "spin   spin"
+      "sys    status";
+    align-items: stretch;
+    padding: var(--gap) clamp(6px, 2vw, 14px);
+  }
+  body.public-mode .ps-deck-spin { grid-area: spin; padding-bottom: 0; }
+  body.public-mode .ps-deck-sys { grid-area: sys; }
+  body.public-mode .ps-deck-status { grid-area: status; }
+}
+/* Short portrait (320x568 class): the logo row is the first thing to give
+   its height to the board. */
+@media (orientation: portrait) and (max-height: 640px) {
+  body.public-mode .altar { --logo-h: 0px; }
+  body.public-mode .ps-slot--logo { display: none; }
+}
+
+/* ── Short landscape (phones): every vertical pixel is board ── */
+@media (orientation: landscape) and (max-height: 560px) {
+  body.public-mode .altar {
+    --deck-h: clamp(46px, 13vh, 60px);
+    --feat-h: clamp(36px, 13vh, 56px);
+  }
+  body.public-mode .ps-ticker { display: none; }
+  body.public-mode .ps-deck-status { grid-template-rows: minmax(0, 1fr); }
+}
+
+/* ── Admin view: same markup, plain stacked layout, no art slots ── */
+body.admin-mode .ps-right,
+body.admin-mode .ps-deck-status,
+body.admin-mode .ps-spin-sub { display: none; }
+body.admin-mode .ps-left,
+body.admin-mode .ps-deck,
+body.admin-mode .ps-deck-sys,
+body.admin-mode .ps-spin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+body.admin-mode .ps-center { display: grid; gap: 10px; }
+
+/* ── Info / settings modal ── */
+.ps-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9100; /* above the game and buy-confirm (9000), below the big-win overlay */
+  contain: strict;
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+           max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg-vault-door) 82%, transparent);
+}
+.ps-modal[hidden] { display: none; }
+.ps-modal__panel {
+  width: min(960px, 100%);
+  height: min(680px, 100%);
+  display: grid;
+  grid-template-columns: clamp(180px, 24%, 240px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "nav  body"
+    "dots dots";
+  border-radius: 16px;
+  border: 1px solid var(--steel-edge);
+  background: linear-gradient(180deg, var(--bg-panel), var(--bg-gunmetal));
+  box-shadow: var(--shadow-hard);
+  overflow: hidden;
+}
+.ps-modal__head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--steel-edge);
+}
+.ps-modal__title {
+  margin: 0;
+  font: 700 1.05rem / 1 var(--font-display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--win-gold);
+}
+.ps-modal__nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  overflow-y: auto;
+  border-right: 1px solid var(--steel-edge);
+}
+.ps-modal__tab {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 0.82rem / 1.2 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.ps-modal__tab:hover { color: var(--text-hud); background: var(--bg-panel-raised); }
+.ps-modal__tab[aria-current="page"] {
+  color: var(--text-hud);
+  background: var(--bg-panel-raised);
+  box-shadow: inset 3px 0 0 var(--accent-laser);
+}
+.ps-modal__body {
+  grid-area: body;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 22px;
+  color: var(--text-hud);
+  font: 400 0.92rem / 1.6 var(--font-ui);
+}
+.ps-modal__section[hidden] { display: none; }
+.ps-modal__section h3 {
+  margin: 0 0 12px;
+  font: 700 1rem / 1.2 var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-hud);
+}
+.ps-modal__dots {
+  grid-area: dots;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--steel-edge);
+}
+.ps-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--steel-edge);
+}
+.ps-dot.is-active { background: var(--accent-laser); box-shadow: var(--glow-laser); }
+
+/* Phones: sections become pages with a scrolling tab strip on top; the dots
+   show where you are. */
+@media (max-width: 720px) {
+  .ps-modal { padding: 0; }
+  .ps-modal__panel {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "head" "nav" "body" "dots";
+  }
+  .ps-modal__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--steel-edge);
+    scrollbar-width: none;
+  }
+  .ps-modal__tab { flex: 0 0 auto; white-space: nowrap; }
+  .ps-modal__tab[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--accent-laser); }
 }
 
 /* Spin is centered by the deck's 3-column "1fr auto 1fr" layout — the auto
@@ -2255,314 +2516,6 @@ body.crazy-mode-on .vault-window {
   animation: ashFade 0.82s cubic-bezier(0.16, 0.78, 0.24, 1) forwards;
 }
 
-.win-callout {
-  position: absolute;
-  /* Centred on the BOARD, not the panel — so it stays over the reels when the
-     board is letterboxed. min-width was a fixed 320px, which overflowed a
-     320-375px phone; it is now a fraction of the board itself. */
-  left: calc(var(--board-x, 0%) + var(--board-w, 100%) * 0.5);
-  top: calc(var(--board-y, 0%) + var(--board-h, 100%) * 0.46);
-  transform: translate(-50%, -50%);
-  min-width: min(320px, 80%);
-  max-width: calc(var(--board-w, 100%) - 6%);
-  border-radius: clamp(8px, 1.4vmin, 16px);
-  padding: clamp(10px, 2.6vmin, 24px) clamp(16px, 4.5vmin, 38px);
-  background: linear-gradient(180deg, rgba(20, 28, 50, 0.92), rgba(8, 12, 24, 0.96));
-  border: 1px solid rgba(170, 210, 255, 0.26);
-  text-align: center;
-  z-index: 4;
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.win-callout::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(circle at 50% -10%, rgba(255, 230, 170, 0.12), transparent 60%);
-  z-index: -1;
-}
-
-/* Sweeping shine on entry. */
-.win-callout.live-callout::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(110deg, transparent 32%, rgba(255, 255, 255, 0.28) 50%, transparent 68%);
-  transform: translateX(-100%);
-  animation: calloutShine 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) 0.18s forwards;
-}
-
-@keyframes calloutShine {
-  to { transform: translateX(100%); }
-}
-
-.win-callout.live-callout {
-  animation: calloutPop 1.05s cubic-bezier(0.16, 1.1, 0.3, 1);
-  will-change: transform, opacity;
-}
-
-.win-callout-label {
-  display: block;
-  font: 800 0.78rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: #9ec0ff;
-  margin-bottom: 8px;
-  text-shadow: 0 0 14px rgba(158, 192, 255, 0.4);
-}
-
-.win-callout-amount {
-  display: block;
-  font: 900 2.2rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  background: linear-gradient(180deg, #ffffff 0%, #ffe9b6 55%, #f1b76a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4)) drop-shadow(0 0 18px rgba(255, 200, 120, 0.4));
-}
-
-/* Tier variants. main.js sets data-tier from WIN_TIERS; this maps it to the
-   matching :root token, so a tier's colour has exactly one home. */
-.win-callout { --tier-color: var(--tier-nice); }
-.win-callout[data-tier="big"]  { --tier-color: var(--tier-big); }
-.win-callout[data-tier="mega"] { --tier-color: var(--tier-mega); }
-.win-callout[data-tier="epic"] { --tier-color: var(--tier-epic); }
-.win-callout[data-tier="max"]  { --tier-color: var(--tier-max); }
-
-.win-callout[data-tier] {
-  border-color: color-mix(in srgb, var(--tier-color) 60%, transparent);
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--tier-color) 14%, var(--bg-panel)),
-    color-mix(in srgb, var(--bg-vault-door) 96%, transparent));
-  box-shadow:
-    0 28px 80px color-mix(in srgb, var(--tier-color) 30%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--tier-color) 25%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--tier-color) 18%, transparent);
-}
-.win-callout[data-tier] .win-callout-label {
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 0.36em;
-  color: var(--tier-color);
-  text-shadow: 0 0 16px color-mix(in srgb, var(--tier-color) 60%, transparent);
-}
-.win-callout[data-tier] .win-callout-amount {
-  font-family: var(--font-display);
-  font-weight: 700;
-  background: linear-gradient(180deg, #FFFFFF 0%, var(--win-gold-bright) 45%, var(--win-gold) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  filter:
-    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5))
-    drop-shadow(0 0 24px color-mix(in srgb, var(--tier-color) 55%, transparent));
-}
-.win-callout[data-tier="big"]  .win-callout-amount { font-size: 2.2rem; }
-.win-callout[data-tier="mega"] .win-callout-amount { font-size: 2.6rem; }
-.win-callout[data-tier="epic"] .win-callout-amount,
-.win-callout[data-tier="max"]  .win-callout-amount { font-size: 3rem; }
-
-.win-callout.callout-tier-bonus {
-  border-color: rgba(141, 233, 163, 0.6);
-  background: linear-gradient(180deg, rgba(20, 48, 28, 0.94), rgba(8, 22, 14, 0.98));
-}
-.win-callout.callout-tier-bonus .win-callout-label {
-  color: #b9ffd0;
-  letter-spacing: 0.32em;
-  text-shadow: 0 0 14px rgba(141, 233, 163, 0.6);
-}
-.win-callout.callout-tier-bonus .win-callout-amount {
-  background: linear-gradient(180deg, #ffffff, #d6ffe0 50%, #5fd486 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  font-size: 2.0rem;
-}
-
-.ritual-deck {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 14px;
-  align-items: center;
-}
-
-.deck-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-start;
-  min-width: 0;
-}
-
-.deck-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.ritual-deck button {
-  min-width: 0;
-  padding: 8px 10px;
-  line-height: 1.12;
-  font-size: 0.9rem;
-}
-
-/* Image-based buttons — Spin & Buy Free Spins. The PNG IS the button. */
-button.img-btn,
-.img-btn {
-  position: relative;
-  border: 0 !important;
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  cursor: pointer;
-  padding: 0 !important;
-  min-height: 0 !important;
-  box-shadow: none !important;
-  outline: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: transparent;
-  transition: transform 0.12s ease, filter 0.12s ease;
-}
-.img-btn img {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  pointer-events: none;
-}
-.img-btn:hover { transform: translateY(-1px) scale(1.02); filter: brightness(1.08); }
-.img-btn:active { transform: scale(0.96); }
-.img-btn:disabled { filter: grayscale(0.6) brightness(0.7); cursor: not-allowed; transform: none; }
-
-.img-btn-spin {
-  width: 100%;
-  height: 100%;
-  max-width: 130px;
-  max-height: 130px;
-  justify-self: center;
-}
-.img-btn-spin img {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1 / 1;
-  object-fit: contain;
-}
-.img-btn-spin::after {
-  content: "";
-  position: absolute;
-  width: 22%;
-  height: 22%;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(0.7);
-  border-radius: 4px;
-  background: linear-gradient(180deg, #ffffff, #9bd7ff);
-  box-shadow: 0 0 12px rgba(98, 203, 255, 0.65), inset 0 0 0 1px rgba(8, 20, 36, 0.45);
-  opacity: 0;
-  pointer-events: none;
-  /* Snap on/off instantly — no fade lingering after the spin completes. */
-  transition: none;
-}
-.img-btn-spin.is-spinning {
-  filter: brightness(1.08) saturate(1.08);
-}
-.img-btn-spin.is-spinning::after {
-  opacity: 0.92;
-  transform: translate(-50%, -50%) scale(1);
-}
-.img-btn-spin.is-fast-stopping::after {
-  background: linear-gradient(180deg, #ffe9aa, #ff9d5a);
-  box-shadow: 0 0 16px rgba(255, 172, 82, 0.72), inset 0 0 0 1px rgba(50, 18, 6, 0.4);
-}
-
-.img-btn-buy {
-  width: 100%;
-  height: 64px;
-}
-.img-btn-buy img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* Bet stepper — uses the BET image as its pill background, with our own
-   number overlaid on the empty center display. */
-.bet-stepper {
-  position: relative;
-  display: block;
-  /* WIDTH-driven so the box aspect ALWAYS equals the pill image's intrinsic
-     aspect (776×183). A fixed height + capped width would override aspect-ratio
-     and letterbox the pill, pushing the drawn +/- circles out of the invisible
-     round hit-zones (the "have to click off-target" bug). With width driving the
-     height, `contain` fills the box exactly and the %-positioned buttons always
-     land dead-on the circles. */
-  width: min(100%, 260px);
-  aspect-ratio: 776 / 183;
-  /* Relative, not root-absolute: index.html injects a <base href> so the game
-     works under a sub-path, and a leading "/" would resolve to a different URL
-     than the one main.js preloads — defeating the preload. */
-  background: url("assets/symbols/BET-removebg-preview.webp") center / 100% 100% no-repeat;
-  user-select: none;
-  margin: 0 auto;
-}
-
-button.bet-step,
-.bet-step {
-  position: absolute;
-  top: 50%;
-  /* Approx the diameter of the +/- circles inside the pill image. */
-  height: 88%;
-  aspect-ratio: 1 / 1;
-  transform: translateY(-50%);
-  border: 0 !important;
-  border-radius: 50%;
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-  color: transparent;
-  cursor: pointer;
-  font-size: 0;
-  outline: 0;
-  transition: transform 0.1s ease, filter 0.12s ease;
-}
-.bet-step-down { left: 2%; }
-.bet-step-up { right: 2%; }
-.bet-step:hover { filter: brightness(1.18); }
-.bet-step:active { transform: translateY(-50%) scale(0.92); }
-.bet-step:disabled { cursor: not-allowed; opacity: 0.5; }
-
-.bet-display {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font: 800 1.05rem/1 "SF Mono", "Consolas", "Segoe UI", monospace;
-  color: #98e8ff;
-  text-shadow: 0 0 10px rgba(152, 232, 255, 0.55);
-  pointer-events: none;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-}
-
 .bet-select-hidden {
   position: absolute;
   width: 1px;
@@ -2573,40 +2526,6 @@ button.bet-step,
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-/* Ante toggle — single image swap based on checkbox state. */
-.ante-toggle {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 64px;
-  cursor: pointer;
-}
-
-.ante-toggle input[type="checkbox"] {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  width: 0;
-  height: 0;
-}
-
-.ante-toggle-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  transition: filter 0.18s ease;
-}
-
-.ante-toggle:hover .ante-toggle-img { filter: brightness(1.08); }
-
-.ante-toggle input:disabled ~ .ante-toggle-img {
-  filter: grayscale(0.5) brightness(0.7);
-  cursor: not-allowed;
 }
 
 .visually-hidden {
@@ -2878,23 +2797,14 @@ pre {
 }
 
 @media (max-width: 980px) {
-  .altar-top,
   .altar-core {
     grid-template-columns: 1fr;
     display: grid;
   }
 
-  .status-ribbon {
-    width: 100%;
-  }
-
   .oracle-panel,
   .archive-panel {
     grid-template-columns: 1fr;
-  }
-
-  .ritual-deck {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .test-actions {
@@ -2916,27 +2826,11 @@ pre {
     padding: 14px;
   }
 
-  .title-cluster h1 {
-    font-size: 1.9rem;
-  }
-
-  .status-ribbon,
   .meter-pair,
   .summary-grid,
   .sim-grid,
   .test-multi-grid {
     grid-template-columns: 1fr;
-  }
-
-  /* Admin dev view only — the player view keeps its 3-column deck at every
-     width (see the proportional-chrome block). Unscoped, this collapsed the
-     player's bet/spin/buy row into a tall stack on phones. */
-  body:not(.public-mode) .ritual-deck {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .status-ribbon {
-    display: grid;
   }
 
   .feature-screen-panel h2 {
@@ -2954,13 +2848,6 @@ pre {
 
 }
 
-@media (max-width: 520px) {
-  /* Admin dev view only — see the note on the 980px rule above. */
-  body:not(.public-mode) .ritual-deck {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Reduced motion: players who ask the OS to minimise motion get a calm board —
    no shake, no aura pulses, no spinning glints. Canvas particle FX are thinned
    separately in main.js (fxScale + reduced-motion gates). */
@@ -2969,8 +2856,7 @@ pre {
   .vault-window.event-shake-strong {
     animation: none !important;
   }
-  .vault-aura,
-  .img-btn-spin::after {
+  .vault-aura {
     animation: none !important;
   }
   *,
@@ -3173,33 +3059,6 @@ pre {
   }
 }
 
-@keyframes calloutPop {
-  0% {
-    opacity: 0;
-    filter: brightness(1.6) blur(3px);
-    transform: translate(-50%, -50%) scale(0.6) rotate(-2deg);
-  }
-  22% {
-    opacity: 1;
-    filter: brightness(1.35) blur(0);
-    transform: translate(-50%, -50%) scale(1.18) rotate(1.2deg);
-  }
-  44% {
-    transform: translate(-50%, -50%) scale(0.94) rotate(-0.6deg);
-  }
-  64% {
-    transform: translate(-50%, -50%) scale(1.04) rotate(0.3deg);
-  }
-  82% {
-    transform: translate(-50%, -50%) scale(0.99) rotate(0deg);
-  }
-  100% {
-    opacity: 1;
-    filter: brightness(1) blur(0);
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
 @keyframes vaultShake {
   0%, 100% { transform: translate(0, 0); }
   20% { transform: translate(-2px, 0); }
@@ -3335,7 +3194,6 @@ body::after {
   background: transparent;
 }
 
-.status-ribbon-item,
 .oracle-band,
 .archive-band,
 .codex-band,
@@ -3352,7 +3210,6 @@ body::after {
   -webkit-backdrop-filter: blur(16px) saturate(145%);
 }
 
-.status-ribbon-item strong,
 .meter-node strong,
 .summary-grid strong,
 .sim-grid strong {
@@ -3389,17 +3246,8 @@ button {
     0 10px 24px rgba(3, 9, 20, 0.45);
 }
 
-#spinBtn {
-  background: linear-gradient(180deg, #6bc6ff, #3d6dff);
-}
-
-#buyFreeBtn {
-  background: linear-gradient(180deg, #6ef0d0, #2278be);
-}
-
 #simulateBtn,
 #simulateBonusBtn,
-#rulesBtn,
 #rulesPrevBtn,
 #rulesNextBtn,
 #rulesCloseBtn {

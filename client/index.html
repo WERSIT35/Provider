@@ -27,7 +27,6 @@
          preloads; a mismatch here would double-fetch. -->
     <link rel="preload" as="image" href="assets/symbols/Background.webp" />
     <link rel="preload" as="image" href="assets/symbols/FREESPINS_INFO-removebg-preview.webp" />
-    <link rel="preload" as="image" href="assets/symbols/BET-removebg-preview.webp" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin-wght-normal.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-latin-wght-normal.woff2" crossorigin />
     <link rel="stylesheet" href="styles.css?v=20261001-1" />
@@ -46,40 +45,6 @@
              un-commenting; loadDeferredAssets() in main.js picks it up again.
         <img class="stage-character" id="stageCharacter" data-src="assets/symbols/Character.png" alt="" aria-hidden="true" decoding="async">
         -->
-        <div class="altar-top">
-          <div class="title-cluster">
-            <span class="title-kicker">Lumina Games</span>
-            <h1>Vault 20K</h1>
-            <span class="title-tagline">Hit multipliers to boost your tumble win</span>
-          </div>
-          <div class="status-ribbon">
-            <div class="status-ribbon-item admin-only" id="sessionIdItem">
-              <span>Session</span>
-              <strong id="sessionId">-</strong>
-            </div>
-            <div class="status-ribbon-item ribbon-detail">
-              <span>Ways</span>
-              <strong id="lineCount">Pay Anywhere</strong>
-            </div>
-            <div class="status-ribbon-item ribbon-detail">
-              <span>Winning Symbols</span>
-              <strong id="winningLines">0</strong>
-            </div>
-            <button id="rulesBtn" type="button" class="ribbon-detail">Rules</button>
-            <button id="soundToggle" type="button" class="icon-btn sound-toggle" aria-label="Toggle sound" aria-pressed="true">
-              <span class="sound-glyph" aria-hidden="true">&#128266;</span>
-            </button>
-            <div class="ribbon-compact">
-              <button id="infoToggle" type="button" class="icon-btn" aria-label="Game info" aria-expanded="false">i</button>
-              <div class="info-popover hidden" id="infoPopover" role="dialog" aria-label="Game info">
-                <div class="info-row"><span>Ways</span><strong>Pay Anywhere</strong></div>
-                <div class="info-row"><span>Winning Symbols</span><strong id="winningLinesMobile">0</strong></div>
-                <button id="rulesBtnMobile" type="button" class="info-rules-btn">Rules</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <section class="altar-core">
           <aside class="oracle-panel admin-only" aria-label="Live stats and logs">
             <section class="oracle-band">
@@ -110,99 +75,153 @@
             </section>
           </aside>
 
+          <!-- ═══ PLAYER SHELL (Pragmatic-style) ═══════════════════════════════
+               Every zone is a permanent wrapper placed by a NAMED grid area, never
+               by child order, so hiding or rewriting anything inside a zone cannot
+               move the board (see "PLAYER SHELL" in styles.css). Live controls keep
+               their ids; only their containers changed.
+               Art: every .ps-slot takes a background image through --slot-art.
+               Drop the data-empty attribute to hide the placeholder label. -->
           <section class="vault-shell">
-            <div class="hud-bar">
-              <div class="hud-node" id="balanceNode"><span>Balance</span><strong id="balance">-</strong></div>
-              <div class="hud-node" id="betNode"><span>Bet</span><strong id="betView">1.00</strong></div>
-              <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
-              <div class="hud-node hud-node-bonus hidden" id="bonusTotalNode"><span>Bonus Total</span><strong id="bonusTotal">0.00</strong></div>
-              <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
-              <div class="hud-node hud-node-multi hidden" id="activeMultiplierNode"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
-            </div>
-            <div class="round-id-bar hidden" id="roundIdBar" aria-live="polite">
-              <span class="round-id-label">Round ID</span>
-              <code class="round-id-value" id="roundIdValue">—</code>
-              <button type="button" id="roundIdCopyBtn" class="round-id-copy" aria-label="Copy Round ID">Copy</button>
-              <span class="round-id-copied" id="roundIdCopied" hidden>copied</span>
-            </div>
-            <div class="hud-message-rail">
-              <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
-                <span id="eventBannerText">Ready</span>
+            <aside class="ps-left" aria-label="Features">
+              <!-- Vector controls: no raster art, so they stay crisp at any DPR
+                   and re-theme from the :root tokens. -->
+              <div class="ps-feature ps-feature--buy">
+                <button id="buyFreeBtn" type="button" class="vx-buy" aria-label="Buy Free Spins">
+                  <span class="vx-buy__kicker">Buy</span>
+                  <span class="vx-buy__label">Feature</span>
+                </button>
               </div>
-            </div>
-            <div class="vault-window">
-              <div class="bonus-multi-badge hidden" id="bonusMultiBadge" aria-live="polite">
-                <span class="bonus-multi-badge-label">Total Multiplier</span>
-                <span class="bonus-multi-badge-value" id="bonusMultiBadgeValue">1x</span>
-              </div>
-              <div class="vault-aura"></div>
-              <div class="reels-stage" aria-live="polite">
-                <canvas class="reels-canvas" id="reels" aria-label="Game reels canvas"></canvas>
-              </div>
-              <div class="win-callout hidden" id="winCallout" aria-live="polite">
-                <div class="win-callout-label" id="winCalloutLabel">Big Win</div>
-                <div class="win-callout-amount" id="winCalloutAmount">0.00</div>
-              </div>
-              <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
-                <div class="feature-screen-panel">
-                  <p class="feature-screen-kicker" id="featureScreenKicker">Feature</p>
-                  <h2 id="featureScreenTitle">You won 15 Free Spins</h2>
-                  <p class="feature-screen-copy" id="featureScreenCopy">Press anywhere to continue.</p>
-                </div>
-              </section>
-            </div>
-
-            <section class="ritual-deck" aria-label="Controls">
-              <div class="deck-left">
-                <div class="bet-stepper" role="group" aria-label="Bet Size">
-                  <button type="button" class="bet-step bet-step-down" id="betDownBtn" aria-label="Decrease bet">−</button>
-                  <span class="bet-display" id="betDisplay">1.00</span>
-                  <button type="button" class="bet-step bet-step-up" id="betUpBtn" aria-label="Increase bet">+</button>
-                  <select id="betSelect" class="bet-select-hidden" aria-hidden="true" tabindex="-1"></select>
-                </div>
-                <label class="ante-toggle" for="anteToggle">
-                  <input id="anteToggle" type="checkbox" />
-                  <img class="ante-toggle-img" id="anteToggleImg" src="assets/symbols/ANTE_INACTIVE-removebg-preview.webp" alt="Ante Bet 1.25x" />
+              <div class="ps-feature ps-feature--ante">
+                <label class="vx-ante" for="anteToggle">
+                  <input id="anteToggle" type="checkbox" class="vx-ante__input" role="switch" />
+                  <span class="vx-ante__track" aria-hidden="true"><span class="vx-ante__knob"></span></span>
+                  <span class="vx-ante__text">
+                    <span class="vx-ante__title">Ante Bet</span>
+                    <span class="vx-ante__sub">Bet ×1.25</span>
+                  </span>
                 </label>
               </div>
-              <button id="spinBtn" type="button" class="img-btn img-btn-spin" aria-label="Spin">
-                <img src="assets/symbols/SPIN.webp" alt="Spin" />
-              </button>
-              <div class="deck-right">
-                <button id="buyFreeBtn" type="button" class="img-btn img-btn-buy" aria-label="Buy Free Spins">
-                  <img src="assets/symbols/BUY_FEATURE-removebg-preview.webp" alt="Buy Free Spins" />
-                </button>
-                <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
-                <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
-              </div>
-            </section>
+              <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
+              <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
+            </aside>
 
-            <div class="control-toolbar" aria-label="Quick controls">
-              <div class="tool-wrap">
-                <button id="autoplayBtn" type="button" class="tool-btn" aria-label="Autoplay">
-                  <span class="tool-glyph" aria-hidden="true">&#10227;</span>
-                  <span class="tool-count"></span>
-                </button>
-                <div class="autoplay-popover hidden" id="autoplayPopover" role="menu" aria-label="Autoplay spins">
-                  <span class="autoplay-popover-head">Autoplay</span>
-                  <div class="autoplay-popover-grid">
-                    <button type="button" data-autoplay="10">10</button>
-                    <button type="button" data-autoplay="25">25</button>
-                    <button type="button" data-autoplay="50">50</button>
-                    <button type="button" data-autoplay="inf">&#8734;</button>
-                  </div>
+            <div class="ps-center">
+              <div class="hud-bar">
+                <div class="hud-node" id="balanceNode"><span>Balance</span><strong id="balance">-</strong></div>
+                <div class="hud-node" id="betNode"><span>Bet</span><strong id="betView">1.00</strong></div>
+                <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
+                <div class="hud-node hud-node-bonus hidden" id="bonusTotalNode"><span>Bonus Total</span><strong id="bonusTotal">0.00</strong></div>
+                <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
+                <div class="hud-node hud-node-multi hidden" id="activeMultiplierNode"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
+              </div>
+              <div class="round-id-bar hidden" id="roundIdBar" aria-live="polite">
+                <span class="round-id-label">Round ID</span>
+                <code class="round-id-value" id="roundIdValue">—</code>
+                <button type="button" id="roundIdCopyBtn" class="round-id-copy" aria-label="Copy Round ID">Copy</button>
+                <span class="round-id-copied" id="roundIdCopied" hidden>copied</span>
+              </div>
+              <div class="hud-message-rail">
+                <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
+                  <span id="eventBannerText">Ready</span>
                 </div>
               </div>
-              <button id="turboBtn" type="button" class="tool-btn" aria-label="Turbo spin" aria-pressed="false">
-                <span class="tool-glyph" aria-hidden="true">&#9889;</span>
-                <span class="tool-label">Turbo</span>
-              </button>
+              <div class="vault-window">
+                <div class="bonus-multi-badge hidden" id="bonusMultiBadge" aria-live="polite">
+                  <span class="bonus-multi-badge-label">Total Multiplier</span>
+                  <span class="bonus-multi-badge-value" id="bonusMultiBadgeValue">1x</span>
+                </div>
+                <div class="vault-aura"></div>
+                <div class="reels-stage" aria-live="polite">
+                  <canvas class="reels-canvas" id="reels" aria-label="Game reels canvas"></canvas>
+                </div>
+                <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
+                  <div class="feature-screen-panel">
+                    <p class="feature-screen-kicker" id="featureScreenKicker">Feature</p>
+                    <h2 id="featureScreenTitle">You won 15 Free Spins</h2>
+                    <p class="feature-screen-copy" id="featureScreenCopy">Press anywhere to continue.</p>
+                  </div>
+                </section>
+              </div>
             </div>
 
-            <div class="game-footer" aria-label="Balance and bet">
-              <div class="footer-cell"><span>Balance</span><strong id="footerBalance">—</strong></div>
-              <div class="footer-cell"><span>Bet</span><strong id="footerBet">1.00</strong></div>
-            </div>
+            <aside class="ps-right" aria-hidden="true">
+              <div class="ps-slot ps-slot--logo" data-slot="logo" data-empty>
+                <span class="ps-slot-label">Game logo</span>
+              </div>
+              <div class="ps-slot ps-slot--mascot" data-slot="mascot" data-empty>
+                <span class="ps-slot-label">Character</span>
+              </div>
+            </aside>
+
+            <footer class="ps-deck" aria-label="Controls">
+              <div class="ps-deck-sys">
+                <button id="psMenuBtn" type="button" class="ps-icon-btn" aria-label="Settings" aria-haspopup="dialog">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+                </button>
+                <!-- rulesBtn / soundToggle: the ids main.js already binds, so
+                     rules and the persisted mute setting work unchanged. -->
+                <button id="rulesBtn" type="button" class="ps-icon-btn" aria-label="Game info" aria-haspopup="dialog">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
+                </button>
+                <button id="soundToggle" type="button" class="ps-icon-btn" aria-label="Sound" aria-pressed="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path class="ps-sound-wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+                </button>
+              </div>
+
+              <div class="ps-deck-status">
+                <div class="ps-ticker" id="psTicker"><span id="psTickerText">Hold space for turbo spin</span></div>
+                <div class="ps-readouts">
+                  <div class="ps-readout"><span>Credit</span><strong class="u-num" id="footerBalance">—</strong></div>
+                  <div class="ps-readout"><span>Bet</span><strong class="u-num" id="footerBet">1.00</strong></div>
+                </div>
+              </div>
+
+              <div class="ps-deck-spin">
+                <div class="ps-spin-row">
+                  <button type="button" class="ps-bet-btn" id="betDownBtn" aria-label="Decrease bet">−</button>
+                  <button id="spinBtn" type="button" class="vx-spin" aria-label="Spin">
+                    <!-- Two arrows chasing each other round the circle. One arc +
+                         head, drawn twice (the second rotated 180°). -->
+                    <svg class="vx-spin__icon" viewBox="0 0 64 64" aria-hidden="true">
+                      <g class="vx-spin__arrow">
+                        <path d="M15.08 25.84 A18 18 0 0 1 48.92 25.84" />
+                        <path class="vx-spin__head" d="M50.29 29.6 L52.59 21.31 L43.19 24.73 Z" />
+                      </g>
+                      <g class="vx-spin__arrow" transform="rotate(180 32 32)">
+                        <path d="M15.08 25.84 A18 18 0 0 1 48.92 25.84" />
+                        <path class="vx-spin__head" d="M50.29 29.6 L52.59 21.31 L43.19 24.73 Z" />
+                      </g>
+                    </svg>
+                  </button>
+                  <button type="button" class="ps-bet-btn" id="betUpBtn" aria-label="Increase bet">+</button>
+                </div>
+                <div class="ps-spin-sub">
+                  <div class="tool-wrap">
+                    <button id="autoplayBtn" type="button" class="tool-btn" aria-label="Autoplay">
+                      <span class="tool-glyph" aria-hidden="true">&#10227;</span>
+                      <span class="tool-count"></span>
+                    </button>
+                    <div class="autoplay-popover hidden" id="autoplayPopover" role="menu" aria-label="Autoplay spins">
+                      <span class="autoplay-popover-head">Autoplay</span>
+                      <div class="autoplay-popover-grid">
+                        <button type="button" data-autoplay="10">10</button>
+                        <button type="button" data-autoplay="25">25</button>
+                        <button type="button" data-autoplay="50">50</button>
+                        <button type="button" data-autoplay="inf">&#8734;</button>
+                      </div>
+                    </div>
+                  </div>
+                  <button id="turboBtn" type="button" class="tool-btn" aria-label="Turbo spin" aria-pressed="false">
+                    <span class="tool-glyph" aria-hidden="true">&#9889;</span>
+                    <span class="tool-label">Turbo</span>
+                  </button>
+                </div>
+                <!-- Still read and written by main.js; the Bet readout shows the value in player view. -->
+                <span class="ps-bet-display" id="betDisplay">1.00</span>
+                <select id="betSelect" class="bet-select-hidden" aria-hidden="true" tabindex="-1"></select>
+              </div>
+            </footer>
           </section>
 
           <aside class="archive-panel admin-only" aria-label="Simulation and outputs">
@@ -324,6 +343,74 @@
         <div class="bw-hint">Tap to continue</div>
       </div>
       <p class="visually-hidden" data-bw-announce aria-live="assertive"></p>
+    </div>
+
+    <!-- Info / settings modal shell. One section per page; the tabs and dots
+         address sections by data-ps-section. Fill each section's body; the
+         open/close/paging logic is the JS step. -->
+    <div class="ps-modal" id="psInfoModal" role="dialog" aria-modal="true" aria-labelledby="psInfoTitle" hidden>
+      <div class="ps-modal__panel">
+        <header class="ps-modal__head">
+          <h2 class="ps-modal__title" id="psInfoTitle">Game Info</h2>
+          <button type="button" class="ps-icon-btn ps-modal__close" data-ps-close aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+        <nav class="ps-modal__nav" aria-label="Info sections">
+          <button type="button" class="ps-modal__tab" data-ps-section="rules" aria-current="page">Game Rules</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="tumble">Tumble</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="free-spins">Free Spins &amp; Max Win</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="special-bets">Special Bets &amp; Buy</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="settings">Settings</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="bet">Bet Menu</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="autoplay">Autoplay Rules</button>
+          <button type="button" class="ps-modal__tab" data-ps-section="interface">Main Interface</button>
+        </nav>
+        <div class="ps-modal__body">
+          <section class="ps-modal__section" data-ps-section-id="rules">
+            <h3>Game Rules &amp; How to Play</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="tumble" hidden>
+            <h3>Tumble Feature</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="free-spins" hidden>
+            <h3>Free Spins &amp; Max Win</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="special-bets" hidden>
+            <h3>Special Bets &amp; Buy Feature</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="settings" hidden>
+            <h3>Settings</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="bet" hidden>
+            <h3>Bet Menu</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="autoplay" hidden>
+            <h3>Autoplay Rules</h3>
+            <!-- content -->
+          </section>
+          <section class="ps-modal__section" data-ps-section-id="interface" hidden>
+            <h3>Main Interface Guide</h3>
+            <!-- content -->
+          </section>
+        </div>
+        <footer class="ps-modal__dots" aria-hidden="true">
+          <span class="ps-dot is-active" data-ps-dot="rules"></span>
+          <span class="ps-dot" data-ps-dot="tumble"></span>
+          <span class="ps-dot" data-ps-dot="free-spins"></span>
+          <span class="ps-dot" data-ps-dot="special-bets"></span>
+          <span class="ps-dot" data-ps-dot="settings"></span>
+          <span class="ps-dot" data-ps-dot="bet"></span>
+          <span class="ps-dot" data-ps-dot="autoplay"></span>
+          <span class="ps-dot" data-ps-dot="interface"></span>
+        </footer>
+      </div>
     </div>
 
     <section class="confirm-modal hidden" id="buyConfirmModal" aria-hidden="true" aria-modal="true" role="dialog">
