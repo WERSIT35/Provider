@@ -904,8 +904,8 @@ body.public-mode .altar {
   --deck-h: clamp(52px, 9vh, 96px);             /* bottom control deck */
   --sub-h: clamp(28px, 4.6vh, 40px);            /* autoplay / turbo row under spin */
   --feat-h: clamp(40px, 9vh, 96px);             /* buy + ante buttons */
-  --bet-btn: calc(var(--spin) * 0.46);          /* − / + beside spin */
-  --sys-btn: clamp(30px, 5vh, 44px);            /* menu / info / sound */
+  --bet-btn: max(36px, calc(var(--spin) * 0.46)); /* − / + beside spin */
+  --sys-btn: clamp(36px, 5vh, 44px);            /* menu / info / sound */
 }
 
 body.public-mode .vault-shell {
@@ -1160,8 +1160,32 @@ body.public-mode .ps-slot--mascot {
 body.public-mode .ps-deck-sys {
   display: flex;
   align-items: center;
-  gap: clamp(4px, 0.8vw, 12px);
+  /* ≥ 8px between 36px buttons: their 44px hit areas then never overlap. */
+  gap: clamp(8px, 0.8vw, 12px);
   min-width: 0;
+}
+
+/* ── Touch targets (Step 6) ──
+   Every control's HIT area is at least 44×44 CSS px (Apple HIG; WCAG 2.5.5),
+   even where its painted size is smaller to give the board more room. An
+   invisible ::after grows the hit area outward around the control's centre;
+   it is out of flow, so nothing moves and the board is untouched. inset
+   percentages resolve per axis (top/bottom against height, left/right against
+   width), so each axis grows only as far as it needs to reach 44px. */
+.ps-icon-btn,
+.ps-bet-btn,
+.vx-buy,
+body.public-mode .ps-spin-sub .tool-btn {
+  position: relative;
+}
+.ps-icon-btn::after,
+.ps-bet-btn::after,
+.vx-buy::after,
+.vx-ante::after,
+body.public-mode .ps-spin-sub .tool-btn::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
 }
 .ps-icon-btn {
   width: var(--sys-btn, 40px);
@@ -1252,6 +1276,7 @@ body.public-mode .ps-deck-spin {
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
+  gap: 12px; /* spin row ↔ autoplay/turbo: keeps their 44px hit areas apart */
   padding-bottom: clamp(2px, 0.6vh, 8px);
 }
 body.public-mode .ps-spin-row {
@@ -1390,10 +1415,11 @@ body.public-mode .ps-bet-display { display: none; }
     --slack: calc(100dvh - 100vw * 5 / 6 - var(--hud-h) - var(--rail) - 8 * var(--gap));
     --logo-h: clamp(28px, calc(var(--slack) * 0.16), 120px);
     --feat-h: clamp(36px, calc(var(--slack) * 0.16), 80px);
-    --status-h: clamp(32px, calc(var(--slack) * 0.12), 52px);
+    --status-h: clamp(38px, calc(var(--slack) * 0.12), 52px); /* fits the 36px system buttons */
     --sub-h: clamp(28px, calc(var(--slack) * 0.09), 40px);
     --spin: clamp(64px, min(30vw, calc(var(--slack) * 0.44)), 148px);
-    --deck-h: calc(var(--spin) + var(--sub-h) + var(--status-h) + 2 * var(--gap));
+    /* + 12px inside the spin cluster, + the 12px floor between deck rows. */
+    --deck-h: calc(var(--spin) + var(--sub-h) + var(--status-h) + 2 * var(--gap) + 12px + max(0px, 12px - var(--gap)));
   }
   body.public-mode .vault-shell {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1418,6 +1444,7 @@ body.public-mode .ps-bet-display { display: none; }
     grid-template-areas:
       "spin   spin"
       "sys    status";
+    row-gap: max(var(--gap), 12px);
     align-items: stretch;
     padding: var(--gap) clamp(6px, 2vw, 14px);
   }

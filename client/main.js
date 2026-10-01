@@ -586,9 +586,14 @@ const prefersReducedMotion = () =>
 // full redraw at 60fps forever — the single biggest source of phone heat. ~20fps
 // idle keeps the ambient motion readable at a third of the work.
 const TIER_PROFILES = {
-  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 66, maxFrameMs: 33 },
-  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 50, maxFrameMs: 33 },
-  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 50, maxFrameMs: 0  }
+  // Throttles sit just BELOW a whole number of 60Hz frames (16.7ms each), so
+  // they land on every Nth vsync: 30 → every 2nd (30fps), 45 → every 3rd
+  // (20fps), 62 → every 4th (15fps). They used to sit exactly ON the boundary
+  // (33 vs 33.3, 50 vs 50.0), so ordinary vsync jitter made frames skip one
+  // more vsync: phones measured ~24fps while spinning instead of 30.
+  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 62, maxFrameMs: 30 },
+  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 45, maxFrameMs: 30 },
+  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 45, maxFrameMs: 0  }
 };
 const TIER_RANK = { low: 0, mid: 1, high: 2 };
 
@@ -838,8 +843,12 @@ class ReelCanvasRenderer {
     if (TIER_RANK[this.tier] === 0 || samples.length < 30) return;
     const sorted = samples.slice().sort((a, b) => a - b);
     const medianMs = sorted[sorted.length >> 1];
-    // > ~30ms/frame (< ~33fps) sustained under load is our "too slow" line.
-    if (medianMs > 30) this.downgradeTier();
+    // "Too slow" is judged against what THIS tier asked for: a capped tier is
+    // only slow when its frames run well past its own cap (1.25×). Judging a
+    // 30fps-capped tier against a flat 30ms would demote every phone the
+    // moment the cap worked as designed (33.3ms frames).
+    const slowMs = Math.max(30, this.maxFrameMs * 1.25);
+    if (medianMs > slowMs) this.downgradeTier();
   }
 
   /** @param {boolean} [force] rebuild the caches even if the backing store is
