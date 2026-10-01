@@ -317,6 +317,10 @@ const DROP_PHYSICS = {
   out: { v0: 0.06, vMax: Infinity }
 };
 
+// Symbol sprite cache band (see getSymbolSprite): reuse a bake while the wanted
+// size is within [min, max] of it; new bakes are made at headroom × wanted.
+const SPRITE_BAND = { min: 0.75, max: 1.5, headroom: 1.2 };
+
 function gravityFallFraction(tau, v0 = 0, vMax = Infinity) {
   tau = clamp(tau, 0, 1);
   const peakV = 2 - v0;                       // uncapped velocity at τ=1
@@ -921,12 +925,26 @@ class ReelCanvasRenderer {
     // Already close to 1:1 — the bake would not pay for itself.
     if (img.naturalWidth <= targetW * 1.25) return img;
 
+    // Reuse any bake within a band around the wanted size. Every per-frame scale
+    // animation (idle bob, win breath, landing squash, reveal pop) changes drawW
+    // a little each frame, and the old exact-size match rebaked every animated
+    // symbol every frame: measured ~420 bakes/s on an idle 390px phone board.
+    // drawImage scales the cached bake to the exact size; within this band the
+    // resample is invisible.
     let sprite = this.symbolSprites.get(key);
-    if (sprite && sprite.w === targetW && sprite.h === targetH) return sprite.cvs;
+    if (sprite
+      && sprite.w >= targetW * SPRITE_BAND.min && sprite.w <= targetW * SPRITE_BAND.max
+      && sprite.h >= targetH * SPRITE_BAND.min && sprite.h <= targetH * SPRITE_BAND.max) {
+      return sprite.cvs;
+    }
 
-    const { cvs, ctx } = this.makeOffscreen(targetW, targetH);
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-    this.symbolSprites.set(key, { cvs, w: targetW, h: targetH });
+    // A new bake gets headroom above the wanted size, so the scale-UP effects
+    // (breath, reveal pop) stay inside its band instead of forcing a rebake.
+    const bakeW = Math.min(img.naturalWidth, Math.round(targetW * SPRITE_BAND.headroom));
+    const bakeH = Math.min(img.naturalHeight, Math.round(targetH * SPRITE_BAND.headroom));
+    const { cvs, ctx } = this.makeOffscreen(bakeW, bakeH);
+    ctx.drawImage(img, 0, 0, bakeW, bakeH);
+    this.symbolSprites.set(key, { cvs, w: bakeW, h: bakeH });
     return cvs;
   }
 
