@@ -118,6 +118,8 @@ const state = {
   crazyMode: false,
   turbo: false,
   autoplayActive: false,
+  // performance.now() when the last round (or autoplay run) fully settled.
+  roundSettledAt: -Infinity,
   autoplayLeft: 0,
   autoplayInitial: 0
 };
@@ -185,33 +187,35 @@ const uiAssets = {
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const ANIMATION_TIMING = {
-  // Snappiness pass: the pre-result phases (burst → old board exit → new board
-  // entry) were ~2.6s before the player could read the outcome. Trimmed ~20%
-  // for a tighter spin→result rhythm without losing the drop/bounce character.
-  // Tune these live if a slower, more cinematic feel is preferred.
+  // AAA pacing pass (Vault 20K). Every value is a real-time ms budget before
+  // turbo (x0.4); fast-stop collapses all of them.
   spinBurst: 420,
-  oldBoardDropOff: 820,
-  // Heavier-gravity pass: the fall itself is ~29% quicker (fallEnd 0.6 of a
-  // shorter drop) and the time saved goes to a sharper landing.
-  introDrop: 700,
-  // Tumble cascade refill fall duration. The drop now runs AFTER the explosion
-  // has fully finished (see the deliberate win beat below), so the refill reads
-  // as a clean gravity drop into the cleared cells rather than overlapping the
-  // burst. Tune live for feel.
-  tumbleDrop: 560,
-  // Deliberate win beat (no overlap): the caught cluster is CELEBRATED (held +
-  // glowing) for a clear moment, THEN it explodes, and only once the explosion
-  // fully finishes do the refill symbols drop in. celebrateHoldFirst is the
-  // headline hold for the first/opening catch; chained tumble catches use the
-  // shorter celebrateHoldChain so long cascades keep their momentum. Very large
-  // clusters get a little extra read-time (markPerExtraSymbol, capped).
-  celebrateHoldFirst: 2500,
-  celebrateHoldChain: 1500,
+  // Old board leaves: one mechanical tick up, then a fast pull out.
+  oldBoardDropOff: 480,
+  // New board drops in, column by column (WATERFALL), and slams.
+  introDrop: 520,
+  // Tumble refills fall FASTER than the opening drop: momentum builds through
+  // a cascade instead of each step re-starting at base-game speed.
+  tumbleDrop: 380,
+  // Deliberate win beat (no overlap): the caught cluster is held + glowing for
+  // a short, readable moment, THEN explodes, and only once the explosion
+  // finishes do the refills drop. The opening catch gets the longer hold;
+  // chained catches are snappier so a cascade accelerates. Very large clusters
+  // get a little extra read-time (markPerExtraSymbol, capped).
+  celebrateHoldFirst: 1100,
+  celebrateHoldChain: 700,
   markBigClusterThreshold: 8,
-  markPerExtraSymbol: 34,
-  markBigClusterCap: 540,
-  explode: 540
+  markPerExtraSymbol: 30,
+  markBigClusterCap: 300,
+  explode: 380
 };
+
+// Column waterfall: each reel starts this long after the one to its left, plus
+// a small per-row and per-distance stagger inside a column. Turbo-scaled.
+const WATERFALL = { colMs: 65, rowMs: 8, perCellMs: 10 };
+// Base autoplay: a fixed, NOT turbo-scaled gap between rounds, so the player can
+// read each settled board even at full speed.
+const AUTOPLAY_GAP_MS = 500;
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -222,10 +226,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // renderer animation methods + animationSleep. Fast-stop still wins and
 // collapses to near-instant.
 const turboScale = () => (state.turbo ? 0.4 : 1);
-// On fast-stop, the in-flight drop is re-timed to land smoothly in ~this window
-// (a quick, visible settle — NOT an instant teleport), and the per-step drop
-// awaits resolve this long after the tap so the board never commits mid-fall.
-const FAST_STOP_SETTLE_MS = 150;
+// Fast-stop / skip: the in-flight drop is re-timed to finish on the next frame
+// (no easing, no bounce — straight to the step's resolved board), and the
+// per-step drop awaits resolve immediately. Drops that START after a fast-stop
+// run for FAST_STOP_DROP_MS, i.e. they are drawn already landed.
+const FAST_STOP_SETTLE_MS = 0;
+// With skip now instant, a round can resolve ~200ms after the skip press, so a
+// player hammering spin would start fresh PAID spins with taps meant as skips.
+// A manual press this soon after a round settles is treated as a late skip and
+// ignored. Autoplay is unaffected.
+const SPIN_SETTLE_GUARD_MS = 250;
+const FAST_STOP_DROP_MS = 1;
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -254,6 +265,7 @@ async function animateWinMeter(from, to, duration = 260) {
   }
   el.lastWin.textContent = fmt(end);
 }
+const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeOutQuint = (t) => 1 - (1 - t) ** 5;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -289,23 +301,26 @@ const easeOutBounce = (t) => {
 // nothing. If it would, the symbol accelerates under gravity until it reaches vMax,
 // then coasts at vMax — and gravity is re-solved so it STILL lands exactly at τ=1
 // (continuous with the uncapped case at the boundary vMax = 2 − v0).
+// "Heavy metal" rigid-body drops: gold bars and vault steel, not rubber.
 const DROP_PHYSICS = {
-  // Drop-in: starts almost at rest and accelerates hard (pure gravity, so it is
-  // still speeding up when it hits), reaches the slot by fallEnd, then settles
-  // in `hops` hard, fast-damped bounces. bounceCells is the first hop's height
-  // in rows; bounceDecay is how quickly the hops die.
-  in:  { v0: 0.04, vMax: Infinity, fallEnd: 0.6, bounceCells: 0.15, bounceDecay: 3, hops: 2 },
-  // Drop-out: an anticipation wind-up over the first `windup` of the exit (a
-  // short crouch, then a lift of windupLift rows that eases to a stop), then
-  // gravity takes the symbol out of frame from rest at that apex. No bounce.
-  out: { v0: 0, vMax: Infinity, windup: 0.18, windupLift: 0.12 }
+  // Drop-in: from rest, pure gravity (no terminal cap, so it is still
+  // accelerating at impact), slot reached at fallEnd, then ONE short, rigid
+  // recoil killed almost at once by bounceDecay. With decay 6 the recoil peaks
+  // at ~17% of bounceCells, so 0.1 means a ~0.017-row (1.5-2px) kick lasting
+  // ~40ms: felt, not seen as a bounce. The weight is sold by the reel_stop
+  // thud and the board thump, not by bounce.
+  in:  { v0: 0, vMax: Infinity, fallEnd: 0.82, bounceCells: 0.1, bounceDecay: 6, hops: 1 },
+  // Drop-out: a single mechanical tick UP over the first `windup` of the exit
+  // (a gear unlocking: windupLift rows), then an immediate fast pull down —
+  // v0 > 0 means the fall starts at speed, with no hang at the apex.
+  out: { v0: 0.6, vMax: Infinity, windup: 0.1, windupLift: 0.06 }
 };
 
 // Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
 // Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
 const MOTION = {
-  stretch: 0.12,      // max vertical stretch while falling fast
-  squash: 0.2,        // vertical squash on the landing impact
+  stretch: 0,         // rigid bodies: no stretch while falling…
+  squash: 0,          // …and no squash on impact (dropDeform short-circuits)
   breathBase: 0.08,   // winning symbols' resting swell during the hold
   breathDepth: 0.07,  // extra swell at the top of each breath
   breathMs: 1100,     // one breath (in + out)
@@ -1184,11 +1199,12 @@ class ReelCanvasRenderer {
     // thud at that landing instead of the rest of the waterfall.
     if (this._columnStops?.size) {
       this.cancelColumnStops();
-      this._queueColumnStop(0, (FAST_STOP_SETTLE_MS - 20) * DROP_PHYSICS.in.fallEnd);
+      this._queueColumnStop(0, 0, 3);
     }
     // Speed the current drop(s) up to a smooth quick landing (no teleport).
-    this._accelerateDrop(this.fx.drop, FAST_STOP_SETTLE_MS - 20);
-    this._accelerateDrop(this.fx.heavyDrop, FAST_STOP_SETTLE_MS - 20);
+    // Straight to the resolved board: the drop completes on the next frame.
+    this._accelerateDrop(this.fx.drop, FAST_STOP_DROP_MS);
+    this._accelerateDrop(this.fx.heavyDrop, FAST_STOP_DROP_MS);
     this.fx.cluster = null;
     this.fx.sweeps = [];
     this.fx.charge = null;
@@ -1518,7 +1534,7 @@ class ReelCanvasRenderer {
     const heavyKeyMatchesDropMap = Array.from(heavyCells.keys()).some((k) => Object.prototype.hasOwnProperty.call(dropMap || {}, k));
     // Snappier drop slow-down — the previous values dragged the moment out.
     const dropDuration = state.fastStopRequested
-      ? 120
+      ? FAST_STOP_DROP_MS
       : (peakTier && heavyKeyMatchesDropMap)
       ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
       : duration;
@@ -1690,7 +1706,7 @@ class ReelCanvasRenderer {
         spin: (Math.random() - 0.5) * 0.18
       });
     }
-    // Cell-anchored impact record drives a brief vertical squash + ground ring.
+    // Cell-anchored impact record drives the ground ring (no squash: rigid).
     this.fx.impacts.push({
       row, col, x: center.x, y: center.y,
       born: now, life: 520 * heaviness,
@@ -1724,10 +1740,26 @@ class ReelCanvasRenderer {
         });
       }
     }
-    // Vault shake on landing — ramps with tier weight.
+    // An anvil, not a jelly: weight through sound, shake and light only.
+    // A low, heavy thud under the multiplier's own sound…
+    window.Sound?.play("reel_stop", { index: 0 });
+    // …the whole board takes the hit…
+    this.thumpBoard(4);
     try {
-      if (tier.key === "mythic" || tier.key === "legendary") shakeVault("normal");
+      shakeVault(tier.key === "epic" || tier.key === "legendary" || tier.key === "mythic" ? "strong" : "normal");
     } catch (_) { /* shakeVault may not be in scope at construction; ignore */ }
+    // …and a short spotlight flash on the landing cell. Never over a cluster
+    // spotlight that is already running: that one belongs to a win.
+    if (!this.fx.spotlight) {
+      this.fx.spotlight = {
+        start: now,
+        duration: 420,
+        set: new Set([`${row}-${col}`]),
+        intensity: tier.key === "legendary" || tier.key === "mythic" ? 0.6 : 0.45
+      };
+      const flash = this.fx.spotlight;
+      setTimeout(() => { if (this.fx.spotlight === flash) this.fx.spotlight = null; }, 440);
+    }
   }
 
   async explode(winning = [], duration = 380, tier = "medium") {
@@ -2038,19 +2070,15 @@ class ReelCanvasRenderer {
     if (elapsed < 0) return -distance;
     const progress = clamp(elapsed / drop.duration, 0, 1);
     if (drop.exit) {
-      // Drop-out (#22) with anticipation: over the first `w` of the exit the
-      // symbol crouches (sinks a hair while dropDeform squashes it), then lifts
-      // and eases to a stop at the apex. From there gravity takes it out of the
-      // board, so position and velocity are continuous across the hand-off.
+      // Drop-out (#22): one crisp mechanical tick UP over the first `w` of the
+      // exit, then the fall starts immediately from that apex at speed
+      // (DROP_PHYSICS.out.v0 > 0). Position is continuous; velocity reverses
+      // at the apex on purpose — that hard reversal is what reads as a catch
+      // releasing rather than a wobble.
       const p = DROP_PHYSICS.out;
       const w = this.windupFraction();
       const lift = rowStep * p.windupLift;
-      if (progress < w) {
-        const u = progress / w;
-        return u < 0.4
-          ? rowStep * 0.02 * Math.sin((Math.PI * u) / 0.4)
-          : -lift * easeOutCubic((u - 0.4) / 0.6);
-      }
+      if (progress < w) return -lift * easeOutQuad(progress / w);
       const apex = w > 0 ? lift : 0;
       const q = (progress - w) / (1 - w);
       return -apex + (exitDistance + apex) * gravityFallFraction(q, p.v0, p.vMax);
@@ -2091,29 +2119,17 @@ class ReelCanvasRenderer {
     const out = this._deform || (this._deform = { sx: 1, sy: 1 });
     out.sx = 1;
     out.sy = 1;
+    // Rigid bodies (MOTION.stretch = squash = 0): nothing to compute, and no
+    // per-cell work for the 30 cells of every frame. Raise either value to
+    // bring deformation back; the formula below still applies.
+    const m = this.motion();
+    if (!m.stretch && !m.squash) return out;
     const drop = this.fx.drop;
-    if (!drop) return out;
+    if (!drop || drop.exit) return out;
     const count = Number(drop.map?.[`${row}-${col}`] || 0);
     if (count <= 0) return out;
     const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / drop.duration;
     if (progress <= 0 || progress >= 1) return out;
-    const m = this.motion();
-    if (drop.exit) {
-      // Wind-up: crouch (squash) first, stretch up out of it, and keep
-      // stretching as gravity takes over on the way out.
-      const w = this.windupFraction();
-      if (progress < w) {
-        const u = progress / w;
-        out.sy = u < 0.4
-          ? 1 - m.squash * 0.45 * Math.sin((Math.PI * u) / 0.4)
-          : 1 + m.stretch * 0.35 * ((u - 0.4) / 0.6);
-      } else {
-        const q = (progress - w) / (1 - w);
-        out.sy = 1 + m.stretch * (0.35 + 0.65 * q);
-      }
-      out.sx = 1 / out.sy;
-      return out;
-    }
     const p = DROP_PHYSICS.in;
     if (progress < p.fallEnd) {
       const t = progress / p.fallEnd;
@@ -2161,20 +2177,41 @@ class ReelCanvasRenderer {
       landAt.set(col, Math.max(landAt.get(col) || 0, t));
     }
     if (!landAt.size) return;
+    const last = Math.max(...landAt.values());
+    // A full board landing hits harder than a few refilled cells.
+    const thumpPx = landAt.size >= this.cols ? 3 : 2;
     if (state.fastStopRequested) {
-      this._queueColumnStop(0, Math.max(...landAt.values()));
+      this._queueColumnStop(0, last, thumpPx);
       return;
     }
-    for (const [col, t] of landAt) this._queueColumnStop(col, t);
+    for (const [col, t] of landAt) this._queueColumnStop(col, t, t === last ? thumpPx : 0);
   }
 
-  _queueColumnStop(col, ms) {
+  /** The weight of a landing, felt through the board: a short downward thump
+   *  of the whole reel stage. A compositor-only transform (no layout, no canvas
+   *  resize, no sprite work); skipped under reduced motion. */
+  thumpBoard(px) {
+    if (!px || this._reducedMotion) return;
+    const stage = this.canvas.parentElement;
+    if (!stage || typeof stage.animate !== "function") return;
+    stage.animate(
+      [
+        { transform: "translateY(0)" },
+        { transform: `translateY(${px}px)`, offset: 0.3 },
+        { transform: "translateY(0)" }
+      ],
+      { duration: 140, easing: "ease-out" }
+    );
+  }
+
+  _queueColumnStop(col, ms, thumpPx = 0) {
     if (!this._columnStops) this._columnStops = new Set();
     const id = setTimeout(() => {
       this._columnStops.delete(id);
       // index raises the synth's pitch a step per reel, so the waterfall
       // reads left to right by ear as well as by eye.
       window.Sound?.play("reel_stop", { index: col });
+      if (thumpPx) this.thumpBoard(thumpPx);
     }, Math.max(0, Math.round(ms)));
     this._columnStops.add(id);
   }
@@ -2188,14 +2225,11 @@ class ReelCanvasRenderer {
   dropDelay(row, col, count) {
     // Fast-stop collapses the whole board in at once — no cascade.
     if (state.fastStopRequested) return 0;
-    // Pronounced left-to-right REEL cascade: each column starts dropping a clear
-    // beat (~90ms) after the column to its left, so reel 1 lands first, then reel
-    // 2, then reel 3 … (Pragmatic-style waterfall) instead of the whole board
-    // arriving together. A small per-row stagger keeps each column reading as
-    // falling gravity rather than a rigid block, and symbols that fall farther
-    // (higher count) wait a touch longer. Scaled by turbo so the cascade
-    // compresses in step with the rest of the spin.
-    const raw = col * 90 + row * 12 + Math.max(0, count - 1) * 14;
+    // Left-to-right REEL waterfall (WATERFALL.colMs per column), tight enough
+    // that the board lands as one fast sweep rather than six separate events. A
+    // small per-row stagger keeps a column reading as falling symbols, and
+    // symbols that fall farther wait a touch longer. Scaled by turbo.
+    const raw = col * WATERFALL.colMs + row * WATERFALL.rowMs + Math.max(0, count - 1) * WATERFALL.perCellMs;
     return Math.max(0, Math.round(raw * turboScale()));
   }
 
@@ -2741,18 +2775,11 @@ class ReelCanvasRenderer {
         }
         const isMultiCaught = symbol === "MULTI" && Boolean(this.fx.multiCatch?.set?.has(key));
         const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.26 : 1;
-        // Vertical squash if a heavy impact just landed on this cell.
+        // Rigid: a multiplier BANG no longer squashes its symbol. Its weight is
+        // the thud, the shake, the board thump and the spotlight flash fired in
+        // spawnHeavyImpact(). squashX/Y stay as the hook dropDeform() feeds.
         let squashY = 1;
         let squashX = 1;
-        const impact = this.fx.impacts.find((im) => im.row === r && im.col === c);
-        if (impact) {
-          const it = clamp((performance.now() - impact.born) / 240, 0, 1);
-          if (it < 1) {
-            const env = Math.sin(it * Math.PI);
-            squashY = 1 - 0.18 * env * impact.heaviness;
-            squashX = 1 + 0.12 * env * impact.heaviness;
-          }
-        }
         const deform = this.dropDeform(r, c);
         squashX *= deform.sx;
         squashY *= deform.sy;
@@ -3453,6 +3480,9 @@ function setControls(disabled) {
   // engine forbids buying the feature with an active ante bet).
   el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
   el.anteToggle.disabled = disabled;
+  // The bet is fixed for the round from the instant it starts.
+  if (el.betDownBtn) el.betDownBtn.disabled = disabled;
+  if (el.betUpBtn) el.betUpBtn.disabled = disabled;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
 
@@ -4428,7 +4458,40 @@ function applyRoundStats(payload, bet, wagerOverride) {
   if (el.sessionBonusHits) el.sessionBonusHits.textContent = String(stats.bonusHits);
 }
 
+// Count the balance from one settled value to another. Durations scale with
+// the size of the win (log), compress with turbo, and collapse on fast-stop.
+async function animateBalance(from, to) {
+  if (!el.balance) return;
+  const delta = to - from;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || delta < 0.005) {
+    el.balance.textContent = fmt(to);
+    return;
+  }
+  const bet = Number(el.betSelect?.value || 1) || 1;
+  let ms = clamp(350 + Math.log10(1 + delta / bet) * 450, 350, 1400);
+  ms = state.fastStopRequested ? 150 : ms * turboScale();
+  const t0 = performance.now();
+  await new Promise((resolve) => {
+    const tick = (now) => {
+      const t = clamp((now - t0) / ms, 0, 1);
+      el.balance.textContent = fmt(lerp(from, to, easeOutCubic(t)));
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  el.balance.textContent = fmt(to);
+}
+
 async function animateRound(payload, bet, wagerOverride, options = {}) {
+  // The settled balance BEFORE this round's win: the engine charges the bet
+  // (paid spins only) and adds the win, so balance_after - total_win is the
+  // post-bet balance on every kind of round. Shown now; the win is counted
+  // into it at the end of the round.
+  const balanceAfter = Number(payload.balance_after);
+  const balancePreWin = Number((balanceAfter - Number(payload.total_win || 0)).toFixed(2));
+  if (Number.isFinite(balancePreWin) && el.balance) el.balance.textContent = fmt(balancePreWin);
+
   // The result is now committed and the reels are about to play it out: promote
   // the lock to the ANIMATING phase so a tap from here on means "fast-stop".
   spinLock.markAnimating();
@@ -4724,7 +4787,9 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     pushGameMessage(`Total spin win: ${fmt(totalWinAmt)}.`, "win");
   }
 
-  el.balance.textContent = fmt(payload.balance_after || 0);
+  // Resolution: count the win into the balance. The UI stays locked until the
+  // count lands (spin() unlocks after animateRound returns).
+  await animateBalance(balancePreWin, Number.isFinite(balanceAfter) ? balanceAfter : 0);
   el.lastWin.textContent = fmt(payload.total_win || 0);
   el.freeSpins.textContent = String(payload.free_spins_left || 0);
   if (payload.is_free_spin) {
@@ -4786,6 +4851,10 @@ async function spin(options = {}) {
     if (state.autoplayActive) stopAutoplay();
     lifecycleStats.blockedPresses += 1;
     requestFastStop();
+    return;
+  }
+  if (manual && performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS) {
+    lifecycleStats.blockedPresses += 1;
     return;
   }
   // Acquire BEFORE any await so a rapid double-tap can never slip a second spin
@@ -4864,6 +4933,7 @@ async function spin(options = {}) {
     if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
     ticker.roundEnd();
+    state.roundSettledAt = performance.now();
   }
 }
 
@@ -4916,6 +4986,8 @@ function updateAutoplayUi() {
   if (!el.autoplayBtn) return;
   const active = state.autoplayActive;
   el.autoplayBtn.classList.toggle("is-active", active);
+  // The spin button becomes the autoplay stop control while a run is active.
+  el.spinBtn?.classList.toggle("is-autoplay", active);
   el.autoplayBtn.setAttribute("aria-label", active ? "Stop autoplay" : "Autoplay");
   const count = el.autoplayBtn.querySelector(".tool-count");
   if (count) {
@@ -4950,7 +5022,7 @@ async function startAutoplay(count) {
       updateAutoplayUi();
       const payload = await spin({ autoplay: true });
       if (!payload || !state.autoplayActive) break;
-      await animationSleep(260);
+      await sleep(AUTOPLAY_GAP_MS);
     }
   } finally {
     state.autoplayActive = false;
@@ -4960,6 +5032,7 @@ async function startAutoplay(count) {
     spinLock.release();
     updateAutoplayUi();
     setControls(false);
+    state.roundSettledAt = performance.now();
   }
 }
 

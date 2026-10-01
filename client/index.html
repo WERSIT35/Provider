@@ -183,6 +183,13 @@
                   <button id="spinBtn" type="button" class="vx-spin" aria-label="Spin">
                     <!-- Two arrows chasing each other round the circle. One arc +
                          head, drawn twice (the second rotated 180°). -->
+                    <!-- Skip (round in flight) and stop (autoplay) states. -->
+                    <svg class="vx-spin__skip" viewBox="0 0 64 64" aria-hidden="true">
+                      <path d="M20 20 L32 32 L20 44" /><path d="M33 20 L45 32 L33 44" />
+                    </svg>
+                    <svg class="vx-spin__stop" viewBox="0 0 64 64" aria-hidden="true">
+                      <rect x="22" y="22" width="20" height="20" rx="3" />
+                    </svg>
                     <svg class="vx-spin__icon" viewBox="0 0 64 64" aria-hidden="true">
                       <g class="vx-spin__arrow">
                         <path d="M15.08 25.84 A18 18 0 0 1 48.92 25.84" />

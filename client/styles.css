@@ -1315,7 +1315,28 @@ body.public-mode .ps-spin-row {
 }
 .vx-spin:active:not(:disabled) { transform: scale(0.95); }
 .vx-spin:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 4px; }
-.vx-spin.is-spinning .vx-spin__icon { animation: vxSpinTurn 0.9s linear infinite; }
+/* State icons: arrows (idle) → skip (round in flight: a press fast-forwards)
+   → stop (autoplay: a press ends the run). One icon at a time, swapped by
+   class, so the button always says what a press will do. */
+.vx-spin__skip,
+.vx-spin__stop {
+  position: absolute;
+  width: 56%;
+  height: 56%;
+  display: none;
+}
+.vx-spin__skip path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vx-spin__stop rect { fill: currentColor; }
+.vx-spin.is-spinning .vx-spin__icon,
+.vx-spin.is-autoplay .vx-spin__icon { display: none; }
+.vx-spin.is-spinning:not(.is-autoplay) .vx-spin__skip { display: block; }
+.vx-spin.is-autoplay .vx-spin__stop { display: block; }
 .vx-spin.is-fast-stopping {
   color: var(--accent-laser-hot);
   border-color: var(--accent-laser);
@@ -1324,12 +1345,9 @@ body.public-mode .ps-spin-row {
     0 0 26px color-mix(in srgb, var(--accent-laser) 55%, transparent),
     inset 0 -4px 10px rgba(0, 0, 0, 0.55);
 }
-.vx-spin.is-fast-stopping .vx-spin__icon { animation-duration: 0.35s; }
+
 .vx-spin:disabled { cursor: default; opacity: 0.55; }
-@keyframes vxSpinTurn { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .vx-spin.is-spinning .vx-spin__icon { animation: none; }
-}
+
 .ps-bet-btn {
   width: var(--bet-btn, 44px);
   height: var(--bet-btn, 44px);
