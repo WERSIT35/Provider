@@ -7,11 +7,12 @@
 //
 //   1. ASPECT (#25)   the board keeps its 6/5 shape — letterboxed or
 //                     pillarboxed, never stretched — and never collapses.
-//   2. NO REFLOW (#27) showing a top-bar message, revealing the bonus HUD
-//                     nodes, or writing a Round ID must not move or resize the
-//                     board by a single pixel. This is the one that made the
-//                     BONUS feel broken: a banner fires on every free spin, so
-//                     any rail growth became a per-spin jump.
+//   2. NO REFLOW (#27) every ticker state (WIN override, event flash, the
+//                     free-spin line) and writing a Round ID must not move or
+//                     resize the board by a single pixel. This is the one that
+//                     made the BONUS feel broken: a message fires on every free
+//                     spin, so any growth became a per-spin jump. The top bar
+//                     is gone, so nothing may sit above the board either.
 //   3. NO CACHE THRASH (#26) those same state changes must not trip the
 //                     renderer's ResizeObserver into re-rasterizing its sprite
 //                     caches, which is what hitched the frame rate mid-spin.
@@ -150,8 +151,9 @@ const PROBE_MEASURE = `(() => {
     stage: box(".reels-stage"),
     window: box(".vault-window"),
     canvas: box(".reels-canvas"),
-    rail: box(".hud-message-rail"),
-    hud: box(".hud-bar"),
+    ticker: box("#psTicker"),
+    center: box(".ps-center"),
+    topBar: !!(q(".hud-bar") || q(".hud-message-rail") || q("#eventBanner")),
     docScrollW: document.documentElement.scrollWidth,
     innerW: window.innerWidth,
     rebuilds: window.__rebuilds || 0
@@ -255,6 +257,11 @@ async function main() {
         `stage ${fmtBox(base.stage)} vs window ${fmtBox(base.window)}`);
       check("no horizontal page scroll", base.docScrollW <= base.innerW + EPS,
         `scrollW=${base.docScrollW} innerW=${base.innerW}`);
+      check("no top bar: the board column starts with the board",
+        !base.topBar && base.window.y - base.center.y <= EPS,
+        `window.y=${base.window.y} center.y=${base.center.y}`);
+      check("ticker visible (the only message line)", base.ticker && base.ticker.w > 40 && base.ticker.h > 4,
+        base.ticker ? fmtBox(base.ticker) : "missing");
 
       // ---- 2/3. state changes must not reflow or thrash --------------------
       // Reveal the Round ID strip FIRST, mirroring the app: initSession() claims
@@ -266,37 +273,30 @@ async function main() {
       await evaluate(cdp, PROBE_INSTRUMENT);
       const before = await measure(cdp);
 
-      // (a) a top-bar message — fires on EVERY free spin in the bonus
-      await evaluate(cdp, `(() => {
-        const b = document.getElementById("eventBanner");
-        document.getElementById("eventBannerText").textContent = "AUTO FREE SPIN...";
-        b.classList.remove("hidden");
-        b.classList.add("banner-bonus", "live-banner");
-      })()`);
+      // (a) the ticker's WIN override — cuts in on every paying round
+      await evaluate(cdp, `(ticker.roundStart(), document.getElementById("lastWin").textContent = "123456789.50", true)`);
       await sleep(350);
       let after = await measure(cdp);
-      check("banner shown: board box unchanged (#27)", boxesEqual(before.stage, after.stage),
+      check("ticker WIN override: board box unchanged (#27)", boxesEqual(before.stage, after.stage),
         `${fmtBox(before.stage)} -> ${fmtBox(after.stage)}`);
-      check("banner shown: message rail height unchanged",
-        Math.abs(before.rail.h - after.rail.h) <= EPS,
-        `${before.rail.h} -> ${after.rail.h}`);
+      check("ticker WIN override: ticker box unchanged",
+        boxesEqual(before.ticker, after.ticker), `${fmtBox(before.ticker)} -> ${fmtBox(after.ticker)}`);
 
-      // (b) the bonus HUD nodes revealing (3 -> 6 nodes)
+      // (b) an event flash and the free-spin line — fire on EVERY free spin
       await evaluate(cdp, `(() => {
         ["bonusTotalNode","freeSpinsNode","activeMultiplierNode"]
           .forEach((id) => document.getElementById(id)?.classList.remove("hidden"));
         document.getElementById("freeSpins").textContent = "15";
-        document.getElementById("bonusTotal").textContent = "1234.50";
         document.getElementById("activeMultiplier").textContent = "128x";
+        ticker.flash("Locked 1000x multiplier", "bonus", 2000);
       })()`);
       await sleep(350);
       after = await measure(cdp);
-      check("bonus HUD revealed: board box unchanged (#25/#27)",
+      check("ticker flash + bonus values: board box unchanged (#25/#27)",
         boxesEqual(before.stage, after.stage),
         `${fmtBox(before.stage)} -> ${fmtBox(after.stage)}`);
-      check("bonus HUD revealed: HUD stays one row",
-        Math.abs(before.hud.h - after.hud.h) <= EPS,
-        `${before.hud.h} -> ${after.hud.h}`);
+      check("ticker flash: ticker box unchanged",
+        boxesEqual(before.ticker, after.ticker), `${fmtBox(before.ticker)} -> ${fmtBox(after.ticker)}`);
 
       // (c) a Round ID written into the strip, then a much longer one — this is
       //     rewritten after every resolved round, free spins included.
@@ -312,11 +312,11 @@ async function main() {
         boxesEqual(withShortId.stage, after.stage),
         `${fmtBox(withShortId.stage)} -> ${fmtBox(after.stage)}`);
 
-      // (d) banner hiding again — the other half of the per-spin cycle
-      await evaluate(cdp, `document.getElementById("eventBanner").classList.add("hidden");`);
+      // (d) back to idle tips — the other half of the per-spin cycle
+      await evaluate(cdp, `(ticker.idle(), document.getElementById("lastWin").textContent = "0.00", true)`);
       await sleep(350);
       const hidden = await measure(cdp);
-      check("banner hidden: board box unchanged",
+      check("ticker back to idle: board box unchanged",
         boxesEqual(withShortId.stage, hidden.stage),
         `${fmtBox(withShortId.stage)} -> ${fmtBox(hidden.stage)}`);
 

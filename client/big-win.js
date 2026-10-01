@@ -43,24 +43,16 @@
   const FX = {
     coins: {
       rate: { coin: 22 },
-      burst: [["coin", 36, "fountain"]],
-      shake: null
+      burst: [["coin", 36, "fountain"]]
     },
     sparks: {
       rate: { coin: 26, spark: 60 },
-      burst: [["spark", 70, "radial"], ["coin", 24, "cannons"]],
-      shake: "normal"
+      burst: [["spark", 70, "radial"], ["coin", 24, "cannons"]]
     },
     motherlode: {
       rate: { coin: 34, bar: 9, diamond: 12, spark: 40 },
-      burst: [["coin", 50, "fountain"], ["bar", 14, "cannons"], ["diamond", 20, "cannons"], ["spark", 90, "radial"]],
-      shake: "strong"
+      burst: [["coin", 50, "fountain"], ["bar", 14, "cannons"], ["diamond", 20, "cannons"], ["spark", 90, "radial"]]
     }
-  };
-
-  const SHAKE = {
-    normal: { ms: 520, px: 6 },
-    strong: { ms: 760, px: 14 }
   };
 
   // ── Sprites ──────────────────────────────────────────────────────────────
@@ -422,7 +414,7 @@
       try { this.root.focus({ preventScroll: true }); } catch (_) { /* old Safari */ }
 
       if (run.reduced) {
-        // No count, no particles, no shake: the final state fades in.
+        // No count, no particles: the final state fades in.
         const top = reached[reached.length - 1];
         this._applyTier(top, { skipped: true, quiet: true });
         this._finish();
@@ -565,21 +557,6 @@
           ],
           { duration: 420, easing: "cubic-bezier(0.2, 0.9, 0.3, 1.2)" }
         );
-        const shake = fx.shake && SHAKE[fx.shake];
-        if (shake) {
-          const k = shake.px;
-          this.stage.animate(
-            [
-              { transform: "translate(0, 0)" },
-              { transform: `translate(${-k}px, ${k * 0.6}px)` },
-              { transform: `translate(${k}px, ${-k * 0.4}px)` },
-              { transform: `translate(${-k * 0.6}px, ${-k * 0.5}px)` },
-              { transform: `translate(${k * 0.4}px, ${k * 0.3}px)` },
-              { transform: "translate(0, 0)" }
-            ],
-            { duration: shake.ms, easing: "ease-out" }
-          );
-        }
       }
       if (this.hooks.onTier) this.hooks.onTier(tier, { skipped });
     }

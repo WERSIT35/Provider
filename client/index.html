@@ -109,24 +109,22 @@
             </aside>
 
             <div class="ps-center">
-              <div class="hud-bar">
-                <div class="hud-node" id="balanceNode"><span>Balance</span><strong id="balance">-</strong></div>
-                <div class="hud-node" id="betNode"><span>Bet</span><strong id="betView">1.00</strong></div>
-                <div class="hud-node"><span>Win</span><strong id="lastWin">0.00</strong></div>
-                <div class="hud-node hud-node-bonus hidden" id="bonusTotalNode"><span>Bonus Total</span><strong id="bonusTotal">0.00</strong></div>
-                <div class="hud-node hud-node-spins hidden" id="freeSpinsNode"><span>Free Spins</span><strong id="freeSpins">0</strong></div>
-                <div class="hud-node hud-node-multi hidden" id="activeMultiplierNode"><span>Multiplier</span><strong id="activeMultiplier">1x</strong></div>
+              <!-- Round values main.js keeps as text (balance, bet, win meter,
+                   bonus counters). Never rendered: the deck readouts and the
+                   #psTicker line display them, so the board owns the top. -->
+              <div class="hud-state" hidden>
+                <strong id="balance">-</strong>
+                <strong id="betView">1.00</strong>
+                <strong id="lastWin">0.00</strong>
+                <span class="hidden" id="bonusTotalNode"><strong id="bonusTotal">0.00</strong></span>
+                <span class="hidden" id="freeSpinsNode"><strong id="freeSpins">0</strong></span>
+                <span class="hidden" id="activeMultiplierNode"><strong id="activeMultiplier">1x</strong></span>
               </div>
               <div class="round-id-bar hidden" id="roundIdBar" aria-live="polite">
                 <span class="round-id-label">Round ID</span>
                 <code class="round-id-value" id="roundIdValue">—</code>
                 <button type="button" id="roundIdCopyBtn" class="round-id-copy" aria-label="Copy Round ID">Copy</button>
                 <span class="round-id-copied" id="roundIdCopied" hidden>copied</span>
-              </div>
-              <div class="hud-message-rail">
-                <div class="vault-banner hidden" id="eventBanner" aria-live="polite">
-                  <span id="eventBannerText">Ready</span>
-                </div>
               </div>
               <div class="vault-window">
                 <div class="bonus-multi-badge hidden" id="bonusMultiBadge" aria-live="polite">
@@ -172,7 +170,7 @@
               </div>
 
               <div class="ps-deck-status">
-                <div class="ps-ticker" id="psTicker"><span id="psTickerText">Hold space for turbo spin</span></div>
+                <div class="ps-ticker" id="psTicker" data-state="idle" role="status" aria-live="polite"><span id="psTickerText">Hold space for turbo spin</span></div>
                 <div class="ps-readouts">
                   <div class="ps-readout"><span>Credit</span><strong class="u-num" id="footerBalance">—</strong></div>
                   <div class="ps-readout"><span>Bet</span><strong class="u-num" id="footerBet">1.00</strong></div>

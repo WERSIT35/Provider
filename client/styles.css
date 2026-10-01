@@ -212,8 +212,7 @@ body::after {
 .header-readout,
 .engine-tag,
 .ritual-module,
-.ritual-toggle,
-.vault-banner {
+.ritual-toggle {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-soft), var(--panel-deep));
   box-shadow: inset 0 1px 0 rgba(255, 245, 221, 0.04), var(--shadow-soft);
@@ -595,7 +594,9 @@ body.public-mode .vault-window {
   height: auto;
   width: 100%;
   display: flex;
-  align-items: center;
+  /* No top bar: the board sits as high as it can. Where it is width-limited
+     (portrait) the spare height goes below it, not above. */
+  align-items: flex-start;
   justify-content: center;
   padding: clamp(2px, 0.5vmin, 8px);
   margin: 0;
@@ -606,9 +607,7 @@ body.public-mode .vault-window {
 }
 
 /* Everything that is not the board holds its natural height. */
-body.public-mode .hud-bar,
-body.public-mode .round-id-bar,
-body.public-mode .hud-message-rail {
+body.public-mode .round-id-bar {
   flex: 0 0 auto;
 }
 
@@ -630,17 +629,9 @@ body.public-mode .reels-stage {
   min-height: 0;
   max-width: 100%;
   max-height: 100%;
-  margin: auto;
-}
-
-/* In player view the multiplier lives in the animated badge over the reels and
-   Balance/Bet live in the persistent bottom footer + the bet stepper, so those
-   HUD columns are redundant — hide them (admin view keeps the full HUD). The
-   top HUD then carries just Win (+ Free Spins / Bonus Total during bonus). */
-body.public-mode #activeMultiplierNode,
-body.public-mode #balanceNode,
-body.public-mode #betNode {
-  display: none;
+  /* Centred across, top-aligned down: with no top bar the board sits as high
+     as it can, and spare height (portrait) falls below it. */
+  margin: 0 auto;
 }
 
 /* NOTE: .altar-core / .vault-shell / .vault-window used to be re-declared here
@@ -675,72 +666,6 @@ body.public-mode .reels-canvas {
    replace ~10 per-breakpoint blocks that each hard-coded px heights and often
    disagreed with each other. Nothing here is a raw pixel dimension, so the
    whole stack reflows proportionally instead of stepping at breakpoints. */
-
-/* ZERO-REFLOW HUD BAR.
-   Entering the bonus un-hides three more nodes (Bonus Total / Free Spins /
-   Multiplier), taking the bar from 3 columns to 6. `grid-auto-flow: column`
-   already keeps that to ONE row — but on a narrow phone six columns are too
-   tight for labels like "BONUS TOTAL", so the label WRAPPED to a second line
-   inside its node and the bar grew ~16px anyway. The board is centered in the
-   space below, so it jumped 8px down on bonus entry and 8px back up on exit.
-
-   The row height is therefore pinned to the scale tokens and the node contents
-   are single-line and clipped. Three nodes or six, the bar is the same height. */
-body.public-mode .hud-bar {
-  padding: 0 clamp(6px, 2vw, 16px);
-  gap: clamp(4px, 1.4vw, 10px);
-  border-radius: var(--radius);
-  height: var(--hud-h);
-  min-height: var(--hud-h);
-  max-height: var(--hud-h);
-  align-items: center;
-  overflow: hidden;
-}
-body.public-mode .hud-node {
-  min-width: 0;
-  justify-content: center;
-  gap: 0;
-}
-body.public-mode .hud-node span,
-body.public-mode .hud-node strong {
-  max-width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-body.public-mode .hud-node span {
-  font-size: calc(0.68 * var(--ui));
-  /* The labels are the part that ran out of room first. Tighten the tracking as
-     the bar gets busier rather than letting them wrap or ellipsize away. */
-  letter-spacing: 0.08em;
-  line-height: 1.25;
-}
-body.public-mode .hud-node strong {
-  font-size: calc(1.05 * var(--ui));
-  line-height: 1.2;
-}
-
-/* ZERO-REFLOW MESSAGE RAIL.
-   The rail reserved only 8-20px while the banner inside it is ~18-24px tall and
-   was a normal in-flow child, so every pulseBanner() grew the rail by a handful
-   of pixels and every expiry shrank it back. .vault-window is the flex row that
-   absorbs that delta, so the BOARD resized twice per message — and in the bonus
-   a banner fires on every single free spin ("Auto Free Spin..."), which is why
-   the jump reads as a bonus-only bug. Worse, each resize tripped the renderer's
-   ResizeObserver, which used to clear and re-rasterize every symbol sprite
-   mid-animation (the "assets reloading during play" hitch, #26).
-
-   So: the rail holds a FIXED height from the scale token, and the banner is
-   taken out of flow inside it. Showing or hiding a message now cannot change
-   any layout box, in the base game or the bonus. */
-body.public-mode .hud-message-rail {
-  position: relative;
-  flex: 0 0 var(--rail);
-  height: var(--rail);
-  min-height: var(--rail);
-  max-height: var(--rail);
-  overflow: visible;
-}
 /* Same zero-reflow contract for the Round ID strip. It is written fresh after
    EVERY resolved round (platform mode), and its base styling is `flex-wrap:
    wrap` + `word-break: break-all` — so a round ref one character too long for
@@ -774,23 +699,6 @@ body.public-mode .round-id-copied {
 }
 body.public-mode .round-id-copy {
   padding: calc(2 * var(--ui) / 16) calc(7 * var(--ui) / 16);
-}
-
-body.public-mode .vault-banner {
-  position: absolute;
-  /* Centered with `inset: 0` + auto margins on a fit-content box, NOT with a
-     translate(-50%,-50%). The `bannerMsgIn` entry animation owns `transform`,
-     so any centering that also lived there would be wiped for the 0.28s the
-     animation runs and the banner would visibly slide out of place. */
-  inset: 0;
-  width: fit-content;
-  height: fit-content;
-  margin: auto;
-  /* Scaled off --ui so the banner always fits inside the reserved rail rather
-     than dictating it. Kept in sync with the --rail clamp above. */
-  font-size: calc(0.62 * var(--ui));
-  padding: calc(3 * var(--ui) / 16) calc(12 * var(--ui) / 16);
-  max-width: 100%;
 }
 /* Tap targets. The floor was 26px, which is well under the ~44px that touch
    guidance (and #25's "buttons remain accessible and not too small on mobile")
@@ -839,9 +747,6 @@ body.public-mode .tool-btn .tool-label { font-size: calc(0.68 * var(--ui)); }
 /* Landscape on short viewports: the header is the first thing to go, since the
    board is height-bound and every vertical pixel is board size. */
 @media (orientation: landscape) and (max-height: 560px) {
-  body.public-mode .hud-message-rail {
-    display: none;
-  }
   /* Every vertical pixel here is board size, and this orientation has the
      OPPOSITE problem to portrait: the 6/5 board is height-bound, so it
      pillarboxes and leaves a wide empty band down each side while stacked
@@ -1236,6 +1141,48 @@ body.public-mode .ps-deck-status {
   text-transform: uppercase;
   color: var(--text-muted);
 }
+/* Ticker states (see the ticker in main.js). The box never changes size:
+   it fills its deck track (align-self: stretch) and centres its one line, so
+   only the colour, weight and size of that clipped line change. */
+.ps-ticker {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-ticker > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.ps-ticker[data-state="spin"] { color: var(--text-hud); }
+.ps-ticker[data-state="win"] {
+  color: var(--win-gold);
+  font-weight: 800;
+  font-size: calc(0.8 * var(--ui, 14px));
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 12px rgba(242, 193, 78, 0.45), 0 0 2px var(--accent-laser-hot);
+}
+.ps-ticker[data-state="flash-info"] { color: var(--text-hud); }
+.ps-ticker[data-state="flash-bonus"] { color: var(--accent-laser-hot); font-weight: 700; }
+.ps-ticker[data-state="flash-win"] { color: var(--win-gold-bright); font-weight: 700; }
+/* Multiplier souls landing (flyMultiplierSouls): light, never movement. */
+.ps-ticker.soul-hit,
+.bonus-multi-badge.soul-hit {
+  animation: soulGlow 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+@keyframes soulGlow {
+  0%   { filter: none; }
+  30%  { filter: brightness(1.7) drop-shadow(0 0 10px var(--soul-glow, rgba(255, 226, 138, 0.55))); }
+  100% { filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ps-ticker.soul-hit, .bonus-multi-badge.soul-hit { animation: none; }
+}
+
 .ps-readouts {
   display: flex;
   justify-content: center;
@@ -1465,8 +1412,14 @@ body.public-mode .ps-bet-display { display: none; }
     --deck-h: clamp(46px, 13vh, 60px);
     --feat-h: clamp(36px, 13vh, 56px);
   }
-  body.public-mode .ps-ticker { display: none; }
-  body.public-mode .ps-deck-status { grid-template-rows: minmax(0, 1fr); }
+  /* The ticker is the only message line (wins included), so it stays: it
+     shares the one deck row with the readouts instead of taking its own. */
+  body.public-mode .ps-deck-status {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: clamp(10px, 2vw, 20px);
+  }
+  body.public-mode .ps-ticker { justify-content: flex-end; }
 }
 
 /* ── Admin view: same markup, plain stacked layout, no art slots ── */
@@ -1657,67 +1610,6 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
 /* Spin is centered by the deck's 3-column "1fr auto 1fr" layout — the auto
    middle is Spin, with deck-left (bet+ante) and deck-right (buy) flanking
    it at equal weight. */
-
-/* HUD bar above the reels — Balance / Bet / Win / Free Spins / Multiplier
-   in a compact, glassy strip that mimics production-slot top HUDs. */
-.hud-bar {
-  /* Auto-flow columns so every VISIBLE node is one column in a single row.
-     Base game shows 3 nodes (3 columns); bonus reveals up to 6 (6 columns).
-     This keeps the bar exactly one row tall in both states — previously a
-     fixed 5-column grid wrapped the 6th bonus node onto a 2nd row, which in
-     player view stole height from the reels and shifted/shrank the game. */
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(170, 210, 255, 0.18);
-  background: linear-gradient(180deg, rgba(20, 28, 50, 0.74), rgba(8, 12, 24, 0.86));
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
-}
-
-.hud-node {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-}
-
-.hud-node span {
-  font: 700 0.62rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #8aa0c2;
-}
-
-.hud-node strong {
-  font: 800 1.1rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  font-variant-numeric: tabular-nums;
-  color: #f4f7ff;
-  letter-spacing: 0.01em;
-}
-
-.hud-node-multi strong {
-  color: #ffe28a;
-  text-shadow: 0 0 12px rgba(255, 226, 138, 0.45);
-}
-
-.hud-node-bonus strong {
-  color: #ffd86f;
-  text-shadow: 0 0 12px rgba(255, 216, 111, 0.5);
-}
-
-.hud-node-spins strong {
-  color: #9be7ff;
-  text-shadow: 0 0 10px rgba(155, 231, 255, 0.4);
-}
-
-.hud-node.hidden {
-  display: none;
-}
 
 /* Round-ID badge — only shown when a server-authoritative round_ref is known
    (platform mode). Players hand this ID to support to look up the exact spin. */
@@ -1975,14 +1867,6 @@ body.crazy-mode-on .vault-window {
 @keyframes winChipFly {
   0% { transform: translate(-50%, -75%) scale(1.0); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--to-x)), calc(-75% + var(--to-y))) scale(0.55); opacity: 0; }
-}
-@keyframes winMeterPulse {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.08); filter: drop-shadow(0 0 6px rgba(255, 230, 130, 0.5)); }
-  100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255, 230, 130, 0)); }
-}
-.win-meter-pulse > strong, .win-meter-pulse strong#lastWin {
-  animation: winMeterPulse 360ms ease-out;
 }
 
 .test-multi-head {
@@ -2273,42 +2157,6 @@ body.crazy-mode-on .vault-window {
   gap: 10px;
 }
 
-/* Status message rail — a slim, fixed-height strip ABOVE the reels. Reserving
-   its height means messages fade in/out without ever shifting the layout or
-   overlapping the game board (the banner previously floated absolutely over
-   the canvas, covering the top symbols). */
-.hud-message-rail {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 30px;
-  pointer-events: none;
-}
-
-.vault-banner {
-  max-width: min(440px, 100%);
-  border-radius: 999px;
-  padding: 5px 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #f4f7ff;
-  font: 800 0.72rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: linear-gradient(180deg, rgba(20, 30, 54, 0.85), rgba(8, 14, 30, 0.92));
-  border: 1px solid rgba(165, 203, 255, 0.22);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px) saturate(140%);
-  -webkit-backdrop-filter: blur(8px) saturate(140%);
-}
-
 .spin-log-list li.log-event {
   border-left: 2px solid rgba(255, 220, 173, 0.45);
   padding-left: 8px;
@@ -2326,40 +2174,6 @@ body.crazy-mode-on .vault-window {
   color: #ffb1b1;
 }
 
-.vault-banner.live-banner {
-  animation: bannerMsgIn 0.28s ease-out;
-}
-
-@keyframes bannerMsgIn {
-  0% { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.vault-banner.banner-info {
-  color: #cfe1ff;
-  border-color: rgba(170, 210, 255, 0.32);
-}
-
-.vault-banner.banner-win {
-  color: #fff;
-  background: linear-gradient(180deg, rgba(58, 40, 18, 0.92), rgba(24, 14, 6, 0.96));
-  border-color: rgba(255, 209, 102, 0.55);
-  text-shadow: 0 0 14px rgba(255, 209, 102, 0.55);
-  box-shadow:
-    0 6px 28px rgba(255, 170, 60, 0.18),
-    inset 0 1px 0 rgba(255, 220, 150, 0.18);
-}
-
-.vault-banner.banner-bonus {
-  color: #f3ffe8;
-  background: linear-gradient(180deg, rgba(28, 56, 32, 0.92), rgba(10, 24, 14, 0.96));
-  border-color: rgba(141, 233, 163, 0.55);
-  text-shadow: 0 0 14px rgba(141, 233, 163, 0.55);
-  box-shadow:
-    0 6px 28px rgba(80, 200, 110, 0.18),
-    inset 0 1px 0 rgba(190, 255, 200, 0.16);
-}
-
 .vault-window {
   position: relative;
   padding: 14px 14px 16px;
@@ -2372,14 +2186,6 @@ body.crazy-mode-on .vault-window {
     linear-gradient(180deg, rgba(18, 11, 10, 0.18), rgba(8, 6, 6, 0.34));
   overflow: hidden;
   min-height: clamp(520px, 70vh, 780px);
-}
-
-.vault-window.event-shake {
-  animation: vaultShake 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.vault-window.event-shake-strong {
-  animation: vaultShakeStrong 0.46s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .vault-aura {
@@ -2883,25 +2689,12 @@ pre {
     font-size: 1.5rem;
   }
 
-  /* Admin dev view only. In player view the banner is centered in the reserved
-     message rail via `inset: 0; margin: auto` — a px `top` and a stretched
-     width would knock it off that centering (the same trap that once floated
-     the multiplier badge ~100px above the grid). */
-  body:not(.public-mode) .vault-banner {
-    top: 8px;
-    width: calc(100% - 16px);
-  }
-
 }
 
 /* Reduced motion: players who ask the OS to minimise motion get a calm board —
    no shake, no aura pulses, no spinning glints. Canvas particle FX are thinned
    separately in main.js (fxScale + reduced-motion gates). */
 @media (prefers-reduced-motion: reduce) {
-  .vault-window.event-shake,
-  .vault-window.event-shake-strong {
-    animation: none !important;
-  }
   .vault-aura {
     animation: none !important;
   }
@@ -3105,24 +2898,6 @@ pre {
   }
 }
 
-@keyframes vaultShake {
-  0%, 100% { transform: translate(0, 0); }
-  20% { transform: translate(-2px, 0); }
-  40% { transform: translate(2px, 0); }
-  60% { transform: translate(-1px, 0); }
-  80% { transform: translate(1px, 0); }
-}
-
-@keyframes vaultShakeStrong {
-  0%, 100% { transform: translate(0, 0); }
-  15% { transform: translate(-4px, -1px); }
-  30% { transform: translate(4px, 1px); }
-  45% { transform: translate(-3px, 1px); }
-  60% { transform: translate(3px, -1px); }
-  75% { transform: translate(-2px, 0); }
-  90% { transform: translate(1px, 0); }
-}
-
 body {
   font-family: var(--font-ui);
   /* Clean, static temple backdrop: the image is shown FULLY and clearly — no dark
@@ -3247,8 +3022,7 @@ body::after {
 .header-readout,
 .engine-tag,
 .ritual-module,
-.ritual-toggle,
-.vault-banner {
+.ritual-toggle {
   border-radius: 14px;
   border-color: rgba(165, 203, 255, 0.24);
   background: linear-gradient(180deg, rgba(22, 33, 58, 0.5), rgba(10, 17, 34, 0.54));
@@ -3362,13 +3136,6 @@ body.admin-mode .sim-grid > div {
 body.admin-mode .summary-grid strong,
 body.admin-mode .sim-grid strong {
   font-size: 1.02rem;
-}
-/* Give the dashboard HUD strip more presence than the slim player HUD. */
-body.admin-mode .hud-bar {
-  padding: 12px 18px;
-}
-body.admin-mode .hud-node strong {
-  font-size: 1.22rem;
 }
 
 /* Win-combine finale: fly raw win + multiplier together → BANG → total. */
@@ -3638,18 +3405,15 @@ body.admin-mode .hud-node strong {
   100% { opacity: 0; transform: translate(-50%, -42px) scale(1); }
 }
 
-.meter-node-multi,
-.hud-node-multi {
+.meter-node-multi {
   transition: transform 0.18s ease;
 }
 
-.meter-node-multi.soul-hit,
-.hud-node-multi.soul-hit {
+.meter-node-multi.soul-hit {
   animation: soulHit 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
-.meter-node-multi.soul-hit strong,
-.hud-node-multi.soul-hit strong {
+.meter-node-multi.soul-hit strong {
   animation: soulHitText 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
