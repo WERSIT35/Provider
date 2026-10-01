@@ -316,6 +316,27 @@ const DROP_PHYSICS = {
   out: { v0: 0.6, vMax: Infinity, windup: 0.1, windupLift: 0.06 }
 };
 
+// Reel anticipation (Step 5b). When the columns that have already landed show
+// one scatter short of the trigger, every later column waits (holdMs each,
+// stacking left to right) and falls slower (slowFall ×). Turbo-scaled; a
+// fast-stop cancels it.
+const ANTICIPATION = { holdMs: 650, slowFall: 1.6 };
+
+// Pure function of the board: columns land left to right, so scan them in that
+// order and find the first column after which the scatters on screen are one
+// short of the trigger. Never reads payload.near_miss (Option B suppression is
+// applied by the caller).
+function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
+  const cols = matrix?.[0]?.length || 0;
+  let seen = 0;
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < matrix.length; r++) if (matrix[r]?.[c] === scatter) seen++;
+    if (seen >= triggerCount) return null;                 // already triggered: nothing to tease
+    if (seen === triggerCount - 1 && c < cols - 1) return { fromCol: c + 1 };
+  }
+  return null;
+}
+
 // Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
 // Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
 const MOTION = {
@@ -685,7 +706,9 @@ class ReelCanvasRenderer {
       lightning: [],
       landDust: [],
       cluster: null,
-      sweeps: []
+      sweeps: [],
+      reticles: [],   // 5a: scatter landing reticles
+      lockOn: null    // 5c/5d: trigger lock-on
     };
     this.multiplierDecoyById = new Map();
     this.particles = [];
@@ -1201,6 +1224,12 @@ class ReelCanvasRenderer {
       this.cancelColumnStops();
       this._queueColumnStop(0, 0, 3);
     }
+    // Scatters still in the air land now; anticipation ends with the skip.
+    this.flushScatterLandings();
+    if (this.fx.drop?.antic) {
+      this.fx.drop.antic = null;
+      this.onAnticipation?.("end");
+    }
     // Speed the current drop(s) up to a smooth quick landing (no teleport).
     // Straight to the resolved board: the drop completes on the next frame.
     this._accelerateDrop(this.fx.drop, FAST_STOP_DROP_MS);
@@ -1547,7 +1576,14 @@ class ReelCanvasRenderer {
       ? this.board.matrix.map((row) => (Array.isArray(row) ? row.slice() : []))
       : [];
     this.setBoard(matrix, { multipliers });
-    this.fx.drop = { start: performance.now(), duration: dropDuration, map: dropMap, heavy: heavyCells };
+    this.fx.drop = {
+      start: performance.now(),
+      duration: dropDuration,
+      map: dropMap,
+      heavy: heavyCells,
+      antic: this.makeAnticipation(options.anticipation),
+      need: Number(options.scatterTarget) || 0
+    };
     this.scheduleColumnStops(dropMap, dropDuration);
     if (peakTier && heavyKeyMatchesDropMap) {
       this.fx.heavyDrop = {
@@ -1578,7 +1614,7 @@ class ReelCanvasRenderer {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
-      const land = this.dropDelay(r, c, count) + dropDuration;
+      const land = this.dropDelay(r, c, count) + this.colDropMs(c);
       // Mark this cell concealed; render skips its icon until revealAt.
       // Show a real symbol as decoy during fall (picked once per cell and
       // kept stable for the full drop), then reveal multiplier on landing.
@@ -1612,7 +1648,7 @@ class ReelCanvasRenderer {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
-      const land = this.dropDelay(r, c, count) + dropDuration;
+      const land = this.dropDelay(r, c, count) + this.colDropMs(c);
       // Tier-scaled reveal pop — common is quick, escalates with rank.
       const revealDuration = info.tier.key === "mythic" ? 320
         : info.tier.key === "legendary" ? 300
@@ -1652,7 +1688,7 @@ class ReelCanvasRenderer {
         const [r, c] = key.split("-").map(Number);
         if (!Number.isFinite(r) || !Number.isFinite(c)) return;
         if (heavyCells.has(key) || lightOnlyCells.has(key)) return;
-        const land = this.dropDelay(r, c, n) + dropDuration;
+        const land = this.dropDelay(r, c, n) + this.colDropMs(c);
         setTimeout(() => this.spawnLandingDust(r, c, 0.7), land);
       });
     }
@@ -1662,7 +1698,7 @@ class ReelCanvasRenderer {
     // dropDuration / maxDelay are already turbo-adjusted — wait the REAL time so
     // the fall fully lands before the board commits (animationSleep would double-
     // scale in turbo and commit mid-fall → symbols vanish half-way down).
-    await this._dropSettle(dropDuration + maxDelay + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
+    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap)) + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
     this.fx.drop = null;
     this.fx.heavyDrop = null;
     if (window.__renderDebug) {
@@ -1941,7 +1977,10 @@ class ReelCanvasRenderer {
       (this.fx.jackpotFlash && now < this.fx.jackpotFlash.start + this.fx.jackpotFlash.duration + 120) ||
       (this.fx.charge && now < this.fx.charge.start + this.fx.charge.duration + 120) ||
       (this.fx.spotlight && now < this.fx.spotlight.start + this.fx.spotlight.duration + 120) ||
-      (this.fx.heavyDrop && now < this.fx.heavyDrop.start + this.fx.heavyDrop.duration + 140);
+      (this.fx.heavyDrop && now < this.fx.heavyDrop.start + this.fx.heavyDrop.duration + 140) ||
+      (this.fx.drop?.antic && now < this.fx.drop.antic.endAt + 260) ||
+      Boolean(this.fx.lockOn) ||
+      this.fx.reticles.length > 0;
     return Boolean(
       timedFxActive ||
       this.fx.heavyReveals.size ||
@@ -2068,7 +2107,7 @@ class ReelCanvasRenderer {
     const exitDistance = count * rowStep * 1.15;
     if (drop.exit && elapsed < 0) return 0;
     if (elapsed < 0) return -distance;
-    const progress = clamp(elapsed / drop.duration, 0, 1);
+    const progress = clamp(elapsed / this.colDropMs(col, drop), 0, 1);
     if (drop.exit) {
       // Drop-out (#22): one crisp mechanical tick UP over the first `w` of the
       // exit, then the fall starts immediately from that apex at speed
@@ -2128,7 +2167,7 @@ class ReelCanvasRenderer {
     if (!drop || drop.exit) return out;
     const count = Number(drop.map?.[`${row}-${col}`] || 0);
     if (count <= 0) return out;
-    const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / drop.duration;
+    const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / this.colDropMs(col, drop);
     if (progress <= 0 || progress >= 1) return out;
     const p = DROP_PHYSICS.in;
     if (progress < p.fallEnd) {
@@ -2167,19 +2206,34 @@ class ReelCanvasRenderer {
    *  board lands at once, so it gets one thud instead of a stack of them. */
   scheduleColumnStops(dropMap, duration) {
     this.cancelColumnStops();
+    const drop = this.fx.drop;
     const landAt = new Map(); // col → ms from now
+    const scatterLands = [];  // { row, col, t }
     for (const [key, count] of Object.entries(dropMap || {})) {
       const n = Number(count || 0);
       if (n <= 0) continue;
       const [row, col] = key.split("-").map(Number);
       if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
-      const t = this.dropDelay(row, col, n) + duration * DROP_PHYSICS.in.fallEnd;
+      const t = this.dropDelay(row, col, n) + this.colDropMs(col) * DROP_PHYSICS.in.fallEnd;
       landAt.set(col, Math.max(landAt.get(col) || 0, t));
+      if (this.board.matrix?.[row]?.[col] === "SCATTER") scatterLands.push({ row, col, t });
     }
     if (!landAt.size) return;
     const last = Math.max(...landAt.values());
     // A full board landing hits harder than a few refilled cells.
     const thumpPx = landAt.size >= this.cols ? 3 : 2;
+    this.scheduleScatterLandings(dropMap, scatterLands);
+    const a = drop?.antic;
+    if (a) {
+      // Tension runs from the moment the column before the anticipated ones
+      // lands (the board is visibly one short) until the last column lands.
+      const startMs = landAt.get(a.fromCol - 1) ?? 0;
+      a.startAt = drop.start + startMs;
+      a.endAt = drop.start + last;
+      a.landAt = new Map([...landAt].map(([c, t]) => [c, drop.start + t]));
+      this._queueTimer(startMs, () => this.onAnticipation?.("start", last - startMs));
+      this._queueTimer(last, () => this.onAnticipation?.("end"));
+    }
     if (state.fastStopRequested) {
       this._queueColumnStop(0, last, thumpPx);
       return;
@@ -2202,6 +2256,170 @@ class ReelCanvasRenderer {
       ],
       { duration: 140, easing: "ease-out" }
     );
+  }
+
+  /** A timer owned by the current drop: cancelColumnStops() clears it. */
+  _queueTimer(ms, fn) {
+    if (!this._columnStops) this._columnStops = new Set();
+    const id = setTimeout(() => {
+      this._columnStops.delete(id);
+      fn();
+    }, Math.max(0, Math.round(ms)));
+    this._columnStops.add(id);
+  }
+
+  /** 5a: a laser reticle and an ascending ping as each scatter lands, counted
+   *  together with the scatters already resting on the board. */
+  scheduleScatterLandings(dropMap, lands) {
+    const need = this.fx.drop?.need || 0;
+    this._pendingScatters = null;
+    if (!lands.length || !need) return;
+    let resting = 0;
+    (this.board.matrix || []).forEach((rowArr, r) => (rowArr || []).forEach((sym, c) => {
+      if (sym === "SCATTER" && !(Number(dropMap?.[`${r}-${c}`] || 0) > 0)) resting += 1;
+    }));
+    lands.sort((x, y) => x.t - y.t);
+    this._pendingScatters = { need, resting, landed: 0, cells: lands.slice() };
+    if (state.fastStopRequested) {
+      this.flushScatterLandings();
+      return;
+    }
+    lands.forEach((s) => this._queueTimer(s.t, () => this._landScatter(s)));
+  }
+
+  _landScatter(s) {
+    const p = this._pendingScatters;
+    const i = p ? p.cells.indexOf(s) : -1;
+    if (i < 0) return;
+    p.cells.splice(i, 1);
+    p.landed += 1;
+    this.spawnReticle(s.row, s.col);
+    this._announceScatters();
+  }
+
+  /** Fast-stop: every scatter still in the air lands now: one ping, final count. */
+  flushScatterLandings() {
+    const p = this._pendingScatters;
+    if (!p || !p.cells.length) return;
+    p.cells.forEach((s) => this.spawnReticle(s.row, s.col));
+    p.landed += p.cells.length;
+    p.cells = [];
+    this._announceScatters();
+  }
+
+  _announceScatters() {
+    const p = this._pendingScatters;
+    const n = p.resting + p.landed;
+    // win_tick's pitch rises with `progress`, so 1st, 2nd, 3rd… climb.
+    window.Sound?.play("win_tick", { progress: Math.min(1, n / p.need) });
+    this.onScatterCount?.(n, p.need);
+  }
+
+  spawnReticle(row, col) {
+    const c = this.cellCenter(row, col);
+    this.fx.reticles.push({ x: c.x, y: c.y, born: performance.now(), life: 900 });
+  }
+
+  /** 5c/5d: wide reticles converge on every scatter, then pulse locked. */
+  async lockOn(cells, duration = 760) {
+    if (!cells?.length) return;
+    this.fx.lockOn = {
+      start: performance.now(),
+      duration: Math.round(duration * turboScale()),
+      cells: cells.map((p) => this.cellCenter(p.row, p.col))
+    };
+    await animationSleep(duration);
+    this.fx.lockOn = null;
+  }
+
+  /** Canvas layer for 5a reticles and the 5c/5d lock-on (over the symbols). */
+  drawScatterLocks(ctx, radius) {
+    const now = performance.now();
+    const spinOk = !this._reducedMotion;
+    const reticle = (x, y, r, spin, alpha, width) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin);
+      ctx.globalAlpha = clamp(alpha, 0, 1);
+      ctx.strokeStyle = THEME.color.laserHot;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      for (let k = 0; k < 4; k += 1) {
+        const a0 = (k * Math.PI) / 2 + 0.28;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, a0, a0 + Math.PI / 2 - 0.56);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      for (let k = 0; k < 4; k += 1) {
+        const a = (k * Math.PI) / 2;
+        ctx.moveTo(Math.cos(a) * r * 1.14, Math.sin(a) * r * 1.14);
+        ctx.lineTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    // 5a: snaps in from slightly wide, holds, fades.
+    this.fx.reticles = this.fx.reticles.filter((q) => now - q.born < q.life);
+    for (const q of this.fx.reticles) {
+      const t = (now - q.born) / q.life;
+      const r = radius * (1.25 - 0.35 * easeOutCubic(Math.min(1, t * 2.5)));
+      const alpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      reticle(q.x, q.y, r, spinOk ? t * 1.2 : 0, alpha, Math.max(1.5, radius * 0.06));
+    }
+    // 5c/5d: laser sights sweep in along the row and column of each scatter
+    // while wide reticles converge on it, then the locks pulse.
+    const L = this.fx.lockOn;
+    if (!L) return;
+    const t = clamp((now - L.start) / L.duration, 0, 1);
+    const conv = easeOutCubic(Math.min(1, t / 0.7));
+    const pulse = t > 0.7 ? 0.6 + 0.4 * Math.sin((t - 0.7) * Math.PI * 8) : 1;
+    const { inX, inY, inW, inH } = this.getTableRect();
+    for (const p of L.cells) {
+      if (conv < 1) {
+        ctx.save();
+        ctx.globalAlpha = (1 - conv) * 0.7;
+        ctx.strokeStyle = THEME.color.laser;
+        ctx.lineWidth = Math.max(1, radius * 0.03);
+        ctx.beginPath();
+        ctx.moveTo(inX, p.y); ctx.lineTo(inX + inW, p.y);
+        ctx.moveTo(p.x, inY); ctx.lineTo(p.x, inY + inH);
+        ctx.stroke();
+        ctx.restore();
+      }
+      reticle(p.x, p.y, radius * (2.6 - 1.75 * conv), spinOk ? (1 - conv) * Math.PI : 0,
+        (0.35 + 0.65 * conv) * pulse, Math.max(2, radius * 0.08));
+    }
+  }
+
+  /** 5b: the anticipated lanes glow security-laser red while they wait and
+   *  fall, building with the wait; each lane releases as its column lands. */
+  drawAnticipationLanes(ctx, a, layout) {
+    const now = performance.now();
+    if (!a.landAt || now < a.startAt) return;
+    const { padX, top, laneW, rowStep } = layout;
+    const h = rowStep * this.rows;
+    const build = clamp((now - a.startAt) / Math.max(1, a.endAt - a.startAt), 0, 1);
+    for (let c = a.fromCol; c < this.cols; c += 1) {
+      const land = a.landAt.get(c);
+      if (land == null) continue;
+      const fade = now < land ? 1 : 1 - clamp((now - land) / 220, 0, 1);
+      if (fade <= 0) continue;
+      const x = padX + laneW * c;
+      const strength = (0.35 + 0.45 * build) * fade;
+      const g = ctx.createLinearGradient(x, 0, x + laneW, 0);
+      g.addColorStop(0, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
+      g.addColorStop(0.18, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
+      g.addColorStop(0.82, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
+      g.addColorStop(1, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
+      ctx.fillStyle = g;
+      ctx.fillRect(x, top, laneW, h);
+      if (!this._reducedMotion && now < land) {
+        const sy = top + ((now * 0.55 + c * 90) % h);
+        ctx.fillStyle = THEME.alpha(THEME.color.laserHot, (0.5 * strength).toFixed(3));
+        ctx.fillRect(x + 2, sy, laneW - 4, 2);
+      }
+    }
   }
 
   _queueColumnStop(col, ms, thumpPx = 0) {
@@ -2230,7 +2448,45 @@ class ReelCanvasRenderer {
     // small per-row stagger keeps a column reading as falling symbols, and
     // symbols that fall farther wait a touch longer. Scaled by turbo.
     const raw = col * WATERFALL.colMs + row * WATERFALL.rowMs + Math.max(0, count - 1) * WATERFALL.perCellMs;
-    return Math.max(0, Math.round(raw * turboScale()));
+    // Anticipated columns (5b) wait an extra beat each, stacking left to right.
+    const a = this.fx.drop?.antic;
+    const hold = a && col >= a.fromCol ? a.holdMs * (col - a.fromCol + 1) : 0;
+    return Math.max(0, Math.round(raw * turboScale()) + hold);
+  }
+
+  /** Fall duration of one column of the current drop. Anticipated columns
+   *  fall slower. Every drop timing (landing, sound, reveals, dust, settle)
+   *  goes through this, so they cannot disagree. */
+  colDropMs(col, drop = this.fx.drop) {
+    if (!drop) return 0;
+    const a = drop.antic;
+    return a && col >= a.fromCol ? drop.duration * a.slow : drop.duration;
+  }
+
+  /** When the last cell of the current drop has fully landed, ms from start. */
+  dropEndMs(dropMap) {
+    let end = 0;
+    for (const [key, count] of Object.entries(dropMap || {})) {
+      const n = Number(count || 0);
+      if (n <= 0) continue;
+      const [r, c] = key.split("-").map(Number);
+      if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+      end = Math.max(end, this.dropDelay(r, c, n) + this.colDropMs(c));
+    }
+    return end;
+  }
+
+  /** Anticipation state for a new drop, or null. Never on a fast-stop. */
+  makeAnticipation(a) {
+    if (!a || !(a.fromCol > 0) || a.fromCol >= this.cols || state.fastStopRequested) return null;
+    return {
+      fromCol: a.fromCol,
+      holdMs: Math.round(ANTICIPATION.holdMs * turboScale()),
+      slow: ANTICIPATION.slowFall,
+      startAt: 0,   // absolute ms: set by scheduleColumnStops()
+      endAt: 0,
+      landAt: null
+    };
   }
 
   computeWinningBBox(winning) {
@@ -2719,6 +2975,9 @@ class ReelCanvasRenderer {
       ctx.globalAlpha = 1;
     }
 
+    // 5b: anticipation lanes, behind the symbols.
+    if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
+
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
         if (this.board.hidden) continue;
@@ -2960,6 +3219,9 @@ class ReelCanvasRenderer {
         ctx.globalAlpha = 1;
       }
     }
+
+    // 5a/5c/5d: scatter reticles and the trigger lock-on, over the symbols.
+    if (this.fx.reticles.length || this.fx.lockOn) this.drawScatterLocks(ctx, radius);
 
     // Radial light rays from explosion centers — fast-growing, fading streaks
     // that telegraph an audible "crack" on the upcoming sound layer.
@@ -4184,9 +4446,20 @@ function scatterPositionsFromPayload(payload = {}) {
   return positions;
 }
 
+// Scatters needed for this round's feature: the base trigger, or the free-spin
+// retrigger. From the rules file, so it cannot drift from the math.
+function scatterTargetFor(payload) {
+  const fs = state.rules?.features?.free_spins || {};
+  return payload?.is_free_spin
+    ? Number(fs.retrigger_scatter_count) || 3
+    : Number(fs.base_trigger_scatter_count) || 4;
+}
+
 async function celebrateScatterCatch(payload, label = "Bonus Catch") {
   const scatters = scatterPositionsFromPayload(payload);
   if (!scatters.length) return;
+  // 5c/5d: lock on before the feature reveal.
+  await reelRenderer.lockOn(scatters, 760);
   const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
@@ -4577,7 +4850,19 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // player never sees a multiplier appear silently.
   // Landing thuds are per column now, scheduled by the renderer's drop in
   // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
-  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
+  // Step 5: scatter feedback + reel anticipation for this round's opening board.
+  const scatterTarget = scatterTargetFor(payload);
+  // Option B: a board the engine ENGINEERED to be one scatter short
+  // (near_miss.pattern "scatter_one_short") gets no anticipation slowdown — the
+  // client must not dramatise a fabricated tease. Its scatters still ping and
+  // count, because that part only reports what is actually on the board.
+  const engineeredTease = payload.near_miss?.pattern === "scatter_one_short";
+  const anticipation = engineeredTease ? null : findAnticipation(steps[0].matrix, scatterTarget);
+  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], {
+    animateMultipliers: true,
+    scatterTarget,
+    anticipation
+  });
   // Note: multiplier drop sounds are fired by the renderer at each multiplier's
   // BANG moment (spawnHeavyImpact) so they stay perfectly in sync with the
   // visual landing — see ReelCanvasRenderer.spawnHeavyImpact.
@@ -4640,7 +4925,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           step.multipliers || [],
           dropMap,
           ANIMATION_TIMING.tumbleDrop, // turbo scaling applied inside drop()
-          { animateMultipliers: true }
+          { animateMultipliers: true, scatterTarget }
         );
         await Promise.all([chipPromise, celebratePromise]);
       } else if (prevWinning.length === 0 && Array.isArray(prev?.multipliers) && prev.multipliers.length > 0) {
@@ -5565,9 +5850,74 @@ const ticker = (() => {
     idleIdx = Math.max(0, idleIdx - 1);
     rotate();
   }
-  return { idle, roundStart, roundEnd, refresh };
+  return { idle, roundStart, roundEnd, refresh, say };
 })();
 ticker.idle();
+
+// ── Anticipation drone (Step 5b) ──
+// A rising tension tone while the anticipated reels wait. Its own small Web
+// Audio graph: the shared audio engine lives in client/engine/ (off-limits)
+// and has no drone. It follows the player's mute and volume and stops on
+// skip, at the last landing, and when the tab is hidden.
+const anticipationDrone = (() => {
+  let ctx = null;
+  let nodes = null;
+  function stop() {
+    if (!nodes || !ctx) return;
+    const n = nodes;
+    nodes = null;
+    const t = ctx.currentTime;
+    n.gain.gain.cancelScheduledValues(t);
+    n.gain.gain.setTargetAtTime(0, t, 0.05);
+    setTimeout(() => n.oscs.forEach((o) => { try { o.stop(); } catch (_) { /* already stopped */ } }), 300);
+  }
+  function start(ms) {
+    stop();
+    if (!window.Sound || window.Sound.isMuted() || window.Sound.isSuspended?.()) return;
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    try { ctx = ctx || new Ctor(); } catch (_) { return; }
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const t = ctx.currentTime;
+    const dur = Math.max(0.3, ms / 1000);
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 6;
+    filter.frequency.setValueAtTime(220, t);
+    filter.frequency.exponentialRampToValueAtTime(2400, t + dur);
+    const gain = ctx.createGain();
+    const vol = 0.16 * (window.Sound.getVolume?.() ?? 0.8);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + Math.min(0.25, dur / 2));
+    const oscs = [0, 9].map((detune) => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(55, t);
+      o.frequency.exponentialRampToValueAtTime(110, t + dur);
+      o.detune.value = detune;
+      o.connect(filter);
+      o.start(t);
+      return o;
+    });
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    nodes = { gain, oscs };
+    // Never outlive the anticipation it scores.
+    const mine = nodes;
+    setTimeout(() => { if (nodes === mine) stop(); }, ms + 400);
+  }
+  window.Sound?.onChange?.(() => { if (window.Sound.isMuted()) stop(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
+  return { start, stop, isPlaying: () => Boolean(nodes) };
+})();
+
+// Step 5 hooks: the renderer reports scatter counts and anticipation; the HUD
+// readout (pinned-height ticker line) and the drone react.
+reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
+reelRenderer.onAnticipation = (phase, ms) => {
+  if (phase === "start") anticipationDrone.start(ms);
+  else anticipationDrone.stop();
+};
 
 // ── Spin input: tap vs hold ──
 // Tap (< SPIN_HOLD_MS) = one spin, on release. Hold (≥ SPIN_HOLD_MS) = turbo on
