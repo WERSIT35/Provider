@@ -9,7 +9,8 @@ which is which is the key to working here:
 - a lightweight **MVP server** that serves the browser game and a simple `/api/v1/*`, and
 - a production-shaped **platform** (Fastify + TypeScript) — the real RGS + control plane, with a
   server-to-server operator API, launch-token player sessions, an immutable hash-chained ledger,
-  and two separate admin consoles behind real logins (password + TOTP 2FA).
+  and two separate admin consoles behind real logins (password, plus TOTP 2FA everywhere except
+  local development).
 
 Both consumers — and the browser client — load the **exact same engine files in the exact same
 order**, so their spin results are provably identical ("parity").
@@ -22,6 +23,7 @@ order**, so their spin results are provably identical ("parity").
 - [Repository layout](#repository-layout)
 - [Quick start](#quick-start)
 - [The shared slot engine](#the-shared-slot-engine)
+- [The browser client (Vault 20K UI)](#the-browser-client-vault-20k-ui)
 - [Game rules & math config](#game-rules--math-config)
 - [Backend 1 — the MVP server](#backend-1--the-mvp-server)
 - [Backend 2 — the platform (RGS + control plane)](#backend-2--the-platform-rgs--control-plane)
@@ -138,10 +140,60 @@ ignore.) Three consumers load these exact files in this exact order so results a
 
 **Active game profile (Vault 20K):**
 
-- Layout `5×4`, symbols pay anywhere (minimum **8** matches), **High** volatility, max win cap
-  **20000×** bet.
+- Layout `6×5` (6 reels × 5 rows), symbols pay anywhere (minimum **8** matches), **High**
+  volatility, max win cap **20000×** bet.
+- Display name **Vault 20K** by **Lumina Games**; the internal ids stay `bananax` on purpose
+  (game code, RTP profile keys, storage keys, DB names), so nothing downstream breaks.
 - RTP modes: `bananax` **96.38%**, `bananax_94` **94.40%**, `bananax_92` **92.38%**.
 - Server-authoritative RNG, tumble/cascade flow, free spins + retriggers, multiplier progression.
+
+---
+
+## The browser client (Vault 20K UI)
+
+`client/main.js` is a canvas renderer (`ReelCanvasRenderer`) plus the DOM UI shell. It is a **pure
+function of the engine payload**: it animates what the engine already resolved, never feeds
+anything back, uses `Math.random()` only for visuals, and never touches `SlotEngine.RNG`.
+`client/engine/` is never edited for presentation work.
+
+**Layout.** A CSS named-area grid (`styles.css`, "PLAYER SHELL"): feature buttons on the left,
+the board in the centre, art slots on the right, and the control deck at the bottom. There is
+**no top bar**; the board sits as high as it can. State changes never reflow the board
+(`tools/layout-check.js` enforces this at 9 viewports).
+
+**One message line.** `#psTicker` in the deck is the game's only message surface, driven by a
+small state machine (`ticker` in `main.js`):
+
+- *idle*: tips built from the rules file, rotating every 4.5s;
+- *spin*: "Good luck!", autoplay or free spins left;
+- *win*: a gold **WIN: amount** that cuts in as each payout is credited and holds until the
+  next spin;
+- *flash*: short event notices (multiplier locked, feature bought…), then the current line
+  returns.
+
+The balance / bet / win values live in a never-rendered `.hud-state` holder because many
+writers use them; the deck readouts and the ticker display them.
+
+**Motion system** (all tunables are named constants near the top of `main.js`):
+
+| Constant | What it controls |
+|----------|------------------|
+| `WATERFALL` | Per-symbol release: reels left → right (`colMs` 80), bottom-up inside a reel (`rowMs` 18). Symbols land one by one: a "rat-a-tat". |
+| `FALL_SCALE_MIN` | Each symbol's own fall time scales with √distance (a 1-row refill is quicker than a 5-row one). |
+| `REEL_INERTIA` | Reel groups 1–2 / 3–4 / 5–6: fall time, ease curve, 1–2% contact squash, easeOutBack lock; `inertiaLag()` keeps the landing beat even. |
+| `REEL_MASK` | Symbols in flight are clipped to the grid; new symbols spawn fully above it, so nothing shows over the frame. |
+| `VACUUM` | Before a tumble refill, neighbours lean into the cleared cells for 30ms. |
+| `TUMBLE_MOMENTUM` | Each tumble in a chain falls 15% faster (floored at 50%). |
+| `FAST_ZIP` | Skip/fast-stop: airborne reels zip in left to right within 110ms, then a double click. |
+| `SHATTER` | Win shatter particles on the pooled, time-based `ShardEmitter`. |
+
+House rules: **no screen or board shake, ever** (impact is local light, particles and audio);
+**no upward wind-up** before a spin; 60fps with no GC spikes (pooled particles, cached sprites,
+frame-cadence throttles just below vsync multiples).
+
+**Client tests.** `npm run test:client` runs `tools/spin-lock-test.js` (one spin per press),
+`tools/layout-check.js` (aspect, zero reflow, no top bar, sprite-cache stability at 9 viewports)
+and `tools/spin-e2e.js` (real Chrome over CDP). They need Chrome installed.
 
 ---
 
@@ -205,13 +257,19 @@ separate logins** (not one page toggled by a pasted token):
 `/` redirects to `/provider`. Both consoles share one served shell (`/console/app.css` +
 `/console/app.js`).
 
-**Authentication — username + password + TOTP authenticator (2FA):**
+**Authentication — username + password, plus TOTP authenticator (2FA) outside local dev:**
 
 - Passwords are hashed with **scrypt**; 2FA is **RFC 6238 TOTP** — both hand-rolled on `node:crypto`
   (no external deps): `src/lib/security/password.ts`, `src/lib/security/totp.ts`.
 - Login flow (`src/http/admin-auth.routes.ts`, `/admin/v1/auth/*`): **password → authenticator
   code → session token**. First sign-in forces a password set (operator accounts) + authenticator
   enrollment. The issued bearer token is the same one the Admin API already verifies.
+- **2FA switch — `ADMIN_TOTP_REQUIRED`** (`src/config/env.ts`). Unset, it follows `NODE_ENV`:
+  **off** for `local` / `test` (development: username + password alone gives a session), **on**
+  for `sandbox` / `staging` / `production`. An explicit `true` / `false` always wins, and
+  staging/production refuse to boot with it off. The 2FA code is untouched; turning it back on
+  locally is just `ADMIN_TOTP_REQUIRED=true`. The seed scripts (`dev:seed`,
+  `dev:seed:demo-operator`) also default it off.
 - Accounts live in `src/modules/admin/admin-account.ts` (`admin_accounts` store). A **bootstrap
   provider super-admin** is seeded from `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`;
   provider admins then create operator-admin accounts in-console (provider-only
@@ -259,6 +317,7 @@ npm run start:dev-server  # run backend/server.js MVP API on :3000 (PORT env to 
 npm run simulate          # math/simulate.js (MVP math Monte-Carlo)
 npm run test:api          # tools/api-test.js — requires the MVP server running
 npm run test:rtp-parity   # validate the shared engine's RTP vs. theoretical
+npm run test:client       # spin-lock + layout-check + spin-e2e in real Chrome (CDP)
 ```
 
 `rtp-parity` honors env vars: `STEPS`, `BET`, `GAME_ID`, `ANTE=1`, `BONUS_ONLY=1`, `TOLERANCE`.
@@ -286,9 +345,36 @@ Run a single platform test: `npx vitest run test/engine.service.test.ts` (add `-
 
 ## Deployment
 
-`netlify.toml` and `vercel.json` publish **`client/`** as a SPA with a catch-all rewrite to
-`index.html`. These deploy the **front end only, without an API backend**. The platform is a
-long-running Node service (deploy separately; optional Postgres for durability).
+The production target is **`platform/`**, not the root MVP server. `netlify.toml` and
+`vercel.json` publish **`client/`** as a static SPA only; use them for a visual/demo page, not for
+the real provider/RGS.
+
+Release check:
+
+```bash
+npm run verify:release
+```
+
+Build a deployable platform image from the repo root:
+
+```bash
+npm run docker:build:platform
+```
+
+Production/staging boot now refuses local-only defaults. Set at least:
+
+```bash
+NODE_ENV=production
+DATABASE_URL=postgres://...
+LAUNCH_TOKEN_SECRET=<long-random-secret>
+SESSION_TOKEN_SECRET=<long-random-secret>
+ADMIN_TOKEN_SECRET=<long-random-secret>
+BOOTSTRAP_ADMIN_PASSWORD=<strong-temporary-bootstrap-password>
+ADMIN_TOTP_REQUIRED=true
+```
+
+The container serves `/provider`, `/admin`, `/play`, `/operator/v1/*`, `/game/v1/*`, and
+`/admin/v1/*` from one long-running Node service.
 
 ---
 
@@ -298,6 +384,10 @@ long-running Node service (deploy separately; optional Postgres for durability).
   the shared engine and assert measured RTP is within tolerance of the profile's theoretical RTP.
   This is the most important correctness gate when touching math.
 - **MVP API** — `npm run test:api` (needs `start:dev-server` running).
+- **Client** — `npm run test:client` (one spin per press, zero-reflow layout at 9 viewports,
+  real-Chrome spin lifecycle).
+- **Demo operator** — `cd demo-operator && npm test` (includes a real two-server e2e: register →
+  launch → signed wallet webhooks).
 - **Platform** — `npm test` (vitest), `npm run typecheck`, `npm run e2e` (full HMAC operator
   lifecycle).
 
@@ -310,7 +400,8 @@ long-running Node service (deploy separately; optional Postgres for durability).
 ## Security notes
 
 - The provider admin and the operator (client) admin are **separate consoles with separate
-  logins**; real auth is **username + password (scrypt) + TOTP 2FA**, and the backend enforces RBAC
+  logins**; real auth is **username + password (scrypt) + TOTP 2FA** (2FA mandatory on
+  staging/production, off by default only for local/test), and the backend enforces RBAC
   + tenant scoping on every Admin API route regardless of the console.
 - The Operator API is HMAC-signed over exact request bytes with nonce + skew + rate limiting.
 - The round ledger is **immutable and hash-chained**; void/settle never edit a round — they append
@@ -329,3 +420,7 @@ long-running Node service (deploy separately; optional Postgres for durability).
 - [`ROADMAP.md`](./ROADMAP.md) — index into the phased program playbook in `docs/` (01–15 + specs,
   GDD, ADR, compliance matrix, integration kit, and more).
 - [`CLAUDE.md`](./CLAUDE.md) — architecture invariants and how to work in this repo.
+- [`CHECKPOINT.md`](./CHECKPOINT.md) — where the work stands right now: what shipped, the
+  decisions behind it, and what comes next.
+- [`docs/animation-guide.md`](./docs/animation-guide.md) /
+  [`docs/spin-animation-spec.md`](./docs/spin-animation-spec.md) — the client motion system.

@@ -1,39 +1,56 @@
-# Spin Animation Spec (Current)
+# Spin Animation Spec — Vault 20K (current)
 
 ## Purpose
 
-Define the full spin + tumble presentation while preserving server-authoritative outcomes.
+Define the spin + tumble presentation while preserving server-authoritative outcomes. The motion
+language and constants are described in [animation-guide.md](./animation-guide.md).
 
 ## Rules
 
-1. Backend resolves all tumble steps first.
-2. Client can animate only what backend already resolved.
-3. During tumble falls, do not show winning borders for the next step.
-4. Reveal win highlight only after drop animation finishes.
-5. Apply blast intensity tiers by win strength:
-- `small` for low-paying symbol groups
-- `medium` for mid-paying symbol groups
-- `great` for premium symbol groups and/or larger matches
-6. Scatter symbols use a dedicated special pulse effect.
-7. Multiplier symbols always show an explicit value label (`2x`, `25x`, etc.).
+1. The engine resolves every tumble step first; the client only animates what is already resolved.
+2. Animation never alters, reorders or hides an outcome; it is presentation only.
+3. No winning highlight for the next step while symbols are still falling; a step's winners are
+   revealed only after its drop lands.
+4. Blast/shatter intensity follows win strength: `blast-small`, `blast-medium`, `blast-great`
+   (`WIN_TIERS[].blast`).
+5. Multiplier symbols always show their value (`2x`, `25x`, …); a landing multiplier plays its
+   BANG once per spin.
+6. Scatter landings ping and are counted live on the ticker (`Scatters n/4`).
+7. No screen or board shake; no upward wind-up before a drop.
 
-## Tumble Reveal Sequence
+## Round sequence
 
-1. Show current winning step with blast + optional win border.
-2. Vanish winners.
-3. Run drop/fall animation with no next-step highlight.
-4. After fall completion, reveal next-step winners and blast.
-5. Repeat until no more wins.
+1. **Press** → the spin lock is taken (one spin per press), the ticker shows the spin line.
+2. **Spin-out**: the previous board falls out, bottom-first, at once.
+3. **Drop-in**: the new board drops per symbol (reels left → right, bottom-up inside a reel),
+   each symbol landing with its own glint + tick; anticipation may hold the last reels.
+4. **Win step** (if any): hold + breathe → shatter → win chip flies to the ticker, which cuts to
+   **WIN: amount** (gold) → 30ms vacuum lean → refill drop (15% faster per chained tumble).
+5. Repeat step 4 until a step has no win.
+6. **Settle**: balance counts up, big-win overlay if ≥10×, the spin lock is released. The WIN
+   line holds on the ticker until the next spin.
 
-## Timing Profile (Current)
+## Fast-stop / skip
 
-- Pre-tumble hold: `200ms`
-- Win vanish: `90ms`
-- Tumble flash: `120ms`
-- Tumble drop: `660ms` minimum (or dynamic drop window)
-- Post-drop reveal hold: `180ms`
-- Win pulse: `1200ms`
+- A press during a round requests fast-stop: airborne reels zip in left to right (≤110ms) and
+  lock with a double click; later steps of that round resolve instantly.
+- During the big-win overlay a press skips the count-up, the next press dismisses it.
 
-## Integrity Constraint
+## Timing profile (base, before turbo ×0.4)
 
-Animation must never alter resolved outcomes; it is presentation only.
+| Step | Budget |
+|------|--------|
+| Reel stagger / symbol stagger | 80ms / 18ms |
+| Drop-in fall (heavy reel) | 520ms (tension ×0.9, snap ×0.82; shorter falls scale by √distance) |
+| Tumble refill fall | 380ms × 0.85^(step−1), floored at 50% |
+| Vacuum lean | 30ms in, 110ms side-lean return |
+| Explode | 380ms |
+| Win hold | 1100ms first catch, 700ms chained |
+| Fast-stop zip | ≤110ms + double click 50ms apart |
+| Autoplay gap | 500ms (fixed) |
+
+## Integrity constraint
+
+The client never feeds anything back to the engine. Any change here must keep
+`npm run test:client` green and must not touch `client/engine/` (run `npm run test:rtp-parity`
+if anything near the engine is touched).

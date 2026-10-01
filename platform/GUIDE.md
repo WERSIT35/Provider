@@ -1,7 +1,8 @@
-# Banana X — Operator's Guide
+# Vault 20K Provider Platform — Operator's Guide
 
 This is the short, click-by-click guide for **you (the provider)** and **a casino**
-running on top of Banana X. No code editing required.
+running on top of the Lumina Games provider platform (game: **Vault 20K**, internal
+code `bananax`). No code editing required.
 
 ---
 
@@ -39,17 +40,18 @@ for security):
 
 ---
 
-## 2. Sign in (username + password + authenticator 2FA)
+## 2. Sign in (username + password; authenticator 2FA outside local development)
 
 1. Open `http://127.0.0.1:8080/provider`.
 2. Enter the **PROVIDER** username + password from the terminal → **Continue**.
-3. First sign-in only: you'll be asked to enroll a **TOTP authenticator** — add the
-   shown secret to Google Authenticator / Authy / 1Password (or paste it manually),
-   then enter the 6-digit code → **Verify & finish**. (A brand-new operator account
-   is also asked to set a new password first.)
-4. On later sign-ins you enter username + password, then just the current 6-digit
-   authenticator code.
-5. You'll land on the **Dashboard** showing the seeded operator, RTP, GGR, and the
+   - **Local development (the default):** 2FA is off, so that is all. A brand-new
+     operator account is asked to set a new password first.
+   - **With 2FA on** (any sandbox/staging/production server, or locally with
+     `ADMIN_TOTP_REQUIRED=true`): on the first sign-in you enroll a **TOTP
+     authenticator** — add the shown secret to Google Authenticator / Authy /
+     1Password (or paste it manually), then enter the 6-digit code → **Verify &
+     finish**. Later sign-ins are username + password, then the current 6-digit code.
+3. You'll land on the **Dashboard** showing the seeded operator, RTP, GGR, and the
    latest rounds.
 
 The client (casino) admin signs in the same way at `http://127.0.0.1:8080/admin`
@@ -69,7 +71,7 @@ In the portal click **Onboarding**. Walk down the panels:
    `api_secret` is shown **once**. Copy it now and hand it to the operator over a
    secure channel (it can never be retrieved again).
 4. **Register game + approve math config** — register the game (e.g. `bananax` /
-   `Banana X`), then in the second row pick the game, version, RTP profile, and
+   `Vault 20K`; the code stays `bananax`), then in the second row pick the game, version, RTP profile, and
    theoretical RTP → **Create + approve**. Only approved configs can go live.
 5. **Assign the game** — pick the operator, the game, the approved math config,
    the currency, and the allowed bets → **Assign**.

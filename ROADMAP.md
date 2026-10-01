@@ -11,11 +11,12 @@ This repository acts as a practical playbook for building a provider-ready slot 
 
 ## Current Scope Snapshot
 
-- Active profile build: `Banana X`
-- Layout: `5x4` symbols-pay-anywhere
+- Active profile build: **Vault 20K** by Lumina Games (internal game code / profile ids: `bananax`)
+- Layout: `6x5` symbols-pay-anywhere (minimum 8 matches)
 - RTP profile modes: `96.38 / 94.40 / 92.38`
 - Max win cap: `20000x`
-- Visual production: futuristic dark liquid-glass canvas UI
+- Visual production: cinematic noir-heist canvas UI (vault steel, tungsten light, security laser,
+  vault gold), per-symbol independent drops, no screen shake, single ticker message line
 
 ## Important Reality Checks
 
@@ -52,11 +53,14 @@ Move forward only when exit criteria are complete.
 ## Suggested Initial Scope
 
 - Ship one high-quality slot profile build:
-  - `5x4` grid
+  - `6x5` grid
   - Base game + free spins bonus
   - Profile-driven RTP modes
   - Configurable rule payload with strict runtime validation
 
 ## Immediate Next Action
 
-Continue with [03 Game Design](docs/03-game-design.md) and keep docs aligned with runtime behavior after each major change.
+The client presentation pass is complete (see [CHECKPOINT.md](CHECKPOINT.md)). Next is the platform:
+the Operator Portal features (Round Inspector prominence, Player Reports, then the Free Rounds /
+Campaign Manager), planned in CHECKPOINT.md. Keep docs aligned with runtime behavior after each
+major change.

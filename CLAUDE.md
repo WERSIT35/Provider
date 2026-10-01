@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A server-authoritative slot game ("Banana X", `5x4`, symbols-pay-anywhere, profile-driven RTP) plus a provider platform (RGS + operator control plane). It contains **two distinct backends** and **one shared math engine** — understanding which is which is the key to working here.
+A server-authoritative slot game (**Vault 20K** by Lumina Games, `6x5`, symbols-pay-anywhere, profile-driven RTP; formerly "Banana X" — the internal ids stay `bananax` on purpose: game code, RTP profile keys, storage keys, DB names) plus a provider platform (RGS + operator control plane). It contains **two distinct backends** and **one shared math engine** — understanding which is which is the key to working here.
 
 ## The single source of truth for slot math
 
@@ -18,6 +18,17 @@ Three consumers load these exact same files, in this exact order, so results are
 When changing math, change it in `client/engine/`, then run `npm run test:rtp-parity`. If you add/remove/reorder an engine file, update the `ENGINE_FILES` array in **both** `tools/rtp-parity.js` and `platform/src/lib/engine-loader.ts`.
 
 > Exception: `backend/server.js` (the MVP, below) does NOT use the shared engine — it re-implements the math directly from the rules JSON. Treat it as a separate, legacy path.
+
+## The browser client (presentation rules)
+
+`client/main.js` = `ReelCanvasRenderer` (canvas) + DOM UI shell; `client/big-win.js` = full-screen big-win overlay. Invariants the user set — keep them:
+- **Never edit `client/engine/` for presentation work.** Visuals are a pure function of the payload; the renderer never feeds data back; `Math.random()` for visuals only, never `SlotEngine.RNG`.
+- **No screen/board shake, ever** (impact = local light, pooled particles, audio). **No upward wind-up** before drops. No jelly (≤2% contact squash).
+- **Zero layout thrash:** no state change may move/resize the board; overlays sit outside the flow. **No top bar** — `#psTicker` (deck) is the single message line (`ticker` state machine: idle tips / spin line / gold "WIN: amount" held until next spin / `flash()`). Value elements (#lastWin, #balance…) live in a never-rendered `.hud-state` holder.
+- **Per-symbol independent drops:** `WATERFALL` (reels 80ms, bottom-up 18ms), `cellFallMs` (√distance), `REEL_INERTIA` groups + `inertiaLag`, `REEL_MASK` (in-flight symbols clipped to the grid), `VACUUM`, `TUMBLE_MOMENTUM`, `FAST_ZIP` fast-stop. Docs: `docs/animation-guide.md`, `docs/spin-animation-spec.md`, `docs/styling-guide.md`.
+- The spin lock is per-RUN; `isRoundInFlight()` is the single gate; `SPIN_SETTLE_GUARD_MS` turns a late press into a skip, not a paid spin.
+- 60fps without GC spikes: `ShardEmitter` pool (time-based, ≤8ms sub-steps), sprite cache band, `TIER_PROFILES` throttles just below vsync multiples (governor threshold `max(30, maxFrameMs*1.25)`).
+- Verify every client change with `npm run test:client` (needs Chrome). Motion is verified with headless CDP probes (see `CHECKPOINT.md`).
 
 ## Game rules config
 
@@ -33,6 +44,8 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 - **Operator API** (`src/http/operator.routes.ts`) is HMAC-signed over exact request bytes (`src/lib/security/hmac.ts`, `nonce-store.ts`, `rate-limiter.ts`); the raw body is preserved in `app.ts` for signature verification. **Game API** (`game.routes.ts`) is session-scoped via launch tokens.
 - `round-orchestrator.ts` ties engine resolution + wallet + ledger together; `round-ledger.service.ts` + `hash-chain.ts` provide an immutable, hash-chained audit trail. `authoritative-resolver.ts` + `seeded-rng.ts` give deterministic, replayable spins.
 - Flow: casino signs `POST /operator/v1/launch` → gets a launch token → player opens `/play?lt=<token>`. See `platform/GUIDE.md` for the click-by-click operator walkthrough and `platform/scripts/e2e-operator.ts` for a working end-to-end example.
+- **Admin consoles:** `/provider` (Provider Control Plane, our admin) and `/admin` (Operator Portal, the casino's admin), shared shell `/console/app.js` served from `src/http/admin-assets.ts` (views: `admin-console-views.ts`, sections: `admin-console-sections.ts`). Login: `src/http/admin-auth.routes.ts` (scrypt password + RFC 6238 TOTP, hand-rolled). **2FA switch `ADMIN_TOTP_REQUIRED`** (`src/config/env.ts`): unset = OFF for `NODE_ENV=local|test` (development), ON for sandbox/staging/production; explicit value wins; staging/production refuse to boot with it off. Don't delete the TOTP code — it is the production path.
+- **Next planned work** (Operator Portal: Player Reports, Free Rounds / Campaign Manager) is in `CHECKPOINT.md`. Operator-granted free rounds must NOT reuse the engine's `free_spins_left` (that is the scatter-triggered bonus feature and would change RTP).
 
 ## Commands
 
@@ -43,6 +56,7 @@ npm run start:dev-server  # run backend/server.js MVP API on :3000 (PORT env to 
 npm run simulate          # math/simulate.js
 npm run test:api          # tools/api-test.js — requires the MVP server running
 npm run test:rtp-parity   # validate client engine RTP vs. theoretical
+npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e, real Chrome via CDP
 ```
 `rtp-parity` honors env vars: `STEPS`, `BET`, `GAME_ID`, `ANTE=1`, `BONUS_ONLY=1`, `TOLERANCE`. Exits non-zero on FAIL.
 
