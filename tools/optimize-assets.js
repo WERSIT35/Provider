@@ -1,8 +1,8 @@
 /* eslint-disable */
 // ---------------------------------------------------------------------------
-// Art optimizer for Banana X.
+// Art optimizer for Vault 20K.
 //
-// The source PNGs in client/assets/symbols/ are authoring-resolution exports:
+// The source PNGs in art-src/symbols/ are authoring-resolution exports:
 // 500x500 tiles at ~400KB each, a 1024x1024 spin button, 2MB reel/scatter
 // plates — ~11MB of art for a game that draws those tiles into ~80px cells.
 // That cost the player twice: a long first load, and a per-frame resample of
@@ -13,10 +13,12 @@
 // supported by every browser the game targets (Safari 14+, 2020), so the
 // client references the .webp directly — no <picture>, no PNG fallback.
 //
-// The PNGs stay in the repo as the sources of truth: re-run this script after
-// replacing any of them.
+// The PNGs stay in the repo as the sources of truth, but OUTSIDE client/ (which
+// is what gets deployed): ~30MB of originals the game never requests had been
+// shipping with every static deploy. Re-run this script after replacing any.
 //
 // Usage:   npm run assets:optimize
+// Input:   art-src/symbols/*.png
 // Output:  client/assets/symbols/*.webp
 // ---------------------------------------------------------------------------
 
@@ -26,6 +28,7 @@ const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
 
+const SOURCE_DIR = path.join(__dirname, "..", "art-src", "symbols");
 const SYMBOLS_DIR = path.join(__dirname, "..", "client", "assets", "symbols");
 
 // Every asset the client actually references, with the box it is drawn into.
@@ -62,13 +65,9 @@ const TARGETS = [
   // Full-viewport background. Keep the pixels, just drop the PNG overhead.
   { src: "Background.png",  max: 1376, quality: 78 },
 
-  // UI plates. The spin button caps out around 160px CSS; the removebg plates
-  // are wide banners that never exceed ~400px CSS.
-  { src: "SPIN.png",                         max: 320 },
-  { src: "ANTE_ACTIVE-removebg-preview.png",  max: 800 },
-  { src: "ANTE_INACTIVE-removebg-preview.png", max: 800 },
-  { src: "BET-removebg-preview.png",          max: 776 },
-  { src: "BUY_FEATURE-removebg-preview.png",  max: 800 },
+  // The free-spins panel plate (a wide banner, never over ~400px CSS). Spin,
+  // Buy, Ante and the bet pill are vector controls now; their source PNGs stay
+  // in art-src/ but are no longer exported.
   { src: "FREESPINS_INFO-removebg-preview.png", max: 707 }
 ];
 
@@ -84,7 +83,7 @@ async function run() {
   let failed = 0;
 
   for (const target of TARGETS) {
-    const srcPath = path.join(SYMBOLS_DIR, target.src);
+    const srcPath = path.join(SOURCE_DIR, target.src);
     const outPath = path.join(SYMBOLS_DIR, target.src.replace(/\.png$/i, ".webp"));
     if (!fs.existsSync(srcPath)) {
       console.error(`  MISSING  ${target.src}`);
@@ -128,7 +127,7 @@ async function run() {
   if (failed) process.exitCode = 1;
 }
 
-console.log(`\nOptimizing art in ${SYMBOLS_DIR}\n`);
+console.log(`\nOptimizing art: ${SOURCE_DIR} -> ${SYMBOLS_DIR}\n`);
 run().catch((err) => {
   console.error(err);
   process.exit(1);

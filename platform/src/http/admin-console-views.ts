@@ -16,10 +16,29 @@ const SYMBOL_LABELS = {
   TOP_CROWN:'crown', HOURGLASS:'hourglass', RING:'ring', CHALICE:'chalice', RED_GEM:'gem',
   PURPLE_TRIANGLE:'purple', YELLOW_HEX:'yellow', GREEN_TRIANGLE:'green', BLUE_DIAMOND:'diamond', SCATTER:'scatter'
 };
+// Engine symbol code → the art file the game client draws (client/main.js
+// symbolAssets). The old URL was '<CODE>.png' (e.g. TOP_CROWN.png), a file that
+// never existed, so every inspector symbol image 404'd. The PNG originals have
+// since moved out of client/ entirely (art-src/); only the WebP exports ship.
+const SYMBOL_FILES = {
+  TOP_CROWN:'Crown', HOURGLASS:'HourGlass', RING:'Ring', CHALICE:'Chaile', RED_GEM:'RedGem',
+  PURPLE_TRIANGLE:'PurpleGem', YELLOW_HEX:'YellowGem', GREEN_TRIANGLE:'GreenGem', BLUE_DIAMOND:'BlueGem',
+  SCATTER:'Scatter'
+};
+// Multiplier tokens are one plate per rarity tier, same values as the client.
+function multiplierFile(value) {
+  if (value >= 1000) return 'Mythic';
+  if (value >= 100) return 'Legendary';
+  if (value >= 50) return 'Epic';
+  if (value >= 10) return 'Rare';
+  return 'Common';
+}
 function symbolImageUrl(code) {
   if (!code) return null;
   const c = String(code).toUpperCase();
-  return '/assets/symbols/' + encodeURIComponent(c) + '.png';
+  let file = SYMBOL_FILES[c];
+  if (!file && c.startsWith('MULTI')) file = multiplierFile(multiValueFromCode(c) || 0);
+  return file ? '/assets/symbols/' + file + '.webp' : null;
 }
 function multiValueFromCode(code) { const m = /MULTI(\\d+)/i.exec(String(code || '')); return m ? Number(m[1]) : null; }
 async function lookupRound() {

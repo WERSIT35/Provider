@@ -41,9 +41,11 @@
     </div>
     <main class="sanctum">
       <section class="altar">
-        <!-- Hero character art disabled for now (art direction TBD). Restore by
-             un-commenting; loadDeferredAssets() in main.js picks it up again.
-        <img class="stage-character" id="stageCharacter" data-src="assets/symbols/Character.png" alt="" aria-hidden="true" decoding="async">
+        <!-- Hero character art disabled for now (art direction TBD). The 4.8MB
+             source PNG now lives in art-src/symbols/Character.png (outside the
+             deployed client/): export a WebP into assets/symbols/ first, then
+             un-comment; loadDeferredAssets() in main.js picks it up again.
+        <img class="stage-character" id="stageCharacter" data-src="assets/symbols/Character.webp" alt="" aria-hidden="true" decoding="async">
         -->
         <section class="altar-core">
           <aside class="oracle-panel admin-only" aria-label="Live stats and logs">
