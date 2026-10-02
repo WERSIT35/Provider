@@ -52,6 +52,9 @@ export interface RoundInput {
   outcome: StoredOutcome;
   /** Optional for rounds recorded before pre-state capture; verification is inconclusive without it. */
   pre_state?: RoundPreState;
+  /** Operator free round only (absent on cash rounds — never null; see TableSpec.omitNull). */
+  campaign_id?: string;
+  grant_id?: string;
 }
 
 export interface RoundRecord extends RoundInput {

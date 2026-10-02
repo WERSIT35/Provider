@@ -1,5 +1,5 @@
 import type { RoundRepository, RoundRecord } from "../ledger/ledger.types";
-import type { InMemoryTransactionStore, TxRecord } from "../wallet/transaction-store";
+import { BET_TX_TYPES, WIN_TX_TYPES, type InMemoryTransactionStore, type TxRecord } from "../wallet/transaction-store";
 import type { EngineService } from "../engine/engine.service";
 import type { InMemoryRoundAdjustmentStore } from "../rounds/round-adjustment.store";
 
@@ -256,11 +256,17 @@ export class ReportingService {
     const rounds_total_win = round2(rounds.reduce((s, r) => s + r.total_win, 0));
 
     const txs = this.transactions.list(operatorId ? { operator_id: operatorId } : {});
-    const sum = (type: TxRecord["type"], status: TxRecord["status"]): number =>
-      round2(txs.filter((t) => t.type === type && t.status === status).reduce((s, t) => s + t.amount, 0));
+    const sum = (types: ReadonlySet<TxRecord["type"]> | TxRecord["type"], status: TxRecord["status"]): number =>
+      round2(
+        txs
+          .filter((t) => (typeof types === "string" ? t.type === types : types.has(t.type)) && t.status === status)
+          .reduce((s, t) => s + t.amount, 0)
+      );
 
-    const tx_debits = sum("DEBIT", "confirmed");
-    const tx_credits_gross = sum("CREDIT", "confirmed");
+    // Free rounds: FREE_ROUND_BET is always 0.00 and FREE_ROUND_WIN is a paid win,
+    // so they reconcile exactly like DEBIT / CREDIT against the round ledger.
+    const tx_debits = sum(BET_TX_TYPES, "confirmed");
+    const tx_credits_gross = sum(WIN_TX_TYPES, "confirmed");
     const tx_rollbacks = sum("ROLLBACK", "rolled_back");
     // Void clawbacks are compensating debits that reverse a previously-paid win.
     const tx_clawbacks = sum("ADJUSTMENT", "confirmed");

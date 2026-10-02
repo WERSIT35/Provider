@@ -5,6 +5,7 @@ import healthRoutes from "./modules/health/health.routes";
 import operatorRoutes from "./http/operator.routes";
 import gameRoutes from "./http/game.routes";
 import adminRoutes from "./http/admin.routes";
+import adminCampaignRoutes from "./http/admin-campaigns.routes";
 import adminAuthRoutes from "./http/admin-auth.routes";
 import adminAccountRoutes from "./http/admin-accounts.routes";
 import adminAssetsRoutes from "./http/admin-assets";
@@ -96,6 +97,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   app.register(adminAuthRoutes);
   app.register(adminAccountRoutes);
   app.register(adminRoutes);
+  app.register(adminCampaignRoutes);
 
   return app;
 }

@@ -8,7 +8,8 @@ import {
   type RollbackArgs,
   type WalletTxResult,
   type WalletRollbackResult,
-  WalletDeclinedError
+  WalletDeclinedError,
+  assertFreeRoundArgs
 } from "./wallet.types";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
@@ -64,9 +65,12 @@ export class SandboxWallet implements WalletAdapter {
     const cached = this.applied.get(args.idempotencyKey);
     if (cached) return cached as WalletTxResult;
 
+    assertFreeRoundArgs(args);
     const k = this.key(args.operatorPlayerId, args.currency);
     const current = this.balances.get(k) ?? 0;
-    if (current < args.amount) {
+    // A FREE_ROUND_BET costs the player nothing (amount is asserted 0.00), so it
+    // bypasses the funds check: a player with an empty balance can still play it.
+    if (args.txType !== "FREE_ROUND_BET" && current < args.amount) {
       throw new WalletDeclinedError("INSUFFICIENT_FUNDS");
     }
     this.balances.set(k, Number((current - args.amount).toFixed(2)));
@@ -87,6 +91,7 @@ export class SandboxWallet implements WalletAdapter {
     const cached = this.applied.get(args.idempotencyKey);
     if (cached) return cached as WalletTxResult;
 
+    assertFreeRoundArgs(args);
     if (this.opts.failCreditFor?.(args)) {
       throw new Error("WALLET_CREDIT_FAILED");
     }

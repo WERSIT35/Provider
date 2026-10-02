@@ -739,7 +739,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 };
 
-function adminAuthPreHandler(container: Container): preHandlerHookHandler {
+export function adminAuthPreHandler(container: Container): preHandlerHookHandler {
   return async (req, reply) => {
     const auth = req.headers["authorization"];
     if (typeof auth !== "string" || !auth.startsWith("Bearer ")) {

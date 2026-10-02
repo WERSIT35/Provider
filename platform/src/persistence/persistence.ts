@@ -45,12 +45,19 @@ interface TableSpec {
    * consumed free round). The store bumps it on every mutation.
    */
   version?: string;
+  /**
+   * Nullable columns added AFTER rows already existed in a hash-chained table. On load
+   * a NULL is left off the object entirely (not set to null), because the payload
+   * hash covers every key: a pre-existing cash round must rehydrate with exactly the
+   * keys it was hashed with, or the whole chain would read as tampered.
+   */
+  omitNull: Set<string>;
 }
 
 function spec(
   columns: string[],
   pk: string[],
-  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string; version?: string } = {}
+  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string; version?: string; omitNull?: string[] } = {}
 ): TableSpec {
   return {
     columns,
@@ -59,7 +66,8 @@ function spec(
     appendOnly: Boolean(opts.appendOnly),
     rename: opts.rename ?? {},
     orderBy: opts.orderBy,
-    version: opts.version
+    version: opts.version,
+    omitNull: new Set(opts.omitNull ?? [])
   };
 }
 
@@ -92,19 +100,19 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "updated_at" }
   ),
   player_sessions: spec(
-    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "created_at"],
+    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "created_at"],
     ["id"],
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),
   rounds: spec(
-    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "prev_hash", "payload_hash", "chain_hash", "created_at"],
+    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "prev_hash", "payload_hash", "chain_hash", "created_at"],
     ["id"],
-    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq" }
+    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id"] }
   ),
   wallet_transactions: spec(
-    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "created_at"],
+    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "created_at"],
     ["id"],
-    { appendOnly: true, orderBy: "seq" }
+    { appendOnly: true, orderBy: "seq", omitNull: ["campaign_id"] }
   ),
   round_adjustments: spec(
     ["id", "seq", "round_ref", "operator_id", "operator_player_id", "kind", "effective_status", "reason", "actor_id", "wallet_tx_refs", "created_at"],
@@ -212,7 +220,10 @@ export class PostgresPersistence implements Persistence {
     const res = await this.pool.query(`SELECT ${t.columns.join(", ")} FROM ${table}${order}`);
     return res.rows.map((dbRow: Record<string, unknown>) => {
       const obj: Record<string, unknown> = {};
-      for (const col of t.columns) obj[fieldForColumn(t, col)] = dbRow[col];
+      for (const col of t.columns) {
+        if (dbRow[col] === null && t.omitNull.has(col)) continue;
+        obj[fieldForColumn(t, col)] = dbRow[col];
+      }
       return obj;
     });
   }

@@ -87,10 +87,11 @@ export function buildContainer(
   if (wallet instanceof SandboxWallet) wallet.usePersistence(persistence);
   const resolver = new AuthoritativeResolver(engine);
   const transactions = new InMemoryTransactionStore(persistence);
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions);
+  const campaigns = new InMemoryCampaignRepository(persistence);
+  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns);
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
-  const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit);
+  const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
   const verification = new RoundVerificationService(ledger, resolver);
   const disputes = new DisputeService(lifecycle, ledger, audit, persistence);
 
@@ -109,7 +110,7 @@ export function buildContainer(
     lifecycle,
     verification,
     disputes,
-    campaigns: new InMemoryCampaignRepository(persistence),
+    campaigns,
     adminAuth: new AdminAuthService(config.adminSecret),
     adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
     nonceStore: new NonceStore(config.hmacSkewSeconds * 4 * 1000),
