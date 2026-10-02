@@ -39,12 +39,18 @@ interface TableSpec {
   rename: Record<string, string>;
   /** column used to order rows on load (seq for the ledgers, else created_at). */
   orderBy?: string;
+  /**
+   * Monotonic version column: an upsert only overwrites a stored row whose version is
+   * LOWER, so a stale or re-queued flush can never roll a row back (e.g. resurrect a
+   * consumed free round). The store bumps it on every mutation.
+   */
+  version?: string;
 }
 
 function spec(
   columns: string[],
   pk: string[],
-  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string } = {}
+  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string; version?: string } = {}
 ): TableSpec {
   return {
     columns,
@@ -52,7 +58,8 @@ function spec(
     jsonb: new Set(opts.jsonb ?? []),
     appendOnly: Boolean(opts.appendOnly),
     rename: opts.rename ?? {},
-    orderBy: opts.orderBy
+    orderBy: opts.orderBy,
+    version: opts.version
   };
 }
 
@@ -119,6 +126,16 @@ const TABLES: Record<string, TableSpec> = {
     ["id"],
     { orderBy: "created_at" }
   ),
+  campaigns: spec(
+    ["id", "operator_id", "game_id", "name", "currency", "bet_amount", "total_spins", "valid_from", "valid_to", "status", "created_by", "version", "created_at"],
+    ["id"],
+    { orderBy: "created_at", version: "version" }
+  ),
+  player_campaigns: spec(
+    ["id", "campaign_id", "operator_id", "operator_player_id", "spins_granted", "spins_remaining", "total_won", "status", "version", "created_at", "updated_at"],
+    ["id"],
+    { orderBy: "created_at", version: "version" }
+  ),
   wallet_balances: spec(["balance_key", "amount"], ["balance_key"]),
   wallet_applied: spec(["idempotency_key", "result_jsonb"], ["idempotency_key"], { jsonb: ["result_jsonb"], rename: { result_jsonb: "result" } }),
   wallet_debit_refs: spec(["operator_tx_ref", "balance_key", "amount"], ["operator_tx_ref"])
@@ -182,6 +199,7 @@ export class PostgresPersistence implements Persistence {
     } else {
       const updates = t.columns.filter((c) => !t.pk.includes(c)).map((c) => `${c} = EXCLUDED.${c}`).join(", ");
       onConflict = updates ? `DO UPDATE SET ${updates}` : "DO NOTHING";
+      if (updates && t.version) onConflict += ` WHERE ${table}.${t.version} < EXCLUDED.${t.version}`;
     }
     const text = `INSERT INTO ${table} (${cols}) VALUES (${placeholders.join(", ")}) ON CONFLICT (${conflict}) ${onConflict}`;
     return { text, values };

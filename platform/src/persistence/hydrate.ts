@@ -9,6 +9,7 @@ import type { Session } from "../modules/session/session.service";
 import type { DisputeRecord } from "../modules/disputes/dispute.service";
 import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame, OperatorWebhook } from "../modules/management/management.types";
 import type { AdminAccount } from "../modules/admin/admin-account";
+import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 
 /**
@@ -17,7 +18,7 @@ import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wal
  * chains and seq counters continue seamlessly.
  */
 export async function hydrateContainer(c: Container, p: Persistence): Promise<void> {
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts] =
+  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns] =
     await Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
@@ -35,7 +36,9 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
       p.loadTable("wallet_balances"),
       p.loadTable("wallet_applied"),
       p.loadTable("wallet_debit_refs"),
-      p.loadTable("admin_accounts")
+      p.loadTable("admin_accounts"),
+      p.loadTable("campaigns"),
+      p.loadTable("player_campaigns")
     ]);
 
   c.mgmt.hydrate({
@@ -54,6 +57,10 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
   c.adjustments.hydrate(adjustments as unknown as AdjustmentRecord[]);
   c.disputes.hydrate(disputes as unknown as DisputeRecord[]);
   c.adminAccounts.hydrate(adminAccounts as unknown as AdminAccount[]);
+  c.campaigns.hydrate({
+    campaigns: campaigns as unknown as Campaign[],
+    grants: playerCampaigns as unknown as PlayerCampaign[]
+  });
 
   if (c.wallet instanceof SandboxWallet) {
     c.wallet.hydrate({

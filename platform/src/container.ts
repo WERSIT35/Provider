@@ -15,6 +15,7 @@ import { InMemoryRoundAdjustmentStore } from "./modules/rounds/round-adjustment.
 import { RoundLifecycleService } from "./modules/rounds/round-lifecycle.service";
 import { RoundVerificationService } from "./modules/rounds/round-verification.service";
 import { DisputeService } from "./modules/disputes/dispute.service";
+import { InMemoryCampaignRepository } from "./modules/campaigns/campaign.repository";
 import { NonceStore } from "./lib/security/nonce-store";
 import { RateLimiter } from "./lib/security/rate-limiter";
 import { NullPersistence, type Persistence } from "./persistence/persistence";
@@ -57,6 +58,8 @@ export interface Container {
   lifecycle: RoundLifecycleService;
   verification: RoundVerificationService;
   disputes: DisputeService;
+  // Operator-granted Free Rounds (NOT the engine scatter feature).
+  campaigns: InMemoryCampaignRepository;
   adminAuth: AdminAuthService;
   adminAccounts: AdminAccountService;
   nonceStore: NonceStore;
@@ -106,6 +109,7 @@ export function buildContainer(
     lifecycle,
     verification,
     disputes,
+    campaigns: new InMemoryCampaignRepository(persistence),
     adminAuth: new AdminAuthService(config.adminSecret),
     adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
     nonceStore: new NonceStore(config.hmacSkewSeconds * 4 * 1000),
