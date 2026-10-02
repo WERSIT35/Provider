@@ -173,7 +173,7 @@
                 <div class="ps-ticker" id="psTicker" data-state="idle" role="status" aria-live="polite"><span id="psTickerText">Hold space for turbo spin</span></div>
                 <div class="ps-readouts">
                   <div class="ps-readout"><span>Credit</span><strong class="u-num" id="footerBalance">—</strong></div>
-                  <div class="ps-readout"><span>Bet</span><strong class="u-num" id="footerBet">1.00</strong></div>
+                  <div class="ps-readout"><span id="betReadoutLabel">Bet</span><strong class="u-num" id="footerBet">1.00</strong></div>
                 </div>
               </div>
 
@@ -436,6 +436,21 @@
       </div>
     </section>
 
+    <!-- Operator free rounds (Campaign Manager): award notice on load. Step 6 modal
+         shell (fixed overlay outside the flow; Esc / Enter / backdrop / Play close). -->
+    <div class="ps-modal fr-modal" id="frModal" role="dialog" aria-modal="true" aria-labelledby="frTitle" aria-describedby="frMeta" hidden>
+      <div class="confirm-dialog fr-dialog">
+        <p class="fr-kicker">Free Rounds</p>
+        <h2 class="confirm-title" id="frTitle">You have <span class="fr-count" id="frCount">0</span> <span id="frNoun">Free Rounds</span>!</h2>
+        <div class="confirm-cost">
+          <span class="confirm-cost-amount" id="frBet">0.00</span>
+          <span class="confirm-cost-currency" id="frCurrency">GEL</span>
+        </div>
+        <p class="confirm-meta" id="frMeta">Bet per round</p>
+        <button type="button" class="confirm-btn confirm-btn-confirm fr-play" id="frPlayBtn" data-fr-close>Play</button>
+      </div>
+    </div>
+
     <script src="engine/rng.js?v=20260523-1"></script>
     <script src="engine/config.js?v=20260523-1"></script>
     <script src="engine/symbols.js?v=20260523-1"></script>
@@ -452,6 +467,6 @@
     <script src="engine/audio.js?v=20260803-1"></script>
     <script src="engine/ambiance.js?v=20260803-1"></script>
     <script src="big-win.js?v=20261001-1"></script>
-    <script src="main.js?v=20261001-1"></script>
+    <script src="main.js?v=20261003-1"></script>
   </body>
 </html>

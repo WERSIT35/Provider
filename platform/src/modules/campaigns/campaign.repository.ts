@@ -236,6 +236,29 @@ export class InMemoryCampaignRepository {
       .map(clone);
   }
 
+  /**
+   * Every open grant this player holds with this operator, across games: active
+   * grants of active campaigns whose window hasn't ended (including ones that
+   * haven't started yet). Soonest-expiring first. Lazily expires stale grants.
+   */
+  playerGrants(operatorId: string, operatorPlayerId: string, now = new Date().toISOString()): ConsumedSpin[] {
+    const ids = this.byPlayer.get(operatorId + "\u0000" + operatorPlayerId);
+    if (!ids) return [];
+    const out: ConsumedSpin[] = [];
+    for (const id of ids) {
+      const grant = this.grants.get(id)!;
+      if (grant.status !== "active") continue;
+      const campaign = this.campaigns.get(grant.campaign_id);
+      if (!campaign || campaign.status !== "active") continue;
+      if (campaign.valid_to <= now) {
+        this.mutate(grant, now, () => (grant.status = "expired"));
+        continue;
+      }
+      out.push({ grant: clone(grant), campaign: clone(campaign) });
+    }
+    return out.sort((a, b) => a.campaign.valid_to.localeCompare(b.campaign.valid_to));
+  }
+
   /** Grants this player could play right now in this game/currency, in consume order. */
   available(ctx: SpinContext, now = new Date().toISOString()): ConsumedSpin[] {
     return this.usable(ctx, now).map(({ grant, campaign }) => ({ grant: clone(grant), campaign: clone(campaign) }));
