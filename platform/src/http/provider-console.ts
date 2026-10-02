@@ -6,6 +6,7 @@ import {
   SECTION_GAMES,
   SECTION_DISPUTES,
   SECTION_PLAYERS,
+  SECTION_PLAYER_REPORTS,
   SECTION_ONBOARDING,
   SECTION_REPORTS,
   SECTION_ACCOUNTS
@@ -28,6 +29,7 @@ const PAGE = renderConsolePage({
     { view: "games", label: "Games" },
     { view: "disputes", label: "Disputes" },
     { view: "players", label: "Players" },
+    { view: "playerReports", label: "Player Reports" },
     { view: "onboarding", label: "Onboarding" },
     { view: "reports", label: "Reports" },
     { view: "accounts", label: "Admin Accounts" }
@@ -38,6 +40,7 @@ const PAGE = renderConsolePage({
     SECTION_GAMES,
     SECTION_DISPUTES,
     SECTION_PLAYERS,
+    SECTION_PLAYER_REPORTS,
     SECTION_ONBOARDING,
     SECTION_REPORTS,
     SECTION_ACCOUNTS

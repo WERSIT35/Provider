@@ -88,6 +88,10 @@ pre.code { background:#070b1a; border:1px solid var(--line); padding:8px 10px; b
 .banner { padding:8px 12px; border-radius:8px; border:1px solid var(--line); margin-top:8px; font-weight:600; }
 .banner.fs { background: #28203a; color:#d8c4ff; border-color:#3e3270; }
 .banner.bonus { background:#3a2a10; color:#ffd089; border-color:#6e4d20; }
+.verdict { display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel-2); margin-bottom:12px; font-size:14px; }
+.verdict b { font-size:16px; letter-spacing:.04em; }
+.verdict.good { background:#10301f; color:var(--ok); border-color:#1b4f33; }
+.verdict.bad { background:#2a1320; color:var(--err); border-color:#5c2236; }
 .breakdown { font-size:13px; }
 .breakdown details { background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:6px; }
 .breakdown summary { cursor:pointer; font-weight:600; }
@@ -257,9 +261,21 @@ async function afterSignIn() {
   if (state.scope !== "provider") {
     try { const me = await api("/admin/v1/me"); state.operatorId = me.operator_id; } catch {}
   }
-  const initial = (location.hash || "#dashboard").slice(1);
-  show(VIEWS.includes(initial) ? initial : "dashboard");
+  if (!openDeepLink()) {
+    const initial = (location.hash || "#dashboard").slice(1).split("?")[0];
+    show(VIEWS.includes(initial) ? initial : "dashboard");
+  }
 }
+// Deep link: #inspector?round=<ref> opens that round straight in the inspector.
+function openDeepLink() {
+  const m = /^#inspector\\?(.*)$/.exec(location.hash || "");
+  const ref = m ? new URLSearchParams(m[1]).get("round") : null;
+  if (!ref) return false;
+  openRound(ref);
+  return true;
+}
+window.addEventListener("hashchange", () => { if (state.token && state.scope) openDeepLink(); });
+function openRound(ref) { $("roundRefInput").value = ref; show("inspector"); lookupRound(); }
 function applyScopeVisibility() {
   const isProvider = state.scope === "provider";
   document.querySelectorAll("[data-provider]").forEach(el => { el.style.display = isProvider ? "" : "none"; });
@@ -288,6 +304,7 @@ function show(view) {
   if (view === "games") { loadGames(); if (state.scope !== "provider") loadWebhook(); }
   if (view === "disputes") loadDisputes();
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
+  if (view === "playerReports") loadPlayerReport();
   if (view === "onboarding") refreshOnboardingDropdowns();
   if (view === "reports") loadReports();
   if (view === "accounts") loadAccounts();
@@ -346,7 +363,7 @@ async function loadRounds() {
         '<td>' + r.status + '</td>' +
         '<td>' + (r.created_at || '').replace('T', ' ').slice(0, 19) + '</td></tr>').join('');
     setHTML("roundsList", '<table>' + head + body + '</table>');
-    $("roundsList").querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => { $("roundRefInput").value = tr.dataset.ref; show('inspector'); lookupRound(); }));
+    $("roundsList").querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => openRound(tr.dataset.ref)));
   } catch (e) { setHTML("roundsList", '<span class="err">'+e.message+'</span>'); }
 }
 
@@ -357,6 +374,7 @@ __ROUNDACTIONS__
 __GAMES__
 __DISPUTES__
 __PLAYERS__
+__PLAYER_REPORTS__
 __OPERATORS__
 __ACCOUNTS__
 
@@ -366,7 +384,7 @@ if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
 
 // The inspector/onboarding/etc. blocks are big and unchanged in behavior from the
 // original single console; kept in separate template pieces for readability.
-import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
+import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, PLAYER_REPORTS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
 
 function buildAppJs(): string {
   return CONSOLE_JS
@@ -377,6 +395,7 @@ function buildAppJs(): string {
     .replace("__GAMES__", GAMES_JS)
     .replace("__DISPUTES__", DISPUTES_JS)
     .replace("__PLAYERS__", PLAYERS_JS)
+    .replace("__PLAYER_REPORTS__", PLAYER_REPORTS_JS)
     .replace("__OPERATORS__", OPERATORS_JS)
     .replace("__ACCOUNTS__", ACCOUNTS_JS);
 }

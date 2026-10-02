@@ -11,7 +11,7 @@
  */
 
 export const INSPECTOR_JS = /* js */ `
-let inspectorRound = null; let stepIdx = 0; let playTimer = null;
+let inspectorRound = null; let inspectorVerdict = null; let stepIdx = 0; let playTimer = null;
 const SYMBOL_LABELS = {
   TOP_CROWN:'crown', HOURGLASS:'hourglass', RING:'ring', CHALICE:'chalice', RED_GEM:'gem',
   PURPLE_TRIANGLE:'purple', YELLOW_HEX:'yellow', GREEN_TRIANGLE:'green', BLUE_DIAMOND:'diamond', SCATTER:'scatter'
@@ -48,10 +48,13 @@ async function lookupRound() {
   $('inspectorStatus').className = 'muted'; $('inspectorStatus').textContent = 'looking up…'; $('inspectorStatus').hidden = false;
   try {
     const data = await api('/admin/v1/rounds/' + encodeURIComponent(ref));
-    inspectorRound = data; stepIdx = 0; renderInspector();
+    inspectorRound = data; inspectorVerdict = { pending: true }; stepIdx = 0; renderInspector();
     $('inspectorStatus').textContent = ''; $('inspectorStatus').className = 'ok';
+    // Shareable link: /admin#inspector?round=<ref>
+    history.replaceState(null, '', '#inspector?round=' + encodeURIComponent(ref));
+    loadVerdict(ref);
   } catch (e) {
-    inspectorRound = null;
+    inspectorRound = null; inspectorVerdict = null;
     if (e.status === 404) renderInspectorEmpty(ref); else flash($('inspectorStatus'), e.message, false);
   }
 }
@@ -99,8 +102,23 @@ function renderInspector() {
     (r.is_free_spin ? '<div class="banner bonus">⭐ This spin was a FREE SPIN</div>' : '') +
     '<h2 style="margin-top:14px;">Per-step breakdown</h2><div class="breakdown">' + buildBreakdown(steps) + '</div></div>';
   const visual = '<div class="panel"><h2>Visual playback</h2>' + renderStageHtml(outcome, initialMatrix, steps, stepIdx) + renderStepControls(totalStages) + '</div>';
-  $('inspectorContent').innerHTML = '<div class="inspector">'+text+visual+'</div>';
+  $('inspectorContent').innerHTML = verdictBannerHtml() + '<div class="inspector">'+text+visual+'</div>';
   bindStepControls(totalStages);
+}
+// Verification verdict leads the inspector: recomputed from the stored seed + hash chain.
+async function loadVerdict(ref) {
+  try { inspectorVerdict = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/verify'); }
+  catch (e) { inspectorVerdict = { error: e.status === 403 ? 'your role cannot verify rounds' : e.message }; }
+  if (inspectorRound && inspectorRound.round_ref === ref) renderInspector();
+}
+function verdictBannerHtml() {
+  const v = inspectorVerdict; if (!v) return '';
+  if (v.pending) return '<div class="verdict pending">Verifying round…</div>';
+  if (v.error) return '<div class="verdict pending">Verification unavailable: ' + esc(v.error) + '</div>';
+  const cls = v.verdict === 'tampered' ? 'bad' : (v.verdict === 'legitimate' ? 'good' : 'pending');
+  return '<div class="verdict ' + cls + '"><b>' + esc(String(v.verdict).toUpperCase()) + '</b>' +
+    '<span>outcome ' + (v.outcome_ok === null ? 'n/a' : (v.outcome_ok ? '✓' : '✗')) + ' · chain ' + (v.chain_ok ? '✓' : '✗') + '</span>' +
+    (v.notes && v.notes.length ? '<span class="muted">' + esc(v.notes.join(' · ')) + '</span>' : '') + '</div>';
 }
 function kv(k, v) { return '<span>'+k+'</span><div>'+(v ?? '')+'</div>'; }
 function buildBreakdown(steps) {
@@ -383,6 +401,11 @@ async function loadPlayer() {
   if (!pid) { flash(st, 'enter a player id', false); return; }
   const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
   st.hidden = false; st.className = 'muted'; st.textContent = 'loading…';
+  setHTML('playerSummary', '');
+  api('/admin/v1/players/' + encodeURIComponent(pid) + '/summary' + qs).then(s => setHTML('playerSummary',
+    '<div class="cards">' + cardHtml('rounds', s.rounds) + cardHtml('turnover', fmtMoney(s.total_bet)) + cardHtml('total win', fmtMoney(s.total_win)) +
+    cardHtml('GGR', fmtMoney(s.ggr)) + cardHtml('RTP %', s.rtp_percent) + cardHtml('biggest win', fmtMoney(s.biggest_win)) +
+    cardHtml('voided', s.voided_rounds) + cardHtml('last seen', (s.last_seen || '').replace('T', ' ').slice(0, 16)) + '</div>')).catch(() => {});
   try { const d = await api('/admin/v1/players/' + encodeURIComponent(pid) + '/rounds' + qs);
     st.textContent = d.count + ' rounds';
     if (!d.rounds.length) { el.innerHTML = '<p class="muted">no rounds for this player</p>'; return; }
@@ -392,6 +415,62 @@ async function loadPlayer() {
         '<td>' + (r.effective_status !== r.status ? ('<span class="err">' + r.effective_status + '</span>') : r.status) + '</td><td>' + (r.created_at || '').replace('T',' ').slice(0,19) + '</td></tr>').join('') + '</table>';
     el.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => { $('roundRefInput').value = tr.dataset.ref; show('inspector'); lookupRound(); }));
   } catch (e) { flash(st, e.message, false); el.innerHTML = ''; }
+}
+`;
+
+export const PLAYER_REPORTS_JS = /* js */ `
+let lastPlayerReport = null;
+const PR_COLS = ['operator_player_id','rounds','free_spin_rounds','total_bet','total_win','ggr','rtp_percent','biggest_win','first_seen','last_seen'];
+function playerReportQs() {
+  const p = new URLSearchParams();
+  const op = $('prOp') ? $('prOp').value.trim() : ''; if (op) p.set('operator_id', op);
+  // Dates are whole days: "to" includes the entire day (rounds store full ISO timestamps).
+  if ($('prFrom').value) p.set('from', $('prFrom').value);
+  if ($('prTo').value) p.set('to', $('prTo').value + 'T23:59:59.999Z');
+  if ($('prGame').value.trim()) p.set('game', $('prGame').value.trim());
+  p.set('sort', $('prSort').value); p.set('limit', '1000');
+  return '?' + p.toString();
+}
+async function loadPlayerReport() {
+  const st = $('prStatus'); const el = $('playerReportTable');
+  st.hidden = false; st.className = 'muted'; st.textContent = 'loading…';
+  try {
+    const d = await api('/admin/v1/reports/players' + playerReportQs());
+    lastPlayerReport = d;
+    st.textContent = d.count + (d.total_players > d.count ? (' of ' + d.total_players) : '') + ' players';
+    if (!d.players.length) { el.innerHTML = '<p class="muted">no player activity in this period</p>'; return; }
+    el.innerHTML = '<table><tr><th>player</th>' + (state.scope === 'provider' ? '<th>operator</th>' : '') +
+      '<th>rounds</th><th>turnover</th><th>win</th><th>GGR</th><th>RTP %</th><th>biggest win</th><th>last seen</th></tr>' +
+      d.players.map(r => '<tr class="clickable" data-op="' + esc(r.operator_id) + '" data-player="' + esc(r.operator_player_id) + '">' +
+        '<td><code>' + esc(r.operator_player_id) + '</code></td>' + (state.scope === 'provider' ? '<td>' + esc(r.operator_id.slice(0, 8)) + '…</td>' : '') +
+        '<td>' + r.rounds + (r.free_spin_rounds ? ' <span class="muted">(' + r.free_spin_rounds + ' free)</span>' : '') + '</td>' +
+        '<td>' + fmtMoney(r.total_bet) + '</td><td>' + fmtMoney(r.total_win) + '</td>' +
+        '<td' + (r.ggr < 0 ? ' class="err"' : '') + '>' + fmtMoney(r.ggr) + '</td><td>' + r.rtp_percent + '</td>' +
+        '<td>' + fmtMoney(r.biggest_win) + '</td><td>' + (r.last_seen || '').replace('T', ' ').slice(0, 16) + '</td></tr>').join('') + '</table>';
+    el.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => {
+      if ($('plOp')) $('plOp').value = tr.dataset.op;
+      $('plPlayer').value = tr.dataset.player; show('players'); loadPlayer();
+    }));
+  } catch (e) { flash(st, e.message, false); el.innerHTML = ''; }
+}
+// Quote every field; neutralise spreadsheet formula injection in text cells
+// (player ids come from the operator and could start with = + - @).
+function csvCell(v) {
+  let s = v == null ? '' : String(v);
+  if (typeof v === 'string' && /^[=+\\-@]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+async function exportPlayerReportCsv() {
+  await loadPlayerReport(); // export exactly what the current filters show
+  const d = lastPlayerReport; if (!d || !d.players.length) return;
+  const cols = (state.scope === 'provider' ? ['operator_id'] : []).concat(PR_COLS);
+  const lines = [cols.join(',')].concat(d.players.map(r => cols.map(c => csvCell(r[c])).join(',')));
+  const blob = new Blob([lines.join('\\r\\n') + '\\r\\n'], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'player-report-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 `;
 

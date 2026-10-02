@@ -83,7 +83,34 @@ export const SECTION_PLAYERS = /* html */ `
       <button onclick="loadPlayer()">Look up</button>
       <span id="plStatus" class="muted"></span>
     </div>
+    <div id="playerSummary"></div>
     <div id="playerRounds">–</div>
+  </div>
+</section>`;
+
+export const SECTION_PLAYER_REPORTS = /* html */ `
+<section id="playerReportsView" hidden>
+  <div class="panel">
+    <h2>Player Reports</h2>
+    <p class="muted">Turnover, wins, GGR and RTP per player for a period. Voided rounds are excluded. Click a row to open that player's rounds; from there, any round opens in the inspector.</p>
+    <div class="toolbar">
+      <input class="search" id="prOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <label class="muted">From <input type="date" id="prFrom"/></label>
+      <label class="muted">To <input type="date" id="prTo"/></label>
+      <input class="search" id="prGame" placeholder="game code (optional)"/>
+      <select id="prSort">
+        <option value="total_bet">sort: turnover</option>
+        <option value="ggr">sort: GGR</option>
+        <option value="total_win">sort: total win</option>
+        <option value="rounds">sort: rounds</option>
+        <option value="rtp_percent">sort: RTP %</option>
+        <option value="last_seen">sort: last seen</option>
+      </select>
+      <button onclick="loadPlayerReport()">Run</button>
+      <button class="ghost" onclick="exportPlayerReportCsv()">Export CSV</button>
+      <span id="prStatus" class="muted"></span>
+    </div>
+    <div id="playerReportTable">–</div>
   </div>
 </section>`;
 

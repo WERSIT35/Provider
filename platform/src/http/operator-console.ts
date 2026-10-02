@@ -6,6 +6,7 @@ import {
   SECTION_GAMES,
   SECTION_DISPUTES,
   SECTION_PLAYERS,
+  SECTION_PLAYER_REPORTS,
   SECTION_REPORTS
 } from "./admin-console-sections";
 
@@ -21,11 +22,14 @@ const PAGE = renderConsolePage({
   brandtag: "Operator · casino admin",
   consoleKind: "operator",
   expectedScope: "operator",
+  // Round Inspector leads the nav: "a player says spin X was wrong" is the
+  // operator's most frequent support task. Dashboard stays the landing view.
   nav: [
+    { view: "inspector", label: "Round Inspector" },
     { view: "dashboard", label: "Dashboard" },
     { view: "games", label: "My Games" },
-    { view: "inspector", label: "Round Inspector" },
     { view: "players", label: "Players" },
+    { view: "playerReports", label: "Player Reports" },
     { view: "disputes", label: "Disputes" },
     { view: "reports", label: "Reports" }
   ],
@@ -34,6 +38,7 @@ const PAGE = renderConsolePage({
     SECTION_GAMES,
     SECTION_INSPECTOR,
     SECTION_PLAYERS,
+    SECTION_PLAYER_REPORTS,
     SECTION_DISPUTES,
     SECTION_REPORTS
   ].join("\n")
