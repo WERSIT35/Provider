@@ -23,9 +23,19 @@ interface CreateBody {
   valid_to?: string;
 }
 
-function summarize(c: Campaign, grants: PlayerCampaign[]) {
+/** Lifecycle state for display, computed on the server clock. */
+function stateOf(c: Campaign, now: string): "cancelled" | "scheduled" | "expired" | "active" {
+  if (c.status === "cancelled") return "cancelled";
+  if (c.valid_from > now) return "scheduled";
+  if (c.valid_to <= now) return "expired";
+  return "active";
+}
+
+function summarize(c: Campaign, grants: PlayerCampaign[], gameCode: string | null = null) {
   return {
     ...c,
+    game_code: gameCode,
+    state: stateOf(c, new Date().toISOString()),
     players: grants.length,
     spins_granted: grants.reduce((s, g) => s + g.spins_granted, 0),
     spins_remaining: grants.filter((g) => g.status === "active").reduce((s, g) => s + g.spins_remaining, 0),
@@ -36,6 +46,8 @@ function summarize(c: Campaign, grants: PlayerCampaign[]) {
 const adminCampaignRoutes: FastifyPluginAsync = async (app) => {
   const auth = adminAuthPreHandler(app.container);
   const repo = app.container.campaigns;
+  const gameCode = (gameId: string): string | null =>
+    app.container.mgmt.listGames().find((g) => g.id === gameId)?.code ?? null;
 
   const guard = (req: FastifyRequest, reply: FastifyReply, permission: string): AdminClaims | null => {
     const claims = req.adminClaims as AdminClaims;
@@ -73,7 +85,7 @@ const adminCampaignRoutes: FastifyPluginAsync = async (app) => {
     const q = req.query as { operator_id?: string };
     const campaigns = repo
       .listCampaigns(resolveOperatorScope(claims, q.operator_id))
-      .map((c) => summarize(c, repo.listGrants(c.id)));
+      .map((c) => summarize(c, repo.listGrants(c.id), gameCode(c.game_id)));
     return { campaigns, count: campaigns.length };
   });
 
@@ -83,7 +95,7 @@ const adminCampaignRoutes: FastifyPluginAsync = async (app) => {
     const c = loadOwned(req, reply, claims);
     if (!c) return reply;
     const grants = repo.listGrants(c.id);
-    return { campaign: summarize(c, grants), grants };
+    return { campaign: summarize(c, grants, gameCode(c.game_id)), grants };
   });
 
   app.post("/admin/v1/campaigns", { preHandler: auth }, async (req, reply) => {
@@ -118,7 +130,7 @@ const adminCampaignRoutes: FastifyPluginAsync = async (app) => {
         created_by: claims.admin_id
       });
       audit(claims, operatorId, "campaign.create", campaign.id);
-      return reply.code(201).send({ campaign: summarize(campaign, []) });
+      return reply.code(201).send({ campaign: summarize(campaign, [], body.game_code) });
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
@@ -152,7 +164,7 @@ const adminCampaignRoutes: FastifyPluginAsync = async (app) => {
     if (!c) return reply;
     const res = repo.cancelCampaign(c.id);
     if (res.campaign.status === "cancelled" && c.status !== "cancelled") audit(claims, c.operator_id, "campaign.cancel", c.id);
-    return { campaign: summarize(res.campaign, repo.listGrants(c.id)), grants_cancelled: res.grants_cancelled };
+    return { campaign: summarize(res.campaign, repo.listGrants(c.id), gameCode(c.game_id)), grants_cancelled: res.grants_cancelled };
   });
 };
 

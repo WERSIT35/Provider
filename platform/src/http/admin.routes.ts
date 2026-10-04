@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import { envelope, sendDomainError } from "./errors";
-import { can, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
+import { can, permissionsOf, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
 import type { Container } from "../container";
 import { PLAYER_REPORT_SORTS, type PlayerReportSort } from "../modules/reporting/reporting.service";
 
@@ -427,7 +427,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       admin_id: claims.admin_id,
       scope: claims.scope,
       operator_id: claims.operator_id,
-      role: claims.role
+      role: claims.role,
+      permissions: permissionsOf(claims)
     };
   });
 
@@ -687,7 +688,15 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const q = req.query as { operator_id?: string };
     const operatorId = resolveOperatorScope(claims, q.operator_id);
     if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
-    return { operator_games: app.container.mgmt.listOperatorGames(operatorId) };
+    // Include each game's code/title so UIs (e.g. the Campaign Manager) can address games by code.
+    const games = new Map(app.container.mgmt.listGames().map((g) => [g.id, g]));
+    return {
+      operator_games: app.container.mgmt.listOperatorGames(operatorId).map((og) => ({
+        ...og,
+        game_code: games.get(og.game_id)?.code ?? null,
+        game_title: games.get(og.game_id)?.title ?? null
+      }))
+    };
   });
 
   // Toggle a game on/off. Operators may toggle their OWN assignments; provider any.

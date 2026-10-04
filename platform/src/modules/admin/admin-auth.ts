@@ -83,6 +83,11 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
   operator_viewer: new Set(["rounds.read", "reports.read", "players.read", "disputes.read", "campaigns.read"])
 };
 
+/** The effective permission list for a role ("*" = everything), for UIs to hide what a role can't do. */
+export function permissionsOf(claims: AdminClaims): string[] {
+  return Array.from(ROLE_PERMISSIONS[claims.role] ?? []);
+}
+
 export function can(claims: AdminClaims, permission: string): boolean {
   const perms = ROLE_PERMISSIONS[claims.role];
   if (!perms) return false;

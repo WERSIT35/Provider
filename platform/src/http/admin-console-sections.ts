@@ -114,6 +114,81 @@ export const SECTION_PLAYER_REPORTS = /* html */ `
   </div>
 </section>`;
 
+export const SECTION_CAMPAIGNS = /* html */ `
+<section id="campaignsView" hidden>
+  <div class="panel">
+    <h2>Campaign Manager</h2>
+    <p class="muted">Operator free rounds: each campaign gives every granted player a number of spins at one locked bet, inside a validity window. Free rounds are funded by the campaign, not the player's balance, and never change the game's RTP. Grants that outlive the window expire automatically.</p>
+    <div class="toolbar">
+      <input class="search" id="campOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <select id="campState" aria-label="Filter by status">
+        <option value="">all statuses</option>
+        <option value="active">active</option>
+        <option value="scheduled">scheduled</option>
+        <option value="expired">expired</option>
+        <option value="cancelled">cancelled</option>
+      </select>
+      <button class="ghost" id="campRefresh" type="button">Refresh</button>
+      <button id="campNewBtn" type="button" data-campaigns-write>+ New campaign</button>
+      <span id="campStatus" class="muted"></span>
+    </div>
+    <div id="campTable">–</div>
+    <div id="campDrawer" class="drawer" hidden></div>
+  </div>
+
+  <dialog id="campCreateDlg" class="modal" aria-labelledby="campCreateTitle">
+    <form id="campCreateForm" method="dialog" novalidate>
+      <h3 id="campCreateTitle">New free-round campaign</h3>
+      <label data-provider>Operator id<input id="ccOp" placeholder="operator id"/></label>
+      <label>Campaign name<input id="ccName" maxlength="120" placeholder="e.g. Weekend 20 free spins" required/></label>
+      <div class="form-2">
+        <label>Game &amp; currency<select id="ccGame" required></select></label>
+        <label>Bet per spin<select id="ccBet" required></select></label>
+      </div>
+      <p class="hint">Bets are limited to the ones this game is offered at for your casino.</p>
+      <div class="form-2">
+        <label>Spins per player<input id="ccSpins" type="number" min="1" max="1000" step="1" value="10" required/></label>
+        <span></span>
+      </div>
+      <div class="form-2">
+        <label>Valid from<input id="ccFrom" type="datetime-local" required/></label>
+        <label>Valid until<input id="ccTo" type="datetime-local" required/></label>
+      </div>
+      <label>Grant to players now (optional)<textarea id="ccPlayers" placeholder="operator_player_id per line or comma-separated"></textarea></label>
+      <div id="ccMsg" class="status err" hidden></div>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button type="submit" id="ccSubmit">Create campaign</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="campGrantDlg" class="modal" aria-labelledby="campGrantTitle">
+    <form id="campGrantForm" method="dialog" novalidate>
+      <h3 id="campGrantTitle">Grant free spins</h3>
+      <p id="cgInfo" class="muted"></p>
+      <label>Player ids<textarea id="cgPlayers" placeholder="operator_player_id per line or comma-separated" required></textarea></label>
+      <p class="hint">Each player receives the campaign's full spin count once. Players already in the campaign are skipped, never topped up.</p>
+      <div id="cgMsg" class="status" hidden></div>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Close</button>
+        <button type="submit" id="cgSubmit">Grant spins</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="campConfirmDlg" class="modal" aria-labelledby="campConfirmTitle">
+    <form method="dialog">
+      <h3 id="campConfirmTitle">Cancel campaign?</h3>
+      <p id="cfText" class="muted"></p>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Keep campaign</button>
+        <button type="button" class="danger" id="cfConfirm">Cancel campaign</button>
+      </div>
+    </form>
+  </dialog>
+</section>`;
+
 export const SECTION_REPORTS = /* html */ `
 <section id="reportsView" hidden>
   <div class="panel">

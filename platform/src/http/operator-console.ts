@@ -7,6 +7,7 @@ import {
   SECTION_DISPUTES,
   SECTION_PLAYERS,
   SECTION_PLAYER_REPORTS,
+  SECTION_CAMPAIGNS,
   SECTION_REPORTS
 } from "./admin-console-sections";
 
@@ -30,6 +31,7 @@ const PAGE = renderConsolePage({
     { view: "games", label: "My Games" },
     { view: "players", label: "Players" },
     { view: "playerReports", label: "Player Reports" },
+    { view: "campaigns", label: "Campaigns" },
     { view: "disputes", label: "Disputes" },
     { view: "reports", label: "Reports" }
   ],
@@ -39,6 +41,7 @@ const PAGE = renderConsolePage({
     SECTION_INSPECTOR,
     SECTION_PLAYERS,
     SECTION_PLAYER_REPORTS,
+    SECTION_CAMPAIGNS,
     SECTION_DISPUTES,
     SECTION_REPORTS
   ].join("\n")
