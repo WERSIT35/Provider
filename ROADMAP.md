@@ -68,11 +68,19 @@ Move forward only when exit criteria are complete.
   `FREE_ROUND_BET` wallet tagging, mid-feature `locked_bet` / `locked_ante`; 3D HMAC operator
   free-rounds API + client "You have X Free Rounds" modal and ticker countdown.
 
+- **Phase 4, math certification: complete (2026-10-05, commit `6d75826`).** Engine 1.2.0,
+  rules 3.1.0; no engineered near-misses; multiplier-bank rule; whole-round 20,000x cap
+  (enforced on the RGS); bonus 1 in ~248; recalibrated scalers for all three profiles; rounds
+  record `engine_version` + `rules_hash`; seeded statistical parity test. Lab report:
+  [qa/rtp-certification-report.md](qa/rtp-certification-report.md) — base 96.36%, buy 96.41%,
+  ante 96.70% (pooled). Open before submission: O1–O4 in CHECKPOINT.md §5.
+
 Details, verification results and open items: [CHECKPOINT.md](CHECKPOINT.md).
 
 ## Immediate Next Action
 
-**Phase 4: math certification readiness** (CHECKPOINT.md §6). Close the shared-engine RTP
-shortfall, run the 10M-spin validation, and produce the RTP/variance report a lab needs. Lab
-submission, the first provider sandbox pass, and launch all depend on it. Keep docs aligned with
-runtime behavior after each major change.
+**Demo Casino integration** — [16 Demo Casino Blueprint](docs/16-demo-casino-blueprint.md):
+staff login on the casino back-office first, then webhook enrichment, spin history, and the
+"Verify on provider" bridge into the Operator Portal. In parallel, close the certification
+report's open items O1–O4 before lab submission. Keep docs aligned with runtime behavior after
+each major change.
