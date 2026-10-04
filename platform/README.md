@@ -1,4 +1,6 @@
-# Banana X Platform (RGS + control plane)
+# Lumina Games Provider Platform (RGS + control plane)
+
+Serves the **Vault 20K** game (internal game code `bananax`) to casino operators.
 
 Provider platform service. Implements the roadmap in
 [../docs/provider-platform-plan.md](../docs/provider-platform-plan.md). Built as a modular
@@ -8,7 +10,7 @@ without reshaping the data model.
 **Non-developer guide:** [GUIDE.md](./GUIDE.md) — start the platform, onboard a casino, look up
 any spin by Round ID in the **Round Inspector**.
 
-## Status (backend Phases 1–6 done; 47 tests green)
+## Status (provider platform foundation; 113 tests green)
 
 - **Phase 1 — Foundation:** TS skeleton, validated env (zod), pino logging, request-id,
   `/health` + `/health/ready`, server-side **engine module** reusing `client/engine` math as the
@@ -46,18 +48,29 @@ any spin by Round ID in the **Round Inspector**.
 - **Provisioning portal (Phase 6 UI):** click-through onboarding (operator → domain → credential
   → game → math config → assignment) over the same Admin API used by `scripts/dev-seed.ts`. The
   certification gate (approved configs only) is enforced server-side.
-- **Player demo client (`/play`):** minimal HTML client that exchanges a launch token for a
-  session, spins, and prominently surfaces the **Round ID** after every spin with a Copy button.
+- **Player game client (`/play`):** serves the real `client/` canvas game from the platform origin.
+  Launch-token sessions route spin traffic through `/game/v1/*`.
+- **Durable Postgres path:** `DATABASE_URL` enables migrations, boot hydration, and write-through
+  persistence for management data, sessions, rounds, transactions, disputes, admin accounts, and
+  sandbox wallet state.
+- **Production guardrails:** production/staging startup rejects local-only secrets, missing
+  `DATABASE_URL`, or disabled admin TOTP.
+- **Admin 2FA switch:** `ADMIN_TOTP_REQUIRED` (`src/config/env.ts`). Unset, it is **off** for
+  `NODE_ENV=local|test` (development: username + password only) and **on** for
+  `sandbox|staging|production`; an explicit `true`/`false` always wins. The TOTP code paths are
+  intact, so turning it back on is one variable.
+- **Container packaging:** build from the repo root with `npm run docker:build:platform`.
 
 ### Remaining (need a live DB or external integration)
 
-- **Postgres swap:** replace the in-memory repos/wallet with implementations of the same interfaces
-  against `migrations/0001_core.sql` (+ a migration runner). A `docker-compose.yml` for Postgres
-  is included; the schema already has the `outcome_jsonb` column the inspector reads.
 - **Real wallet adapter:** implement `WalletAdapter` against a specific operator's wallet API
   (idempotency contract documented in the interface).
-- **Certification (Phase 9):** depends on the RTP re-tune (committed math currently ~88% vs 96.38%
-  target) and the target jurisdiction.
+- **Production secret storage:** raw HMAC/webhook/TOTP secrets still need a real secret manager or
+  encryption-at-rest design before real-money launch.
+- **Strict spin durability:** the current Postgres path is memory-first write-through. For real money,
+  decide whether DB flush failures should fail the request instead of logging and retrying.
+- **Certification (Phase 9):** `npm run test:rtp-parity` currently fails at about 95.04% measured RTP
+  vs 96.38% target on a 1M-spin run, so math/certification is not release-ready yet.
 
 ## Layout
 
@@ -106,14 +119,16 @@ npm run dev:seed
 
 This provisions a demo operator, plays 50 spins, seeds the two console logins, prints a sample
 `round_ref` to paste into the Round Inspector, and prints a launch URL for the player demo. There
-are **two separate admin consoles** with **separate logins** (username + password + TOTP 2FA):
+are **two separate admin consoles** with **separate logins** (username + password; TOTP 2FA is
+off by default in local development, see `ADMIN_TOTP_REQUIRED` above):
 
 - **`http://127.0.0.1:8080/provider`** — the **Provider Control Plane** (our admin: Dashboard,
   Onboarding, all games, Disputes, Reports, Round Inspector, Admin Accounts). Seeded login
   `admin` / `change-me-admin`.
 - **`http://127.0.0.1:8080/admin`** — the **Provider Games · Operator Portal** (the casino admin:
   only their assigned games + data). Seeded login `demo-operator` + the printed one-time password.
-- Each account sets a password (operator) and enrolls a TOTP authenticator on first sign-in.
+- An operator account sets its own password on first sign-in. With `ADMIN_TOTP_REQUIRED=true`,
+  every account also enrolls a TOTP authenticator on first sign-in.
 - The player launch URL printed in the terminal — opens `/play?lt=…`, the minimal player demo
   that shows the **Round ID** after each spin.
 

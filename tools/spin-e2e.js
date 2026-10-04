@@ -174,10 +174,9 @@ async function main() {
     let booted = false;
     for (let i = 0; i < 150; i++) {
       await sleep(100);
-      booted = await ev(`(() => {
-        const s = document.getElementById("sessionId");
-        return !!s && s.textContent && s.textContent !== "-" && s.textContent.length > 3;
-      })()`).catch(() => false);
+      // The session itself, not a DOM readout of it: the player shell has no
+      // session-id element, and the test should not depend on one.
+      booted = await ev(`(() => typeof state !== "undefined" && !!state.sessionId)()`).catch(() => false);
       if (booted) break;
     }
     check("client booted and initialized a session", booted);

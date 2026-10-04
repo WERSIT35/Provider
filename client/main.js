@@ -9,11 +9,8 @@ const $ = (id) => document.getElementById(id);
 })();
 
 const el = {
-  sessionId: $("sessionId"),
   balance: $("balance"),
   betView: $("betView"),
-  winningLines: $("winningLines"),
-  winningLinesMobile: $("winningLinesMobile"),
   lastWin: $("lastWin"),
   betNode: $("betNode"),
   freeSpins: $("freeSpins"),
@@ -22,9 +19,6 @@ const el = {
   activeMultiplierNode: $("activeMultiplierNode"),
   bonusMultiBadge: $("bonusMultiBadge"),
   bonusMultiBadgeValue: $("bonusMultiBadgeValue"),
-  infoToggle: $("infoToggle"),
-  infoPopover: $("infoPopover"),
-  rulesBtnMobile: $("rulesBtnMobile"),
   bonusTotal: $("bonusTotal"),
   bonusTotalNode: $("bonusTotalNode"),
   betSelect: $("betSelect"),
@@ -74,22 +68,14 @@ const el = {
   simLiveBonusWin: $("simLiveBonusWin"),
   simLiveBaselineRtp: $("simLiveBaselineRtp"),
   simLiveBaselineNet: $("simLiveBaselineNet"),
-  rulesBtn: $("rulesBtn"),
-  rulesModal: $("rulesModal"),
-  rulesTitle: $("rulesTitle"),
-  rulesMeta: $("rulesMeta"),
-  rulesList: $("rulesList"),
-  rulesPrevBtn: $("rulesPrevBtn"),
-  rulesNextBtn: $("rulesNextBtn"),
-  rulesPageLabel: $("rulesPageLabel"),
-  rulesCloseBtn: $("rulesCloseBtn"),
-  lineCount: $("lineCount"),
+  psMenuBtn: $("psMenuBtn"),
+  psInfoBtn: $("psInfoBtn"),
+  psInfoModal: $("psInfoModal"),
+  psTicker: $("psTicker"),
+  psTickerText: $("psTickerText"),
   symbolLegend: $("symbolLegend"),
   payoutRuleText: $("payoutRuleText"),
   multiplierInfo: $("multiplierInfo"),
-  winCallout: $("winCallout"),
-  winCalloutLabel: $("winCalloutLabel"),
-  winCalloutAmount: $("winCalloutAmount"),
   testDropBtn: $("testDropBtn"),
   testExplodeBtn: $("testExplodeBtn"),
   testCelebrateBtn: $("testCelebrateBtn"),
@@ -100,8 +86,6 @@ const el = {
   featureScreenKicker: $("featureScreenKicker"),
   featureScreenTitle: $("featureScreenTitle"),
   featureScreenCopy: $("featureScreenCopy"),
-  eventBanner: $("eventBanner"),
-  eventBannerText: $("eventBannerText"),
   turboBtn: $("turboBtn"),
   soundToggle: $("soundToggle"),
   autoplayBtn: $("autoplayBtn"),
@@ -115,7 +99,6 @@ const state = {
   sessionId: null,
   gameId: "bananax",
   rules: null,
-  rulesPageIndex: 0,
   bonusAutoplay: false,
   simulationAbort: null,
   featureResolver: null,
@@ -123,7 +106,6 @@ const state = {
   activityLog: [],
   spinSeq: 0,
   bannerTimer: null,
-  calloutTimer: null,
   testBusy: false,
   forcedMultiplierLock: null,
   spinFlownSouls: new Set(),
@@ -135,6 +117,8 @@ const state = {
   crazyMode: false,
   turbo: false,
   autoplayActive: false,
+  // performance.now() when the last round (or autoplay run) fully settled.
+  roundSettledAt: -Infinity,
   autoplayLeft: 0,
   autoplayInitial: 0
 };
@@ -196,42 +180,59 @@ const symbolAssets = {
 // otherwise the browser treats them as different resources and the preload is
 // wasted. See the note on <base href> in index.html.
 const uiAssets = {
-  UI_SPIN: "assets/symbols/SPIN.webp",
   UI_BACKGROUND: "assets/symbols/Background.webp",
-  UI_BET: "assets/symbols/BET-removebg-preview.webp",
-  UI_ANTE_ACTIVE: "assets/symbols/ANTE_ACTIVE-removebg-preview.webp",
-  UI_ANTE_INACTIVE: "assets/symbols/ANTE_INACTIVE-removebg-preview.webp",
-  UI_BUY_FEATURE: "assets/symbols/BUY_FEATURE-removebg-preview.webp",
   UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const ANIMATION_TIMING = {
-  // Snappiness pass: the pre-result phases (burst → old board exit → new board
-  // entry) were ~2.6s before the player could read the outcome. Trimmed ~20%
-  // for a tighter spin→result rhythm without losing the drop/bounce character.
-  // Tune these live if a slower, more cinematic feel is preferred.
+  // AAA pacing pass (Vault 20K). Every value is a real-time ms budget before
+  // turbo (x0.4); fast-stop collapses all of them.
   spinBurst: 420,
-  oldBoardDropOff: 820,
-  introDrop: 820,
-  // Tumble cascade refill fall duration. The drop now runs AFTER the explosion
-  // has fully finished (see the deliberate win beat below), so the refill reads
-  // as a clean gravity drop into the cleared cells rather than overlapping the
-  // burst. Tune live for feel.
-  tumbleDrop: 640,
-  // Deliberate win beat (no overlap): the caught cluster is CELEBRATED (held +
-  // glowing) for a clear moment, THEN it explodes, and only once the explosion
-  // fully finishes do the refill symbols drop in. celebrateHoldFirst is the
-  // headline hold for the first/opening catch; chained tumble catches use the
-  // shorter celebrateHoldChain so long cascades keep their momentum. Very large
-  // clusters get a little extra read-time (markPerExtraSymbol, capped).
-  celebrateHoldFirst: 2500,
-  celebrateHoldChain: 1500,
+  // Old board leaves: one mechanical tick up, then a fast pull out.
+  oldBoardDropOff: 480,
+  // New board drops in, column by column (WATERFALL), and slams.
+  introDrop: 520,
+  // Tumble refills fall FASTER than the opening drop: momentum builds through
+  // a cascade instead of each step re-starting at base-game speed.
+  tumbleDrop: 380,
+  // Deliberate win beat (no overlap): the caught cluster is held + glowing for
+  // a short, readable moment, THEN explodes, and only once the explosion
+  // finishes do the refills drop. The opening catch gets the longer hold;
+  // chained catches are snappier so a cascade accelerates. Very large clusters
+  // get a little extra read-time (markPerExtraSymbol, capped).
+  celebrateHoldFirst: 1100,
+  celebrateHoldChain: 700,
   markBigClusterThreshold: 8,
-  markPerExtraSymbol: 34,
-  markBigClusterCap: 540,
-  explode: 540
+  markPerExtraSymbol: 30,
+  markBigClusterCap: 300,
+  explode: 380
 };
+
+// Per-symbol waterfall. Reels release left to right, colMs apart (ranked
+// among the reels that actually drop, so a tumble never waits on reels that
+// stay put). Inside a reel the BOTTOM symbol goes first and each one above it
+// follows rowMs later, so the symbols land one by one, bottom-up: a rapid
+// rat-a-tat (4 gaps × rowMs = 72ms per reel, inside colMs, so reels never
+// interleave). The spin-out runs the same order at exitScale. Turbo-scaled.
+const WATERFALL = { colMs: 80, rowMs: 18, exitScale: 0.5 };
+// A symbol's own fall time scales with how far it falls, like gravity
+// (t ∝ √distance): a refill dropping one row is quicker than one dropping
+// five. Floored so a one-row drop still reads as a fall.
+const FALL_SCALE_MIN = 0.55;
+// The reel mask. A symbol IN FLIGHT is clipped to the grid: entering from
+// above, it is only visible below row 0's top edge; leaving on the spin-out,
+// only above the last row's bottom edge. Symbol art is drawn larger than its
+// cell (1.12×, MULTI 1.24×), so a RESTING symbol overhangs its cell a little;
+// over a symbol's last `settleRows` of travel the mask edge eases out to that
+// overhang (and back in as it leaves), so the art is never cropped at rest
+// and no edge pops. A symbol entering from above waits `spawnPad` rows higher
+// than its slot (at least the largest overhang, (1.24 - 1) / 2), so not even
+// its bottom edge is inside the grid before it is released.
+const REEL_MASK = { spawnPad: 0.14, settleRows: 0.5 };
+// Base autoplay: a fixed, NOT turbo-scaled gap between rounds, so the player can
+// read each settled board even at full speed.
+const AUTOPLAY_GAP_MS = 500;
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -242,15 +243,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // renderer animation methods + animationSleep. Fast-stop still wins and
 // collapses to near-instant.
 const turboScale = () => (state.turbo ? 0.4 : 1);
-// On fast-stop, the in-flight drop is re-timed to land smoothly in ~this window
-// (a quick, visible settle — NOT an instant teleport), and the per-step drop
-// awaits resolve this long after the tap so the board never commits mid-fall.
-const FAST_STOP_SETTLE_MS = 150;
+// Fast-stop / skip: the in-flight drop is re-timed to finish on the next frame
+// (no easing, no bounce — straight to the step's resolved board), and the
+// per-step drop awaits resolve immediately. Drops that START after a fast-stop
+// run for FAST_STOP_DROP_MS, i.e. they are drawn already landed.
+const FAST_STOP_SETTLE_MS = 0;
+// With skip now instant, a round can resolve ~200ms after the skip press, so a
+// player hammering spin would start fresh PAID spins with taps meant as skips.
+// A manual press this soon after a round settles is treated as a late skip and
+// ignored. Autoplay is unaffected.
+const SPIN_SETTLE_GUARD_MS = 250;
+const FAST_STOP_DROP_MS = 1;
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
+// easeOutBack with a tunable overshoot (c1): it passes 1 by a hair and settles
+// back. c1 = 0.6 overshoots by ~1.25%; the classic 1.70158 by ~10%.
+const easeOutBackK = (t, c1) => 1 + (c1 + 1) * (t - 1) ** 3 + c1 * (t - 1) ** 2;
 
 async function animateWinMeter(from, to, duration = 260) {
   const start = Number(from || 0);
@@ -274,6 +285,7 @@ async function animateWinMeter(from, to, duration = 260) {
   }
   el.lastWin.textContent = fmt(end);
 }
+const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeOutQuint = (t) => 1 - (1 - t) ** 5;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -309,13 +321,100 @@ const easeOutBounce = (t) => {
 // nothing. If it would, the symbol accelerates under gravity until it reaches vMax,
 // then coasts at vMax — and gravity is re-solved so it STILL lands exactly at τ=1
 // (continuous with the uncapped case at the boundary vMax = 2 − v0).
-const DROP_PHYSICS = {
-  // Drop-in: a touch of initial velocity, gravity to the slot by fallEnd, then a
-  // small restitution-damped bounce over the remaining time settles it.
-  in:  { v0: 0.16, vMax: 2.6, fallEnd: 0.72, bounceCells: 0.09 },
-  // Drop-out: falls cleanly out of frame — near rest, then accelerates. No bounce.
-  out: { v0: 0.06, vMax: Infinity }
+// "Heavy metal" rigid-body drops: gold bars and vault steel, not rubber.
+// Reel inertia (kinetic pass). The six reels are three mechanical groups:
+//   heavy   (reels 1-2): full-length fall, high time warp, so the symbol is
+//                        still accelerating at impact; a ~1.5% lock.
+//   tension (reels 3-4): 10% quicker and tighter; a ~0.8% lock.
+//   snap    (reels 5-6): 18% quicker with a low warp, so the cubic tail of the
+//                        easing brakes it hard into a ~0.25% gear detent.
+// Every drop eases in from rest (the warp gives zero start velocity) and locks
+// with an easeOutBack whose overshoot is 4·back³ / (27·(1 + back)²) of the
+// fall: it passes its slot by a hair and settles back, never bounces.
+// contact: the moment a symbol first reaches its slot; thuds, glints, the
+//          squash and scatter pings are timed to it.
+// squash:  the contact compression (fraction of the symbol's height).
+// exitV0:  launch speed when the spin latch releases (heavy reels start slower).
+function inertiaProfile(name, durScale, warp, back, squash, exitV0) {
+  return Object.freeze({
+    name, durScale, warp, back, squash, exitV0,
+    contact: Math.pow(1 / (1 + back), 1 / warp)
+  });
+}
+const REEL_INERTIA = Object.freeze([
+  inertiaProfile("heavy", 1, 2.0, 0.65, 0.02, 0.45),
+  inertiaProfile("tension", 0.9, 1.8, 0.5, 0.015, 0.75),
+  inertiaProfile("snap", 0.82, 1.35, 0.3, 0.01, 1.05)
+]);
+function dropEase(t, prof) {
+  return easeOutBackK(Math.pow(t, prof.warp), prof.back);
+}
+
+// Tumble vacuum: before a refill falls, the symbols around the blast lean INTO
+// the void for `ms`, as if the explosion left a pressure drop. Symbols above a
+// cleared cell dip `pull` rows and carry that dip into their fall; same-row
+// neighbours lean `side` lanes sideways and come back over returnMs with no
+// overshoot.
+const VACUUM = { ms: 30, pull: 0.05, side: 0.04, returnMs: 110 };
+// Cascade momentum: each tumble in a chain falls (and staggers) in `perStep`
+// of the previous one's time, floored so long chains stay readable.
+const TUMBLE_MOMENTUM = { perStep: 0.85, floor: 0.5 };
+const tumbleTempo = (step) => Math.max(TUMBLE_MOMENTUM.floor, TUMBLE_MOMENTUM.perStep ** Math.max(0, step - 1));
+// Fast-stop zip: every reel still moving zips from where it is into its slot,
+// left to right, the k-th moving reel locking at firstMs + k·colMs (≤ 110ms
+// for six), then a double latch-click (clickGapMs apart) seals the board.
+// `trail` ghost copies give the zip its motion blur.
+const FAST_ZIP = { firstMs: 30, colMs: 16, clickGapMs: 50, trail: 2 };
+
+// Symbol shatter (win explosions). Counts are per cell, before the quality
+// tier's fxCount scaling; up is the upward kick and flash the cell flare size,
+// both in cell sizes; gravity is in cell sizes per ms².
+const SHATTER = {
+  small:  { gems: 6,  gold: 2, steel: 1, sparks: 4, up: 0.0016, flash: 1.3 },
+  medium: { gems: 9,  gold: 3, steel: 2, sparks: 6, up: 0.002,  flash: 1.5 },
+  great:  { gems: 13, gold: 5, steel: 3, sparks: 9, up: 0.0026, flash: 1.8 },
+  gravity: 0.000012
 };
+
+// Reel anticipation (Step 5b). When the columns that have already landed show
+// one scatter short of the trigger, every later column waits (holdMs each,
+// stacking left to right) and falls slower (slowFall ×). Turbo-scaled; a
+// fast-stop cancels it.
+const ANTICIPATION = { holdMs: 650, slowFall: 1.6 };
+
+// Pure function of the board: columns land left to right, so scan them in that
+// order and find the first column after which the scatters on screen are one
+// short of the trigger. Never reads payload.near_miss (Option B suppression is
+// applied by the caller).
+function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
+  const cols = matrix?.[0]?.length || 0;
+  let seen = 0;
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < matrix.length; r++) if (matrix[r]?.[c] === scatter) seen++;
+    if (seen >= triggerCount) return null;                 // already triggered: nothing to tease
+    if (seen === triggerCount - 1 && c < cols - 1) return { fromCol: c + 1 };
+  }
+  return null;
+}
+
+// Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
+// Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
+const MOTION = {
+  stretch: 0,         // rigid bodies: no stretch while falling
+  squash: 1,          // gain on each reel group's contact squash (REEL_INERTIA)
+  breathBase: 0.08,   // winning symbols' resting swell during the hold
+  breathDepth: 0.07,  // extra swell at the top of each breath
+  breathMs: 1100,     // one breath (in + out)
+  breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
+  spotlight: 0.5      // how far non-winning symbols step back during the hold
+};
+const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathDepth: 0, breathRipple: 0 });
+
+// Symbol sprite cache band (see getSymbolSprite): reuse a bake while the wanted
+// size is within [min, max] of it; new bakes are made at headroom × wanted.
+// max 1.6 covers the 20% landing squash (bake 1.2x / wanted 0.8x = 1.5x) with
+// room to spare; at 1.5 every landing symbol sat on the edge and rebaked.
+const SPRITE_BAND = { min: 0.75, max: 1.6, headroom: 1.2 };
 
 function gravityFallFraction(tau, v0 = 0, vMax = Infinity) {
   tau = clamp(tau, 0, 1);
@@ -338,26 +437,172 @@ function setSigned(target, value) {
   if (value < 0) target.classList.add("negative");
 }
 
-const symbolTone = {
-  TOP_CROWN: ["#9ce4ff", "#3f7cff"],
-  HOURGLASS: ["#96fff8", "#2fa0c6"],
-  RING: ["#f2b8ff", "#8b5cf6"],
-  CHALICE: ["#b8d6ff", "#4d7dff"],
-  RED_GEM: ["#ff8cb4", "#dc3f7a"],
-  PURPLE_TRIANGLE: ["#d4bcff", "#7e56ff"],
-  YELLOW_HEX: ["#bff6ff", "#3aa2ff"],
-  GREEN_TRIANGLE: ["#b4ffd9", "#29b68f"],
-  BLUE_DIAMOND: ["#98e8ff", "#2e8bff"],
-  MULTI: ["#d8f6ff", "#5ea1ff"],
-  SCATTER: ["#ffd2ff", "#8b5cf6"]
-};
+// ─── THEME ──────────────────────────────────────────────────────────────────
+// Canvas mirror of the design tokens in styles.css (:root). CSS is the source
+// of truth: every value below is READ from the computed tokens at boot, and the
+// literals are only fallbacks for a stylesheet that failed to load. A palette
+// change is therefore a one-line CSS edit and the canvas follows automatically.
+// main.js is a parser-blocking script placed after the stylesheet, so the
+// tokens are resolved by the time this runs.
+// Purely presentational: nothing here touches SlotEngine or its RNG.
+const THEME = (() => {
+  const css = getComputedStyle(document.documentElement);
+  const HEX6 = /^#[0-9a-f]{6}$/i;
+  const tok = (name, fallback) => {
+    const v = css.getPropertyValue(name).trim();
+    if (HEX6.test(v)) return v.toLowerCase();
+    if (v) console.warn(`[THEME] ${name} must be #rrggbb, got "${v}"; using fallback`);
+    return fallback;
+  };
+  const str = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  // #rrggbb + alpha → rgba(). The only way canvas code should make a translucent
+  // colour, so every alpha variant stays tied to a token.
+  const alpha = (hex, a) => {
+    const n = parseInt(String(hex).slice(1), 16);
+    return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  };
+  const deepFreeze = (o) => {
+    Object.values(o).forEach((v) => { if (v && typeof v === "object") deepFreeze(v); });
+    return Object.freeze(o);
+  };
+
+  const c = {
+    vaultDoor:     tok("--bg-vault-door",     "#07080a"),
+    gunmetal:      tok("--bg-gunmetal",       "#111418"),
+    panel:         tok("--bg-panel",          "#191d22"),
+    panelRaised:   tok("--bg-panel-raised",   "#22272e"),
+    steelEdge:     tok("--steel-edge",        "#3a414a"),
+    steelBrushed:  tok("--steel-brushed",     "#6b7480"),
+    steelSheen:    tok("--steel-sheen",       "#b7bfc9"),
+    tungsten:      tok("--tungsten",          "#ffb86b"),
+    tungstenSoft:  tok("--tungsten-soft",     "#ffd9a8"),
+    laser:         tok("--accent-laser",      "#ff2a3a"),
+    laserDeep:     tok("--accent-laser-deep", "#a30a16"),
+    laserHot:      tok("--accent-laser-hot",  "#ff7a84"),
+    gold:          tok("--win-gold",          "#f2c14e"),
+    goldBright:    tok("--win-gold-bright",   "#ffe7a3"),
+    goldDeep:      tok("--win-gold-deep",     "#9c6b12"),
+    textHud:       tok("--text-hud",          "#eef1f4"),
+    textMuted:     tok("--text-muted",        "#8e98a4"),
+    textDim:       tok("--text-dim",          "#5a636e"),
+    signalOk:      tok("--signal-ok",         "#3fd68a"),
+    signalWarn:    tok("--signal-warn",       "#ffb020")
+  };
+
+  const multTier = (name, fallback, glowA) => {
+    const accent = tok(name, fallback);
+    return { accent, glow: alpha(accent, glowA) };
+  };
+
+  const font = {
+    ui:      str("--font-ui", 'system-ui, "Segoe UI", sans-serif'),
+    display: str("--font-display", '"Arial Narrow", Impact, sans-serif')
+  };
+
+  return deepFreeze({
+    color: c,
+    font,
+    alpha,
+    /** ctx.font string: THEME.canvasFont(700, 24) → display face; pass font.ui for body text. */
+    canvasFont: (weight, px, family = font.display) => `${weight} ${Math.round(px)}px ${family}`,
+
+    // Ambient stage behind the board (draw()). Hex bases; draw() applies the
+    // animated alpha via THEME.alpha so the gradient memo keys stay stable.
+    stage: {
+      fogCore:   alpha(c.tungsten, 0.16),   // warm lamp pool, top-centre
+      fogMid:    alpha(c.laserDeep, 0.07),  // faint red security spill
+      fogEdge:   "rgba(0, 0, 0, 0)",
+      meshA:     c.steelSheen,              // + idle-wave alpha
+      meshMid:   alpha(c.steelEdge, 0.02),
+      meshB:     c.laserDeep,               // + idle-wave alpha
+      spinFlash: c.tungsten,                // + burst alpha
+      vignette:  alpha(c.vaultDoor, 0.85),
+      cellWell:  alpha(c.gunmetal, 0.72),
+      cellEdge:  alpha(c.steelSheen, 0.10)
+    },
+
+    // Glow-sprite colours (getGlowSprite takes #rrggbb and adds its own alpha).
+    glow: {
+      win:     c.gold,
+      winHot:  c.goldBright,
+      scatter: c.laser,
+      laser:   c.laser,
+      steel:   c.steelSheen
+    },
+
+    // Particle palettes: picked with Math.random() — never SlotEngine.RNG.
+    particles: {
+      breach: [c.laserHot, c.tungsten, c.tungstenSoft, "#ffffff"], // tumble "breach" burst
+      sparks: [c.tungstenSoft, c.goldBright, "#ffffff"],           // metal-on-metal impact
+      gold:   [c.gold, c.goldBright, c.goldDeep],                   // win fountains
+      dust:   c.steelBrushed                                        // landing dust
+    },
+
+    // Win-figure text rendered on canvas.
+    text: {
+      winFill:      c.gold,
+      winHighlight: c.goldBright,
+      winStroke:    c.goldDeep,
+      winShadow:    alpha(c.vaultDoor, 0.85),
+      label:        c.textHud,
+      labelMuted:   c.textMuted
+    },
+
+    // Per-symbol [light, deep] glow pair, same keys and shape as the old
+    // symbolTone. Premiums read warm (gold/tungsten); gems keep their hue
+    // identity (players tell symbols apart by colour first) but in a colder,
+    // steel-desaturated key; scatter owns the laser red.
+    symbolGlow: {
+      TOP_CROWN:       [c.goldBright, c.gold],
+      HOURGLASS:       [c.tungstenSoft, c.tungsten],
+      RING:            [c.goldBright, c.goldDeep],
+      CHALICE:         [c.tungstenSoft, c.goldDeep],
+      RED_GEM:         ["#ff9aa2", "#c4202f"],
+      PURPLE_TRIANGLE: ["#c9b8f0", "#6c4fc4"],
+      YELLOW_HEX:      ["#fff0b8", "#c99a1a"],
+      GREEN_TRIANGLE:  ["#a8f0cf", "#1f9a6e"],
+      BLUE_DIAMOND:    ["#a9dcf7", "#2a77c4"],
+      MULTI:           [c.textHud, c.steelSheen],
+      SCATTER:         [c.laserHot, c.laser]
+    },
+
+    // Multiplier rarity, cold → hot. Shape matches MULTIPLIER_TIER_DEFS.
+    multiplier: {
+      common:    multTier("--mult-common",    "#9aa8b6", 0.50),
+      rare:      multTier("--mult-rare",      "#4fc3f7", 0.52),
+      epic:      multTier("--mult-epic",      "#ff7a2b", 0.56),
+      legendary: multTier("--mult-legendary", "#f2c14e", 0.62),
+      mythic:    multTier("--mult-mythic",    "#ff2a3a", 0.66)
+    },
+
+    // Win-tier colours, consumed by WIN_TIERS.
+    winTier: {
+      nice: tok("--tier-nice", "#b7bfc9"),
+      big:  tok("--tier-big",  "#f2c14e"),
+      mega: tok("--tier-mega", "#ff2a3a"),
+      epic: tok("--tier-epic", "#ffe7a3"),
+      max:  tok("--tier-max",  "#ffffff")
+    },
+
+    // Resolves when both faces are usable. The boot loader waits on it so
+    // canvas text never paints in a fallback font and then swaps.
+    fontsReady: document.fonts
+      ? Promise.all([
+          document.fonts.load(`600 16px ${font.ui}`),
+          document.fonts.load(`700 16px ${font.display}`)
+        ]).then(() => undefined, () => undefined)
+      : Promise.resolve()
+  });
+})();
+
+const symbolTone = THEME.symbolGlow;
 
 const MULTIPLIER_TIER_DEFS = [
-  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], accent: "#7dd3fc", glow: "rgba(125, 211, 252, 0.5)" },
-  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], accent: "#a78bfa", glow: "rgba(167, 139, 250, 0.52)" },
-  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], accent: "#fb923c", glow: "rgba(251, 146, 60, 0.56)" },
-  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], accent: "#facc15", glow: "rgba(250, 204, 21, 0.62)" },
-  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], accent: "#f472b6", glow: "rgba(244, 114, 182, 0.66)" }
+  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], ...THEME.multiplier.common },
+  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], ...THEME.multiplier.rare },
+  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], ...THEME.multiplier.epic },
+  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], ...THEME.multiplier.legendary },
+  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], ...THEME.multiplier.mythic }
 ];
 
 const MULTIPLIER_TIER_BY_VALUE = new Map(
@@ -401,9 +646,14 @@ const prefersReducedMotion = () =>
 // full redraw at 60fps forever — the single biggest source of phone heat. ~20fps
 // idle keeps the ambient motion readable at a third of the work.
 const TIER_PROFILES = {
-  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 66, maxFrameMs: 33 },
-  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 50, maxFrameMs: 33 },
-  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 50, maxFrameMs: 0  }
+  // Throttles sit just BELOW a whole number of 60Hz frames (16.7ms each), so
+  // they land on every Nth vsync: 30 → every 2nd (30fps), 45 → every 3rd
+  // (20fps), 62 → every 4th (15fps). They used to sit exactly ON the boundary
+  // (33 vs 33.3, 50 vs 50.0), so ordinary vsync jitter made frames skip one
+  // more vsync: phones measured ~24fps while spinning instead of 30.
+  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 62, maxFrameMs: 30 },
+  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 45, maxFrameMs: 30 },
+  high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 45, maxFrameMs: 0  }
 };
 const TIER_RANK = { low: 0, mid: 1, high: 2 };
 
@@ -464,6 +714,214 @@ function detectDeviceTier() {
   return tier;
 }
 
+// ─── Shard emitter ───────────────────────────────────────────────────────────
+// Symbol destruction as physical fragments: faceted gem shards in the symbol's
+// own colours, gold flakes and steel splinters, hot additive sparks, and a
+// short localised light flash on the cell. Every fragment has its own
+// velocity (a radial burst pushed outward from the cluster's centre and kicked
+// upward), gravity, air drag, spin and an eased fade.
+//
+// Built the way Pixi/Phaser particle containers are built: one fixed pool in
+// struct-of-arrays typed storage (no per-particle objects, so no GC churn), a
+// swap-remove on death, sprites baked once per colour, and integration on
+// elapsed TIME (px/ms), so a burst travels the same distance at 30fps on a
+// phone as at 120fps on a desktop.
+// Visual randomness only: Math.random(), never SlotEngine.RNG.
+const SHARD = { GEM: 0, GOLD: 1, STEEL: 2, SPARK: 3, FLASH: 4 };
+const SHARD_SPRITE_PX = 48;
+
+class ShardEmitter {
+  constructor(capacity = 480) {
+    this.cap = capacity;
+    this.live = 0;
+    const f32 = () => new Float32Array(capacity);
+    this.x = f32(); this.y = f32(); this.vx = f32(); this.vy = f32();
+    this.rot = f32(); this.vr = f32(); this.age = f32(); this.life = f32();
+    this.size = f32(); this.aspect = f32(); this.grav = f32(); this.drag = f32(); this.peak = f32();
+    this.kind = new Uint8Array(capacity);
+    this.look = new Array(capacity); // baked sprite (solids, flashes) or colour (sparks)
+    this._sprites = new Map();
+    this._last = 0;
+  }
+
+  _bake(key, paint) {
+    let c = this._sprites.get(key);
+    if (c) return c;
+    c = document.createElement("canvas");
+    c.width = c.height = SHARD_SPRITE_PX;
+    paint(c.getContext("2d"), SHARD_SPRITE_PX);
+    this._sprites.set(key, c);
+    return c;
+  }
+
+  /** A faceted triangular gem shard: lit edge to dark edge, a hard highlight
+   *  along one facet so it catches light as it spins. */
+  gemSprite(light, deep) {
+    return this._bake(`gem|${light}|${deep}`, (g, s) => {
+      const grad = g.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, light);
+      grad.addColorStop(0.55, deep);
+      grad.addColorStop(1, THEME.color.vaultDoor);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(s * 0.5, s * 0.04);
+      g.lineTo(s * 0.96, s * 0.88);
+      g.lineTo(s * 0.06, s * 0.7);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = "rgba(255, 255, 255, 0.75)";
+      g.lineWidth = s * 0.05;
+      g.beginPath();
+      g.moveTo(s * 0.5, s * 0.06);
+      g.lineTo(s * 0.12, s * 0.68);
+      g.stroke();
+    });
+  }
+
+  goldSprite() {
+    return this._bake("gold", (g, s) => {
+      const grad = g.createLinearGradient(0, 0, 0, s);
+      grad.addColorStop(0, THEME.color.goldBright);
+      grad.addColorStop(0.5, THEME.color.gold);
+      grad.addColorStop(1, THEME.color.goldDeep);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(s * 0.5, s * 0.08);
+      g.lineTo(s * 0.92, s * 0.5);
+      g.lineTo(s * 0.5, s * 0.92);
+      g.lineTo(s * 0.08, s * 0.5);
+      g.closePath();
+      g.fill();
+    });
+  }
+
+  /** A thin steel splinter, drawn 3:1 so it reads as a sliver. */
+  steelSprite() {
+    return this._bake("steel", (g, s) => {
+      const grad = g.createLinearGradient(0, 0, 0, s);
+      grad.addColorStop(0, THEME.color.steelSheen);
+      grad.addColorStop(0.5, "#ffffff");
+      grad.addColorStop(1, THEME.color.steelBrushed);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(0, s * 0.5);
+      g.lineTo(s * 0.8, s * 0.12);
+      g.lineTo(s, s * 0.5);
+      g.lineTo(s * 0.8, s * 0.88);
+      g.closePath();
+      g.fill();
+    });
+  }
+
+  flashSprite(color) {
+    return this._bake(`flash|${color}`, (g, s) => {
+      const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+      grad.addColorStop(0.25, color);
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, s, s);
+    });
+  }
+
+  /** Low-level add. Units: px, px/ms, px/ms², ms. Drops silently when full. */
+  add(kind, x, y, vx, vy, size, life, look, opts = {}) {
+    if (this.live >= this.cap) return;
+    const i = this.live++;
+    this.kind[i] = kind;
+    this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy;
+    this.size[i] = size; this.life[i] = life; this.age[i] = 0;
+    this.rot[i] = opts.rot ?? Math.random() * Math.PI * 2;
+    this.vr[i] = opts.vr ?? (Math.random() - 0.5) * 0.024;
+    this.grav[i] = opts.grav ?? 0;
+    this.drag[i] = opts.drag ?? 0.985;
+    this.aspect[i] = opts.aspect ?? 1;
+    this.peak[i] = opts.peak ?? 1;
+    this.look[i] = look;
+  }
+
+  _remove(i) {
+    const j = --this.live;
+    if (i === j) return;
+    this.kind[i] = this.kind[j];
+    this.x[i] = this.x[j]; this.y[i] = this.y[j]; this.vx[i] = this.vx[j]; this.vy[i] = this.vy[j];
+    this.rot[i] = this.rot[j]; this.vr[i] = this.vr[j]; this.age[i] = this.age[j]; this.life[i] = this.life[j];
+    this.size[i] = this.size[j]; this.aspect[i] = this.aspect[j]; this.grav[i] = this.grav[j];
+    this.drag[i] = this.drag[j]; this.peak[i] = this.peak[j];
+    this.look[i] = this.look[j];
+    this.look[j] = null;
+  }
+
+  /** Step on elapsed time, then draw. Restores the DPR base transform. */
+  render(ctx, dpr) {
+    const now = performance.now();
+    const dt = this._last ? Math.min(50, now - this._last) : 16.7;
+    this._last = now;
+    if (!this.live) return;
+    // Integrate (semi-implicit Euler) in fixed sub-steps of at most 8ms, so a
+    // 30fps phone and a 120fps desktop integrate at about the same resolution
+    // and a burst lands in the same place on both. Cull with swap-remove.
+    const steps = Math.max(1, Math.ceil(dt / 8));
+    const h = dt / steps;
+    const frames = h / 16.7;
+    let i = 0;
+    while (i < this.live) {
+      this.age[i] += dt;
+      if (this.age[i] >= this.life[i]) { this._remove(i); continue; }
+      const d = Math.pow(this.drag[i], frames);
+      const g = this.grav[i] * h;
+      for (let k = 0; k < steps; k += 1) {
+        this.vx[i] *= d;
+        this.vy[i] = this.vy[i] * d + g;
+        this.x[i] += this.vx[i] * h;
+        this.y[i] += this.vy[i] * h;
+      }
+      this.rot[i] += this.vr[i] * dt;
+      i += 1;
+    }
+    // Solids: one setTransform per fragment (rotation + scale + DPR folded in).
+    for (let k = 0; k < this.live; k += 1) {
+      const kind = this.kind[k];
+      if (kind === SHARD.SPARK || kind === SHARD.FLASH) continue;
+      const t = this.age[k] / this.life[k];
+      ctx.globalAlpha = 1 - t * t * t;                 // easeInCubic fade: holds, then goes
+      const s = (1 - 0.3 * t) * dpr;
+      const c = Math.cos(this.rot[k]) * s;
+      const n = Math.sin(this.rot[k]) * s;
+      ctx.setTransform(c, n, -n, c, this.x[k] * dpr, this.y[k] * dpr);
+      const w = this.size[k];
+      const h = w * this.aspect[k];
+      ctx.drawImage(this.look[k], -w / 2, -h / 2, w, h);
+    }
+    // Light: sparks (streaks along their velocity) and flashes, additive.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    for (let k = 0; k < this.live; k += 1) {
+      const kind = this.kind[k];
+      const t = this.age[k] / this.life[k];
+      if (kind === SHARD.SPARK) {
+        ctx.globalAlpha = 1 - t;
+        ctx.strokeStyle = this.look[k];
+        ctx.lineWidth = this.size[k];
+        ctx.beginPath();
+        ctx.moveTo(this.x[k], this.y[k]);
+        ctx.lineTo(this.x[k] - this.vx[k] * 26, this.y[k] - this.vy[k] * 26);
+        ctx.stroke();
+      } else if (kind === SHARD.FLASH) {
+        // Quick attack, smooth release; grows slightly as it fades.
+        const env = t < 0.2 ? t / 0.2 : 1 - easeOutCubic((t - 0.2) / 0.8);
+        ctx.globalAlpha = env * this.peak[k];
+        const w = this.size[k] * (0.85 + 0.3 * t);
+        const h = w * this.aspect[k];
+        ctx.drawImage(this.look[k], this.x[k] - w / 2, this.y[k] - h / 2, w, h);
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+  }
+}
+
 class ReelCanvasRenderer {
   constructor(canvas, { rowsCount, colsCount }) {
     this.canvas = canvas;
@@ -521,10 +979,13 @@ class ReelCanvasRenderer {
       lightning: [],
       landDust: [],
       cluster: null,
-      sweeps: []
+      sweeps: [],
+      reticles: [],   // 5a: scatter landing reticles
+      lockOn: null    // 5c/5d: trigger lock-on
     };
     this.multiplierDecoyById = new Map();
     this.particles = [];
+    this.shards = new ShardEmitter(480);
     // Per-frame perf caches (built lazily, invalidated on resize):
     //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
     //    the hot particle loop blits instead of building a gradient every frame.
@@ -651,8 +1112,12 @@ class ReelCanvasRenderer {
     if (TIER_RANK[this.tier] === 0 || samples.length < 30) return;
     const sorted = samples.slice().sort((a, b) => a - b);
     const medianMs = sorted[sorted.length >> 1];
-    // > ~30ms/frame (< ~33fps) sustained under load is our "too slow" line.
-    if (medianMs > 30) this.downgradeTier();
+    // "Too slow" is judged against what THIS tier asked for: a capped tier is
+    // only slow when its frames run well past its own cap (1.25×). Judging a
+    // 30fps-capped tier against a flat 30ms would demote every phone the
+    // moment the cap worked as designed (33.3ms frames).
+    const slowMs = Math.max(30, this.maxFrameMs * 1.25);
+    if (medianMs > slowMs) this.downgradeTier();
   }
 
   /** @param {boolean} [force] rebuild the caches even if the backing store is
@@ -775,12 +1240,26 @@ class ReelCanvasRenderer {
     // Already close to 1:1 — the bake would not pay for itself.
     if (img.naturalWidth <= targetW * 1.25) return img;
 
+    // Reuse any bake within a band around the wanted size. Every per-frame scale
+    // animation (idle bob, win breath, landing squash, reveal pop) changes drawW
+    // a little each frame, and the old exact-size match rebaked every animated
+    // symbol every frame: measured ~420 bakes/s on an idle 390px phone board.
+    // drawImage scales the cached bake to the exact size; within this band the
+    // resample is invisible.
     let sprite = this.symbolSprites.get(key);
-    if (sprite && sprite.w === targetW && sprite.h === targetH) return sprite.cvs;
+    if (sprite
+      && sprite.w >= targetW * SPRITE_BAND.min && sprite.w <= targetW * SPRITE_BAND.max
+      && sprite.h >= targetH * SPRITE_BAND.min && sprite.h <= targetH * SPRITE_BAND.max) {
+      return sprite.cvs;
+    }
 
-    const { cvs, ctx } = this.makeOffscreen(targetW, targetH);
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-    this.symbolSprites.set(key, { cvs, w: targetW, h: targetH });
+    // A new bake gets headroom above the wanted size, so the scale-UP effects
+    // (breath, reveal pop) stay inside its band instead of forcing a rebake.
+    const bakeW = Math.min(img.naturalWidth, Math.round(targetW * SPRITE_BAND.headroom));
+    const bakeH = Math.min(img.naturalHeight, Math.round(targetH * SPRITE_BAND.headroom));
+    const { cvs, ctx } = this.makeOffscreen(bakeW, bakeH);
+    ctx.drawImage(img, 0, 0, bakeW, bakeH);
+    this.symbolSprites.set(key, { cvs, w: bakeW, h: bakeH });
     return cvs;
   }
 
@@ -1017,9 +1496,34 @@ class ReelCanvasRenderer {
   }
 
   requestFastStop() {
-    // Speed the current drop(s) up to a smooth quick landing (no teleport).
-    this._accelerateDrop(this.fx.drop, FAST_STOP_SETTLE_MS - 20);
-    this._accelerateDrop(this.fx.heavyDrop, FAST_STOP_SETTLE_MS - 20);
+    const drop = this.fx.drop;
+    if (drop?.zip) return; // already zipping: let it lock
+    // A board dropping in zips into place (FAST_ZIP). Its positions are
+    // snapshotted on the drop's live timing, so this runs before anything
+    // below changes that timing (anticipation, acceleration).
+    const zip = Boolean(drop && !drop.exit && !this._reducedMotion);
+    if (zip) {
+      this._startZip(drop);
+    } else if (drop?.exit) {
+      // The old board is leaving: pull it straight out.
+      this.cancelColumnStops();
+    } else if (this._columnStops?.size) {
+      // Reduced motion: everything lands at once, so one thud.
+      this.cancelColumnStops();
+      this._queueColumnStop(0, 0, null);
+    }
+    // No board in the air yet (or only the old one leaving): the next drop
+    // is born zipping (see drop()).
+    this._zipPending = !drop || Boolean(drop.exit);
+    // Scatters still in the air land now (zipping: as their reel locks);
+    // anticipation ends with the skip.
+    if (!zip) this.flushScatterLandings();
+    if (drop?.antic) {
+      drop.antic = null;
+      this.onAnticipation?.("end");
+    }
+    if (!zip) this._accelerateDrop(drop, FAST_STOP_DROP_MS);
+    this._accelerateDrop(this.fx.heavyDrop, zip ? Math.max(1, this._zipEnd - performance.now()) : FAST_STOP_DROP_MS);
     this.fx.cluster = null;
     this.fx.sweeps = [];
     this.fx.charge = null;
@@ -1040,7 +1544,8 @@ class ReelCanvasRenderer {
         const now = performance.now();
         if (stopAt === null && state.fastStopRequested) stopAt = now;
         if (stopAt !== null) {
-          if (now - stopAt >= FAST_STOP_SETTLE_MS) return resolve();
+          // A fast-stop zip (FAST_ZIP) is still the drop: let it lock first.
+          if (now - stopAt >= FAST_STOP_SETTLE_MS && now >= (this._zipEnd || 0)) return resolve();
         } else if (now - start >= realMs) {
           return resolve();
         }
@@ -1062,85 +1567,75 @@ class ReelCanvasRenderer {
     if (!winning.length) return;
     // Halved particle counts — explosions are now localized and readable
     // rather than chaotic. Great wins still get a noticeably stronger burst.
-    const perCell = this.fxCount(strength === "great" ? 12 : strength === "small" ? 4 : 8);
-    const speed = strength === "great" ? 1.25 : strength === "small" ? 0.65 : 0.9;
+    const centroid = this.computeCentroid(winning);
     winning.forEach((p) => {
       if (!Number.isInteger(p?.row) || !Number.isInteger(p?.col)) return;
       const key = `${p.row}-${p.col}`;
       const onset = delays?.get?.(key) || 0;
-      const fire = () => this.emitCellExplosion(p, strength, perCell, speed);
+      const fire = () => this.emitCellExplosion(p, strength, centroid);
       if (onset > 0) setTimeout(fire, onset);
       else fire();
     });
   }
 
-  emitCellExplosion(p, strength, perCell, speed) {
-      const center = this.cellCenter(p.row, p.col);
-      const tone = symbolTone[this.board.matrix?.[p.row]?.[p.col] || "BLUE_DIAMOND"] || symbolTone.BLUE_DIAMOND;
-      const now = performance.now();
-      // One clean shockwave per cell. Great wins get a single extra accent
-      // ring instead of the triple-stack — much more readable.
-      this.fx.shockwaves.push({
-        x: center.x,
-        y: center.y,
-        born: now,
-        life: strength === "great" ? 460 : strength === "small" ? 260 : 340,
-        color: tone[0]
-      });
-      if (strength === "great") {
-        this.fx.shockwaves.push({ x: center.x, y: center.y, born: now + 70, life: 360, color: "rgba(255, 240, 196, 0.55)" });
+  /** A winning symbol SHATTERS: the cell flares (local light), faceted shards
+   *  in the symbol's own colours, gold flakes and steel splinters burst
+   *  outward from the cluster's centre with an upward kick, then fall,
+   *  tumble and fade; a few hot sparks streak out. All on the pooled,
+   *  time-based ShardEmitter. Counts scale with the quality tier (fxCount). */
+  emitCellExplosion(p, strength, centroid) {
+    const center = this.cellCenter(p.row, p.col);
+    const symbol = this.board.matrix?.[p.row]?.[p.col] || "BLUE_DIAMOND";
+    const tone = symbolTone[symbol] || symbolTone.BLUE_DIAMOND;
+    const { laneW, rowStep } = this.getLayout();
+    const cs = Math.min(laneW, rowStep);
+    const now = performance.now();
+    const P = SHATTER[strength] || SHATTER.medium;
+    const E = this.shards;
+    // One clean shockwave ring per cell: local and readable.
+    this.fx.shockwaves.push({
+      x: center.x, y: center.y, born: now,
+      life: strength === "great" ? 460 : strength === "small" ? 260 : 340,
+      color: tone[0]
+    });
+    // The cell itself flares as it breaks.
+    E.add(SHARD.FLASH, center.x, center.y, 0, 0, cs * P.flash, 240, E.flashSprite(tone[0]),
+      { peak: 0.85, vr: 0, rot: 0, drag: 1 });
+    // Fragments fly outward from the cluster's centre; a lone cell (or 35% of
+    // fragments, for a full look) bursts evenly in every direction.
+    const ox = center.x - (centroid ? centroid.x : center.x);
+    const oy = center.y - (centroid ? centroid.y : center.y);
+    const away = Math.hypot(ox, oy) > 1 ? Math.atan2(oy, ox) : null;
+    const angle = (spread) => (away === null || Math.random() < 0.35
+      ? Math.random() * Math.PI * 2
+      : away + (Math.random() - 0.5) * spread);
+    const g = cs * SHATTER.gravity;
+    const up = cs * P.up;
+    const fire = (kind, n, look, size, speed, life, opts = {}) => {
+      for (let i = 0; i < this.fxCount(n); i += 1) {
+        const a = angle(2.2);
+        const v = cs * (speed[0] + Math.random() * (speed[1] - speed[0]));
+        E.add(kind,
+          center.x + (Math.random() - 0.5) * cs * 0.3,
+          center.y + (Math.random() - 0.5) * cs * 0.3,
+          Math.cos(a) * v, Math.sin(a) * v - up,
+          cs * (size[0] + Math.random() * (size[1] - size[0])),
+          life[0] + Math.random() * (life[1] - life[0]),
+          typeof look === "function" ? look() : look,
+          { grav: g, ...opts });
       }
-      // Rays only on great wins, and far fewer of them.
-      if (strength === "great") {
-        const rayCount = 3;
-        for (let i = 0; i < rayCount; i += 1) {
-          this.fx.rays.push({
-            x: center.x,
-            y: center.y,
-            angle: (Math.PI * 2 * i) / rayCount + Math.random() * 0.18,
-            born: now + Math.random() * 40,
-            life: 360,
-            len: 3.0,
-            color: tone[0]
-          });
-        }
-      }
-      // Embers cut to a small drift — calm leftover heat rather than a plume.
-      if (strength !== "small") {
-        const emberCount = this.fxCount(strength === "great" ? 4 : 2);
-        for (let i = 0; i < emberCount; i += 1) {
-          this.particles.push({
-            x: center.x + (Math.random() - 0.5) * 12,
-            y: center.y + (Math.random() - 0.5) * 8,
-            vx: (Math.random() - 0.5) * 0.5,
-            vy: -0.35 - Math.random() * 0.55,
-            life: 640 + Math.random() * 260,
-            born: now + 60 + Math.random() * 100,
-            size: 0.9 + Math.random() * 0.9,
-            colorA: tone[0],
-            colorB: "#fff2c8",
-            mode: "ember"
-          });
-        }
-      }
-      for (let i = 0; i < perCell; i += 1) {
-        const a = Math.random() * Math.PI * 2;
-          const v = (1.2 + Math.random() * 1.8) * speed;
-        this.particles.push({
-          x: center.x,
-          y: center.y,
-          vx: Math.cos(a) * v,
-          vy: Math.sin(a) * v - (0.4 + Math.random() * 0.9),
-          life: 300 + Math.random() * 220,
-          born: performance.now(),
-          size: 1.2 + Math.random() * 1.6,
-          colorA: tone[0],
-          colorB: tone[1],
-          mode: i % 3 === 0 ? "shard" : "spark",
-          rot: Math.random() * Math.PI * 2,
-          spin: (Math.random() - 0.5) * 0.22
-        });
-      }
+    };
+    fire(SHARD.GEM, P.gems, () => E.gemSprite(tone[0], tone[1]), [0.14, 0.28], [0.002, 0.0055], [650, 950]);
+    fire(SHARD.GOLD, P.gold, E.goldSprite(), [0.06, 0.1], [0.0025, 0.006], [700, 1000]);
+    fire(SHARD.STEEL, P.steel, E.steelSprite(), [0.18, 0.3], [0.003, 0.007], [500, 750], { aspect: 1 / 3 });
+    const sparks = THEME.particles.sparks;
+    for (let i = 0; i < this.fxCount(P.sparks); i += 1) {
+      const a = angle(2.6);
+      const v = cs * (0.006 + Math.random() * 0.006);
+      E.add(SHARD.SPARK, center.x, center.y, Math.cos(a) * v, Math.sin(a) * v - up,
+        1.4 + Math.random() * 0.8, 200 + Math.random() * 140,
+        sparks[(Math.random() * sparks.length) | 0], { grav: g * 0.3, drag: 0.95, vr: 0 });
+    }
   }
 
   spawnMultiplierCatchParticles(multipliers = []) {
@@ -1193,12 +1688,14 @@ class ReelCanvasRenderer {
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) dropMap[`${r}-${c}`] = this.rows + 1;
     }
+    this.cancelColumnStops();
     this.fx.drop = {
       start: performance.now(),
       duration,
       map: dropMap,
       heavy: new Map(),
-      exit: true
+      exit: true,
+      order: this._dropOrder(dropMap)
     };
     const maxDelay = Object.entries(dropMap).reduce((acc, [key, count]) => {
       const [row, col] = key.split("-").map((n) => Number(n));
@@ -1309,7 +1806,10 @@ class ReelCanvasRenderer {
   }
 
   async drop(matrix, multipliers = [], dropMap = {}, duration = 960, options = {}) {
-    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
+    // Cascade momentum (options.tempo, see tumbleTempo) scales the fall and,
+    // through dropDelay, the waterfall stagger. Turbo speeds the whole spin.
+    const tempo = Number(options.tempo) > 0 ? Number(options.tempo) : 1;
+    duration = Math.round(duration * tempo * turboScale());
     if (window.__renderDebug) {
       const incoming = (matrix?.[0] || []).slice(0, 3).join(",");
       console.log(`[drop:enter] incoming row0=${incoming} dropMap.size=${Object.keys(dropMap || {}).length}`);
@@ -1349,7 +1849,7 @@ class ReelCanvasRenderer {
     const heavyKeyMatchesDropMap = Array.from(heavyCells.keys()).some((k) => Object.prototype.hasOwnProperty.call(dropMap || {}, k));
     // Snappier drop slow-down — the previous values dragged the moment out.
     const dropDuration = state.fastStopRequested
-      ? 120
+      ? FAST_STOP_DROP_MS
       : (peakTier && heavyKeyMatchesDropMap)
       ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
       : duration;
@@ -1362,7 +1862,24 @@ class ReelCanvasRenderer {
       ? this.board.matrix.map((row) => (Array.isArray(row) ? row.slice() : []))
       : [];
     this.setBoard(matrix, { multipliers });
-    this.fx.drop = { start: performance.now(), duration: dropDuration, map: dropMap, heavy: heavyCells };
+    this.fx.drop = {
+      start: performance.now(),
+      duration: dropDuration,
+      map: dropMap,
+      heavy: heavyCells,
+      antic: this.makeAnticipation(options.anticipation),
+      need: Number(options.scatterTarget) || 0,
+      order: this._dropOrder(dropMap),
+      tempo,
+      // A tumble vacuum's dip (rows) is carried into the fall: continuous.
+      lean: this.fx.vacuum ? VACUUM.pull : 0
+    };
+    this.scheduleColumnStops(dropMap, dropDuration);
+    // Fast-stop pressed before this board started falling: it zips in.
+    if (state.fastStopRequested && this._zipPending && !this._reducedMotion) {
+      this._zipPending = false;
+      this._startZip(this.fx.drop);
+    }
     if (peakTier && heavyKeyMatchesDropMap) {
       this.fx.heavyDrop = {
         start: performance.now(),
@@ -1392,7 +1909,7 @@ class ReelCanvasRenderer {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
-      const land = this.dropDelay(r, c, count) + dropDuration;
+      const land = this.cellLandMs(r, c, count);
       // Mark this cell concealed; render skips its icon until revealAt.
       // Show a real symbol as decoy during fall (picked once per cell and
       // kept stable for the full drop), then reveal multiplier on landing.
@@ -1426,7 +1943,7 @@ class ReelCanvasRenderer {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
-      const land = this.dropDelay(r, c, count) + dropDuration;
+      const land = this.cellLandMs(r, c, count);
       // Tier-scaled reveal pop — common is quick, escalates with rank.
       const revealDuration = info.tier.key === "mythic" ? 320
         : info.tier.key === "legendary" ? 300
@@ -1455,9 +1972,8 @@ class ReelCanvasRenderer {
 
     // Landing dust only on real tumble drops (post-win), and only for cells
     // that fell a meaningful distance (count >= 2). No dust on intro, no
-    // dust on every cell. Vault shake intentionally removed here — the only
-    // shakes are for big wins / multiplier impacts / crazy moments, fired
-    // by animateRound or spawnHeavyImpact, not by routine landings.
+    // dust on every cell. The board never shakes: a landing's weight is its
+    // thud and the local floor glint (landingGlints).
     const isIntro = !Object.keys(dropMap || {}).length;
     if (!isIntro) {
       Object.entries(dropMap || {}).forEach(([key, count]) => {
@@ -1466,7 +1982,7 @@ class ReelCanvasRenderer {
         const [r, c] = key.split("-").map(Number);
         if (!Number.isFinite(r) || !Number.isFinite(c)) return;
         if (heavyCells.has(key) || lightOnlyCells.has(key)) return;
-        const land = this.dropDelay(r, c, n) + dropDuration;
+        const land = this.cellLandMs(r, c, n);
         setTimeout(() => this.spawnLandingDust(r, c, 0.7), land);
       });
     }
@@ -1476,9 +1992,10 @@ class ReelCanvasRenderer {
     // dropDuration / maxDelay are already turbo-adjusted — wait the REAL time so
     // the fall fully lands before the board commits (animationSleep would double-
     // scale in turbo and commit mid-fall → symbols vanish half-way down).
-    await this._dropSettle(dropDuration + maxDelay + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
+    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap)) + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
     this.fx.drop = null;
     this.fx.heavyDrop = null;
+    this.fx.vacuum = null;
     if (window.__renderDebug) {
       const committed = (this.board.matrix?.[0] || []).slice(0, 3).join(",");
       console.log(`[drop:exit]  committed row0=${committed}`);
@@ -1520,7 +2037,7 @@ class ReelCanvasRenderer {
         spin: (Math.random() - 0.5) * 0.18
       });
     }
-    // Cell-anchored impact record drives a brief vertical squash + ground ring.
+    // Cell-anchored impact record drives the ground ring (no squash: rigid).
     this.fx.impacts.push({
       row, col, x: center.x, y: center.y,
       born: now, life: 520 * heaviness,
@@ -1554,10 +2071,22 @@ class ReelCanvasRenderer {
         });
       }
     }
-    // Vault shake on landing — ramps with tier weight.
-    try {
-      if (tier.key === "mythic" || tier.key === "legendary") shakeVault("normal");
-    } catch (_) { /* shakeVault may not be in scope at construction; ignore */ }
+    // An anvil, not a jelly: weight through sound and LOCAL light only (the
+    // board never moves).
+    // A low, heavy thud under the multiplier's own sound…
+    window.Sound?.play("reel_stop", { index: 0 });
+    // …and a short spotlight flash on the landing cell. Never over a cluster
+    // spotlight that is already running: that one belongs to a win.
+    if (!this.fx.spotlight) {
+      this.fx.spotlight = {
+        start: now,
+        duration: 420,
+        set: new Set([`${row}-${col}`]),
+        intensity: tier.key === "legendary" || tier.key === "mythic" ? 0.6 : 0.45
+      };
+      const flash = this.fx.spotlight;
+      setTimeout(() => { if (this.fx.spotlight === flash) this.fx.spotlight = null; }, 440);
+    }
   }
 
   async explode(winning = [], duration = 380, tier = "medium") {
@@ -1621,12 +2150,16 @@ class ReelCanvasRenderer {
     duration = Math.round(duration * turboScale()); // turbo speeds the celebration hold
     this.setBoard(matrix, { winning, multipliers });
     if (!winning.length) return;
-    this.fx.pulse = {
-      start: performance.now(),
-      duration
-    };
+    const start = performance.now();
+    this.fx.pulse = { start, duration, phase: this.breathPhases(winning) };
+    // Cluster spotlight: everything that did not win steps back for the hold.
+    // Owned by this call, so a multiplier-catch spotlight that replaced it in
+    // the meantime is left alone.
+    const spot = { start, duration, set: new Set(this.board.winningSet), intensity: MOTION.spotlight, cluster: true };
+    this.fx.spotlight = spot;
     await animationSleep(duration);
     this.fx.pulse = null;
+    if (this.fx.spotlight === spot) this.fx.spotlight = null;
   }
 
   async multiplierCatch(multipliers = [], duration = 620) {
@@ -1735,7 +2268,10 @@ class ReelCanvasRenderer {
       (this.fx.jackpotFlash && now < this.fx.jackpotFlash.start + this.fx.jackpotFlash.duration + 120) ||
       (this.fx.charge && now < this.fx.charge.start + this.fx.charge.duration + 120) ||
       (this.fx.spotlight && now < this.fx.spotlight.start + this.fx.spotlight.duration + 120) ||
-      (this.fx.heavyDrop && now < this.fx.heavyDrop.start + this.fx.heavyDrop.duration + 140);
+      (this.fx.heavyDrop && now < this.fx.heavyDrop.start + this.fx.heavyDrop.duration + 140) ||
+      (this.fx.drop?.antic && now < this.fx.drop.antic.endAt + 260) ||
+      Boolean(this.fx.lockOn) ||
+      this.fx.reticles.length > 0;
     return Boolean(
       timedFxActive ||
       this.fx.heavyReveals.size ||
@@ -1744,7 +2280,8 @@ class ReelCanvasRenderer {
       this.fx.impacts.length ||
       this.fx.bangs.length ||
       this.fx.rays.length ||
-      this.particles.length
+      this.particles.length ||
+      this.shards.live > 0
     );
   }
 
@@ -1847,53 +2384,570 @@ class ReelCanvasRenderer {
 
   cellOffset(row, col, rowStep) {
     const drop = this.fx.drop;
-    if (!drop) return 0;
-    const count = Number(drop.map?.[`${row}-${col}`] || 0);
+    if (!drop) return this.fx.vacuum ? this.vacuumDip(row, col, rowStep) : 0;
+    const key = `${row}-${col}`;
+    const count = Number(drop.map?.[key] || 0);
     if (count <= 0) return 0;
-    const delay = this.dropDelay(row, col, count);
-    const elapsed = performance.now() - drop.start - delay;
-    // A refilling symbol must START exactly where it was last seen — one cell
-    // per `count` directly above its destination — so the motion is continuous.
-    // The old `* 1.15` overshoot started it ~0.15 cell HIGHER than its prior
-    // resting spot, so at drop-commit the symbol visibly hopped UP before
-    // falling (the reported glitch). Exit drops keep a little extra travel so
-    // symbols fully clear the board on the way out.
-    const distance = count * rowStep;
-    const exitDistance = count * rowStep * 1.15;
-    if (drop.exit && elapsed < 0) return 0;
-    if (elapsed < 0) return -distance;
-    const progress = clamp(elapsed / drop.duration, 0, 1);
+    if (drop.zip) return this.zipOffset(drop.zip, key, col, rowStep, performance.now());
+    const prof = this.reelProfile(col);
+    const now = performance.now();
+    const elapsed = now - drop.start - this.dropDelay(row, col, count);
     if (drop.exit) {
-      // Drop-out (#22): symbols fall OUT of the board under gravity — near rest at
-      // first, then accelerating, for the "floor dropped out" feel. See
-      // gravityFallFraction for the kinematics.
-      const p = DROP_PHYSICS.out;
-      return exitDistance * gravityFallFraction(progress, p.v0, p.vMax);
+      // Spin-out: gravity takes over the moment the spin is pressed. Purely
+      // downward, no wind-up: each symbol, bottom first, simply falls out at
+      // its reel group's launch speed. A little extra travel (1.15) makes
+      // sure it fully clears the board.
+      if (elapsed < 0) return 0;
+      const q = clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1);
+      return count * rowStep * 1.15 * gravityFallFraction(q, prof.exitV0);
     }
-    // Drop-in (#22): symbols accelerate downward under gravity into their slot,
-    // landing by `fallEnd`, then a single damped bounce (restitution) settles them.
-    const p = DROP_PHYSICS.in;
-    if (progress < p.fallEnd) {
-      const s = gravityFallFraction(progress / p.fallEnd, p.v0, p.vMax);
-      return lerp(-distance, 0, s);
+    // Drop-in: a refilling symbol STARTS exactly where it was last seen (one
+    // cell per `count` above its slot, plus any vacuum dip it is carrying)
+    // and eases into its slot on its OWN clock: its own release (dropDelay),
+    // its own fall time (cellFallMs) on its reel group's curve. A NEW symbol
+    // (it comes from above the board) starts REEL_MASK.spawnPad higher, fully
+    // above the reel mask, so no part of it shows before it enters the grid.
+    const fresh = row - count < 0 ? REEL_MASK.spawnPad * rowStep : 0;
+    const start = (drop.lean || 0) * rowStep - count * rowStep - fresh;
+    if (elapsed < 0) return start;
+    return lerp(start, 0, dropEase(clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1), prof));
+  }
+
+  /** The reel group (REEL_INERTIA) a column belongs to: thirds of the board. */
+  reelProfile(col) {
+    return REEL_INERTIA[Math.min(REEL_INERTIA.length - 1, Math.floor((col * REEL_INERTIA.length) / this.cols))];
+  }
+
+  /** When a dropping cell lands, in ms from the drop's start: its zip lock on
+   *  a fast-stop, otherwise the end of its fall. */
+  cellLandMs(row, col, count) {
+    const zip = this.fx.drop?.zip;
+    if (zip) return zip.ends[col] || 0;
+    return this.dropDelay(row, col, count) + this.cellFallMs(col, count);
+  }
+
+  // ── Tumble vacuum (VACUUM) ──
+
+  /** Before a refill falls, the symbols around the cleared cluster lean into
+   *  the void for VACUUM.ms. Reads only the cleared cells; resolves early on a
+   *  fast-stop. The dip is carried into the drop that follows (drop.lean), and
+   *  the side lean relaxes over VACUUM.returnMs (cellLeanX). */
+  async vacuum(winning) {
+    if (this._reducedMotion || state.fastStopRequested || !winning?.length) return;
+    const voids = new Set(winning.map((p) => `${p.row}-${p.col}`));
+    const dip = new Set();
+    const side = new Map();     // old-board key → -1 (lean left) | 1 (right)
+    const sidePost = new Map(); // the same symbols, keyed where they land
+    for (let c = 0; c < this.cols; c += 1) {
+      let below = 0; // cleared cells under the current row in this column
+      for (let r = this.rows - 1; r >= 0; r -= 1) {
+        const key = `${r}-${c}`;
+        if (voids.has(key)) { below += 1; continue; }
+        if (below > 0) dip.add(key);
+        const dir = (voids.has(`${r}-${c + 1}`) ? 1 : 0) - (voids.has(`${r}-${c - 1}`) ? 1 : 0);
+        if (dir) {
+          side.set(key, dir);
+          sidePost.set(`${r + below}-${c}`, dir);
+        }
+      }
     }
-    const settleT = (progress - p.fallEnd) / (1 - p.fallEnd);
-    const damp = (1 - settleT) ** 2;
-    return -Math.sin(settleT * Math.PI) * damp * rowStep * p.bounceCells;
+    const start = performance.now();
+    this.fx.vacuum = { start, end: start + VACUUM.ms, dip, side, sidePost };
+    await this._dropSettle(VACUUM.ms);
+  }
+
+  /** Vertical vacuum dip of a resting symbol above a void (before the drop). */
+  vacuumDip(row, col, rowStep) {
+    const v = this.fx.vacuum;
+    if (!v.dip.has(`${row}-${col}`)) return 0;
+    return VACUUM.pull * rowStep * easeOutQuad(clamp((performance.now() - v.start) / VACUUM.ms, 0, 1));
+  }
+
+  /** Horizontal vacuum lean of a cell (px). Leans in over VACUUM.ms, relaxes
+   *  over VACUUM.returnMs without overshoot, then clears the vacuum. */
+  cellLeanX(key, laneW) {
+    const v = this.fx.vacuum;
+    if (!v) return 0;
+    const now = performance.now();
+    if (now < v.end) {
+      const d = v.side.get(key);
+      return d ? d * VACUUM.side * laneW * easeOutQuad((now - v.start) / VACUUM.ms) : 0;
+    }
+    if (now >= v.end + VACUUM.returnMs) {
+      if (this.fx.drop) this.fx.vacuum = null; // keep the dip until the drop takes it over
+      return 0;
+    }
+    const d = (this.fx.drop ? v.sidePost : v.side).get(key);
+    return d ? d * VACUUM.side * laneW * (1 - easeOutCubic((now - v.end) / VACUUM.returnMs)) : 0;
+  }
+
+  // ── Fast-stop zip (FAST_ZIP) ──
+
+  /** Freeze every dropping symbol where it is NOW, on the drop's live timing,
+   *  and zip it into its slot: the reels still in the air lock left to right,
+   *  each with its thud and glint, then a double click seals the board. A reel
+   *  that already hit its slot (thud played, only settling through its lock)
+   *  snaps in silently with the first one: it never thuds twice. */
+  _startZip(drop) {
+    const now = performance.now();
+    const { rowStep } = this.getLayout();
+    const from = new Map(); // key → start offset, in rows
+    const rowsByCol = new Map(); // airborne reels → their dropping rows
+    const settling = new Set();  // reels already in their slot, still locking
+    this._liveTiming = true; // dropDelay: the real waterfall, not the fast-stop collapse
+    for (const key of Object.keys(drop.map || {})) {
+      const n = Number(drop.map[key]);
+      if (!(n > 0)) continue;
+      const [r, c] = key.split("-").map(Number);
+      const y = this.cellOffset(r, c, rowStep) / rowStep;
+      const progress = (now - drop.start - this.dropDelay(r, c, n)) / this.cellFallMs(c, n, drop);
+      if (progress < this.reelProfile(c).contact) {
+        if (!rowsByCol.has(c)) rowsByCol.set(c, []);
+        rowsByCol.get(c).push(r);
+      } else if (Math.abs(y) >= 1e-4) {
+        settling.add(c);
+      }
+      if (Math.abs(y) >= 1e-4) from.set(key, y);
+    }
+    this._liveTiming = false;
+    const ends = new Array(this.cols).fill(0);
+    let k = 0;
+    for (let c = 0; c < this.cols; c += 1) {
+      if (rowsByCol.has(c)) ends[c] = FAST_ZIP.firstMs + FAST_ZIP.colMs * k++;
+      else if (settling.has(c)) ends[c] = FAST_ZIP.firstMs;
+    }
+    const total = k ? FAST_ZIP.firstMs + FAST_ZIP.colMs * (k - 1) : 1;
+    drop.zip = { t0: now, from, ends };
+    // The drop's own clock now ends with the zip (busy checks read it).
+    drop.start = now;
+    drop.duration = total;
+    this._zipEnd = now + total;
+    this.cancelColumnStops();
+    for (const [c, rows] of rowsByCol) this._queueColumnStop(c, ends[c], rows);
+    // Scatters still in the air ping as their reel locks.
+    const pending = this._pendingScatters?.cells || [];
+    for (const sc of pending.slice()) this._queueTimer(ends[sc.col] || 0, () => this._landScatter(sc));
+    if (k) {
+      this._queueTimer(total, () => window.Sound?.play("click"));
+      this._queueTimer(total + FAST_ZIP.clickGapMs, () => window.Sound?.play("click"));
+    }
+  }
+
+  /** Zip position: from its frozen offset straight into the slot, gathering
+   *  speed (u^1.5) so it locks at full speed: a hard stop, not an ease. */
+  zipOffset(zip, key, col, rowStep, now) {
+    const y0 = zip.from.get(key);
+    const end = zip.ends[col];
+    if (!y0 || !end) return 0;
+    const u = clamp((now - zip.t0) / end, 0, 1);
+    return y0 * rowStep * (1 - u * Math.sqrt(u));
+  }
+
+  /** px a zipping cell moved over the last ~frame (0 when not zipping). */
+  zipBlur(key, col, rowStep) {
+    const zip = this.fx.drop?.zip;
+    if (!zip || !zip.from.has(key)) return 0;
+    const now = performance.now();
+    return this.zipOffset(zip, key, col, rowStep, now) - this.zipOffset(zip, key, col, rowStep, now - 16);
+  }
+
+  /** Reduced-motion aware amplitudes for this frame (read once per draw). */
+  motion() {
+    return this._reducedMotion ? MOTION_REDUCED : MOTION;
+  }
+
+  /** Contact micro-squash for a dropping symbol, on the same clock as
+   *  cellOffset(): at the frame it first reaches its slot it is compressed by
+   *  its reel group's squash (1-2%), then relaxes monotonically through the
+   *  lock: a hard corner, so it reads as metal meeting metal, and it never
+   *  rebounds past 1, so it cannot wobble. Widens by half as much as it
+   *  flattens. Writes into a reused object: this runs for every cell, every frame. */
+  dropDeform(row, col) {
+    const out = this._deform || (this._deform = { sx: 1, sy: 1 });
+    out.sx = 1;
+    out.sy = 1;
+    const m = this.motion();
+    if (!m.stretch && !m.squash) return out;
+    const drop = this.fx.drop;
+    if (!drop || drop.exit || drop.zip) return out;
+    const count = Number(drop.map?.[`${row}-${col}`] || 0);
+    if (count <= 0) return out;
+    const prof = this.reelProfile(col);
+    const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / this.cellFallMs(col, count, drop);
+    if (progress <= 0 || progress >= 1) return out;
+    if (progress < prof.contact) {
+      const t = progress / prof.contact;
+      out.sy = 1 + m.stretch * t * t;
+      out.sx = 1 / out.sy;
+    } else {
+      const k = 1 - (progress - prof.contact) / (1 - prof.contact);
+      const squash = m.squash * prof.squash * k * k;
+      out.sy = 1 - squash;
+      out.sx = 1 + squash * 0.5;
+    }
+    return out;
+  }
+
+  /** Breath phase per winning cell: lags with distance from the cluster
+   *  centre, so each breath ripples outward through the cluster. */
+  breathPhases(winning) {
+    const centre = this.computeCentroid(winning);
+    const dists = winning.map((p) => {
+      const c = this.cellCenter(p.row, p.col);
+      return Math.hypot(c.x - centre.x, c.y - centre.y);
+    });
+    const maxD = Math.max(1, ...dists);
+    const phases = new Map();
+    winning.forEach((p, i) => phases.set(`${p.row}-${p.col}`, (dists[i] / maxD) * Math.PI * MOTION.breathRipple));
+    return phases;
+  }
+
+  /** Per-column landing thud, in sync with the column waterfall: one
+   *  reel_stop per column that actually received symbols, fired when that
+   *  column's last symbol hits its floor (its stagger delay + the fall to
+   *  fallEnd). Columns a tumble left untouched stay silent. On a fast-stop the
+   *  board lands at once, so it gets one thud instead of a stack of them. */
+  scheduleColumnStops(dropMap, duration) {
+    this.cancelColumnStops();
+    const drop = this.fx.drop;
+    const landAt = new Map(); // col → ms from now
+    const landings = []; // { row, col, t }: every symbol lands on its own
+    const scatterLands = [];  // { row, col, t }
+    for (const [key, count] of Object.entries(dropMap || {})) {
+      const n = Number(count || 0);
+      if (n <= 0) continue;
+      const [row, col] = key.split("-").map(Number);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+      const t = this.dropDelay(row, col, n) + this.cellFallMs(col, n) * this.reelProfile(col).contact;
+      landAt.set(col, Math.max(landAt.get(col) || 0, t));
+      landings.push({ row, col, t });
+      if (this.board.matrix?.[row]?.[col] === "SCATTER") scatterLands.push({ row, col, t });
+    }
+    if (!landAt.size) return;
+    const last = Math.max(...landAt.values());
+    this.scheduleScatterLandings(dropMap, scatterLands);
+    const a = drop?.antic;
+    if (a) {
+      // Tension runs from the moment the column before the anticipated ones
+      // lands (the board is visibly one short) until the last column lands.
+      const startMs = landAt.get(a.fromCol - 1) ?? 0;
+      a.startAt = drop.start + startMs;
+      a.endAt = drop.start + last;
+      a.landAt = new Map([...landAt].map(([c, t]) => [c, drop.start + t]));
+      this._queueTimer(startMs, () => this.onAnticipation?.("start", last - startMs));
+      this._queueTimer(last, () => this.onAnticipation?.("end"));
+    }
+    if (state.fastStopRequested) {
+      this._queueColumnStop(0, last, null);
+      return;
+    }
+    // Each symbol lands on its own (glint + tick, symbolLanded); the reel's
+    // thud accents its LAST symbol, closing that reel's rat-a-tat.
+    for (const s of landings) this._queueTimer(s.t, () => this.symbolLanded(s.row, s.col));
+    for (const [col, t] of landAt) this._queueColumnStop(col, t, null);
+  }
+
+  /** One symbol just hit its slot: its floor glint, and a landing tick
+   *  (onSymbolLand, wired to landingTicks) for the rat-a-tat. */
+  symbolLanded(row, col) {
+    this.landingGlints(col, [row]);
+    this.onSymbolLand?.(row, col);
+  }
+
+  /** A landing, felt where it happens: along the floor seam of each symbol
+   *  that just landed, a steel hairline flares across the lane and a hot
+   *  laser glint sweeps it left to right. Fired per symbol as it lands (and
+   *  per reel on a fast-stop zip). Local light only, on the pooled
+   *  ShardEmitter; the board itself never moves. */
+  landingGlints(col, rows) {
+    if (!rows?.length) return;
+    const { laneW, rowStep } = this.getLayout();
+    const E = this.shards;
+    const line = E.flashSprite(THEME.color.steelSheen);
+    const hot = E.flashSprite(THEME.color.tungstenSoft);
+    const sweep = laneW * 0.84;
+    for (const r of rows) {
+      const c = this.cellCenter(r, col);
+      const y = c.y + rowStep * 0.46;
+      E.add(SHARD.FLASH, c.x, y, 0, 0, laneW * 1.05, 200, line,
+        { aspect: 0.05, peak: 0.55, vr: 0, rot: 0, drag: 1 });
+      E.add(SHARD.FLASH, c.x - sweep / 2, y, sweep / 150, 0, laneW * 0.5, 150, hot,
+        { aspect: 0.1, peak: 0.95, vr: 0, rot: 0, drag: 1 });
+    }
+  }
+
+  /** A timer owned by the current drop: cancelColumnStops() clears it. */
+  _queueTimer(ms, fn) {
+    if (!this._columnStops) this._columnStops = new Set();
+    const id = setTimeout(() => {
+      this._columnStops.delete(id);
+      fn();
+    }, Math.max(0, Math.round(ms)));
+    this._columnStops.add(id);
+  }
+
+  /** 5a: a laser reticle and an ascending ping as each scatter lands, counted
+   *  together with the scatters already resting on the board. */
+  scheduleScatterLandings(dropMap, lands) {
+    const need = this.fx.drop?.need || 0;
+    this._pendingScatters = null;
+    if (!lands.length || !need) return;
+    let resting = 0;
+    (this.board.matrix || []).forEach((rowArr, r) => (rowArr || []).forEach((sym, c) => {
+      if (sym === "SCATTER" && !(Number(dropMap?.[`${r}-${c}`] || 0) > 0)) resting += 1;
+    }));
+    lands.sort((x, y) => x.t - y.t);
+    this._pendingScatters = { need, resting, landed: 0, cells: lands.slice() };
+    // Fast-stop: land them all now, unless this board is about to zip in
+    // (_startZip re-times them to their reels' locks).
+    if (state.fastStopRequested && !this._zipPending) {
+      this.flushScatterLandings();
+      return;
+    }
+    lands.forEach((s) => this._queueTimer(s.t, () => this._landScatter(s)));
+  }
+
+  _landScatter(s) {
+    const p = this._pendingScatters;
+    const i = p ? p.cells.indexOf(s) : -1;
+    if (i < 0) return;
+    p.cells.splice(i, 1);
+    p.landed += 1;
+    this.spawnReticle(s.row, s.col);
+    this._announceScatters();
+  }
+
+  /** Fast-stop: every scatter still in the air lands now: one ping, final count. */
+  flushScatterLandings() {
+    const p = this._pendingScatters;
+    if (!p || !p.cells.length) return;
+    p.cells.forEach((s) => this.spawnReticle(s.row, s.col));
+    p.landed += p.cells.length;
+    p.cells = [];
+    this._announceScatters();
+  }
+
+  _announceScatters() {
+    const p = this._pendingScatters;
+    const n = p.resting + p.landed;
+    // win_tick's pitch rises with `progress`, so 1st, 2nd, 3rd… climb.
+    window.Sound?.play("win_tick", { progress: Math.min(1, n / p.need) });
+    this.onScatterCount?.(n, p.need);
+  }
+
+  spawnReticle(row, col) {
+    const c = this.cellCenter(row, col);
+    this.fx.reticles.push({ x: c.x, y: c.y, born: performance.now(), life: 900 });
+  }
+
+  /** 5c/5d: wide reticles converge on every scatter, then pulse locked. */
+  async lockOn(cells, duration = 760) {
+    if (!cells?.length) return;
+    this.fx.lockOn = {
+      start: performance.now(),
+      duration: Math.round(duration * turboScale()),
+      cells: cells.map((p) => this.cellCenter(p.row, p.col))
+    };
+    await animationSleep(duration);
+    this.fx.lockOn = null;
+  }
+
+  /** Canvas layer for 5a reticles and the 5c/5d lock-on (over the symbols). */
+  drawScatterLocks(ctx, radius) {
+    const now = performance.now();
+    const spinOk = !this._reducedMotion;
+    const reticle = (x, y, r, spin, alpha, width) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin);
+      ctx.globalAlpha = clamp(alpha, 0, 1);
+      ctx.strokeStyle = THEME.color.laserHot;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      for (let k = 0; k < 4; k += 1) {
+        const a0 = (k * Math.PI) / 2 + 0.28;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, a0, a0 + Math.PI / 2 - 0.56);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      for (let k = 0; k < 4; k += 1) {
+        const a = (k * Math.PI) / 2;
+        ctx.moveTo(Math.cos(a) * r * 1.14, Math.sin(a) * r * 1.14);
+        ctx.lineTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    // 5a: snaps in from slightly wide, holds, fades.
+    this.fx.reticles = this.fx.reticles.filter((q) => now - q.born < q.life);
+    for (const q of this.fx.reticles) {
+      const t = (now - q.born) / q.life;
+      const r = radius * (1.25 - 0.35 * easeOutCubic(Math.min(1, t * 2.5)));
+      const alpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      reticle(q.x, q.y, r, spinOk ? t * 1.2 : 0, alpha, Math.max(1.5, radius * 0.06));
+    }
+    // 5c/5d: laser sights sweep in along the row and column of each scatter
+    // while wide reticles converge on it, then the locks pulse.
+    const L = this.fx.lockOn;
+    if (!L) return;
+    const t = clamp((now - L.start) / L.duration, 0, 1);
+    const conv = easeOutCubic(Math.min(1, t / 0.7));
+    const pulse = t > 0.7 ? 0.6 + 0.4 * Math.sin((t - 0.7) * Math.PI * 8) : 1;
+    const { inX, inY, inW, inH } = this.getTableRect();
+    for (const p of L.cells) {
+      if (conv < 1) {
+        ctx.save();
+        ctx.globalAlpha = (1 - conv) * 0.7;
+        ctx.strokeStyle = THEME.color.laser;
+        ctx.lineWidth = Math.max(1, radius * 0.03);
+        ctx.beginPath();
+        ctx.moveTo(inX, p.y); ctx.lineTo(inX + inW, p.y);
+        ctx.moveTo(p.x, inY); ctx.lineTo(p.x, inY + inH);
+        ctx.stroke();
+        ctx.restore();
+      }
+      reticle(p.x, p.y, radius * (2.6 - 1.75 * conv), spinOk ? (1 - conv) * Math.PI : 0,
+        (0.35 + 0.65 * conv) * pulse, Math.max(2, radius * 0.08));
+    }
+  }
+
+  /** 5b: the anticipated lanes glow security-laser red while they wait and
+   *  fall, building with the wait; each lane releases as its column lands. */
+  drawAnticipationLanes(ctx, a, layout) {
+    const now = performance.now();
+    if (!a.landAt || now < a.startAt) return;
+    const { padX, top, laneW, rowStep } = layout;
+    const h = rowStep * this.rows;
+    const build = clamp((now - a.startAt) / Math.max(1, a.endAt - a.startAt), 0, 1);
+    for (let c = a.fromCol; c < this.cols; c += 1) {
+      const land = a.landAt.get(c);
+      if (land == null) continue;
+      const fade = now < land ? 1 : 1 - clamp((now - land) / 220, 0, 1);
+      if (fade <= 0) continue;
+      const x = padX + laneW * c;
+      const strength = (0.35 + 0.45 * build) * fade;
+      const g = ctx.createLinearGradient(x, 0, x + laneW, 0);
+      g.addColorStop(0, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
+      g.addColorStop(0.18, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
+      g.addColorStop(0.82, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
+      g.addColorStop(1, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
+      ctx.fillStyle = g;
+      ctx.fillRect(x, top, laneW, h);
+      if (!this._reducedMotion && now < land) {
+        const sy = top + ((now * 0.55 + c * 90) % h);
+        ctx.fillStyle = THEME.alpha(THEME.color.laserHot, (0.5 * strength).toFixed(3));
+        ctx.fillRect(x + 2, sy, laneW - 4, 2);
+      }
+    }
+  }
+
+  _queueColumnStop(col, ms, glintRows = null) {
+    if (!this._columnStops) this._columnStops = new Set();
+    const id = setTimeout(() => {
+      this._columnStops.delete(id);
+      // index raises the synth's pitch a step per reel, so the waterfall
+      // reads left to right by ear as well as by eye.
+      window.Sound?.play("reel_stop", { index: col });
+      if (glintRows) this.landingGlints(col, glintRows);
+    }, Math.max(0, Math.round(ms)));
+    this._columnStops.add(id);
+  }
+
+  cancelColumnStops() {
+    if (!this._columnStops) return;
+    this._columnStops.forEach(clearTimeout);
+    this._columnStops.clear();
   }
 
   dropDelay(row, col, count) {
-    // Fast-stop collapses the whole board in at once — no cascade.
-    if (state.fastStopRequested) return 0;
-    // Pronounced left-to-right REEL cascade: each column starts dropping a clear
-    // beat (~90ms) after the column to its left, so reel 1 lands first, then reel
-    // 2, then reel 3 … (Pragmatic-style waterfall) instead of the whole board
-    // arriving together. A small per-row stagger keeps each column reading as
-    // falling gravity rather than a rigid block, and symbols that fall farther
-    // (higher count) wait a touch longer. Scaled by turbo so the cascade
-    // compresses in step with the rest of the spin.
-    const raw = col * 90 + row * 12 + Math.max(0, count - 1) * 14;
-    return Math.max(0, Math.round(raw * turboScale()));
+    // Fast-stop collapses the waterfall (a zip snapshot reads the live one).
+    if (state.fastStopRequested && !this._liveTiming) return 0;
+    // Per-symbol release (WATERFALL): the reel's rank among the reels that
+    // drop, then bottom-up inside the reel, counted from the reel's lowest
+    // dropping symbol. Cascade momentum (drop.tempo) tightens both; the
+    // spin-out runs at exitScale. Scaled by turbo.
+    const drop = this.fx.drop;
+    const o = drop?.order;
+    const rank = o ? o.rank[col] : col;
+    const fromBottom = Math.max(0, (o ? o.bottom[col] : this.rows - 1) - row);
+    let raw = (rank * WATERFALL.colMs + fromBottom * WATERFALL.rowMs) * (drop?.tempo || 1);
+    if (drop?.exit) raw *= WATERFALL.exitScale;
+    // Anticipated columns (5b) wait an extra beat each, stacking left to right.
+    const a = drop?.antic;
+    const hold = a && col >= a.fromCol ? a.holdMs * (col - a.fromCol + 1) : 0;
+    return Math.max(0, Math.round(raw * turboScale()) + hold + this.inertiaLag(col, count));
+  }
+
+  /** Reel inertia keeps the landing beat even: a lighter reel (shorter fall,
+   *  earlier contact) is released later by exactly the difference, so it
+   *  lands on the same waterfall beat as a heavy reel would. Its tension shows
+   *  in a later, harder release, not in a ragged rhythm. Drop-ins only. */
+  inertiaLag(col, count, drop = this.fx.drop) {
+    if (!drop || drop.exit) return 0;
+    const p = this.reelProfile(col);
+    const h = REEL_INERTIA[0];
+    return (this.cellFallMs(col, count, drop) / p.durScale) * (h.durScale * h.contact - p.durScale * p.contact);
+  }
+
+  /** Per-drop release order: each reel's rank among the reels that drop, and
+   *  its lowest dropping row (where its bottom-up stagger starts). Computed
+   *  once per drop; dropDelay falls back to plain column order without it. */
+  _dropOrder(map) {
+    const bottom = new Int8Array(this.cols).fill(-1);
+    for (const key of Object.keys(map || {})) {
+      if (!(Number(map[key]) > 0)) continue;
+      const [r, c] = key.split("-").map(Number);
+      if (Number.isFinite(r) && Number.isFinite(c) && r > bottom[c]) bottom[c] = r;
+    }
+    const rank = new Int8Array(this.cols);
+    let k = 0;
+    for (let c = 0; c < this.cols; c += 1) rank[c] = bottom[c] >= 0 ? k++ : 0;
+    return { bottom, rank };
+  }
+
+  /** One symbol's own fall time: its reel's fall (colDropMs) scaled by how
+   *  far it falls, like gravity (√distance), floored at FALL_SCALE_MIN. */
+  cellFallMs(col, count, drop = this.fx.drop) {
+    const full = this.colDropMs(col, drop);
+    if (!drop || drop.exit) return full;
+    return full * clamp(Math.sqrt(count / this.rows), FALL_SCALE_MIN, 1);
+  }
+
+  /** Fall duration of one column of the current drop. Anticipated columns
+   *  fall slower. Every drop timing (landing, sound, reveals, dust, settle)
+   *  goes through this, so they cannot disagree. */
+  colDropMs(col, drop = this.fx.drop) {
+    if (!drop) return 0;
+    const a = drop.antic;
+    const d = drop.duration * this.reelProfile(col).durScale;
+    return a && col >= a.fromCol ? d * a.slow : d;
+  }
+
+  /** When the last cell of the current drop has fully landed, ms from start. */
+  dropEndMs(dropMap) {
+    let end = 0;
+    for (const [key, count] of Object.entries(dropMap || {})) {
+      const n = Number(count || 0);
+      if (n <= 0) continue;
+      const [r, c] = key.split("-").map(Number);
+      if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+      end = Math.max(end, this.dropDelay(r, c, n) + this.cellFallMs(c, n));
+    }
+    return end;
+  }
+
+  /** Anticipation state for a new drop, or null. Never on a fast-stop. */
+  makeAnticipation(a) {
+    if (!a || !(a.fromCol > 0) || a.fromCol >= this.cols || state.fastStopRequested) return null;
+    return {
+      fromCol: a.fromCol,
+      holdMs: Math.round(ANTICIPATION.holdMs * turboScale()),
+      slow: ANTICIPATION.slowFall,
+      startAt: 0,   // absolute ms: set by scheduleColumnStops()
+      endAt: 0,
+      landAt: null
+    };
   }
 
   computeWinningBBox(winning) {
@@ -2019,6 +3073,8 @@ class ReelCanvasRenderer {
 
   draw() {
     const ctx = this.ctx;
+    // Once per frame, not per cell: matchMedia is not free.
+    this._reducedMotion = prefersReducedMotion();
     const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
     ctx.clearRect(0, 0, width, height);
 
@@ -2047,9 +3103,9 @@ class ReelCanvasRenderer {
     const fogKey = `${driftA}|${driftB}|${width}|${height}`;
     if (this._fogKey !== fogKey) {
       const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
-      amberFog.addColorStop(0, "rgba(120, 198, 255, 0.24)");
-      amberFog.addColorStop(0.5, "rgba(86, 124, 255, 0.16)");
-      amberFog.addColorStop(1, "rgba(0, 0, 0, 0)");
+      amberFog.addColorStop(0, THEME.stage.fogCore);
+      amberFog.addColorStop(0.5, THEME.stage.fogMid);
+      amberFog.addColorStop(1, THEME.stage.fogEdge);
       this._fogGrad = amberFog;
       this._fogKey = fogKey;
     }
@@ -2059,9 +3115,9 @@ class ReelCanvasRenderer {
     const meshKey = `${idleWave}|${idleWave2}|${width}|${height}`;
     if (this._meshKey !== meshKey) {
       const meshGlow = ctx.createLinearGradient(0, 0, width, height);
-      meshGlow.addColorStop(0, `rgba(129, 198, 255, ${(0.06 + (idleWave + 1) * 0.015).toFixed(3)})`);
-      meshGlow.addColorStop(0.5, "rgba(128, 171, 255, 0.02)");
-      meshGlow.addColorStop(1, `rgba(111, 227, 210, ${(0.05 + (idleWave2 + 1) * 0.012).toFixed(3)})`);
+      meshGlow.addColorStop(0, THEME.alpha(THEME.stage.meshA, (0.06 + (idleWave + 1) * 0.015).toFixed(3)));
+      meshGlow.addColorStop(0.5, THEME.stage.meshMid);
+      meshGlow.addColorStop(1, THEME.alpha(THEME.stage.meshB, (0.05 + (idleWave2 + 1) * 0.012).toFixed(3)));
       this._meshGrad = meshGlow;
       this._meshKey = meshKey;
     }
@@ -2076,7 +3132,7 @@ class ReelCanvasRenderer {
     if (this.fx.spinBurst) {
       const t = clamp((performance.now() - this.fx.spinBurst.start) / this.fx.spinBurst.duration, 0, 1);
       const a = (1 - t) * 0.22;
-      ctx.fillStyle = `rgba(255, 205, 139, ${a.toFixed(3)})`;
+      ctx.fillStyle = THEME.alpha(THEME.stage.spinFlash, a.toFixed(3));
       ctx.fillRect(0, 0, width, height);
     }
 
@@ -2350,19 +3406,18 @@ class ReelCanvasRenderer {
         const t = clamp((now - b.born) / b.life, 0, 1);
         const env = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
         const a = clamp(env, 0, 1);
-        // Full-frame white-hot punch.
-        ctx.globalAlpha = a * 0.55;
-        ctx.fillStyle = "rgba(255, 255, 255, 1)";
-        ctx.fillRect(0, 0, width, height);
-        // Tier-colored radial bloom centered on impact.
-        const reach = Math.max(width, height);
-        const bloom = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, reach * 0.7);
-        bloom.addColorStop(0, b.tier.accent);
-        bloom.addColorStop(0.25, b.tier.glow);
-        bloom.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.globalAlpha = a * 0.85;
-        ctx.fillStyle = bloom;
-        ctx.fillRect(0, 0, width, height);
+        // Localised impact light (it used to white out the whole frame and
+        // bloom across the canvas): a tier-coloured bloom about two cells
+        // across plus a white-hot core, centred on the landing cell.
+        const r = radius * (1.6 + 0.6 * b.heaviness) * (0.85 + 0.15 * a);
+        const bloom = this.getGlowSprite(b.tier.accent);
+        const core = this.getGlowSprite("#ffffff");
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = a * 0.9;
+        ctx.drawImage(bloom.cvs, b.x - r, b.y - r, r * 2, r * 2);
+        ctx.globalAlpha = a * 0.7;
+        ctx.drawImage(core.cvs, b.x - r * 0.45, b.y - r * 0.45, r * 0.9, r * 0.9);
+        ctx.globalCompositeOperation = "source-over";
       });
       ctx.globalAlpha = 1;
     }
@@ -2380,12 +3435,15 @@ class ReelCanvasRenderer {
       ctx.globalAlpha = 1;
     }
 
+    // 5b: anticipation lanes, behind the symbols.
+    if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
+
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
         if (this.board.hidden) continue;
         const symbol = this.board.matrix?.[r]?.[c] || "BLUE_DIAMOND";
         const key = `${r}-${c}`;
-        const x = padX + laneW * (c + 0.5);
+        const x = padX + laneW * (c + 0.5) + this.cellLeanX(key, laneW);
         const yBase = top + rowStep * (r + 0.5);
         const isSlamColumn = Boolean(this.fx.reelSlam?.columns?.has(c));
         const slamOffset = isSlamColumn ? reelSlamWave * radius * 0.46 : 0;
@@ -2399,6 +3457,25 @@ class ReelCanvasRenderer {
         // second" glitch. Old winners still fade normally in the pre-drop window
         // (they aren't in the drop map yet).
         const isFalling = Number(this.fx.drop?.map?.[key] || 0) > 0;
+        // The reel mask (REEL_MASK): everything a symbol in flight draws (its
+        // art and any glow on it) is clipped to the grid, so it appears exactly
+        // as it crosses into row 0 and never over the frame above (or below,
+        // leaving). Near its slot the edge eases out to the art's resting
+        // overhang (sized for the largest art, MULTI at 1.24×). Resting symbols
+        // are never clipped; only moving cells pay for a cheap rect clip.
+        const offY = y - yBase - slamOffset;
+        const inFlight = isFalling && offY !== 0;
+        if (inFlight) {
+          const over = Math.max(0, (Math.min(laneW, rowStep) * 1.24 - rowStep) / 2);
+          const edge = over * clamp(1 - Math.abs(offY) / (rowStep * REEL_MASK.settleRows), 0, 1);
+          const leaving = Boolean(this.fx.drop?.exit);
+          const y0 = top - (leaving ? over : edge);
+          const y1 = top + rowStep * this.rows + (leaving ? edge : over);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, y0, width, y1 - y0);
+          ctx.clip();
+        }
         const isBlast = this.fx.blast?.set?.has(key) && !isFalling;
         // Per-cell blast progress — staggered across cells so big wins ripple
         // outward instead of all popping at the same instant.
@@ -2424,21 +3501,26 @@ class ReelCanvasRenderer {
         const floatOffset = Math.sin(this.time * 0.0016 + r * 0.5 + c * 0.7) * radius * 0.05;
         const yFloat = y + floatOffset;
         const idlePulse = 1 + Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
-        const pulseScale = isWinner ? 1 + pulseGlow * 0.16 : 1;
+        // Winners breathe during the hold: a resting swell plus a slow in-out,
+        // phase-lagged from the cluster centre (breathPhases) so it ripples.
+        let pulseScale = 1;
+        if (isWinner && this.fx.pulse) {
+          const m = this.motion();
+          const lag = this.fx.pulse.phase?.get(key) || 0;
+          const w = ((performance.now() - this.fx.pulse.start) / m.breathMs) * Math.PI * 2 - lag;
+          const breath = 0.5 - 0.5 * Math.cos(w);
+          pulseScale = 1 + pulseGlow * (m.breathBase + m.breathDepth * breath);
+        }
         const isMultiCaught = symbol === "MULTI" && Boolean(this.fx.multiCatch?.set?.has(key));
         const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.26 : 1;
-        // Vertical squash if a heavy impact just landed on this cell.
+        // Rigid: a multiplier BANG never squashes its symbol. Its weight is the
+        // thud, the local bloom and the spotlight flash fired in
+        // spawnHeavyImpact(). squashX/Y stay as the hook dropDeform() feeds.
         let squashY = 1;
         let squashX = 1;
-        const impact = this.fx.impacts.find((im) => im.row === r && im.col === c);
-        if (impact) {
-          const it = clamp((performance.now() - impact.born) / 240, 0, 1);
-          if (it < 1) {
-            const env = Math.sin(it * Math.PI);
-            squashY = 1 - 0.18 * env * impact.heaviness;
-            squashX = 1 + 0.12 * env * impact.heaviness;
-          }
-        }
+        const deform = this.dropDeform(r, c);
+        squashX *= deform.sx;
+        squashY *= deform.sy;
         const baseScale = pulseScale * catchScale * idlePulse * chargeShrink;
         // Heavy-drop concealment: while a high-tier multiplier is falling,
         // hide its symbol entirely so the player only sees the descending
@@ -2474,10 +3556,17 @@ class ReelCanvasRenderer {
         );
         const iconW = iconBase * squashX;
         const iconH = iconBase * squashY;
+        // A squashed symbol stays planted on its floor instead of shrinking
+        // toward its centre; a stretched one stays centred on its fall path.
+        const iconCy = yFloat + Math.max(0, iconBase - iconH) * 0.5;
+        // 4d: during the cluster spotlight, symbols outside the cluster step back.
+        const spotDim = spotlightAlpha > 0 && this.fx.spotlight?.cluster && !isSpotlit
+          ? 1 - spotlightAlpha * 0.75
+          : 1;
 
         // Spotlight halo: brighten cells on the spotlight set during big
         // events, working with the dim overlay to draw the eye in.
-        if (isSpotlit && spotlightAlpha > 0.05) {
+        if (isSpotlit && spotlightAlpha > 0.05 && !this.fx.spotlight.cluster) {
           const sp = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 2.4);
           sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
           sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
@@ -2504,15 +3593,14 @@ class ReelCanvasRenderer {
           // Halo breathes with the celebration pulse so the held cluster reads
           // as actively celebrating, not statically lit. A floor keeps it
           // clearly marked even at the shimmer's low point.
+          // Blitted from the cached glow sprite (vault gold) instead of
+          // allocating a radial gradient per winner per frame.
           const haloPulse = 0.55 + 0.45 * pulseGlow;
-          const halo = ctx.createRadialGradient(x, yFloat, coreR * 0.28, x, yFloat, ringR * 1.55);
-          halo.addColorStop(0, `rgba(215, 236, 255, ${0.6 * blastFade * haloPulse})`);
-          halo.addColorStop(0.35, `rgba(150, 188, 255, ${0.24 * blastFade * haloPulse})`);
-          halo.addColorStop(1, "rgba(150, 188, 255, 0)");
-          ctx.fillStyle = halo;
-          ctx.beginPath();
-          ctx.arc(x, yFloat, ringR * 1.52, 0, Math.PI * 2);
-          ctx.fill();
+          const glow = this.getGlowSprite(THEME.glow.win);
+          const haloR = ringR * 1.55;
+          ctx.globalAlpha = 0.85 * blastFade * haloPulse;
+          ctx.drawImage(glow.cvs, x - haloR, yFloat - haloR, haloR * 2, haloR * 2);
+          ctx.globalAlpha = 1;
         }
 
         if (isSlamColumn) {
@@ -2538,12 +3626,12 @@ class ReelCanvasRenderer {
           // visually "replaced" by the multiplier on the BANG impact.
           const decoyImg = reveal?.decoy ? this.images.get(reveal.decoy) : null;
           if (decoyImg?.complete && decoyImg.naturalWidth) {
-            ctx.globalAlpha = blastFade;
+            ctx.globalAlpha = blastFade * spotDim;
             const decoySprite = this.getSymbolSprite(reveal.decoy, decoyImg, iconW, iconH);
-            ctx.drawImage(decoySprite, x - iconW / 2, yFloat - iconH / 2, iconW, iconH);
+            ctx.drawImage(decoySprite, x - iconW / 2, iconCy - iconH / 2, iconW, iconH);
           }
         } else if (img?.complete && img.naturalWidth) {
-          ctx.globalAlpha = blastFade * revealAlpha;
+          ctx.globalAlpha = blastFade * revealAlpha * spotDim;
           // SCATTER art is a rectangular (wide) tile, not a square sprite. Draw
           // it at its true aspect ratio contained inside the icon box so it is
           // never stretched; every other symbol still fills the square box.
@@ -2558,10 +3646,22 @@ class ReelCanvasRenderer {
           // every cell, every frame. Keyed by the image key actually resolved
           // above (a multiplier tier image, or the symbol itself).
           const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
-          ctx.drawImage(sprite, x - drawW / 2, yFloat - drawH / 2, drawW, drawH);
+          // Fast-stop zip: fading ghosts back along the path give the motion
+          // blur; they vanish the frame the reel locks. Spacing is capped at
+          // ~1/3 of the symbol so a long zip smears instead of strobing.
+          const blur = this.fx.drop?.zip ? Math.min(this.zipBlur(key, c, rowStep), drawH * 0.35) : 0;
+          if (blur > 0.5) {
+            const a = ctx.globalAlpha;
+            for (let g = FAST_ZIP.trail; g >= 1; g -= 1) {
+              ctx.globalAlpha = (a * 0.35) / g;
+              ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2 - (blur * g) / FAST_ZIP.trail, drawW, drawH);
+            }
+            ctx.globalAlpha = a;
+          }
+          ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
         } else {
-          ctx.fillStyle = "rgba(255, 238, 200, 0.9)";
-          ctx.font = `${Math.max(10, coreR * 0.22)}px Trebuchet MS, sans-serif`;
+          ctx.fillStyle = THEME.text.label;
+          ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(symbol.slice(0, 2), x, yFloat);
@@ -2569,8 +3669,8 @@ class ReelCanvasRenderer {
 
         if (symbol === "TOP_CROWN") {
           const crownGlow = ctx.createRadialGradient(x, yFloat - coreR * 0.36, 0, x, yFloat - coreR * 0.36, coreR * 0.75);
-          crownGlow.addColorStop(0, "rgba(185, 218, 255, 0.26)");
-          crownGlow.addColorStop(1, "rgba(185, 218, 255, 0)");
+          crownGlow.addColorStop(0, THEME.alpha(THEME.glow.winHot, 0.26));
+          crownGlow.addColorStop(1, THEME.alpha(THEME.glow.winHot, 0));
           ctx.fillStyle = crownGlow;
           ctx.beginPath();
           ctx.arc(x, yFloat - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
@@ -2583,10 +3683,12 @@ class ReelCanvasRenderer {
           const tier = multiTier || getMultiplierTier(multiValueNum);
           const value = `${multiValueNum}x`;
           ctx.fillStyle = tier.accent;
-          ctx.font = `900 ${Math.max(18, coreR * 0.62)}px "Trebuchet MS", "Segoe UI", sans-serif`;
+          // 700 is the display face's heaviest weight; asking for more makes
+          // some browsers synthesize a smeared faux-bold.
+          ctx.font = THEME.canvasFont(700, Math.max(18, coreR * 0.62));
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.strokeStyle = "rgba(7, 13, 24, 0.92)";
+          ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
           ctx.lineWidth = Math.max(2.4, coreR * 0.1);
           ctx.strokeText(value, x, yFloat + coreR * 0.02);
           ctx.fillText(value, x, yFloat + coreR * 0.02);
@@ -2606,8 +3708,12 @@ class ReelCanvasRenderer {
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
+        if (inFlight) ctx.restore(); // reel mask
       }
     }
+
+    // 5a/5c/5d: scatter reticles and the trigger lock-on, over the symbols.
+    if (this.fx.reticles.length || this.fx.lockOn) this.drawScatterLocks(ctx, radius);
 
     // Radial light rays from explosion centers — fast-growing, fading streaks
     // that telegraph an audible "crack" on the upcoming sound layer.
@@ -2635,6 +3741,9 @@ class ReelCanvasRenderer {
       });
       ctx.globalAlpha = 1;
     }
+
+    // Symbol destruction fragments + local light (time-based, pooled).
+    this.shards.render(ctx, this.dpr);
 
     if (this.particles.length) {
       const now = performance.now();
@@ -2784,15 +3893,100 @@ const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCou
 // to assert nothing rebuilds them mid-round). Nothing in the game reads this.
 window.__reelRenderer = reelRenderer;
 
-function winTier(waysWins = [], bet = 1) {
-  let totalAmount = 0;
-  waysWins.forEach((w) => { totalAmount += Number(w?.amount || 0); });
-  const winX = bet > 0 ? totalAmount / bet : 0;
-  // Tier purely by payout magnitude (× bet). Calmer thresholds so the
-  // strongest celebration is reserved for genuinely big wins.
-  if (winX >= 20) return "blast-great";
-  if (winX >= 5) return "blast-medium";
-  return "blast-small";
+// ─── WIN TIERS ──────────────────────────────────────────────────────────────
+// The ONE place a win's size becomes presentation. Everything that reacts to
+// "how big was that" (big-win overlay label + colour, sound, cluster blast
+// strength, win-chip and spin-log styling, ambiance) reads a
+// tier from here. Thresholds are × bet; ordered high → low, first match wins.
+// Overlay colour lives in CSS: big-win.js sets data-tier and styles.css maps
+// it to the matching --tier-* token. `color` mirrors that token for canvas use
+// (via THEME, so it is the same value).
+// Presentation only: nothing here feeds back into the engine.
+//   overlay  — the round-end win opens the full-screen celebration (big-win.js)
+//   sfx      — Sound key (step reveal, and the overlay's tier-up)
+//   blast    — renderer intensity for the cluster (particles, explode, bloom)
+//   flash    — full-board jackpotFlash on the winning step
+//   countMs  — overlay only: time for the count to cross this tier's span
+//   fx       — overlay only: celebration effect set ("coins" | "sparks" | "motherlode")
+const WIN_TIERS = Object.freeze([
+  Object.freeze({ key: "epic",  minX: 50, label: "MOTHERLODE",    color: THEME.winTier.epic, overlay: true,  sfx: "win_mega",  blast: "blast-great",  flash: true,  countMs: 2200, fx: "motherlode" }),
+  Object.freeze({ key: "mega",  minX: 25, label: "LASER BREACH",  color: THEME.winTier.mega, overlay: true,  sfx: "win_mega",  blast: "blast-great",  flash: false, countMs: 1500, fx: "sparks" }),
+  Object.freeze({ key: "big",   minX: 10, label: "VAULT CRACKED", color: THEME.winTier.big,  overlay: true,  sfx: "win_big",   blast: "blast-medium", flash: false, countMs: 1800, fx: "coins" }),
+  // "Heartbeat" wins: no overlay (no UI interruption), but the cluster still
+  // gets the medium burst so dry spells keep a pulse.
+  Object.freeze({ key: "nice",  minX: 5,  label: null,            color: THEME.winTier.nice, overlay: false, sfx: "win_small", blast: "blast-medium", flash: false }),
+  Object.freeze({ key: "small", minX: 0,  label: null,            color: THEME.winTier.nice, overlay: false, sfx: "win_small", blast: "blast-small",  flash: false })
+]);
+
+// Max win is the engine's cap EVENT, not a threshold, so it sits outside the
+// ladder. The overlay counts up through the normal tiers and lands on this.
+const WIN_TIER_MAX = Object.freeze({
+  key: "max", minX: Infinity, label: "MAX WIN", color: THEME.winTier.max, overlay: true,
+  sfx: "max_win", blast: "blast-great", flash: true, countMs: 0, fx: "motherlode"
+});
+
+function getWinTier(amount, bet) {
+  const x = bet > 0 ? Number(amount || 0) / bet : 0;
+  return WIN_TIERS.find((t) => x >= t.minX) || WIN_TIERS[WIN_TIERS.length - 1];
+}
+
+// Tier for one tumble step. win_total is the step's raw ways total (the sum
+// of its ways_wins), the same figure the old per-step thresholds used.
+function stepWinTier(step, bet) {
+  return getWinTier(Number(step?.win_total || 0), bet);
+}
+
+// ─── Big-win celebration ────────────────────────────────────────────────────
+// The full-screen overlay (big-win.js) for round wins on an overlay tier. It
+// runs INSIDE the round, so the spin lock stays held until it is dismissed.
+const BIG_WIN_TIERS = WIN_TIERS.filter((t) => t.overlay);
+
+const bigWin = new BigWinController({
+  root: document.getElementById("bigWinOverlay"),
+  format: fmt,
+  palette: {
+    gold: THEME.color.gold,
+    goldBright: THEME.color.goldBright,
+    goldDeep: THEME.color.goldDeep,
+    diamond: THEME.color.textHud,
+    diamondEdge: THEME.color.steelSheen,
+    sparks: THEME.particles.breach
+  },
+  maxDpr: reelRenderer.maxDpr,
+  fxScale: TIER_PROFILES[reelRenderer.tier].fxCeil,
+  hooks: {
+    // The overlay animates its own stage, and the board underneath is dimmed
+    // and paused, so only sound is routed out here.
+    onTier: (tier) => window.Sound?.play(tier.sfx),
+    onTick: (value, total) => window.Sound?.play("win_tick", { progress: total > 0 ? value / total : 1 })
+  }
+});
+
+/** Celebrate a settled round win. Resolves once the player (or the
+ *  auto-dismiss) closes the overlay. */
+async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
+  // Follow any FPS-governor downgrade that happened since boot.
+  bigWin.field.maxDpr = reelRenderer.maxDpr;
+  const inAutoplay = state.autoplayActive || state.bonusAutoplay;
+  // Auto-dismiss everywhere: a player who never taps must not leave the round,
+  // and the spin lock, held open forever. Autoplay and free spins move on fast.
+  const autoDismissMs = inAutoplay ? (state.turbo ? 800 : 1800) : 4000;
+  // The overlay covers the board, so stop drawing it: no point spending
+  // battery and heat on frames nobody can see. installVisibilityGuards() knows
+  // not to wake it while the overlay is up.
+  reelRenderer.pauseRendering();
+  try {
+    return await bigWin.play({
+      amount,
+      bet,
+      tiers: BIG_WIN_TIERS,
+      finalTier,
+      speed: state.turbo || state.fastStopRequested ? 0.35 : 1,
+      autoDismissMs
+    });
+  } finally {
+    if (!document.hidden) reelRenderer.resumeRendering();
+  }
 }
 
 function maxMultiplierInStep(step = {}) {
@@ -3042,6 +4236,9 @@ function setControls(disabled) {
   // engine forbids buying the feature with an active ante bet).
   el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
   el.anteToggle.disabled = disabled;
+  // The bet is fixed for the round from the instant it starts.
+  if (el.betDownBtn) el.betDownBtn.disabled = disabled;
+  if (el.betUpBtn) el.betUpBtn.disabled = disabled;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
 
@@ -3091,6 +4288,12 @@ function requestFastStop() {
   // while roundAnimating covers any path that animates a round without owning
   // the lock. Gating on the lock alone left fast-stop dead during buy-feature
   // and session-resume bonuses, which never acquired it.
+  // During the big-win celebration a press means what a tap on the overlay
+  // means: first press skips the count, the next one dismisses it.
+  if (bigWin.active) {
+    bigWin.advance();
+    return true;
+  }
   if (!spinLock.isLocked() && !state.roundAnimating) return false; // nothing in flight
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
@@ -3269,14 +4472,9 @@ function winChipTierFromStrength(tier) {
   return "small";
 }
 
+/** A win chip landed: the ticker's WIN line takes the hit. */
 function pulseWinMeter() {
-  const node = el.lastWin?.closest(".hud-node") || el.lastWin?.parentElement;
-  if (!node) return;
-  node.classList.remove("win-meter-pulse");
-  // Force reflow so the animation restarts cleanly each time.
-  void node.offsetWidth;
-  node.classList.add("win-meter-pulse");
-  setTimeout(() => node.classList.remove("win-meter-pulse"), 420);
+  ticker.bump();
 }
 
 function flyWinChip({ winningPositions, amount, tier = "blast-medium", delay = 0, onLand = null }) {
@@ -3292,7 +4490,8 @@ function flyWinChip({ winningPositions, amount, tier = "blast-medium", delay = 0
       resolve();
       return;
     }
-    const target = el.lastWin;
+    // The chip flies into the ticker, where the WIN line shows.
+    const target = el.psTicker || el.lastWin;
     const layer = ensureSoulLayer();
     const canvasRect = el.reels.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
@@ -3374,12 +4573,16 @@ function flyMultiplierSouls(multipliers = []) {
     valid.push(m);
   }
   if (!valid.length) return Promise.resolve();
+  // The running multiplier is kept in #activeMultiplier (state, not shown).
+  // The souls fly to what the player can see: the board's Total Multiplier
+  // badge during the bonus, otherwise the ticker.
   const target = el.activeMultiplier;
-  const meterNode = target?.closest(".hud-node-multi, .meter-node-multi");
+  const badgeOn = el.bonusMultiBadge && !el.bonusMultiBadge.classList.contains("hidden");
+  const meterNode = badgeOn ? el.bonusMultiBadge : el.psTicker;
   if (!target || !meterNode) return Promise.resolve();
   const layer = ensureSoulLayer();
   const canvasRect = el.reels.getBoundingClientRect();
-  const targetRect = target.getBoundingClientRect();
+  const targetRect = meterNode.getBoundingClientRect();
   const tx = targetRect.left + targetRect.width / 2;
   const ty = targetRect.top + targetRect.height / 2;
 
@@ -3571,7 +4774,6 @@ function playWinCombineSequence(rawWin, multiplier, totalWin) {
       multi.classList.add("is-merged");
       flash.classList.add("is-live");
       total.classList.add("is-live");
-      shakeVault("strong");
     }, ENTER + HOLD + SLAM);
     setTimeout(() => {
       overlay.classList.add("is-fading");
@@ -3631,90 +4833,11 @@ function confirmBuy({ cost, currency, costMultiplier }) {
   });
 }
 
+/** Event notices (feature bought, multiplier locked, crazy mode…) go to the
+ *  ticker, the game's single message line: shown for `duration`, then the
+ *  ticker's current line (tips, spin line or held WIN) comes back. */
 function pulseBanner(text, tone = "info", duration = 860) {
-  if (!el.eventBanner || !el.eventBannerText) return;
-  if (state.bannerTimer) {
-    clearTimeout(state.bannerTimer);
-    state.bannerTimer = null;
-  }
-  el.eventBannerText.textContent = text;
-  el.eventBanner.classList.remove("hidden", "banner-info", "banner-win", "banner-bonus", "live-banner");
-  el.eventBanner.classList.add(`banner-${tone}`);
-  void el.eventBanner.offsetWidth;
-  el.eventBanner.classList.add("live-banner");
-  state.bannerTimer = setTimeout(() => {
-    el.eventBanner.classList.add("hidden");
-    el.eventBanner.classList.remove("live-banner", "banner-info", "banner-win", "banner-bonus");
-    state.bannerTimer = null;
-  }, duration);
-}
-
-function showWinCallout(amount, label = "Win", duration = 980, tier = null) {
-  if (!el.winCallout || !el.winCalloutAmount || !el.winCalloutLabel) return;
-  if (state.calloutTimer) {
-    clearTimeout(state.calloutTimer);
-    state.calloutTimer = null;
-  }
-  el.winCalloutLabel.textContent = label;
-  el.winCalloutAmount.textContent = fmt(amount);
-  // Infer a tier from the amount/bet ratio if not explicitly provided. Drives
-  // the callout's color, glow, and size via CSS.
-  let inferredTier = tier;
-  if (!inferredTier) {
-    const bet = Number(el.betSelect?.value || 1) || 1;
-    const x = Number(amount || 0) / bet;
-    inferredTier = x >= 100 ? "epic" : x >= 50 ? "great" : x >= 12 ? "medium" : "small";
-  }
-  el.winCallout.classList.remove(
-    "hidden", "live-callout",
-    "callout-tier-small", "callout-tier-medium",
-    "callout-tier-great", "callout-tier-epic", "callout-tier-bonus"
-  );
-  el.winCallout.classList.add(`callout-tier-${inferredTier}`);
-  // Win reveal sound, keyed to the visual tier. "Multiplier Catch" / "Max Win"
-  // callouts have their own dedicated sounds fired at their source, so don't
-  // double up here.
-  if (label !== "Multiplier Catch" && !/^Max Win/.test(label)) {
-    const sfx = inferredTier === "epic" || inferredTier === "great"
-      ? "win_mega"
-      : inferredTier === "medium"
-        ? "win_big"
-        : "win_small";
-    window.Sound?.play(sfx);
-  }
-  void el.winCallout.offsetWidth;
-  el.winCallout.classList.add("live-callout");
-  state.calloutTimer = setTimeout(() => {
-    el.winCallout.classList.add("hidden");
-    el.winCallout.classList.remove("live-callout");
-    state.calloutTimer = null;
-  }, duration);
-}
-
-// Immediately hide the win callout (used before the combine finale so only one
-// message is ever on screen).
-function hideWinCallout() {
-  if (!el.winCallout) return;
-  if (state.calloutTimer) {
-    clearTimeout(state.calloutTimer);
-    state.calloutTimer = null;
-  }
-  el.winCallout.classList.add("hidden");
-  el.winCallout.classList.remove("live-callout");
-}
-
-function shakeVault(strength = "normal") {
-  if (!el.vaultWindow) return;
-  // Players who asked the OS to reduce motion get no screen shake.
-  if (prefersReducedMotion()) return;
-  const cls = strength === "strong" ? "event-shake-strong" : "event-shake";
-  el.vaultWindow.classList.remove("event-shake", "event-shake-strong");
-  void el.vaultWindow.offsetWidth;
-  el.vaultWindow.classList.add(cls);
-  const duration = strength === "strong" ? 700 : 520;
-  setTimeout(() => {
-    el.vaultWindow.classList.remove("event-shake", "event-shake-strong");
-  }, duration);
+  ticker.flash(text, tone, duration);
 }
 
 function renderExamples() {
@@ -3791,9 +4914,20 @@ function scatterPositionsFromPayload(payload = {}) {
   return positions;
 }
 
+// Scatters needed for this round's feature: the base trigger, or the free-spin
+// retrigger. From the rules file, so it cannot drift from the math.
+function scatterTargetFor(payload) {
+  const fs = state.rules?.features?.free_spins || {};
+  return payload?.is_free_spin
+    ? Number(fs.retrigger_scatter_count) || 3
+    : Number(fs.base_trigger_scatter_count) || 4;
+}
+
 async function celebrateScatterCatch(payload, label = "Bonus Catch") {
   const scatters = scatterPositionsFromPayload(payload);
   if (!scatters.length) return;
+  // 5c/5d: lock on before the feature reveal.
+  await reelRenderer.lockOn(scatters, 760);
   const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
@@ -3873,10 +5007,7 @@ function spinCardTier(entry) {
   const bet = Number(entry?.bet || 0);
   const win = Number(entry?.totalWin || 0);
   if (win <= 0) return "loss";
-  const x = bet > 0 ? win / bet : 0;
-  if (x >= 50) return "great";
-  if (x >= 12) return "medium";
-  return "small";
+  return winChipTierFromStrength(getWinTier(win, bet).blast);
 }
 
 function renderSpinCardInto(li, entry) {
@@ -4068,7 +5199,40 @@ function applyRoundStats(payload, bet, wagerOverride) {
   if (el.sessionBonusHits) el.sessionBonusHits.textContent = String(stats.bonusHits);
 }
 
+// Count the balance from one settled value to another. Durations scale with
+// the size of the win (log), compress with turbo, and collapse on fast-stop.
+async function animateBalance(from, to) {
+  if (!el.balance) return;
+  const delta = to - from;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || delta < 0.005) {
+    el.balance.textContent = fmt(to);
+    return;
+  }
+  const bet = Number(el.betSelect?.value || 1) || 1;
+  let ms = clamp(350 + Math.log10(1 + delta / bet) * 450, 350, 1400);
+  ms = state.fastStopRequested ? 150 : ms * turboScale();
+  const t0 = performance.now();
+  await new Promise((resolve) => {
+    const tick = (now) => {
+      const t = clamp((now - t0) / ms, 0, 1);
+      el.balance.textContent = fmt(lerp(from, to, easeOutCubic(t)));
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  el.balance.textContent = fmt(to);
+}
+
 async function animateRound(payload, bet, wagerOverride, options = {}) {
+  // The settled balance BEFORE this round's win: the engine charges the bet
+  // (paid spins only) and adds the win, so balance_after - total_win is the
+  // post-bet balance on every kind of round. Shown now; the win is counted
+  // into it at the end of the round.
+  const balanceAfter = Number(payload.balance_after);
+  const balancePreWin = Number((balanceAfter - Number(payload.total_win || 0)).toFixed(2));
+  if (Number.isFinite(balancePreWin) && el.balance) el.balance.textContent = fmt(balancePreWin);
+
   // The result is now committed and the reels are about to play it out: promote
   // the lock to the ANIMATING phase so a tap from here on means "fast-stop".
   spinLock.markAnimating();
@@ -4147,13 +5311,25 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     console.log(tag);
     if (el.resultDump) el.resultDump.dataset.lastSpinTag = tag;
   } catch {}
-  if (payload.is_free_spin) pulseBanner("Free Spin", "info", 640);
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
   // A multiplier landing on the first board ALWAYS plays its full reveal
   // (lightning + BANG), even when the opening board isn't itself a win — so the
   // player never sees a multiplier appear silently.
-  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], { animateMultipliers: true });
-  window.Sound?.play("reel_stop", { index: 0 });
+  // Landing thuds are per column now, scheduled by the renderer's drop in
+  // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
+  // Step 5: scatter feedback + reel anticipation for this round's opening board.
+  const scatterTarget = scatterTargetFor(payload);
+  // Option B: a board the engine ENGINEERED to be one scatter short
+  // (near_miss.pattern "scatter_one_short") gets no anticipation slowdown — the
+  // client must not dramatise a fabricated tease. Its scatters still ping and
+  // count, because that part only reports what is actually on the board.
+  const engineeredTease = payload.near_miss?.pattern === "scatter_one_short";
+  const anticipation = engineeredTease ? null : findAnticipation(steps[0].matrix, scatterTarget);
+  await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], {
+    animateMultipliers: true,
+    scatterTarget,
+    anticipation
+  });
   // Note: multiplier drop sounds are fired by the renderer at each multiplier's
   // BANG moment (spawnHeavyImpact) so they stay perfectly in sync with the
   // visual landing — see ReelCanvasRenderer.spawnHeavyImpact.
@@ -4170,10 +5346,9 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       const prevWinTotal = Number(prev?.win_total || 0);
       if (prevWinning.length > 0 && prevWinTotal > 0) {
         await animationSleep(140);
-        const prevTier = winTier(prev?.ways_wins || [], bet);
+        const prevWinTier = stepWinTier(prev, bet);
+        const prevTier = prevWinTier.blast;
         pushGameMessage(`Tumble ${i} triggered.`, "info");
-        // Shake only on great-tier tumble (no shake on routine medium/small).
-        if (prevTier === "blast-great") shakeVault("normal");
         // Win chip + cluster celebration fire IN PARALLEL with the explode so
         // the floating amount visually emerges from the cluster at the same
         // moment its symbols disappear. The chip + meter use the SCALED
@@ -4206,6 +5381,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           ANIMATION_TIMING.explode, // turbo scaling applied inside explode()
           prevTier
         );
+        // The void pulls its neighbours in, then the refill releases.
+        await reelRenderer.vacuum(prevWinning);
         window.Sound?.play("tumble", { step: i });
         // Multiplier drop sounds fire from the renderer at each BANG (synced to
         // the visual landing) — see spawnHeavyImpact.
@@ -4213,15 +5390,16 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           step.matrix,
           step.multipliers || [],
           dropMap,
-          ANIMATION_TIMING.tumbleDrop, // turbo scaling applied inside drop()
-          { animateMultipliers: true }
+          ANIMATION_TIMING.tumbleDrop, // turbo + momentum scaling applied inside drop()
+          { animateMultipliers: true, scatterTarget, tempo: tumbleTempo(i) }
         );
         await Promise.all([chipPromise, celebratePromise]);
       } else if (prevWinning.length === 0 && Array.isArray(prev?.multipliers) && prev.multipliers.length > 0) {
         // multipliers may persist on a non-winning matrix; nothing to do.
       }
     }
-    const tier = winTier(step?.ways_wins || [], bet);
+    const stepTier = stepWinTier(step, bet);
+    const tier = stepTier.blast;
     const stepWin = Number(step?.win_total || 0);
     // Celebration hold for the caught cluster. Every win here is an 8+ catch
     // (min match = 8), so the headline opening catch is held for the full
@@ -4245,27 +5423,17 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);
     if ((step.winning_positions || []).length && stepWin > 0) {
-      const winX = bet > 0 ? stepWin / bet : 0;
-      const label = winX >= 100
-        ? "Epic Win"
-        : tier === "blast-great"
-          ? "Great Win"
-          : tier === "blast-medium"
-            ? "Big Win"
-            : "Win";
       // No per-step popups. Across a tumble chain, showing the amount every
       // step (and stacking banners/callouts) is noisy and repetitive — so steps
-      // only update the running meter + play a tiered sound. Exactly ONE win
+      // only update the running meter + play the tier's sound. Exactly ONE win
       // message is shown at the end of the spin (the finale below).
-      window.Sound?.play(winX >= 50 ? "win_mega" : winX >= 12 ? "win_big" : "win_small");
-      pushGameMessage(`${label}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
-      // Shake only on great-tier (and stronger above 100x). Medium wins stay calm.
-      if (tier === "blast-great") shakeVault(winX >= 100 ? "strong" : "normal");
-      if (winX >= 100) {
+      window.Sound?.play(stepTier.sfx);
+      pushGameMessage(`${stepTier.label || "Win"}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
+      if (stepTier.flash) {
         await reelRenderer.jackpotFlash({
           duration: 520,
-          colorA: "rgba(170, 225, 255, 0.32)",
-          colorB: "rgba(255, 214, 136, 0.28)"
+          colorA: THEME.alpha(THEME.color.laser, 0.30),
+          colorB: THEME.alpha(THEME.color.gold, 0.28)
         });
       }
     }
@@ -4290,10 +5458,9 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           reelRenderer.multiplierCatch(fresh, freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic" ? 820 : 460),
           flyMultiplierSouls(fresh)
         ]);
-        // Big catches keep the screen shake + flash for impact, but no text
-        // "CATCH" banner/callout/log message (removed per design).
+        // Big catches keep the flash for impact (no shake: the board stays
+        // still), and no text "CATCH" banner/callout/log message.
         if (freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic") {
-          shakeVault(freshTier === "mythic" || freshTier === "legendary" ? "strong" : "normal");
           await reelRenderer.jackpotFlash({
             duration: freshTier === "mythic" ? 900 : 700,
             colorA: freshTier === "mythic" ? "rgba(255, 165, 224, 0.46)" : "rgba(190, 214, 255, 0.34)",
@@ -4329,23 +5496,21 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   let messageShown = false;
   if (maxWinEvt) {
     const capX = Number(maxWinEvt.cap_x || 0);
-    window.Sound?.play("max_win");
-    showWinCallout(totalWinAmt, `Max Win ${capX.toLocaleString()}×`, 2200);
-    window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
-    shakeVault("strong");
-    await reelRenderer.jackpotFlash({
-      duration: 1200, colorA: "rgba(255, 80, 60, 0.5)", colorB: "rgba(255, 220, 100, 0.4)"
-    });
+    window.Ambiance?.react("win", { tier: WIN_TIER_MAX.blast, amountX: totalWinX });
     pushGameMessage(`Max win cap (${capX}×) reached.`, "bonus");
     messageShown = true;
+    // Counts up through every tier, then lands on MAX WIN.
+    await celebrateBigWin(totalWinAmt, bet, {
+      finalTier: { ...WIN_TIER_MAX, label: `${WIN_TIER_MAX.label} ${capX.toLocaleString()}×` }
+    });
   } else if (appliedMult >= 50 && totalWinAmt > 0) {
-    // Big multiplier win → the combine overlay IS the single grand finale
-    // (Win × Multiplier = Total in one cohesive reveal).
+    // Big multiplier win → the combine sequence reveals Win × Multiplier =
+    // Total; if that total is an overlay tier, the celebration follows it.
     const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
-    hideWinCallout();
     await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
     window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
+    if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
 
   // Near-miss / no-win / bonus-trigger only touch the admin log (no over-reel
@@ -4356,24 +5521,24 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } else if (totalWinAmt <= 0) {
     pushGameMessage("No win this spin.", "info");
   } else {
-    // Plain win (no big-multiplier finale): show ONE callout for a notable win.
+    // Plain win (no big-multiplier finale): overlay tiers get the full-screen
+    // celebration; anything smaller already had its moment on the board.
     if (!messageShown) {
-      const label = totalWinX >= 50 ? "Epic Win"
-        : totalWinX >= 25 ? "Huge Win"
-        : totalWinX >= 12 ? "Big Win"
-        : totalWinX >= 5 ? "Nice Win"
-        : null;
-      if (label) {
-        showWinCallout(totalWinAmt, label, totalWinX >= 25 ? 1300 : 1000);
-        if (totalWinX >= 20) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+      const roundTier = getWinTier(totalWinAmt, bet);
+      if (roundTier.overlay) {
+        if (roundTier.blast === "blast-great") {
+          window.Ambiance?.react("win", { tier: roundTier.blast, amountX: totalWinX });
+        }
         messageShown = true;
-        if (totalWinX >= 25) await animationSleep(totalWinX >= 50 ? 900 : 600);
+        await celebrateBigWin(totalWinAmt, bet);
       }
     }
     pushGameMessage(`Total spin win: ${fmt(totalWinAmt)}.`, "win");
   }
 
-  el.balance.textContent = fmt(payload.balance_after || 0);
+  // Resolution: count the win into the balance. The UI stays locked until the
+  // count lands (spin() unlocks after animateRound returns).
+  await animateBalance(balancePreWin, Number.isFinite(balanceAfter) ? balanceAfter : 0);
   el.lastWin.textContent = fmt(payload.total_win || 0);
   el.freeSpins.textContent = String(payload.free_spins_left || 0);
   if (payload.is_free_spin) {
@@ -4391,8 +5556,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     multiplier: state.bonusMultiplierCarry,
     bonusTotal: payload.bonus_round_win || 0
   });
-  el.winningLines.textContent = String((payload.ways_wins || []).length);
-  if (el.winningLinesMobile) el.winningLinesMobile.textContent = String((payload.ways_wins || []).length);
   const finalStep = steps[steps.length - 1] || {};
   renderCaughtLines(payload.ways_wins || [], finalStep.multipliers || payload.multipliers || []);
   pushSpinLog(payload, bet);
@@ -4439,6 +5602,10 @@ async function spin(options = {}) {
     requestFastStop();
     return;
   }
+  if (manual && performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS) {
+    lifecycleStats.blockedPresses += 1;
+    return;
+  }
   // Acquire BEFORE any await so a rapid double-tap can never slip a second spin
   // through the network window. Autoplay spins are serialized by their driving
   // loop, which holds the lock for the whole run.
@@ -4453,10 +5620,10 @@ async function spin(options = {}) {
   state.fastStopRequested = false;
   el.spinBtn?.classList.remove("is-fast-stopping");
   setControls(true);
+  ticker.roundStart();
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
-    if (state.bonusAutoplay) pulseBanner("Auto Free Spin...", "info", 560);
     window.Sound?.play("spin_start");
     window.Ambiance?.react("spin");
     const preparedTransition = reelRenderer.dropOff();
@@ -4513,6 +5680,8 @@ async function spin(options = {}) {
     // blocked until the whole lifecycle (including bonus autoplay) settles.
     if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
+    ticker.roundEnd();
+    state.roundSettledAt = performance.now();
   }
 }
 
@@ -4565,6 +5734,8 @@ function updateAutoplayUi() {
   if (!el.autoplayBtn) return;
   const active = state.autoplayActive;
   el.autoplayBtn.classList.toggle("is-active", active);
+  // The spin button becomes the autoplay stop control while a run is active.
+  el.spinBtn?.classList.toggle("is-autoplay", active);
   el.autoplayBtn.setAttribute("aria-label", active ? "Stop autoplay" : "Autoplay");
   const count = el.autoplayBtn.querySelector(".tool-count");
   if (count) {
@@ -4599,7 +5770,7 @@ async function startAutoplay(count) {
       updateAutoplayUi();
       const payload = await spin({ autoplay: true });
       if (!payload || !state.autoplayActive) break;
-      await animationSleep(260);
+      await sleep(AUTOPLAY_GAP_MS);
     }
   } finally {
     state.autoplayActive = false;
@@ -4609,6 +5780,7 @@ async function startAutoplay(count) {
     spinLock.release();
     updateAutoplayUi();
     setControls(false);
+    state.roundSettledAt = performance.now();
   }
 }
 
@@ -4787,39 +5959,12 @@ async function loadRules() {
     const engine = await getEngine();
     const rules = engine.getDecoratedRules();
     state.rules = rules;
-    el.lineCount.textContent = String(rules.layout?.pays || "symbols_pay_anywhere").replaceAll("_", " ");
     const allowed = rules.features?.multipliers?.allowed_values || [];
     renderMultiplierInfo(allowed);
-    renderRulesPage();
+    ticker.refresh();
   } catch (err) {
     pushGameMessage(`Rules load failed: ${err.message}`, "error");
   }
-}
-
-function renderRulesPage() {
-  const pages = state.rules?.rules_pages;
-  if (!Array.isArray(pages) || pages.length === 0) {
-    el.rulesTitle.textContent = "Game Rules";
-    el.rulesMeta.textContent = "Rules are not available.";
-    el.rulesList.innerHTML = "";
-    el.rulesPageLabel.textContent = "Page 0/0";
-    el.rulesPrevBtn.disabled = true;
-    el.rulesNextBtn.disabled = true;
-    return;
-  }
-
-  const page = pages[state.rulesPageIndex];
-  el.rulesTitle.textContent = page?.title || "Game Rules";
-  el.rulesMeta.textContent = `RTP ${Number(state.rules.rtp?.theoretical_percent || 0).toFixed(2)}% | Volatility ${(state.rules.volatility || "").toUpperCase()}`;
-  el.rulesList.innerHTML = "";
-  (page?.points || []).forEach((point) => {
-    const li = document.createElement("li");
-    li.textContent = point;
-    el.rulesList.appendChild(li);
-  });
-  el.rulesPageLabel.textContent = `Page ${state.rulesPageIndex + 1}/${pages.length}`;
-  el.rulesPrevBtn.disabled = state.rulesPageIndex === 0;
-  el.rulesNextBtn.disabled = state.rulesPageIndex === pages.length - 1;
 }
 
 async function initSession() {
@@ -4830,7 +5975,6 @@ async function initSession() {
   state.sessionId = payload.session_id;
   state.currency = payload.currency || "GEL";
   state.gameId = payload.game_id || state.gameId;
-  el.sessionId.textContent = state.sessionId.slice(0, 8);
   el.balance.textContent = fmt(payload.balance);
   // Claim the Round ID row NOW, while the board is still idle. In platform mode
   // it is guaranteed to appear after the first spin, and un-hiding it then would
@@ -4915,20 +6059,14 @@ function stepBet(direction) {
 if (el.betDownBtn) el.betDownBtn.addEventListener("click", () => stepBet(-1));
 if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 
-const anteToggleImg = $("anteToggleImg");
-if (el.anteToggle && anteToggleImg) {
-  // Read from uiAssets so this URL can never drift from the one the boot loader
-  // preloads — the active plate used to be fetched on the first toggle, which
-  // made it pop in mid-session.
-  const updateAnteImg = () => {
-    anteToggleImg.src = el.anteToggle.checked
-      ? uiAssets.UI_ANTE_ACTIVE
-      : uiAssets.UI_ANTE_INACTIVE;
-  };
-  el.anteToggle.addEventListener("change", updateAnteImg);
-  updateAnteImg();
+// Ante disables Buy Free Spins (game rules; the engine refuses it too), so the
+// gold button must stop looking clickable the moment Ante is switched on, not
+// only when the controls next refresh at spin time.
+if (el.anteToggle) {
+  el.anteToggle.addEventListener("change", () => {
+    el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight();
+  });
 }
-el.spinBtn.addEventListener("click", spin);
 el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
 
@@ -4938,8 +6076,6 @@ if (el.soundToggle) {
     const muted = window.Sound ? window.Sound.isMuted() : false;
     el.soundToggle.classList.toggle("is-muted", muted);
     el.soundToggle.setAttribute("aria-pressed", String(!muted));
-    const glyph = el.soundToggle.querySelector(".sound-glyph");
-    if (glyph) glyph.innerHTML = muted ? "&#128263;" : "&#128266;";
   };
   el.soundToggle.addEventListener("click", () => {
     if (!window.Sound) return;
@@ -4981,50 +6117,456 @@ if (el.testCelebrateBtn) el.testCelebrateBtn.addEventListener("click", () => run
 if (el.testCatchBtn) el.testCatchBtn.addEventListener("click", () => runVisualTest("catch"));
 if (el.crazyToggleBtn) el.crazyToggleBtn.addEventListener("click", () => setCrazyMode(!state.crazyMode));
 el.featureScreen.addEventListener("click", dismissFeature);
-function openRules() {
-  el.infoPopover?.classList.add("hidden");
-  el.infoToggle?.setAttribute("aria-expanded", "false");
-  el.rulesModal.classList.remove("hidden");
-  renderRulesPage();
-}
-el.rulesBtn.addEventListener("click", openRules);
-if (el.rulesBtnMobile) el.rulesBtnMobile.addEventListener("click", openRules);
-if (el.infoToggle) {
-  el.infoToggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const open = el.infoPopover?.classList.toggle("hidden") === false;
-    el.infoToggle.setAttribute("aria-expanded", String(open));
+// ═══ PLAYER SHELL INTERACTION ═══════════════════════════════════════════════
+// The info/settings modal, the HUD ticker and the spin input (tap vs hold).
+// Pure UI: every action goes through the existing spin() / startAutoplay() /
+// setTurbo() lifecycle, so the spin lock (#28) still decides what may start.
+
+// ── Info / settings modal ──
+// Until the info copy is written, the Game Rules page is generated from the
+// rules file (rules_pages + RTP), so RTP, the max win and the malfunction
+// clause stay reachable. Authored content wins: generation only runs while the
+// section holds nothing but its heading.
+function renderInfoRules() {
+  const section = el.psInfoModal?.querySelector('[data-ps-section-id="rules"]');
+  const rules = state.rules;
+  if (!section || !rules || section.dataset.generated === "1") return;
+  if ([...section.children].some((n) => n.tagName !== "H3")) return;
+  const frag = document.createDocumentFragment();
+  const meta = document.createElement("p");
+  meta.className = "ps-rules-meta";
+  meta.textContent = `RTP ${Number(rules.rtp?.theoretical_percent || 0).toFixed(2)}% · Volatility ${String(rules.volatility || "").toUpperCase()}`;
+  frag.appendChild(meta);
+  (rules.rules_pages || []).forEach((page) => {
+    const h = document.createElement("h4");
+    h.textContent = page?.title || "";
+    const ul = document.createElement("ul");
+    (page?.points || []).forEach((point) => {
+      const li = document.createElement("li");
+      li.textContent = point;
+      ul.appendChild(li);
+    });
+    frag.append(h, ul);
   });
-  // Tap outside closes the info popover.
-  document.addEventListener("click", (e) => {
-    if (!el.infoPopover || el.infoPopover.classList.contains("hidden")) return;
-    if (el.infoPopover.contains(e.target) || e.target === el.infoToggle) return;
-    el.infoPopover.classList.add("hidden");
-    el.infoToggle.setAttribute("aria-expanded", "false");
-  });
+  section.appendChild(frag);
+  section.dataset.generated = "1";
 }
-el.rulesCloseBtn.addEventListener("click", () => el.rulesModal.classList.add("hidden"));
-el.rulesPrevBtn.addEventListener("click", () => {
-  if (!state.rules || state.rulesPageIndex <= 0) return;
-  state.rulesPageIndex -= 1;
-  renderRulesPage();
+
+const psModal = (() => {
+  const root = el.psInfoModal;
+  if (!root) return { open() {}, close() {}, isOpen: () => false };
+  const tabs = [...root.querySelectorAll(".ps-modal__tab")];
+  const sections = [...root.querySelectorAll(".ps-modal__section")];
+  const dots = [...root.querySelectorAll(".ps-dot")];
+  const body = root.querySelector(".ps-modal__body");
+  const ids = tabs.map((t) => t.dataset.psSection);
+  let current = ids[0];
+  let opener = null;
+
+  function show(id) {
+    current = ids.includes(id) ? id : ids[0];
+    tabs.forEach((t) => {
+      if (t.dataset.psSection === current) t.setAttribute("aria-current", "page");
+      else t.removeAttribute("aria-current");
+    });
+    sections.forEach((s) => { s.hidden = s.dataset.psSectionId !== current; });
+    dots.forEach((d) => d.classList.toggle("is-active", d.dataset.psDot === current));
+    if (body) body.scrollTop = 0;
+    if (current === "rules") renderInfoRules();
+  }
+  function step(delta) {
+    show(ids[(ids.indexOf(current) + delta + ids.length) % ids.length]);
+  }
+  function focusables() {
+    return [...root.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")]
+      .filter((n) => !n.disabled && n.getClientRects().length > 0);
+  }
+  // Capture phase: while the modal is open it owns the keyboard (Esc, paging,
+  // and Tab, which must not escape to the game behind it).
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      step(e.key === "ArrowRight" ? 1 : -1);
+      root.querySelector(".ps-modal__tab[aria-current='page']")?.focus();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const f = focusables();
+    if (!f.length) return;
+    const first = f[0];
+    const last = f[f.length - 1];
+    const inside = root.contains(document.activeElement);
+    if (e.shiftKey && (!inside || document.activeElement === first)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+  function open(id, trigger) {
+    opener = trigger || document.activeElement;
+    show(id);
+    root.hidden = false;
+    document.addEventListener("keydown", onKey, true);
+    // Keyboard users land on the section they asked for.
+    (root.querySelector(".ps-modal__tab[aria-current='page']") || root).focus();
+    window.Sound?.play("click");
+  }
+  function close() {
+    if (root.hidden) return;
+    root.hidden = true;
+    document.removeEventListener("keydown", onKey, true);
+    if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+    opener = null;
+  }
+  root.addEventListener("click", (e) => {
+    if (e.target === root || e.target.closest("[data-ps-close]")) {
+      close();
+      return;
+    }
+    const tab = e.target.closest("[data-ps-section]");
+    if (tab) {
+      show(tab.dataset.psSection);
+      return;
+    }
+    const dot = e.target.closest("[data-ps-dot]");
+    if (dot) show(dot.dataset.psDot);
+  });
+  return { open, close, isOpen: () => !root.hidden };
+})();
+
+el.psMenuBtn?.addEventListener("click", () => psModal.open("settings", el.psMenuBtn));
+el.psInfoBtn?.addEventListener("click", () => psModal.open("rules", el.psInfoBtn));
+
+// ── HUD ticker: the game's single message line ──
+// A small state machine on #psTicker. The box is fixed and its one line is
+// clipped, so no state can move the board.
+//   idle  tips built from the rules file (so they cannot drift from the
+//         math), rotating every TICKER.rotateMs;
+//   spin  a static line for the round: "Good luck!", autoplay or free spins left;
+//   win   the moment the win meter credits a payout, "WIN: amount" cuts in
+//         (gold, punch-in) and HOLDS until the next spin starts. It follows the
+//         meter as later tumbles add to it.
+// flash(text) is a transient notice (multiplier locked, feature bought…):
+// shown for its duration, then the current state's line comes back.
+const TICKER = { rotateMs: 4500, flashMinMs: 900 };
+const ticker = (() => {
+  const box = el.psTicker;
+  const node = el.psTickerText;
+  let mode = "idle";
+  let line = "";
+  let idleIdx = 0;
+  let rotateTimer = 0;
+  let flashTimer = 0;
+  let flashing = false;
+  const calm = () => prefersReducedMotion() || !node?.animate;
+  function paint(text, kind) {
+    if (node && node.textContent !== text) node.textContent = text;
+    if (box && box.dataset.state !== kind) box.dataset.state = kind;
+  }
+  const show = () => { if (!flashing) paint(line, mode); };
+  function tips() {
+    const r = state.rules || {};
+    const f = r.features || {};
+    const out = [`Minimum ${Number(r.layout?.min_match_count) || 8} matches to win`];
+    if (f.tumble?.enabled !== false) out.push("Tumbles keep paying until no new win lands");
+    if (f.multipliers?.enabled) {
+      out.push(`Multipliers up to ${Number(f.multipliers.range_max || 1000).toLocaleString("en-US")}× boost your tumble wins`);
+    }
+    if (f.free_spins?.base_trigger_scatter_count) {
+      out.push(`${f.free_spins.base_trigger_scatter_count} scatters award ${f.free_spins.base_award_spins} free spins`);
+    }
+    // Ante bet disables the buy (rules: ante_bet), so only offer it when it works.
+    if (f.buy_free_spins?.enabled && !el.anteToggle?.checked) out.push("Buy feature available");
+    out.push(`Win up to ${(Number(r.max_win_cap_multiplier) || 20000).toLocaleString("en-US")}× bet`);
+    if (!window.matchMedia?.("(pointer: coarse)").matches) out.push("Hold space for turbo spin");
+    return out;
+  }
+  function stopRotate() {
+    clearInterval(rotateTimer);
+    rotateTimer = 0;
+  }
+  function rotate() {
+    const m = tips();
+    line = m[idleIdx % m.length];
+    idleIdx += 1;
+    show();
+  }
+  function idle() {
+    stopRotate();
+    mode = "idle";
+    rotate();
+    rotateTimer = setInterval(rotate, TICKER.rotateMs);
+  }
+  function spinLine() {
+    if (state.bonusAutoplay) return `Free spin · ${el.freeSpins?.textContent || 0} left`;
+    if (state.autoplayActive) {
+      return state.autoplayLeft === Infinity ? "Autoplay · press spin to stop" : `Autoplay · ${state.autoplayLeft} left`;
+    }
+    return "Good luck!";
+  }
+  function roundStart() {
+    stopRotate();
+    mode = "spin";
+    line = spinLine();
+    show();
+  }
+  /** Hit the line: a short punch-in. Scale + light only, on the text inside
+   *  the fixed box; skipped under reduced motion. */
+  function bump(strong = false) {
+    if (calm()) return;
+    node.animate(strong
+      ? [{ transform: "scale(1.35)", filter: "brightness(2)" }, { transform: "scale(1)", filter: "brightness(1)" }]
+      : [{ filter: "brightness(1.8)" }, { filter: "brightness(1)" }],
+    { duration: strong ? 380 : 260, easing: "cubic-bezier(0.2, 0.9, 0.2, 1)" });
+  }
+  function win(amountText) {
+    stopRotate();
+    const first = mode !== "win";
+    mode = "win";
+    line = `Win: ${amountText}`;
+    show();
+    if (first && !flashing) bump(true);
+  }
+  function roundEnd() {
+    // A win holds until the next spin; a round without one goes back to tips.
+    if (mode !== "win") idle();
+  }
+  function flash(text, tone = "info", ms = TICKER.flashMinMs) {
+    clearTimeout(flashTimer);
+    flashing = true;
+    paint(text, `flash-${tone === "win" || tone === "bonus" ? tone : "info"}`);
+    flashTimer = setTimeout(() => {
+      flashing = false;
+      show();
+    }, Math.max(TICKER.flashMinMs, ms));
+  }
+  /** Round-scoped status (scatter count): replaces the spin line, or flashes
+   *  if a win already holds the ticker. */
+  function say(text) {
+    if (mode === "spin") {
+      line = text;
+      show();
+    } else flash(text);
+  }
+  // The win meter has many writers (step wins, count-ups, round end), so follow
+  // the element rather than hooking each one. Only payouts during a round
+  // count: the meter resetting to 0.00 at spin start is not a win.
+  if (el.lastWin && "MutationObserver" in window) {
+    new MutationObserver(() => {
+      const v = Number(el.lastWin.textContent || 0);
+      if (v > 0 && mode !== "idle") win(el.lastWin.textContent);
+    }).observe(el.lastWin, { childList: true, characterData: true, subtree: true });
+  }
+  // Rules arrive after boot (and ante toggles the buy tip): re-show the current
+  // tip with real values.
+  function refresh() {
+    if (mode !== "idle") return;
+    idleIdx = Math.max(0, idleIdx - 1);
+    rotate();
+  }
+  return { idle, roundStart, roundEnd, refresh, say, flash, bump, get mode() { return mode; } };
+})();
+ticker.idle();
+
+// ── Anticipation drone (Step 5b) ──
+// A rising tension tone while the anticipated reels wait. Its own small Web
+// Audio graph: the shared audio engine lives in client/engine/ (off-limits)
+// and has no drone. It follows the player's mute and volume and stops on
+// skip, at the last landing, and when the tab is hidden.
+// One small Web Audio context for the client-side effects that the shared
+// engine (client/engine/audio.js, off-limits) has no voice for: the
+// anticipation drone and the per-symbol landing ticks.
+const fxAudioCtx = (() => {
+  let ctx = null;
+  return () => {
+    if (ctx) return ctx;
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    try { ctx = new Ctor(); } catch (_) { return null; }
+    return ctx;
+  };
+})();
+
+// ── Landing ticks (per-symbol rat-a-tat) ──
+// A short, bright metallic tick each time ONE symbol lands; the reel's
+// reel_stop thud then accents its last symbol. Pitch climbs as a reel stacks
+// up (bottom-up) and a step per reel, so a board landing reads by ear as a
+// rising run. One oscillator + gain per tick, released on its own.
+const landingTicks = (() => {
+  let last = 0;
+  function play(row, col, rows) {
+    if (!window.Sound || window.Sound.isMuted() || window.Sound.isSuspended?.()) return;
+    const ctx = fxAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const now = performance.now();
+    if (now - last < 5) return; // two ticks inside 5ms blur into one anyway
+    last = now;
+    const t = ctx.currentTime;
+    const up = Math.max(0, rows - 1 - row);
+    const freq = 900 * Math.pow(2, (up * 2 + col) / 12);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.04);
+    const vol = 0.07 * (window.Sound.getVolume?.() ?? 0.8);
+    g.gain.setValueAtTime(Math.max(0.0002, vol), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 0.05);
+  }
+  return { play };
+})();
+
+const anticipationDrone = (() => {
+  let ctx = null;
+  let nodes = null;
+  function stop() {
+    if (!nodes || !ctx) return;
+    const n = nodes;
+    nodes = null;
+    const t = ctx.currentTime;
+    n.gain.gain.cancelScheduledValues(t);
+    n.gain.gain.setTargetAtTime(0, t, 0.05);
+    setTimeout(() => n.oscs.forEach((o) => { try { o.stop(); } catch (_) { /* already stopped */ } }), 300);
+  }
+  function start(ms) {
+    stop();
+    if (!window.Sound || window.Sound.isMuted() || window.Sound.isSuspended?.()) return;
+    ctx = fxAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const t = ctx.currentTime;
+    const dur = Math.max(0.3, ms / 1000);
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 6;
+    filter.frequency.setValueAtTime(220, t);
+    filter.frequency.exponentialRampToValueAtTime(2400, t + dur);
+    const gain = ctx.createGain();
+    const vol = 0.16 * (window.Sound.getVolume?.() ?? 0.8);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + Math.min(0.25, dur / 2));
+    const oscs = [0, 9].map((detune) => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(55, t);
+      o.frequency.exponentialRampToValueAtTime(110, t + dur);
+      o.detune.value = detune;
+      o.connect(filter);
+      o.start(t);
+      return o;
+    });
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    nodes = { gain, oscs };
+    // Never outlive the anticipation it scores.
+    const mine = nodes;
+    setTimeout(() => { if (nodes === mine) stop(); }, ms + 400);
+  }
+  window.Sound?.onChange?.(() => { if (window.Sound.isMuted()) stop(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
+  return { start, stop, isPlaying: () => Boolean(nodes) };
+})();
+
+// Step 5 hooks: the renderer reports scatter counts and anticipation; the HUD
+// readout (pinned-height ticker line) and the drone react.
+reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
+reelRenderer.onSymbolLand = (row, col) => landingTicks.play(row, col, reelRenderer.rows);
+reelRenderer.onAnticipation = (phase, ms) => {
+  if (phase === "start") anticipationDrone.start(ms);
+  else anticipationDrone.stop();
+};
+
+// ── Spin input: tap vs hold ──
+// Tap (< SPIN_HOLD_MS) = one spin, on release. Hold (≥ SPIN_HOLD_MS) = turbo on
+// + endless autoplay, started the moment the hold is recognised. While a round
+// or an autoplay run is in flight a press is never a hold: it acts at once
+// through spin(), which stops autoplay (the current round still finishes) and
+// fast-stops — the #28 rule that a press can only ever accelerate.
+// Dragging off the button cancels a press, as with any button.
+const SPIN_HOLD_MS = 400;
+const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0 };
+
+function spinHoldStart(source) {
+  if (spinHold.active || el.spinBtn.disabled) return;
+  spinHold.active = true;
+  spinHold.source = source;
+  spinHold.fired = false;
+  if (isRoundInFlight()) {
+    spinHold.fired = true;
+    spin();
+    return;
+  }
+  spinHold.timer = setTimeout(() => {
+    spinHold.fired = true;
+    if (isRoundInFlight()) {
+      spin();
+      return;
+    }
+    if (!state.turbo) setTurbo(true);
+    startAutoplay(Infinity);
+  }, SPIN_HOLD_MS);
+}
+
+function spinHoldEnd(commit) {
+  if (!spinHold.active) return;
+  clearTimeout(spinHold.timer);
+  spinHold.active = false;
+  spinHold.endedAt = performance.now();
+  if (commit && !spinHold.fired) spin();
+}
+
+el.spinBtn.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  spinHoldStart("pointer");
 });
-el.rulesNextBtn.addEventListener("click", () => {
-  const max = (state.rules?.rules_pages || []).length - 1;
-  if (state.rulesPageIndex >= max) return;
-  state.rulesPageIndex += 1;
-  renderRulesPage();
+el.spinBtn.addEventListener("pointerup", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(true);
 });
-el.rulesModal.addEventListener("click", (e) => { if (e.target === el.rulesModal) el.rulesModal.classList.add("hidden"); });
+el.spinBtn.addEventListener("pointerleave", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(false);
+});
+el.spinBtn.addEventListener("pointercancel", () => {
+  if (spinHold.source === "pointer") spinHoldEnd(false);
+});
+// No long-press context menu on touch: a hold here means autoplay.
+el.spinBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+// Pointer presses are handled above. A click with detail 0 is keyboard
+// activation (Enter on the focused button) or a scripted click; the guard
+// drops the click a Space release on the focused button may still produce.
+el.spinBtn.addEventListener("click", (e) => {
+  if (e.detail !== 0) return;
+  if (performance.now() - spinHold.endedAt < 80) return;
+  spin();
+});
 
 window.addEventListener("keydown", (e) => {
-  const tag = e.target?.tagName;
-  const typing = e.target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON";
-  if ((e.key === " " || e.key === "Spacebar") && !typing && !el.spinBtn.disabled) {
-    e.preventDefault();
-    spin();
-  }
+  if (e.code !== "Space" || psModal.isOpen()) return;
+  const t = e.target;
+  const typing = t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t?.tagName || "");
+  if (typing && t !== el.spinBtn) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  spinHoldStart("key");
 });
+window.addEventListener("keyup", (e) => {
+  if (e.code !== "Space" || spinHold.source !== "key") return;
+  e.preventDefault();
+  spinHoldEnd(true);
+});
+// Losing focus mid-hold (alt-tab) must not leave a hold armed.
+window.addEventListener("blur", () => spinHoldEnd(false));
 
 // Seed the idle board with a varied mix (not a flat wall of one symbol) so the
 // first impression looks like a real slot. Engine spins remain authoritative.
@@ -5049,7 +6591,9 @@ function runBootLoader() {
   const pctEl = document.getElementById("bootLoaderPct");
   const loader = document.getElementById("bootLoader");
   // Everything in symbolAssets + uiAssets, decoded and ready to paint.
-  const waits = Array.from(reelRenderer.imageLoads?.values() || []);
+  // Fonts are critical too: canvas text drawn before they load would paint in
+  // the fallback face and then visibly swap.
+  const waits = [THEME.fontsReady, ...Array.from(reelRenderer.imageLoads?.values() || [])];
   // The on-screen <img> buttons are owned by the document, not the renderer.
   // Their URLs are already in uiAssets (so the bytes are shared), but wait on
   // the elements too so the reveal cannot beat their own decode.
@@ -5120,7 +6664,9 @@ function installVisibilityGuards() {
     window.Sound?.suspendAudio?.();
   };
   const wake = () => {
-    reelRenderer.resumeRendering();
+    // The big-win overlay keeps the board paused while it is up; celebrateBigWin
+    // resumes it on dismiss.
+    if (!bigWin.active) reelRenderer.resumeRendering();
     window.Sound?.resumeAudio?.();
   };
   document.addEventListener("visibilitychange", () => {

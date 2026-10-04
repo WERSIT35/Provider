@@ -11,7 +11,7 @@ let platform: FakePlatformClient;
 beforeEach(async () => {
   store = new PlayerStore();
   platform = new FakePlatformClient();
-  app = buildApp({ config: testConfig(), store, platform, logger: false });
+  app = buildApp({ config: testConfig(), store, platformFactory: () => platform, logger: false });
   await app.ready();
 });
 
@@ -70,11 +70,11 @@ describe("lobby + launch", () => {
   });
 
   it("requires login to launch a game, and passes the player's own id as playerRef", async () => {
-    const anon = await app.inject({ method: "POST", url: "/api/play/bananax" });
+    const anon = await app.inject({ method: "POST", url: "/api/play/default-provider/bananax" });
     expect(anon.statusCode).toBe(401);
 
     const { token, player } = await register("dana@example.com");
-    const res = await app.inject({ method: "POST", url: "/api/play/bananax", headers: { authorization: `Bearer ${token}` } });
+    const res = await app.inject({ method: "POST", url: "/api/play/default-provider/bananax", headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { launch_url: string }).launch_url).toContain(`lt_${player.id}`);
     expect(platform.launchCalls).toEqual([player.id]);

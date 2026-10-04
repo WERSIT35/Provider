@@ -6,6 +6,7 @@ export class FakePlatformClient implements IPlatformClient {
   public games: LobbyGame[] = [
     {
       id: "og_1",
+      provider_id: "default-provider",
       game_id: "game_1",
       game_code: "bananax",
       title: "Banana X",
@@ -17,7 +18,7 @@ export class FakePlatformClient implements IPlatformClient {
     }
   ];
 
-  async launch(playerRef: string): Promise<{ launchToken: string; launchUrl: string }> {
+  async launch(playerRef: string, gameCode: string): Promise<{ launchToken: string; launchUrl: string }> {
     this.launchCalls.push(playerRef);
     return { launchToken: `lt_${playerRef}`, launchUrl: `http://platform.local/play?lt=lt_${playerRef}` };
   }

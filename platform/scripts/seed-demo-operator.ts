@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   c.mgmt.updateOperatorGameDisplay(entitlement.id, { display_name: "Banana X — Lucky Bananas Special", sort_order: 0, lobby_enabled: true }, "seed-script");
 
   const issued = c.mgmt.issueCredential(op.id, "prod");
-  const webhookUrl = `http://127.0.0.1:${DEMO_OPERATOR_PORT}/wallet`;
+  const webhookUrl = `http://127.0.0.1:${DEMO_OPERATOR_PORT}/wallet/default-provider`;
   const webhook = c.mgmt.setWebhook(op.id, webhookUrl);
 
   const adminToken = c.adminAuth.mintToken(

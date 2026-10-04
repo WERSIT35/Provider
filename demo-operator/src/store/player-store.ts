@@ -88,6 +88,14 @@ export class PlayerStore {
       .map((t) => ({ ...t }));
   }
 
+  getAllPlayers(): Player[] {
+    return Array.from(this.players.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  getAllTransactions(): PlayerTransaction[] {
+    return [...this.transactions].sort((a, b) => b.seq - a.seq);
+  }
+
   /** Debit the player's balance. Rejects (no balance change) if funds are insufficient. */
   debit(args: { playerId: string; idempotencyKey: string; amount: number; currency: string; roundRef: string }): AppliedResult {
     const cached = this.applied.get(args.idempotencyKey);

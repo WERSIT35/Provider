@@ -1,11 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-// Reuse the platform's own scrypt-based password hashing (node:crypto only, no
-// external dependency) instead of adding bcrypt/argon2 for a demo.
 import { hashPassword, verifyPassword } from "../../../platform/src/lib/security/password";
 import { issuePlayerToken } from "../lib/player-session";
 import { playerBearerAuth } from "./player-auth";
 import type { PlayerStore } from "../store/player-store";
-import type { IPlatformClient } from "../lib/platform-client";
+import { PlatformClient } from "../lib/platform-client";
+import type { ProviderStore } from "../store/provider-store";
 import type { DemoOperatorConfig } from "../config";
 
 interface RegisterBody {
@@ -17,7 +16,7 @@ function publicPlayer(p: { id: string; email: string; balance: number; createdAt
   return { id: p.id, email: p.email, balance: p.balance, createdAt: p.createdAt };
 }
 
-export default function apiRoutes(store: PlayerStore, platform: IPlatformClient, cfg: DemoOperatorConfig): FastifyPluginAsync {
+export default function apiRoutes(store: PlayerStore, providerStore: ProviderStore, cfg: DemoOperatorConfig, platformFactory: (p: any, c: any) => any): FastifyPluginAsync {
   return async (app) => {
     const bearer = playerBearerAuth(cfg);
 
@@ -52,23 +51,36 @@ export default function apiRoutes(store: PlayerStore, platform: IPlatformClient,
       return { player: publicPlayer(player), currency: cfg.currency };
     });
 
-    // Public: the lobby is marketing surface, not gated behind login. Pulled live
-    // from the platform's entitlement data — nothing here is hardcoded.
     app.get("/api/lobby", async (req, reply) => {
       try {
-        const games = await platform.listLobbyGames();
-        return { games, currency: cfg.currency };
+        const providers = providerStore.getAll();
+        const allGames = [];
+        for (const p of providers) {
+          try {
+            const client = platformFactory(p, cfg);
+            const games = await client.listLobbyGames();
+            allGames.push(...games);
+          } catch (err) {
+            req.log.warn({ err, providerId: p.id }, "provider_lobby_fetch_failed");
+          }
+        }
+        return { games: allGames, currency: cfg.currency };
       } catch (err) {
         req.log.warn({ err }, "lobby_fetch_failed");
-        return reply.code(502).send({ error: { code: "LOBBY_UNAVAILABLE", message: "could not reach the platform" } });
+        return reply.code(502).send({ error: { code: "LOBBY_UNAVAILABLE", message: "could not aggregate lobby" } });
       }
     });
 
-    app.post("/api/play/:gameCode", { preHandler: bearer }, async (req, reply) => {
+    app.post<{ Params: { providerId: string; gameCode: string } }>("/api/play/:providerId/:gameCode", { preHandler: bearer }, async (req, reply) => {
       const player = store.getById(req.playerId as string);
       if (!player) return reply.code(404).send({ error: { code: "PLAYER_NOT_FOUND", message: "account no longer exists" } });
+      
+      const provider = providerStore.getById(req.params.providerId);
+      if (!provider) return reply.code(404).send({ error: { code: "PROVIDER_NOT_FOUND", message: "provider not found" } });
+
       try {
-        const { launchUrl } = await platform.launch(player.id);
+        const client = platformFactory(provider, cfg);
+        const { launchUrl } = await client.launch(player.id, req.params.gameCode);
         return { launch_url: launchUrl };
       } catch (err) {
         req.log.warn({ err }, "launch_failed");
