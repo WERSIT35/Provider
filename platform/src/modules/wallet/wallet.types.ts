@@ -11,12 +11,19 @@ export interface WalletContext {
   operatorId: string;
 }
 
+/** What kind of round a money move belongs to (sent to the casino in the webhook body). */
+export type RoundType = "paid" | "free_spin" | "buy" | "free_round";
+
 interface MoneyMoveArgs {
   idempotencyKey: string;
   roundRef: string;
   operatorPlayerId: string;
   amount: number;
   currency: string;
+  /** Game the round belongs to, so the casino ledger can attribute it without calling us. */
+  gameCode?: string;
+  /** paid (cash spin) · free_spin (engine bonus spin, never debited) · buy · free_round (operator grant). */
+  roundType?: RoundType;
 }
 
 /**

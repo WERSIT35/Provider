@@ -154,6 +154,8 @@ export class RoundOrchestrator {
           operatorPlayerId: session.operator_player_id,
           amount: charge,
           currency: session.currency,
+          gameCode: session.game_code,
+          roundType: freeRound ? "free_round" : "paid",
           ...(freeRound ? { txType: "FREE_ROUND_BET" as const, campaignId: freeRound.campaign.id } : {})
         });
       } catch (err) {
@@ -249,7 +251,9 @@ export class RoundOrchestrator {
       roundRef,
       operatorPlayerId: session.operator_player_id,
       amount: charge,
-      currency: session.currency
+      currency: session.currency,
+      gameCode: session.game_code,
+      roundType: "buy"
     });
     const debitTxRef = debit.operatorTxRef;
     this.transactions.record({
@@ -383,6 +387,8 @@ export class RoundOrchestrator {
           operatorPlayerId: session.operator_player_id,
           amount: win,
           currency: session.currency,
+          gameCode: session.game_code,
+          roundType: freeRound ? "free_round" : isFreeSpin ? "free_spin" : resolveMode === "buy" ? "buy" : "paid",
           ...freeRoundCreditTag
         });
         this.transactions.record({

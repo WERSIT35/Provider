@@ -8,7 +8,10 @@ import walletRoutes from "./http/wallet.routes";
 import siteRoutes from "./http/site";
 
 import adminRoutes from "./http/admin.routes";
+import staffRoutes from "./http/staff.routes";
 import { ProviderStore } from "./store/provider-store";
+import { openCasinoDb, type CasinoDatabase } from "./db/database";
+import { StaffAuth } from "./auth/staff-auth";
 
 // Same raw-body-preserving JSON parser as platform/src/app.ts — needed so the
 // wallet webhook's HMAC signature can be verified over the exact bytes signed.
@@ -20,6 +23,8 @@ declare module "fastify" {
 
 export interface BuildAppDeps {
   config: DemoOperatorConfig;
+  /** Shared SQLite handle; defaults to config.dbPath (or in-memory when unset). */
+  db?: CasinoDatabase;
   store?: PlayerStore;
   providerStore?: ProviderStore;
   platformFactory?: (provider: any, cfg: any) => IPlatformClient;
@@ -28,8 +33,10 @@ export interface BuildAppDeps {
 
 export function buildApp(deps: BuildAppDeps): FastifyInstance {
   const { config } = deps;
-  const store = deps.store ?? new PlayerStore();
-  const providerStore = deps.providerStore ?? new ProviderStore(config);
+  const db = deps.db ?? openCasinoDb(config.dbPath ?? ":memory:");
+  const store = deps.store ?? new PlayerStore(db);
+  const providerStore = deps.providerStore ?? new ProviderStore(config, db);
+  const staffAuth = new StaffAuth(db, config.staffUsername ?? "casino_admin", config.staffPassword ?? "demo123");
   const platformFactory = deps.platformFactory ?? ((p: any, c: any) => new PlatformClient(p, c));
 
   const app = Fastify({
@@ -50,12 +57,16 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
     }
   });
 
+  // Close the database only if this app opened it (an injected handle belongs to the caller).
+  if (!deps.db) app.addHook("onClose", async () => db.close());
+
   app.get("/health", async () => ({ ok: true }));
 
   app.register(apiRoutes(store, providerStore, config, platformFactory));
   app.register(walletRoutes(store, providerStore));
   app.register(siteRoutes(config));
-  app.register(adminRoutes(store, providerStore));
+  app.register(staffRoutes(staffAuth));
+  app.register(adminRoutes(store, providerStore, { guard: staffAuth.guard(), providerPortalUrl: config.providerPortalUrl }));
 
   app.setErrorHandler((err: FastifyError, _req, reply) => {
     const status = err.statusCode ?? 500;
