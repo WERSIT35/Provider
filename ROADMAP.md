@@ -58,9 +58,21 @@ Move forward only when exit criteria are complete.
   - Profile-driven RTP modes
   - Configurable rule payload with strict runtime validation
 
+## Completed Milestones (2026-10-04)
+
+- **Cinematic client overhaul (Vault 20K): complete.** Lumina Games rebrand, Pragmatic-style
+  CSS-grid shell, top bar removed + ticker state machine, per-symbol rigid-body drops (no jelly,
+  no shake, no wind-up), reel anticipation + Web Audio drone, big-win overlay, free-round UI lockdown.
+- **Platform Phase 3: complete.** 3A Round Inspector deep linking + verification banner;
+  3B Player Reports (tenant-isolated); 3C Campaign Manager data model, atomic grant deduction,
+  `FREE_ROUND_BET` wallet tagging, mid-feature `locked_bet` / `locked_ante`; 3D HMAC operator
+  free-rounds API + client "You have X Free Rounds" modal and ticker countdown.
+
+Details, verification results and open items: [CHECKPOINT.md](CHECKPOINT.md).
+
 ## Immediate Next Action
 
-The client presentation pass is complete (see [CHECKPOINT.md](CHECKPOINT.md)). Next is the platform:
-the Operator Portal features (Round Inspector prominence, Player Reports, then the Free Rounds /
-Campaign Manager), planned in CHECKPOINT.md. Keep docs aligned with runtime behavior after each
-major change.
+**Phase 4: math certification readiness** (CHECKPOINT.md §6). Close the shared-engine RTP
+shortfall, run the 10M-spin validation, and produce the RTP/variance report a lab needs. Lab
+submission, the first provider sandbox pass, and launch all depend on it. Keep docs aligned with
+runtime behavior after each major change.

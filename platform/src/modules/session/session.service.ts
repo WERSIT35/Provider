@@ -16,6 +16,8 @@ export interface Session {
   status: "active" | "closed";
   free_spins_left: number;
   free_spin_multiplier_carry: number;
+  /** Running win of the current feature round (trigger spin + free spins so far); the engine caps it at max win. */
+  bonus_round_win: number;
   /**
    * Bonus-feature lock. Snapshotted from the round that TRIGGERED the engine's
    * free-spins feature and held until the feature ends (free_spins_left back to 0).
@@ -114,6 +116,7 @@ export class SessionService {
       status: "active",
       free_spins_left: 0,
       free_spin_multiplier_carry: 0,
+      bonus_round_win: 0,
       ...UNLOCKED,
       created_at: new Date().toISOString()
     };
@@ -154,7 +157,10 @@ export class SessionService {
     s.free_spins_left = Number(result.free_spins_left ?? s.free_spins_left);
     const carry = (result as { free_spin_multiplier_current?: number }).free_spin_multiplier_current;
     if (typeof carry === "number") s.free_spin_multiplier_carry = carry;
+    const bonusTotal = (result as { bonus_round_win?: number }).bonus_round_win;
+    if (typeof bonusTotal === "number") s.bonus_round_win = bonusTotal;
     if (s.free_spins_left <= 0) {
+      s.bonus_round_win = 0;
       Object.assign(s, UNLOCKED);
     } else if (s.locked_bet == null) {
       this.writeLock(s, roundTerms);

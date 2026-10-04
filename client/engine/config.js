@@ -33,9 +33,6 @@
       ante_bet_percent: Number(source.ante_bet_percent ?? source.theoretical_percent ?? 96),
       buy_free_spins_percent: Number(source.buy_free_spins_percent ?? source.theoretical_percent ?? 96),
       payout_scaler: Number(source.payout_scaler ?? rules.rtp?.payout_scaler ?? defaultScaler),
-      base_payout_scaler: Number(
-        source.base_payout_scaler ?? source.payout_scaler ?? rules.rtp?.payout_scaler ?? defaultScaler
-      ),
       free_spin_payout_scaler: Number(
         source.free_spin_payout_scaler ?? source.payout_scaler ?? rules.rtp?.payout_scaler ?? defaultScaler
       ),

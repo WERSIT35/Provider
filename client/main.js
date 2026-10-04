@@ -392,8 +392,8 @@ const ANTICIPATION = { holdMs: 650, slowFall: 1.6 };
 
 // Pure function of the board: columns land left to right, so scan them in that
 // order and find the first column after which the scatters on screen are one
-// short of the trigger. Never reads payload.near_miss (Option B suppression is
-// applied by the caller).
+// short of the trigger. Every board is RNG-natural (the engine fabricates no
+// near-misses), so anticipation always reflects a real chance.
 function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
   const cols = matrix?.[0]?.length || 0;
   let seen = 0;
@@ -5397,12 +5397,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
   // Step 5: scatter feedback + reel anticipation for this round's opening board.
   const scatterTarget = scatterTargetFor(payload);
-  // Option B: a board the engine ENGINEERED to be one scatter short
-  // (near_miss.pattern "scatter_one_short") gets no anticipation slowdown — the
-  // client must not dramatise a fabricated tease. Its scatters still ping and
-  // count, because that part only reports what is actually on the board.
-  const engineeredTease = payload.near_miss?.pattern === "scatter_one_short";
-  const anticipation = engineeredTease ? null : findAnticipation(steps[0].matrix, scatterTarget);
+  const anticipation = findAnticipation(steps[0].matrix, scatterTarget);
   await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], {
     animateMultipliers: true,
     scatterTarget,
@@ -5591,9 +5586,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
 
-  // Near-miss / no-win / bonus-trigger only touch the admin log (no over-reel
-  // text — the player can see the board).
-  if (payload.near_miss && totalWinAmt <= 0) pushGameMessage("So close!", "info");
+  // No-win / bonus-trigger only touch the admin log (no over-reel text — the
+  // player can see the board).
   if (Number(payload.free_spins_awarded || 0) > 0) {
     pushGameMessage(`Bonus triggered: +${payload.free_spins_awarded} free spins.`, "bonus");
   } else if (totalWinAmt <= 0) {

@@ -21,7 +21,6 @@ const ENGINE_FILES = [
   "matrix.js",
   "payouts.js",
   "tumble.js",
-  "near-miss.js",
   "crazy-mode.js",
   "session-store.js",
   "spin-engine.js",

@@ -100,14 +100,14 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "updated_at" }
   ),
   player_sessions: spec(
-    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "created_at"],
+    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "created_at"],
     ["id"],
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),
   rounds: spec(
-    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "prev_hash", "payload_hash", "chain_hash", "created_at"],
+    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "prev_hash", "payload_hash", "chain_hash", "created_at"],
     ["id"],
-    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id"] }
+    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version"] }
   ),
   wallet_transactions: spec(
     ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "created_at"],

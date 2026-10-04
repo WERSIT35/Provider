@@ -334,6 +334,7 @@ export class RoundOrchestrator {
       balance: ENGINE_BALANCE_SENTINEL,
       free_spins_left: session.free_spins_left,
       free_spin_multiplier_carry: session.free_spin_multiplier_carry,
+      bonus_round_win: session.bonus_round_win ?? 0,
       ante_enabled: anteEnabled,
       resolve_mode: resolveMode
     };
@@ -353,6 +354,7 @@ export class RoundOrchestrator {
           is_free_spin: isFreeSpin,
           ante_enabled: anteEnabled,
           pre_state: preState,
+          engine_version: this.engine.engineVersion(),
           ...(campaign ? { campaign_id: campaign.campaign_id, grant_id: campaign.grant_id } : {})
         },
         resolved
@@ -488,7 +490,8 @@ export class RoundOrchestrator {
       gameId: session.game_code,
       balance: ENGINE_BALANCE_SENTINEL,
       freeSpinsLeft: session.free_spins_left,
-      freeSpinPersistentMultiplier: session.free_spin_multiplier_carry
+      freeSpinPersistentMultiplier: session.free_spin_multiplier_carry,
+      bonusRoundWin: session.bonus_round_win ?? 0
     };
   }
 }

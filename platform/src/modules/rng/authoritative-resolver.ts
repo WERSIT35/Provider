@@ -21,6 +21,11 @@ export interface AuthoritativeRound {
 export class AuthoritativeResolver {
   constructor(private readonly engine: EngineService) {}
 
+  /** Version of the engine this resolver replays with. */
+  engineVersion(): string {
+    return this.engine.engineVersion();
+  }
+
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
     const { result, bytesDrawn } = this.engine.resolveDeterministic(snapshot, input, seedHex);

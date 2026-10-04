@@ -25,6 +25,8 @@ export interface RoundContext {
   /** Operator free round: the campaign + player grant that funded it. */
   campaign_id?: string;
   grant_id?: string;
+  /** Engine version that resolved the outcome (EngineService.engineVersion()). */
+  engine_version?: string;
 }
 
 /**
@@ -62,7 +64,8 @@ export class RoundLedgerService {
       pre_state: ctx.pre_state,
       // Added ONLY when set: the payload hash covers every key, so a cash round must
       // hash exactly as it did before free rounds existed (see TableSpec.omitNull).
-      ...(ctx.campaign_id ? { campaign_id: ctx.campaign_id, grant_id: ctx.grant_id } : {})
+      ...(ctx.campaign_id ? { campaign_id: ctx.campaign_id, grant_id: ctx.grant_id } : {}),
+      ...(ctx.engine_version ? { engine_version: ctx.engine_version } : {})
     });
 
     this.audit.append({

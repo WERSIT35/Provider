@@ -8,12 +8,12 @@ A server-authoritative slot game (**Vault 20K** by Lumina Games, `6x5`, symbols-
 
 ## The single source of truth for slot math
 
-`client/engine/*.js` is the ONLY implementation of the slot math. The files are browser IIFEs that register onto `globalThis.SlotEngine` and **must be loaded in a fixed order** (`rng, config, symbols, multipliers, matrix, payouts, tumble, near-miss, crazy-mode, session-store, spin-engine, simulator`).
+`client/engine/*.js` is the ONLY implementation of the slot math. The files are browser IIFEs that register onto `globalThis.SlotEngine` and **must be loaded in a fixed order** (`rng, config, symbols, multipliers, matrix, payouts, tumble, crazy-mode, session-store, spin-engine, simulator`).
 
 Three consumers load these exact same files, in this exact order, so results are provably identical ("parity"):
 - The **browser client** (`client/index.html` → `client/main.js` = canvas renderer + UI).
 - The **platform RGS** — `platform/src/lib/engine-loader.ts` reads the JS files and executes them in Node.
-- **`tools/rtp-parity.js`** — runs the engine's simulator and asserts measured RTP is within tolerance of the profile's theoretical RTP.
+- **`tools/rtp-parity.js`** — seeded, sharded Monte Carlo over the engine (one sample = a paid round incl. its whole bonus, or one bonus buy); passes when |measured − target| ≤ Z·SE and SE ≤ MAX_SE.
 
 When changing math, change it in `client/engine/`, then run `npm run test:rtp-parity`. If you add/remove/reorder an engine file, update the `ENGINE_FILES` array in **both** `tools/rtp-parity.js` and `platform/src/lib/engine-loader.ts`.
 
@@ -40,12 +40,12 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 
 **2. Platform — `platform/`** (Fastify + TypeScript; the real provider stack). This is the RGS + control plane:
 - `src/app.ts` — HTTP composition root; registers health, static assets, admin console, `/play` page, operator API, game API, admin API.
-- `src/container.ts` — domain composition root. All persistence is **in-memory** (`memory-repositories.ts`, `sandbox-wallet.ts`, `transaction-store.ts`), designed to be swapped for Postgres/real adapters without touching call sites (`migrations/0001_core.sql` exists for that).
+- `src/container.ts` — domain composition root. All persistence is **in-memory** (`memory-repositories.ts`, `sandbox-wallet.ts`, `transaction-store.ts`), designed to be swapped for Postgres/real adapters without touching call sites (`migrations/0001_core.sql` … `0004_*.sql` exist for that).
 - **Operator API** (`src/http/operator.routes.ts`) is HMAC-signed over exact request bytes (`src/lib/security/hmac.ts`, `nonce-store.ts`, `rate-limiter.ts`); the raw body is preserved in `app.ts` for signature verification. **Game API** (`game.routes.ts`) is session-scoped via launch tokens.
 - `round-orchestrator.ts` ties engine resolution + wallet + ledger together; `round-ledger.service.ts` + `hash-chain.ts` provide an immutable, hash-chained audit trail. `authoritative-resolver.ts` + `seeded-rng.ts` give deterministic, replayable spins.
 - Flow: casino signs `POST /operator/v1/launch` → gets a launch token → player opens `/play?lt=<token>`. See `platform/GUIDE.md` for the click-by-click operator walkthrough and `platform/scripts/e2e-operator.ts` for a working end-to-end example.
 - **Admin consoles:** `/provider` (Provider Control Plane, our admin) and `/admin` (Operator Portal, the casino's admin), shared shell `/console/app.js` served from `src/http/admin-assets.ts` (views: `admin-console-views.ts`, sections: `admin-console-sections.ts`). Login: `src/http/admin-auth.routes.ts` (scrypt password + RFC 6238 TOTP, hand-rolled). **2FA switch `ADMIN_TOTP_REQUIRED`** (`src/config/env.ts`): unset = OFF for `NODE_ENV=local|test` (development), ON for sandbox/staging/production; explicit value wins; staging/production refuse to boot with it off. Don't delete the TOTP code — it is the production path.
-- **Next planned work** (Operator Portal: Player Reports, Free Rounds / Campaign Manager) is in `CHECKPOINT.md`. Operator-granted free rounds must NOT reuse the engine's `free_spins_left` (that is the scatter-triggered bonus feature and would change RTP).
+- **Operator Portal / Phase 3 (done):** Round Inspector deep links (`/admin#inspector?round=<ref>`), Player Reports (`/admin/v1/reports/players`, `/admin/v1/players/:id/summary`, tenant-scoped), and **Free Rounds / Campaign Manager**: `src/modules/campaigns/campaign.repository.ts` (campaigns + per-player grants, atomic spin deduction), admin routes `src/http/admin-campaigns.routes.ts` (`/admin/v1/campaigns*`), HMAC operator routes `POST /operator/v1/free-rounds/grant` + `GET /operator/v1/free-rounds/player/:operatorPlayerId`. `round-orchestrator.ts` plays a free round at the grant's bet with no debit; wallet transactions are tagged `FREE_ROUND_BET`; `player_sessions.locked_bet` / `locked_ante` freeze bet + ante mid-feature. Operator-granted free rounds must NOT reuse the engine's `free_spins_left` (that is the scatter-triggered bonus feature and would change RTP). Current status and next phase: `CHECKPOINT.md`.
 
 ## Commands
 
@@ -58,7 +58,7 @@ npm run test:api          # tools/api-test.js — requires the MVP server runnin
 npm run test:rtp-parity   # validate client engine RTP vs. theoretical
 npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e, real Chrome via CDP
 ```
-`rtp-parity` honors env vars: `STEPS`, `BET`, `GAME_ID`, `ANTE=1`, `BONUS_ONLY=1`, `TOLERANCE`. Exits non-zero on FAIL.
+`rtp-parity` env: `STEPS` (default 10M), `MODE=base|buy` (`BONUS_ONLY=1` = buy), `ANTE=1`, `GAME_ID`, `SEED`, `Z` (default 3), `MAX_SE` (default 0.25%), `SHARDS` (fixed 20, keeps results machine-independent), `WORKERS`, `BET`, `JSON=1`, and `PAYOUT_SCALER` / `FREE_SPIN_PAYOUT_SCALER` overrides for calibration. Exits non-zero on FAIL. Every engine change that alters what a seed resolves to must bump `ENGINE_VERSION` in `client/engine/spin-engine.js` (it is recorded on every platform round for replay verification).
 
 ### Platform (`cd platform` first; Node 20+)
 ```bash
@@ -77,13 +77,13 @@ npm run migrate    # apply migrations/*.sql (needs DATABASE_URL)
 Run a single platform test: `npx vitest run test/engine.service.test.ts` (or add `-t "test name"`).
 
 ### Optional Postgres persistence (`platform/`)
-State is **in-memory by default** (all tests rely on this — never require a DB to run them). Setting `DATABASE_URL` turns on durable persistence via a **memory-first write-through** design (`src/persistence/`): the in-memory stores stay the read source of truth, hydrate from Postgres on boot (`hydrate.ts`), and enqueue an upsert on every mutation that an `onSend` hook (`app.ts`) flushes per request. So the whole codebase stays synchronous — do NOT convert services to async for the DB. Money is `numeric(14,2)` (decimals, matching the engine). The schema is `migrations/0001_core.sql` (app-aligned, append-only WORM triggers on the ledgers); the runner is `src/db/migrate.ts`. Bring it up:
+State is **in-memory by default** (all tests rely on this — never require a DB to run them). Setting `DATABASE_URL` turns on durable persistence via a **memory-first write-through** design (`src/persistence/`): the in-memory stores stay the read source of truth, hydrate from Postgres on boot (`hydrate.ts`), and enqueue an upsert on every mutation that an `onSend` hook (`app.ts`) flushes per request. So the whole codebase stays synchronous — do NOT convert services to async for the DB. Money is `numeric(14,2)` (decimals, matching the engine). The schema is `migrations/0001_core.sql` plus forward-only `0002_campaigns.sql`, `0003_free_round_tagging.sql`, `0004_session_locks.sql` (app-aligned, append-only WORM triggers on the ledgers); the runner is `src/db/migrate.ts`. Bring it up:
 ```bash
 docker compose -f docker-compose.yml up -d
 DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run migrate
 DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run dev:seed   # idempotent: reuses the demo operator if already seeded
 ```
-When adding a persisted field/table: update the entity, `migrations/0001_core.sql`, the `TABLES` registry in `src/persistence/persistence.ts`, and the relevant store's `save*`/`hydrate` calls.
+When adding a persisted field/table: update the entity, add a new forward-only `migrations/NNNN_*.sql` (don't edit an applied one), the `TABLES` registry in `src/persistence/persistence.ts`, and the relevant store's `save*`/`hydrate` calls.
 
 ## Deployment
 

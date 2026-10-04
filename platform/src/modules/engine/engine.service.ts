@@ -67,6 +67,11 @@ export class EngineService {
     return String(this.rules?.version ?? "unknown");
   }
 
+  /** The loaded engine's ENGINE_VERSION; stamped on every round for replay verification. */
+  engineVersion(): string {
+    return String(this.ns?.ENGINE_VERSION ?? "unversioned");
+  }
+
   getAllowedBets(): number[] {
     return this.template.getAllowedBets();
   }
