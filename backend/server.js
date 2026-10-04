@@ -454,8 +454,8 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     session.freeSpinsLeft -= 1;
   }
 
-  // Ante raises only the base-game trigger chance (mirrors client/engine/crazy-mode.js).
-  const scatterChance = anteEnabled && !isFreeSpin ? 0.0151 : 0.0086;
+  // Base / ante / free-spin scatter rates (mirrors client/engine/crazy-mode.js).
+  const scatterChance = isFreeSpin ? 0.0086 : anteEnabled ? 0.02192 : 0.020;
   const multiChance = isFreeSpin ? 0.014 : anteEnabled ? 0.0072 : 0.0042;
   let { matrix, multipliers } = createMatrixWithMetaRates(scatterChance, multiChance);
   if (!isFreeSpin && forceFreeSpinTrigger) {

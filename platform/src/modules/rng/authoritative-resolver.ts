@@ -26,6 +26,11 @@ export class AuthoritativeResolver {
     return this.engine.engineVersion();
   }
 
+  /** Hash of the rules payload this resolver replays with. */
+  rulesHash(): string {
+    return this.engine.rulesHash();
+  }
+
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
     const { result, bytesDrawn } = this.engine.resolveDeterministic(snapshot, input, seedHex);

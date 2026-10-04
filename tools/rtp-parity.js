@@ -18,7 +18,7 @@
  * production spins draw from the platform's HMAC-SHA256 seeded stream / CSPRNG.
  *
  * Env:
- *   STEPS      samples (default 10,000,000)       MODE   base | buy (default base)
+ *   STEPS      samples (default 30M; 4M for buy)  MODE   base | buy (default base)
  *   GAME_ID    RTP profile (default first)        ANTE=1 base mode with ante bet
  *   SEED       master seed (default "vault20k")   BONUS_ONLY=1  alias for MODE=buy
  *   Z          sigma bound (default 3)            MAX_SE max standard error in % (default 0.25)
@@ -134,8 +134,10 @@ if (!isMainThread) {
 
 const env = process.env;
 const rulesForDefaults = JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
-const steps = Number(env.STEPS || 10_000_000);
 const mode = env.BONUS_ONLY === "1" ? "buy" : (env.MODE || "base");
+// Defaults sized so SE lands under MAX_SE: a paid round is far noisier than a buy
+// (the bonus is ~36% of RTP), and one buy already contains a whole bonus.
+const steps = Number(env.STEPS || (mode === "buy" ? 4_000_000 : 30_000_000));
 const ante = env.ANTE === "1" && mode === "base";
 const gameId = env.GAME_ID || rulesForDefaults.rtp_profiles?.[0]?.game_id || "bananax";
 const bet = Number(env.BET || 1);

@@ -105,9 +105,9 @@ const TABLES: Record<string, TableSpec> = {
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),
   rounds: spec(
-    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "prev_hash", "payload_hash", "chain_hash", "created_at"],
+    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "rules_hash", "prev_hash", "payload_hash", "chain_hash", "created_at"],
     ["id"],
-    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version"] }
+    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version", "rules_hash"] }
   ),
   wallet_transactions: spec(
     ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "created_at"],

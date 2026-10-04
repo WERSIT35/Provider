@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { hashPayload } from "../src/modules/ledger/hash-chain";
 import type { Pool } from "pg";
 import { buildContainer, type Container } from "../src/container";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
@@ -29,11 +32,26 @@ function provision(persistence?: Persistence): { c: Container; sessionId: string
 describe("engine_version on rounds", () => {
   it("every recorded round carries the loaded engine's ENGINE_VERSION", async () => {
     const { c, sessionId } = provision();
-    expect(c.engine.engineVersion()).toBe("1.0.0");
+    expect(c.engine.engineVersion()).toBe("1.1.0");
     for (let i = 0; i < 5; i += 1) {
       const out = await c.orchestrator.spin(sessionId, { bet_amount: 1, idempotency_key: `k-${i}` });
-      expect(c.ledger.getRound(out.round_ref)?.engine_version).toBe("1.0.0");
+      expect(c.ledger.getRound(out.round_ref)?.engine_version).toBe("1.1.0");
     }
+  });
+
+  it("every recorded round carries the rules hash; the hash ignores key order but not values", async () => {
+    const { c, sessionId } = provision();
+    const hash = c.engine.rulesHash();
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const out = await c.orchestrator.spin(sessionId, { bet_amount: 1, idempotency_key: "rh" });
+    expect(c.ledger.getRound(out.round_ref)?.rules_hash).toBe(hash);
+
+    const rules = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../client/math/game-rules-v2.json"), "utf8"));
+    expect(hashPayload(rules)).toBe(hash);
+    const reordered = Object.fromEntries(Object.entries(rules).reverse());
+    expect(hashPayload(reordered)).toBe(hash);
+    rules.rtp_profiles[0].payout_scaler = Number(rules.rtp_profiles[0].payout_scaler) + 0.0001;
+    expect(hashPayload(rules)).not.toBe(hash);
   });
 
   it("a legacy (unversioned) round and versioned rounds survive a Postgres round-trip with the chain intact", () => {
@@ -51,8 +69,8 @@ describe("engine_version on rounds", () => {
       pre_state: { game_code: "bananax", balance: 0, free_spins_left: 0, free_spin_multiplier_carry: 0, ante_enabled: false, resolve_mode: "spin" }
     };
     repo.append(base); // recorded before versioning existed: no engine_version key at all
-    repo.append({ ...base, round_ref: "r1", engine_version: "1.0.0" });
-    repo.append({ ...base, round_ref: "r2", engine_version: "1.0.0" });
+    repo.append({ ...base, round_ref: "r1", engine_version: "1.0.0" }); // versioned, rules not yet hashed
+    repo.append({ ...base, round_ref: "r2", engine_version: "1.1.0", rules_hash: "f".repeat(64) });
     expect("engine_version" in saved[0]).toBe(false);
 
     return (async () => {
@@ -61,7 +79,7 @@ describe("engine_version on rounds", () => {
         query: async () => ({
           rows: saved.map((r) => {
             const row: Record<string, unknown> = { ...r, outcome_jsonb: r.outcome };
-            for (const col of ["campaign_id", "grant_id", "engine_version"]) if (row[col] === undefined) row[col] = null;
+            for (const col of ["campaign_id", "grant_id", "engine_version", "rules_hash"]) if (row[col] === undefined) row[col] = null;
             return row;
           })
         })
@@ -73,35 +91,51 @@ describe("engine_version on rounds", () => {
   });
 });
 
-describe("replay verification is engine-version aware", () => {
-  const round = (engine_version?: string): RoundRecord =>
+describe("replay verification is engine-version and rules aware", () => {
+  const round = (engine_version?: string, rules_hash?: string): RoundRecord =>
     ({
       round_ref: "r", rng_seed_hex: "00", outcome_hash: "stored", bet_amount: 1, ante_enabled: false,
       seq: 1, prev_hash: "p", payload_hash: "q", chain_hash: "c",
       pre_state: { game_code: "bananax", balance: 0, free_spins_left: 0, free_spin_multiplier_carry: 0, ante_enabled: false, resolve_mode: "spin" },
-      ...(engine_version ? { engine_version } : {})
+      ...(engine_version ? { engine_version } : {}),
+      ...(rules_hash ? { rules_hash } : {})
     }) as unknown as RoundRecord;
+  const RULES = "a".repeat(64);
   const verifier = (r: RoundRecord, replayOk: boolean, chainOk = true) =>
     new RoundVerificationService(
       { getRound: () => r, verifyIntegrity: () => ({ rounds: { ok: chainOk } }) } as unknown as RoundLedgerService,
-      { engineVersion: () => "1.0.0", verifyReplayDetailed: () => ({ ok: replayOk, recomputed_hash: replayOk ? "stored" : "other" }) } as unknown as AuthoritativeResolver
+      {
+        engineVersion: () => "1.0.0",
+        rulesHash: () => RULES,
+        verifyReplayDetailed: () => ({ ok: replayOk, recomputed_hash: replayOk ? "stored" : "other" })
+      } as unknown as AuthoritativeResolver
     );
 
-  it("same engine version: a hash mismatch is tampering", () => {
-    expect(verifier(round("1.0.0"), false).verify("r")?.verdict).toBe("tampered");
-    expect(verifier(round("1.0.0"), true).verify("r")?.verdict).toBe("legitimate");
+  it("same engine version and rules: a hash mismatch is tampering", () => {
+    expect(verifier(round("1.0.0", RULES), false).verify("r")?.verdict).toBe("tampered");
+    expect(verifier(round("1.0.0", RULES), true).verify("r")?.verdict).toBe("legitimate");
   });
 
   it("different or missing engine version: a mismatch is inconclusive, with the reason", () => {
-    const other = verifier(round("0.9.0"), false).verify("r")!;
+    const other = verifier(round("0.9.0", RULES), false).verify("r")!;
     expect(other.verdict).toBe("inconclusive");
-    expect(other.notes.join(" ")).toMatch(/resolved by engine 0\.9\.0; this platform runs 1\.0\.0/);
-    const legacy = verifier(round(), false).verify("r")!;
+    expect(other.notes.join(" ")).toMatch(/resolved by engine 0.9.0; this platform runs 1.0.0/);
+    const legacy = verifier(round(undefined, RULES), false).verify("r")!;
     expect(legacy.verdict).toBe("inconclusive");
     expect(legacy.notes.join(" ")).toMatch(/predates engine versioning/);
   });
 
-  it("a broken chain is tampering regardless of engine version", () => {
-    expect(verifier(round("0.9.0"), false, false).verify("r")?.verdict).toBe("tampered");
+  it("different or missing rules hash: a mismatch is inconclusive, with the reason", () => {
+    const other = verifier(round("1.0.0", "b".repeat(64)), false).verify("r")!;
+    expect(other.verdict).toBe("inconclusive");
+    expect(other.notes.join(" ")).toMatch(/resolved with rules bbbbbbbbbbbb…; this platform runs rules aaaaaaaaaaaa…/);
+    const legacy = verifier(round("1.0.0"), false).verify("r")!;
+    expect(legacy.verdict).toBe("inconclusive");
+    expect(legacy.notes.join(" ")).toMatch(/predates rules hashing/);
+  });
+
+  it("a replay that matches is legitimate even across versions; a broken chain is always tampering", () => {
+    expect(verifier(round("0.9.0", "b".repeat(64)), true).verify("r")?.verdict).toBe("legitimate");
+    expect(verifier(round("0.9.0", "b".repeat(64)), false, false).verify("r")?.verdict).toBe("tampered");
   });
 });

@@ -27,6 +27,8 @@ export interface RoundContext {
   grant_id?: string;
   /** Engine version that resolved the outcome (EngineService.engineVersion()). */
   engine_version?: string;
+  /** Rules payload hash the outcome was resolved with (EngineService.rulesHash()). */
+  rules_hash?: string;
 }
 
 /**
@@ -65,7 +67,8 @@ export class RoundLedgerService {
       // Added ONLY when set: the payload hash covers every key, so a cash round must
       // hash exactly as it did before free rounds existed (see TableSpec.omitNull).
       ...(ctx.campaign_id ? { campaign_id: ctx.campaign_id, grant_id: ctx.grant_id } : {}),
-      ...(ctx.engine_version ? { engine_version: ctx.engine_version } : {})
+      ...(ctx.engine_version ? { engine_version: ctx.engine_version } : {}),
+      ...(ctx.rules_hash ? { rules_hash: ctx.rules_hash } : {})
     });
 
     this.audit.append({

@@ -1,5 +1,6 @@
 import { loadSlotEngine, type SlotEngineNamespace, type GameRules } from "../../lib/engine-loader";
 import { withSeed } from "../../lib/seeded-rng";
+import { hashPayload } from "../ledger/hash-chain";
 import type {
   CreateSessionInput,
   SessionInit,
@@ -71,6 +72,17 @@ export class EngineService {
   engineVersion(): string {
     return String(this.ns?.ENGINE_VERSION ?? "unversioned");
   }
+
+  /**
+   * SHA-256 of the canonical (key-order-independent) rules payload the engine resolves
+   * with. Scalers, paytable and features all live in the rules, so a seed reproduces its
+   * outcome only under the same engine version AND the same rules hash.
+   */
+  rulesHash(): string {
+    if (this.cachedRulesHash === null) this.cachedRulesHash = hashPayload(this.rules);
+    return this.cachedRulesHash;
+  }
+  private cachedRulesHash: string | null = null;
 
   getAllowedBets(): number[] {
     return this.template.getAllowedBets();

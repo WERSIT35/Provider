@@ -108,6 +108,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       math_config_id: round.math_config_id,
       math_config: mathConfig,
       engine_version: round.engine_version ?? null,
+      rules_hash: round.rules_hash ?? null,
       session_id: round.session_id,
       currency: app.container.sessions.tryGet(round.session_id)?.currency ?? null,
       bet_amount: round.bet_amount,

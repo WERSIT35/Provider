@@ -62,7 +62,8 @@ async function provisionAndPlay(): Promise<void> {
     for (let i = 0; i < 30; i += 1) {
       const out = await container.orchestrator.spin(session.id, { bet_amount: 5, idempotency_key: `${slug}-${i}` });
       if (i === 0) firstRef = out.round_ref;
-      if (!firstWinRef && out.total_win > 0) firstWinRef = out.round_ref;
+      // A cluster win (scatter-only pays have no ways_wins/tumble win to inspect).
+      if (!firstWinRef && out.total_win > 0 && out.result.ways_wins.length > 0) firstWinRef = out.round_ref;
     }
     if (slug === "alpha") {
       opAId = op.id;

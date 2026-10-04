@@ -82,6 +82,7 @@ function renderInspector() {
       kv('Game', r.game ? (esc(r.game.title) + ' <span class="muted">'+esc(r.game.code)+'</span>') : r.game_id) +
       kv('Math config', r.math_config ? (r.math_config.version + ' · RTP ' + r.math_config.theoretical_rtp + '% · ' + r.math_config.status) : r.math_config_id) +
       kv('Engine', r.engine_version ? '<code>'+esc(r.engine_version)+'</code>' : '<span class="muted">unversioned</span>') +
+      kv('Rules hash', r.rules_hash ? '<code title="'+esc(r.rules_hash)+'">'+esc(r.rules_hash.slice(0, 16))+'…</code>' : '<span class="muted">not recorded</span>') +
       kv('Currency', r.currency || '—') +
       kv('Bet', fmtMoney(r.bet_amount) + (r.ante_enabled ? ' (ante)' : '')) +
       kv('Bet charged', fmtMoney(r.bet_charged)) +

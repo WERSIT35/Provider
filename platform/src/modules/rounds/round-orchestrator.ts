@@ -355,6 +355,7 @@ export class RoundOrchestrator {
           ante_enabled: anteEnabled,
           pre_state: preState,
           engine_version: this.engine.engineVersion(),
+          rules_hash: this.engine.rulesHash(),
           ...(campaign ? { campaign_id: campaign.campaign_id, grant_id: campaign.grant_id } : {})
         },
         resolved

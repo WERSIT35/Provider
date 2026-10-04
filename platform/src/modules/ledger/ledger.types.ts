@@ -59,6 +59,8 @@ export interface RoundInput {
   grant_id?: string;
   /** Engine version that resolved the round (absent on rounds recorded before versioning). */
   engine_version?: string;
+  /** SHA-256 of the canonical rules payload that resolved the round (absent on older rounds). */
+  rules_hash?: string;
 }
 
 export interface RoundRecord extends RoundInput {

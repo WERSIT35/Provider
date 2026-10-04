@@ -58,7 +58,7 @@ npm run test:api          # tools/api-test.js — requires the MVP server runnin
 npm run test:rtp-parity   # validate client engine RTP vs. theoretical
 npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e, real Chrome via CDP
 ```
-`rtp-parity` env: `STEPS` (default 10M), `MODE=base|buy` (`BONUS_ONLY=1` = buy), `ANTE=1`, `GAME_ID`, `SEED`, `Z` (default 3), `MAX_SE` (default 0.25%), `SHARDS` (fixed 20, keeps results machine-independent), `WORKERS`, `BET`, `JSON=1`, and `PAYOUT_SCALER` / `FREE_SPIN_PAYOUT_SCALER` overrides for calibration. Exits non-zero on FAIL. Every engine change that alters what a seed resolves to must bump `ENGINE_VERSION` in `client/engine/spin-engine.js` (it is recorded on every platform round for replay verification).
+`rtp-parity` env: `STEPS` (default 30M, 4M for `MODE=buy`), `MODE=base|buy` (`BONUS_ONLY=1` = buy), `ANTE=1`, `GAME_ID`, `SEED`, `Z` (default 3), `MAX_SE` (default 0.25%), `SHARDS` (fixed 20, keeps results machine-independent), `WORKERS`, `BET`, `JSON=1`, and `PAYOUT_SCALER` / `FREE_SPIN_PAYOUT_SCALER` overrides for calibration. Exits non-zero on FAIL. Every engine change that alters what a seed resolves to must bump `ENGINE_VERSION` in `client/engine/spin-engine.js` (it is recorded on every platform round for replay verification).
 
 ### Platform (`cd platform` first; Node 20+)
 ```bash

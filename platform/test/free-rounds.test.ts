@@ -341,6 +341,9 @@ describe("free rounds — wallet + ledger integrity", () => {
     wallet.setBalance("p1", "GEL", 100);
     const session = openSession("p1");
     for (let i = 0; i < 6; i += 1) await spin(session.id);
+    // A free round can trigger the bonus, whose spins stay campaign-tagged; play on
+    // until the feature ends and a cash round is recorded.
+    for (let i = 0; i < 300 && !saved.some((r) => !("campaign_id" in r)); i += 1) await spin(session.id);
     expect(saved.some((r) => r.campaign_id)).toBe(true);
     expect(saved.some((r) => !("campaign_id" in r))).toBe(true);
 
