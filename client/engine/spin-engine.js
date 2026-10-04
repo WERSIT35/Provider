@@ -5,7 +5,7 @@
   // Recorded on every platform round. Bump it on ANY change that alters what a
   // seed resolves to (math, RNG draw order, board generation): a round can only
   // be replay-verified by the engine version that produced it.
-  const ENGINE_VERSION = "1.1.0";
+  const ENGINE_VERSION = "1.2.0";
 
   function buildEngineContext(rules) {
     const { Symbols, Multipliers, Matrix, Payouts, Tumble } = root.SlotEngine;

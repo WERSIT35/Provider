@@ -80,6 +80,10 @@ function seededCrypto(seedText) {
   };
 }
 
+// Win-distribution bands, in multiples of the bet: a sample lands in the last band whose
+// lower edge it reaches (0 = no win). Reported as counts and RTP contribution per band.
+const DIST_EDGES = [0, 0.000001, 1, 2, 5, 10, 20, 50, 100, 500, 1000, 5000, 20000];
+
 function runShard({ seed, samples, gameId, mode, ante, bet, scalers }) {
   Object.defineProperty(globalThis, "crypto", { value: seededCrypto(seed), configurable: true, writable: true });
   for (const file of ENGINE_FILES) {
@@ -99,6 +103,8 @@ function runShard({ seed, samples, gameId, mode, ante, bet, scalers }) {
   };
   const opts = { ante_enabled: anteOn, game_id: profile.game_id, rtp_profile: profile };
   const acc = { n: 0, sum: 0, sumSq: 0, baseSum: 0, bonusSum: 0, hits: 0, bonuses: 0, max: 0, capHits: 0 };
+  const distCount = new Array(DIST_EDGES.length).fill(0);
+  const distWin = new Array(DIST_EDGES.length).fill(0);
   for (let i = 0; i < samples; i += 1) {
     session.balance = 1e15;
     const first = mode === "buy"
@@ -123,8 +129,13 @@ function runShard({ seed, samples, gameId, mode, ante, bet, scalers }) {
     acc.sumSq += win * win;
     if (win > 0) acc.hits += 1;
     if (win > acc.max) acc.max = win;
+    const x = win / bet;
+    let band = 0;
+    while (band + 1 < DIST_EDGES.length && x >= DIST_EDGES[band + 1]) band += 1;
+    distCount[band] += 1;
+    distWin[band] += win;
   }
-  return { acc, profile, anteMultiplier: engine.ANTE_MULTIPLIER, buyCost: engine.BUY_FREE_SPINS_COST_MULT };
+  return { acc, distCount, distWin, profile, engineVersion: globalThis.SlotEngine.ENGINE_VERSION, anteMultiplier: engine.ANTE_MULTIPLIER, buyCost: engine.BUY_FREE_SPINS_COST_MULT };
 }
 
 if (!isMainThread) {
@@ -183,6 +194,8 @@ Promise.all(Array.from({ length: workers }, launch)).then(() => {
     return t;
   }, {});
   const { profile, anteMultiplier, buyCost } = results[0];
+  const distCount = DIST_EDGES.map((_, i) => results.reduce((t, r) => t + r.distCount[i], 0));
+  const distWin = DIST_EDGES.map((_, i) => results.reduce((t, r) => t + r.distWin[i], 0));
   const cost = bet * (mode === "buy" ? buyCost : ante ? anteMultiplier : 1);
   const mean = acc.sum / acc.n;
   const sd = Math.sqrt(Math.max(0, acc.sumSq / acc.n - mean * mean));
@@ -204,6 +217,12 @@ Promise.all(Array.from({ length: workers }, launch)).then(() => {
     bonus_1_in: acc.bonuses ? +(acc.n / acc.bonuses).toFixed(1) : null,
     avg_bonus_x: acc.bonuses ? +(acc.bonusSum / acc.bonuses / bet).toFixed(3) : null,
     max_win_x: +(acc.max / bet).toFixed(2), cap_hits: acc.capHits,
+    sd_per_sample_x: +(sd / bet).toFixed(4),
+    engine_version: results[0].engineVersion ?? null,
+    distribution: DIST_EDGES.map((lo, i) => ({
+      from_x: lo, to_x: DIST_EDGES[i + 1] ?? null, count: distCount[i],
+      rtp_share: +((distWin[i] / acc.n / cost) * 100).toFixed(4)
+    })),
     elapsed_s: +((Date.now() - t0) / 1000).toFixed(1), passed
   };
   if (env.JSON) {

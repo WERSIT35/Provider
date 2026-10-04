@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "game_title": "Vault 20K",
   "provider": "Lumina Games",
   "release_date": "2026-04-14",
@@ -12,7 +12,7 @@
   },
   "rtp": {
     "theoretical_percent": 96.38,
-    "ante_bet_percent": 96.38,
+    "ante_bet_percent": 96.59,
     "buy_free_spins_percent": 96.38,
     "payout_scaler": 0.9807,
     "free_spin_payout_scaler": 3.8058,
@@ -26,7 +26,7 @@
       "game_id": "bananax",
       "slug": "banana_x_fantasma",
       "theoretical_percent": 96.38,
-      "ante_bet_percent": 96.38,
+      "ante_bet_percent": 96.59,
       "buy_free_spins_percent": 96.38,
       "payout_scaler": 0.9807,
       "free_spin_payout_scaler": 3.8058,
@@ -173,7 +173,7 @@
     {
       "title": "RTP MODES",
       "points": [
-        "bananax / banana_x_fantasma: 96.38% RTP.",
+        "bananax / banana_x_fantasma: 96.38% RTP (Ante Bet 96.59%, Buy Free Spins 96.38%).",
         "bananax_94 / banana_x_94_fantasma: 94.40% RTP.",
         "bananax_92 / banana_x92_fantasma: 92.38% RTP."
       ]

@@ -4945,7 +4945,7 @@ function renderPaytable(bet = Number(el.betSelect.value || 1)) {
   });
 
   const scatterTr = document.createElement("tr");
-  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
+  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6+: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
   el.paytableBody.appendChild(scatterTr);
 }
 

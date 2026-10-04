@@ -301,8 +301,10 @@ function payoutByCount(payoutMap, count) {
   return 0;
 }
 
+// Scatter tiers are lower bounds: 7+ scatters pays the top ("6") tier (mirrors client/engine/payouts.js).
 function scatterPayoutByCount(count) {
-  return Number(SCATTER_PAYOUTS[String(count)] || 0);
+  const tier = Object.keys(SCATTER_PAYOUTS).map(Number).filter((n) => Number.isFinite(n)).sort((a, b) => b - a).find((t) => count >= t);
+  return tier === undefined ? 0 : Number(SCATTER_PAYOUTS[String(tier)] || 0);
 }
 
 function evaluateWaysWin(matrix, betAmount) {

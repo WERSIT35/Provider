@@ -186,7 +186,7 @@ export const SECTION_ONBOARDING = /* html */ `
     <hr style="border:0; border-top:1px solid var(--line); margin:12px 0;"/>
     <div class="row">
       <label>Game <select id="mcGame"></select></label>
-      <label>Version <input id="mcVersion" placeholder="3.0.0" value="3.0.0"/></label>
+      <label>Version <input id="mcVersion" placeholder="3.1.0" value="3.1.0"/></label>
       <label>RTP profile key <input id="mcKey" placeholder="bananax" value="bananax"/></label>
       <label>Theoretical RTP % <input id="mcRtp" type="number" step="0.01" value="96.38"/></label>
       <label>Config hash <input id="mcHash" placeholder="sha256:…" value="sha256:demo"/></label>

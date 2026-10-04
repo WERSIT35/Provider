@@ -32,10 +32,10 @@ function provision(persistence?: Persistence): { c: Container; sessionId: string
 describe("engine_version on rounds", () => {
   it("every recorded round carries the loaded engine's ENGINE_VERSION", async () => {
     const { c, sessionId } = provision();
-    expect(c.engine.engineVersion()).toBe("1.1.0");
+    expect(c.engine.engineVersion()).toBe("1.2.0");
     for (let i = 0; i < 5; i += 1) {
       const out = await c.orchestrator.spin(sessionId, { bet_amount: 1, idempotency_key: `k-${i}` });
-      expect(c.ledger.getRound(out.round_ref)?.engine_version).toBe("1.1.0");
+      expect(c.ledger.getRound(out.round_ref)?.engine_version).toBe("1.2.0");
     }
   });
 

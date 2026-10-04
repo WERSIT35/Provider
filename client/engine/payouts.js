@@ -14,8 +14,15 @@
       return 0;
     }
 
+    // Scatter tiers are lower bounds: a count pays the highest tier it reaches, so the
+    // top tier ("6") also pays 7+ scatters. An exact-key lookup paid 0 for 7+.
+    const scatterTiers = Object.keys(scatterPayouts)
+      .map(Number)
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a);
     function scatterPayoutByCount(count) {
-      return Number(scatterPayouts[String(count)] || 0);
+      const tier = scatterTiers.find((t) => count >= t);
+      return tier === undefined ? 0 : Number(scatterPayouts[String(tier)] || 0);
     }
 
     function evaluateWaysWin(matrix, betAmount) {
