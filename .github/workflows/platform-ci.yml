@@ -49,7 +49,6 @@ jobs:
         working-directory: platform
       - run: npm ci
         working-directory: demo-operator
+      # The single release gate: platform typecheck/test/build, demo-operator typecheck/test,
+      # the client browser tests, and the production dependency audit (see package.json).
       - run: npm run verify:release
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
