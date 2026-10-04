@@ -3,11 +3,11 @@
 Where the work stands, the decisions behind it, and what comes next. Branch:
 `fix/board-aspect-ratio-and-asset-hardening`.
 
-**Milestone status:** the cinematic client overhaul (§1), Platform Phase 3 (§1b) and
-**Phase 4, math certification (§1c)** are complete. The certified build is commit `6d75826`
-(engine 1.2.0, rules 3.1.0); the lab report is `qa/rtp-certification-report.md`. Before lab
-submission, open items O1–O4 (§5) must be closed. The next phase is the **Demo Casino**
-integration (§6, blueprint `docs/16-demo-casino-blueprint.md`).
+**Milestone status:** the cinematic client overhaul (§1), Platform Phase 3 (§1b), **Phase 4,
+math certification (§1c)**, the **Demo Casino integration** and the **Campaign Manager UI +
+expiry job (§1d)** are complete; the branch is merged to `main`. The certified math build is
+commit `6d75826` (engine 1.2.0, rules 3.1.0); the lab report is
+`qa/rtp-certification-report.md`. Before lab submission, open items O1–O4 (§5) must be closed.
 
 ---
 
@@ -61,6 +61,17 @@ Never calibrate on the default seed.
 Hit frequency 24.18%, bonus 1 in 247 (ante 1 in 183), average bonus 89.5x, volatility index
 21.7, cap hit by 52 of 30M buys, each at exactly 20,000.00x, never exceeded.
 
+## 1d. Demo Casino + Campaign Manager (shipped 2026-10-05)
+
+| Commit | What |
+|--------|------|
+| `195c58e` | **demo-operator backend.** SQLite via built-in `node:sqlite` (`demo-operator/data/casino.sqlite`, WAL, forward-only migrations; Node ≥ 22.13): players, providers, append-only `wallet_transactions` (minor units, per-provider idempotency, single rollback per debit), `staff_sessions`. Webhooks recorded as WAGER / FREE_ROUND_BET / CREDIT / FREE_ROUND_WIN / ROLLBACK with game, round type and campaign. Staff auth on `/api/admin/*` (config creds, default `casino_admin` / `demo123`; opaque token in an HttpOnly SameSite=Strict cookie, SHA-256 stored; logout revokes; failed-login throttle). `GET /api/admin/rounds` with a provider `verifyUrl`. Fixed leaks (player password hashes, raw provider secrets). **Platform:** wallet webhooks carry `gameCode` + `roundType`. |
+| `12c4075` | **Casino back-office UI** (`/back-office`): sign-in view, Spin history (timestamp, player, game, round type, bet, win) with **Verify on Provider** → Operator Portal Round Inspector (new tab, noopener/noreferrer); Players / Transactions / Providers. All values escaped (closed a stored-XSS path via player emails); nonce CSP, `frame-ancestors 'none'`, no-store, no-referrer. `npm run check:back-office` (headless Chrome, 20 checks). |
+| `d84ac8f` | **Campaign Manager UI** in `/admin` (and `/provider`): campaign table with server-side state, players drawer, create dialog (bet list locked to the game's allowed bets), grant dialog (duplicates skipped), cancel with confirm; write controls only for `campaigns.write` (from `/admin/v1/me` `permissions`). **Background expiry job** `src/jobs/campaign-expiry.ts`: start-up + interval sweep (`CAMPAIGN_EXPIRY_INTERVAL_MS`, default 60s, 0 = start-up only), flushes its own writes, never stacks. Console `esc()` now escapes quotes (attribute-injection hardening). `npm run check:campaigns` (headless Chrome, 25 checks). |
+
+User decisions for this phase: SQLite for demo-operator; no signed round APIs for now (webhooks
++ the visual deep-link bridge only); two localhost ports (platform :8080, casino :4000).
+
 ## 2. Rules the user set (keep them)
 
 - **`client/engine/` is sacred for presentation work.** Visuals are a pure function of the
@@ -87,17 +98,20 @@ Hit frequency 24.18%, bonus 1 in 247 (ante 1 in 183), average bonus 89.5x, volat
 - `demo-operator/test/e2e.test.ts`: three lines were reconstructed after an accidental
   `git checkout` (2026-10-02); still worth a quick review.
 
-## 4. Status (re-verified 2026-10-05 on `6d75826`)
+## 4. Status (re-verified 2026-10-05 on `d84ac8f`)
 
 | Check | Result |
 |-------|--------|
 | `npm run test:client` (spin-lock, layout, spin-e2e) | PASS |
 | platform `npm run typecheck` | PASS |
-| platform `npx vitest run` | PASS, 27 files / 170 tests (stress-run 30× clean) |
+| platform `npx vitest run` | PASS, 28 files / 174 tests |
+| platform `npm run check:campaigns` (headless Chrome) | PASS, 25 checks |
+| demo-operator `npx vitest run` | PASS, 6 files / 37 tests (incl. e2e against a real platform) |
+| demo-operator `npm run check:back-office` (headless Chrome) | PASS, 20 checks |
 | platform `npm run e2e` | PASS (incl. cross-tenant 404) |
 | `npm run test:rtp-parity` (30M, seeded) | PASS |
 | `tools/api-test.js` (MVP) | runs clean; its simulate band check uses 1,000 steps and is noise at this volatility |
-| demo-operator tests, `tools/probes/*` | not re-run since 2026-10-02 |
+| `tools/probes/*` | not re-run since 2026-10-02 |
 | `tools/probes/hit-target-probe.js` | FAIL as of 2026-10-02 (autoplay/turbo hit area at 844×390 / 740×360) |
 
 ## 5. Open items
@@ -115,8 +129,12 @@ Hit frequency 24.18%, bonus 1 in 247 (ante 1 in 183), average bonus 89.5x, volat
 
 **Carried over:**
 
-5. Campaign Manager has no console view (API only).
-6. Free-round expiry is lazy (`expireDue()` never scheduled); no operator-side cancel.
+5. No operator-side (HMAC) cancel for free-round campaigns; cancel exists in the Admin API and
+   the Campaign Manager UI.
+6. Demo Casino blueprint items not built: `featureRef` bonus grouping in webhooks; iframe
+   `postMessage` contract + `frame-ancestors` on `/play` (any site can still embed it);
+   failure-path e2e (insufficient funds, credit retry, rollback). Signed round APIs were
+   deliberately skipped.
 7. `platform/scripts/e2e-operator.ts` does not exercise free rounds.
 8. Landscape-phone hit areas for autoplay/turbo.
 9. Round ID strip sits above the board in `/play` mode only.
@@ -125,26 +143,17 @@ Hit frequency 24.18%, bonus 1 in 247 (ante 1 in 183), average bonus 89.5x, volat
 11. `backend/server.js` (legacy MVP) still caps each free spin rather than the whole round.
 12. `docs/multiplier-rules.md` still describes the old multiplier rule (user scheduled a docs chore).
 
-## 6. Next: Demo Casino integration
+## 6. Next
 
-Blueprint: [`docs/16-demo-casino-blueprint.md`](docs/16-demo-casino-blueprint.md).
-`demo-operator/` already does HMAC launch into the `/play` iframe and signed, idempotent wallet
-webhooks, so this phase is hardening and wiring:
+The functional epic is done. Remaining work, in the order it unblocks launch:
 
-1. **Staff login on the back-office** — `/api/admin/*` is currently unauthenticated. (Start here.)
-2. **Webhook enrichment** — signed `gameCode`, `roundType`, `featureRef` so the casino can
-   group a bonus with its free spins.
-3. **Player + spin history** from the casino's own ledger (joined on `roundRef`), CSV export.
-4. **"Verify on provider"** per round → `/admin#inspector?round=<ref>`; staff sign in with
-   provider-issued `operator_admin` / `operator_finance` accounts (viewer cannot verify); the
-   deep link survives sign-in and runs the verification.
-5. **Iframe `postMessage` contract + `frame-ancestors`** from registered operator domains
-   (today any site can embed `/play`).
-6. Failure-path e2e (insufficient funds, credit retry, rollback).
-7. Optional signed round APIs (`GET /operator/v1/rounds/:ref`, `/verification`).
-
-**Decisions pending (user):** demo-casino persistence (in-memory vs SQLite/Postgres); ship the
-optional signed round APIs now or later; hosting topology (one host / two ports vs two hostnames).
+1. **Lab submission readiness** — close O1–O4 (§5): declare ante 96.70%, show scaled pays in the
+   in-game paytable, rewrite the player rules copy, produce 30M reports for the 94 / 92 profiles.
+2. **First provider sandbox pass** with the demo casino (backlog 8.3), then regression
+   automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
+   headless-Chrome checks, and a reduced seeded parity run.
+3. **Hardening follow-ups** — `frame-ancestors` on `/play` from registered operator domains,
+   the iframe `postMessage` contract, failure-path e2e, operator-side HMAC cancel.
 
 ## 7. How to resume
 
@@ -152,8 +161,10 @@ optional signed round APIs now or later; hosting topology (one host / two ports 
 npm run test:client                                   # client gate
 npm run test:rtp-parity                               # seeded 30M parity (~40s on 20 threads)
 cd platform && npx vitest run && npm run dev:seed     # platform tests; consoles + seeded logins
-cd demo-operator && npm run dev                       # demo casino on :4000 (PLATFORM_URL=http://127.0.0.1:8080)
+cd demo-operator && npm run dev                       # demo casino on :4000; back-office at /back-office
+cd platform && npm run check:campaigns                # Campaign Manager in real Chrome
+cd demo-operator && npm run check:back-office         # casino back-office in real Chrome
 ```
 
-Read first: `CLAUDE.md` (invariants), `qa/rtp-certification-report.md` (math),
-`docs/16-demo-casino-blueprint.md` (next phase).
+Read first: `CLAUDE.md` (invariants), `qa/rtp-certification-report.md` (math and open items),
+`docs/16-demo-casino-blueprint.md` (demo casino design).

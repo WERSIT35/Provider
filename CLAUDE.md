@@ -46,6 +46,14 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 - Flow: casino signs `POST /operator/v1/launch` → gets a launch token → player opens `/play?lt=<token>`. See `platform/GUIDE.md` for the click-by-click operator walkthrough and `platform/scripts/e2e-operator.ts` for a working end-to-end example.
 - **Admin consoles:** `/provider` (Provider Control Plane, our admin) and `/admin` (Operator Portal, the casino's admin), shared shell `/console/app.js` served from `src/http/admin-assets.ts` (views: `admin-console-views.ts`, sections: `admin-console-sections.ts`). Login: `src/http/admin-auth.routes.ts` (scrypt password + RFC 6238 TOTP, hand-rolled). **2FA switch `ADMIN_TOTP_REQUIRED`** (`src/config/env.ts`): unset = OFF for `NODE_ENV=local|test` (development), ON for sandbox/staging/production; explicit value wins; staging/production refuse to boot with it off. Don't delete the TOTP code — it is the production path.
 - **Operator Portal / Phase 3 (done):** Round Inspector deep links (`/admin#inspector?round=<ref>`), Player Reports (`/admin/v1/reports/players`, `/admin/v1/players/:id/summary`, tenant-scoped), and **Free Rounds / Campaign Manager**: `src/modules/campaigns/campaign.repository.ts` (campaigns + per-player grants, atomic spin deduction), admin routes `src/http/admin-campaigns.routes.ts` (`/admin/v1/campaigns*`), HMAC operator routes `POST /operator/v1/free-rounds/grant` + `GET /operator/v1/free-rounds/player/:operatorPlayerId`. `round-orchestrator.ts` plays a free round at the grant's bet with no debit; wallet transactions are tagged `FREE_ROUND_BET`; `player_sessions.locked_bet` / `locked_ante` freeze bet + ante mid-feature. Operator-granted free rounds must NOT reuse the engine's `free_spins_left` (that is the scatter-triggered bonus feature and would change RTP). Current status and next phase: `CHECKPOINT.md`.
+- **Campaign Manager UI (done):** `Campaigns` view in both consoles — logic in `src/http/admin-console-campaigns.ts` (spliced into `/console/app.js` via a *function* replacement in `admin-assets.ts`; a string replacement would interpret `$&` / `$'` in the inserted code). Campaign summaries carry `game_code` + a server-computed `state`; `/admin/v1/me` returns effective `permissions` (UI hides write controls without `campaigns.write`). The shell's `esc()` escapes quotes — always use it for values interpolated into HTML, including attributes. **Expiry job** `src/jobs/campaign-expiry.ts` starts on the app's `onReady` (start-up sweep + `CAMPAIGN_EXPIRY_INTERVAL_MS`, default 60s, 0 = start-up only) and flushes its own writes because it runs outside a request.
+
+## The demo casino (`demo-operator/`)
+
+A licensee website that integrates the platform over the wire (Fastify, port 4000; platform on 8080).
+- **Persistence:** SQLite via the built-in `node:sqlite` (Node ≥ 22.13), loaded with `process.getBuiltinModule("node:sqlite")` because Vite/vitest can't resolve the `node:sqlite` import. File `demo-operator/data/casino.sqlite` (`DB_PATH`; git-ignored), WAL, forward-only migrations in `src/db/database.ts` (`PRAGMA user_version`). Tests use `:memory:`.
+- **Wallet ledger:** the signed webhooks (`/wallet/:providerId/{debit,credit,rollback,balance}`) write an **append-only** `wallet_transactions` table (UPDATE/DELETE blocked by triggers): integer minor units, idempotency unique per provider, one rollback per debit (amount + currency from the original). `tx_type` = WAGER / FREE_ROUND_BET / CREDIT / FREE_ROUND_WIN / ROLLBACK; `game_code` + `round_type` come from the webhook body. Free spins credit without a debit — never assume N spins = N debits (tests included).
+- **Back-office** `/back-office` (`src/http/back-office-page.ts`): staff session = opaque token in an HttpOnly SameSite=Strict cookie, only its SHA-256 stored (`src/auth/staff-auth.ts`; creds `CASINO_STAFF_USERNAME` / `CASINO_STAFF_PASSWORD`, default `casino_admin` / `demo123`). Every `/api/admin/*` route is guarded; player responses never include password hashes; provider secrets are masked. The page is served with a per-response nonce CSP — no inline handlers or style attributes; escape every API value. **Verify on Provider** links to `<PROVIDER_PORTAL_URL or the provider's platformUrl>/admin#inspector?round=<ref>`.
 
 ## Commands
 
@@ -72,6 +80,7 @@ npm test           # vitest run (test/*.test.ts)
 npm run test:watch # vitest watch
 npm run e2e        # scripts/e2e-operator.ts (full HMAC operator lifecycle)
 npm run smoke:rtp  # scripts/rtp-smoke.ts
+npm run check:campaigns  # Campaign Manager in real headless Chrome (needs Chrome)
 npm run migrate    # apply migrations/*.sql (needs DATABASE_URL)
 ```
 Run a single platform test: `npx vitest run test/engine.service.test.ts` (or add `-t "test name"`).
@@ -84,6 +93,13 @@ DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run migrate
 DATABASE_URL=postgres://bananax:bananax@127.0.0.1:5432/bananax npm run dev:seed   # idempotent: reuses the demo operator if already seeded
 ```
 When adding a persisted field/table: update the entity, add a new forward-only `migrations/NNNN_*.sql` (don't edit an applied one), the `TABLES` registry in `src/persistence/persistence.ts`, and the relevant store's `save*`/`hydrate` calls.
+
+### Demo casino (`cd demo-operator` first; Node 22.13+)
+```bash
+npm run dev                # :4000 — first run "npm run dev:seed:demo-operator" in platform/ (writes demo-operator/.env)
+npx vitest run             # unit + e2e against an in-process platform
+npm run check:back-office  # back-office in real headless Chrome (needs Chrome)
+```
 
 ## Deployment
 

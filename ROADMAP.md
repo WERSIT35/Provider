@@ -58,7 +58,7 @@ Move forward only when exit criteria are complete.
   - Profile-driven RTP modes
   - Configurable rule payload with strict runtime validation
 
-## Completed Milestones (2026-10-04)
+## Completed Milestones (2026-10-04 – 2026-10-05)
 
 - **Cinematic client overhaul (Vault 20K): complete.** Lumina Games rebrand, Pragmatic-style
   CSS-grid shell, top bar removed + ticker state machine, per-symbol rigid-body drops (no jelly,
@@ -74,13 +74,20 @@ Move forward only when exit criteria are complete.
   record `engine_version` + `rules_hash`; seeded statistical parity test. Lab report:
   [qa/rtp-certification-report.md](qa/rtp-certification-report.md) — base 96.36%, buy 96.41%,
   ante 96.70% (pooled). Open before submission: O1–O4 in CHECKPOINT.md §5.
+- **Demo Casino integration: complete (2026-10-05, commits `195c58e`, `12c4075`).**
+  `demo-operator/` on SQLite with an append-only webhook ledger, staff-authenticated
+  back-office with Spin history and a **Verify on Provider** deep link into the Operator
+  Portal Round Inspector; wallet webhooks carry `gameCode` + `roundType`.
+- **Campaign Manager UI + expiry job: complete (2026-10-05, commit `d84ac8f`).** Operator
+  Portal create / grant / cancel with bets locked to allowed bets and role-aware controls;
+  background sweep expires lapsed free-round grants.
 
 Details, verification results and open items: [CHECKPOINT.md](CHECKPOINT.md).
 
 ## Immediate Next Action
 
-**Demo Casino integration** — [16 Demo Casino Blueprint](docs/16-demo-casino-blueprint.md):
-staff login on the casino back-office first, then webhook enrichment, spin history, and the
-"Verify on provider" bridge into the Operator Portal. In parallel, close the certification
-report's open items O1–O4 before lab submission. Keep docs aligned with runtime behavior after
-each major change.
+**Lab submission readiness:** close the certification report's open items O1–O4
+(CHECKPOINT.md §5): declare the ante RTP, show scaled pays in the paytable, rewrite the player
+rules copy, and report the 94 / 92 profiles. Then the first provider sandbox pass with the demo
+casino and CI regression automation. Keep docs aligned with runtime behavior after each major
+change.
