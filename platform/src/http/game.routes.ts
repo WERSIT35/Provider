@@ -37,6 +37,21 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
         allowed_bets: session.allowed_bets,
         balance,
         free_spins_left: session.free_spins_left,
+        // Operator-granted free rounds waiting for this player (Campaign Manager).
+        free_rounds: app.container.campaigns
+          .available({
+            operator_id: session.operator_id,
+            operator_player_id: session.operator_player_id,
+            game_id: session.game_id,
+            currency: session.currency
+          })
+          .map(({ grant, campaign }) => ({
+            campaign_id: campaign.id,
+            name: campaign.name,
+            bet_amount: campaign.bet_amount,
+            spins_remaining: grant.spins_remaining,
+            valid_to: campaign.valid_to
+          })),
         game: { code: session.game_code, math_config_id: session.math_config_id }
       };
     } catch (err) {
@@ -72,7 +87,8 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
         balance: outcome.balance,
         free_spins_left: outcome.free_spins_left,
         settlement: outcome.settlement,
-        idempotent_replay: outcome.idempotent_replay
+        idempotent_replay: outcome.idempotent_replay,
+        free_round: outcome.free_round
       };
     } catch (err) {
       return sendDomainError(reply, err, req.id);

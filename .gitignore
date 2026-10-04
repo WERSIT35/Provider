@@ -8,3 +8,6 @@ npm-debug.log*
 # Claude local settings - contains sensitive tokens and local paths
 .claude/settings.local.json
 .claude/settings.*.json
+
+# demo-operator SQLite database (players, wallet ledger, staff sessions)
+demo-operator/data/

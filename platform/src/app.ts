@@ -5,6 +5,8 @@ import healthRoutes from "./modules/health/health.routes";
 import operatorRoutes from "./http/operator.routes";
 import gameRoutes from "./http/game.routes";
 import adminRoutes from "./http/admin.routes";
+import adminCampaignRoutes from "./http/admin-campaigns.routes";
+import { startCampaignExpiry, type CampaignExpiryJob } from "./jobs/campaign-expiry";
 import adminAuthRoutes from "./http/admin-auth.routes";
 import adminAccountRoutes from "./http/admin-accounts.routes";
 import adminAssetsRoutes from "./http/admin-assets";
@@ -31,6 +33,8 @@ declare module "fastify" {
 export interface BuildAppDeps {
   logger: FastifyBaseLogger;
   container: Container;
+  /** Free-round grant expiry sweep interval (default 60s; 0 = start-up sweep only). */
+  campaignExpiryIntervalMs?: number;
 }
 
 /**
@@ -60,6 +64,19 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   });
 
   app.decorate("container", deps.container);
+
+  // Background expiry of lapsed free-round grants: starts when the app is ready,
+  // stops when it closes.
+  let expiryJob: CampaignExpiryJob | null = null;
+  app.addHook("onReady", async () => {
+    expiryJob = startCampaignExpiry({
+      campaigns: deps.container.campaigns,
+      persistence: deps.container.persistence,
+      logger: app.log,
+      intervalMs: deps.campaignExpiryIntervalMs ?? 60_000
+    });
+  });
+  app.addHook("onClose", async () => expiryJob?.stop());
 
   // Durable write-through: after handling each request, flush any queued mutations
   // to Postgres in one transaction. No-op when persistence is disabled (in-memory).
@@ -96,6 +113,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   app.register(adminAuthRoutes);
   app.register(adminAccountRoutes);
   app.register(adminRoutes);
+  app.register(adminCampaignRoutes);
 
   return app;
 }

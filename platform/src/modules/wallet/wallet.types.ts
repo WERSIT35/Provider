@@ -11,15 +11,48 @@ export interface WalletContext {
   operatorId: string;
 }
 
-export interface DebitArgs {
+/** What kind of round a money move belongs to (sent to the casino in the webhook body). */
+export type RoundType = "paid" | "free_spin" | "buy" | "free_round";
+
+interface MoneyMoveArgs {
   idempotencyKey: string;
   roundRef: string;
   operatorPlayerId: string;
   amount: number;
   currency: string;
+  /** Game the round belongs to, so the casino ledger can attribute it without calling us. */
+  gameCode?: string;
+  /** paid (cash spin) · free_spin (engine bonus spin, never debited) · buy · free_round (operator grant). */
+  roundType?: RoundType;
 }
 
-export type CreditArgs = DebitArgs;
+/**
+ * Operator-granted free rounds are tagged explicitly so the casino can tell them
+ * apart from cash play and reconcile its promotional liability by campaign:
+ *   • FREE_ROUND_BET — amount is always 0.00; the player is not charged.
+ *   • FREE_ROUND_WIN — the win credited from a free round.
+ * Both carry campaignId. Untagged calls (txType omitted) are ordinary cash
+ * bets/wins, so the existing webhook payload is unchanged for them.
+ */
+export type FreeRoundDebitType = "FREE_ROUND_BET";
+export type FreeRoundCreditType = "FREE_ROUND_WIN";
+
+export interface DebitArgs extends MoneyMoveArgs {
+  txType?: FreeRoundDebitType;
+  campaignId?: string;
+}
+
+export interface CreditArgs extends MoneyMoveArgs {
+  txType?: FreeRoundCreditType;
+  campaignId?: string;
+}
+
+/** A tagged call must be internally consistent; never let a "free" bet move money. */
+export function assertFreeRoundArgs(args: DebitArgs | CreditArgs): void {
+  if (!args.txType) return;
+  if (!args.campaignId) throw new Error("FREE_ROUND_CAMPAIGN_REQUIRED");
+  if (args.txType === "FREE_ROUND_BET" && args.amount !== 0) throw new Error("FREE_ROUND_BET_MUST_BE_ZERO");
+}
 
 export interface RollbackArgs {
   idempotencyKey: string;

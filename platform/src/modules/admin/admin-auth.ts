@@ -33,7 +33,8 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "rounds.write",
     "disputes.read",
     "disputes.resolve",
-    "players.read"
+    "players.read",
+    "campaigns.read"
   ]),
   provider_read_only: new Set([
     "rounds.read",
@@ -44,7 +45,8 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "disputes.read",
     "players.read",
     "credentials.read",
-    "webhook.read"
+    "webhook.read",
+    "campaigns.read"
   ]),
   // Operator admins run their own tenant: read their data, verify rounds, toggle
   // their own games on/off (and configure their own lobby display + wallet
@@ -63,7 +65,9 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "credentials.read",
     "credentials.rotate",
     "webhook.read",
-    "webhook.write"
+    "webhook.write",
+    "campaigns.read",
+    "campaigns.write"
   ]),
   operator_finance: new Set([
     "reports.read",
@@ -72,10 +76,17 @@ const ROLE_PERMISSIONS: Record<AdminRole, Set<string>> = {
     "rounds.verify",
     "players.read",
     "disputes.read",
-    "disputes.raise"
+    "disputes.raise",
+    "campaigns.read",
+    "campaigns.write"
   ]),
-  operator_viewer: new Set(["rounds.read", "reports.read", "players.read", "disputes.read"])
+  operator_viewer: new Set(["rounds.read", "reports.read", "players.read", "disputes.read", "campaigns.read"])
 };
+
+/** The effective permission list for a role ("*" = everything), for UIs to hide what a role can't do. */
+export function permissionsOf(claims: AdminClaims): string[] {
+  return Array.from(ROLE_PERMISSIONS[claims.role] ?? []);
+}
 
 export function can(claims: AdminClaims, permission: string): boolean {
   const perms = ROLE_PERMISSIONS[claims.role];

@@ -39,12 +39,25 @@ interface TableSpec {
   rename: Record<string, string>;
   /** column used to order rows on load (seq for the ledgers, else created_at). */
   orderBy?: string;
+  /**
+   * Monotonic version column: an upsert only overwrites a stored row whose version is
+   * LOWER, so a stale or re-queued flush can never roll a row back (e.g. resurrect a
+   * consumed free round). The store bumps it on every mutation.
+   */
+  version?: string;
+  /**
+   * Nullable columns added AFTER rows already existed in a hash-chained table. On load
+   * a NULL is left off the object entirely (not set to null), because the payload
+   * hash covers every key: a pre-existing cash round must rehydrate with exactly the
+   * keys it was hashed with, or the whole chain would read as tampered.
+   */
+  omitNull: Set<string>;
 }
 
 function spec(
   columns: string[],
   pk: string[],
-  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string } = {}
+  opts: { jsonb?: string[]; appendOnly?: boolean; rename?: Record<string, string>; orderBy?: string; version?: string; omitNull?: string[] } = {}
 ): TableSpec {
   return {
     columns,
@@ -52,7 +65,9 @@ function spec(
     jsonb: new Set(opts.jsonb ?? []),
     appendOnly: Boolean(opts.appendOnly),
     rename: opts.rename ?? {},
-    orderBy: opts.orderBy
+    orderBy: opts.orderBy,
+    version: opts.version,
+    omitNull: new Set(opts.omitNull ?? [])
   };
 }
 
@@ -85,19 +100,19 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "updated_at" }
   ),
   player_sessions: spec(
-    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "created_at"],
+    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "created_at"],
     ["id"],
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),
   rounds: spec(
-    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "prev_hash", "payload_hash", "chain_hash", "created_at"],
+    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "rules_hash", "prev_hash", "payload_hash", "chain_hash", "created_at"],
     ["id"],
-    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq" }
+    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version", "rules_hash"] }
   ),
   wallet_transactions: spec(
-    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "created_at"],
+    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "created_at"],
     ["id"],
-    { appendOnly: true, orderBy: "seq" }
+    { appendOnly: true, orderBy: "seq", omitNull: ["campaign_id"] }
   ),
   round_adjustments: spec(
     ["id", "seq", "round_ref", "operator_id", "operator_player_id", "kind", "effective_status", "reason", "actor_id", "wallet_tx_refs", "created_at"],
@@ -118,6 +133,16 @@ const TABLES: Record<string, TableSpec> = {
     ["id", "username", "scope", "operator_id", "role", "password_hash", "totp_secret", "status", "must_set_password", "totp_enrolled", "failed_attempts", "locked_until", "created_at"],
     ["id"],
     { orderBy: "created_at" }
+  ),
+  campaigns: spec(
+    ["id", "operator_id", "game_id", "name", "currency", "bet_amount", "total_spins", "valid_from", "valid_to", "status", "created_by", "version", "created_at"],
+    ["id"],
+    { orderBy: "created_at", version: "version" }
+  ),
+  player_campaigns: spec(
+    ["id", "campaign_id", "operator_id", "operator_player_id", "spins_granted", "spins_remaining", "total_won", "status", "version", "created_at", "updated_at"],
+    ["id"],
+    { orderBy: "created_at", version: "version" }
   ),
   wallet_balances: spec(["balance_key", "amount"], ["balance_key"]),
   wallet_applied: spec(["idempotency_key", "result_jsonb"], ["idempotency_key"], { jsonb: ["result_jsonb"], rename: { result_jsonb: "result" } }),
@@ -182,6 +207,7 @@ export class PostgresPersistence implements Persistence {
     } else {
       const updates = t.columns.filter((c) => !t.pk.includes(c)).map((c) => `${c} = EXCLUDED.${c}`).join(", ");
       onConflict = updates ? `DO UPDATE SET ${updates}` : "DO NOTHING";
+      if (updates && t.version) onConflict += ` WHERE ${table}.${t.version} < EXCLUDED.${t.version}`;
     }
     const text = `INSERT INTO ${table} (${cols}) VALUES (${placeholders.join(", ")}) ON CONFLICT (${conflict}) ${onConflict}`;
     return { text, values };
@@ -194,7 +220,10 @@ export class PostgresPersistence implements Persistence {
     const res = await this.pool.query(`SELECT ${t.columns.join(", ")} FROM ${table}${order}`);
     return res.rows.map((dbRow: Record<string, unknown>) => {
       const obj: Record<string, unknown> = {};
-      for (const col of t.columns) obj[fieldForColumn(t, col)] = dbRow[col];
+      for (const col of t.columns) {
+        if (dbRow[col] === null && t.omitNull.has(col)) continue;
+        obj[fieldForColumn(t, col)] = dbRow[col];
+      }
       return obj;
     });
   }

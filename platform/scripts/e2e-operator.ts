@@ -50,7 +50,7 @@ async function main(): Promise<void> {
 
   hr("STEP 2 · PROVIDER assign your game with an APPROVED RTP config");
   const game = container.mgmt.registerGame({ code: "bananax", title: "Banana X" });
-  let mc = container.mgmt.createMathConfig({ game_id: game.id, version: "3.0.0", rtp_profile_key: "bananax", theoretical_rtp: 96.38, config_hash: "sha256:demo" });
+  let mc = container.mgmt.createMathConfig({ game_id: game.id, version: "3.1.0", rtp_profile_key: "bananax", theoretical_rtp: 96.38, config_hash: `sha256:${container.engine.rulesHash()}` });
   mc = container.mgmt.approveMathConfig(container.mgmt.submitMathConfigForReview(mc.id).id, "math-lead");
   container.mgmt.assignGame({ operator_id: op.id, game_id: game.id, math_config_id: mc.id, currency: "GEL", allowed_bets: [1, 5, 10, 50, 500] });
   log(`game 'bananax' assigned to LuckySpin @ RTP ${mc.theoretical_rtp}% (config ${mc.status})`);

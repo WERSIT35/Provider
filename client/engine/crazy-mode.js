@@ -52,6 +52,13 @@
     maxCells: 8
   };
 
+  // Per-cell scatter chance (normal play). BASE sets the natural trigger rate;
+  // the ante rate is calibrated so the ante bet (cost x features.ante_bet.multiplier)
+  // returns the profile's ante RTP; FREE_SPIN sets the retrigger rate inside the bonus.
+  const BASE_SCATTER_CHANCE = 0.020;
+  const ANTE_SCATTER_CHANCE = 0.02192;
+  const FREE_SPIN_SCATTER_CHANCE = 0.0086;
+
   function getSymbolWeightOverrides(crazyMode) {
     return crazyMode ? CRAZY_SYMBOL_WEIGHTS : null;
   }
@@ -70,7 +77,11 @@
         : anteEnabled ? CRAZY_OVERRIDES.multiChanceAnte : CRAZY_OVERRIDES.multiChanceBase;
       return { scatterChance, multiChance };
     }
-    const scatterChance = Math.min(0.045, anteEnabled ? 0.0172 : 0.0086);
+    // Ante only raises the BASE-game trigger chance; free spins play identically
+    // whether or not the feature was bought into with ante on.
+    const scatterChance = isFreeSpin
+      ? FREE_SPIN_SCATTER_CHANCE
+      : anteEnabled ? ANTE_SCATTER_CHANCE : BASE_SCATTER_CHANCE;
     const multiChance = isFreeSpin ? 0.014 : anteEnabled ? 0.0072 : 0.0042;
     return { scatterChance, multiChance };
   }
@@ -88,7 +99,7 @@
       };
     }
     return {
-      basePayoutScaler: Number(profile?.payout_scaler ?? profile?.base_payout_scaler ?? 1.5),
+      basePayoutScaler: Number(profile?.payout_scaler ?? 1.5),
       freeSpinPayoutScaler: Number(profile?.free_spin_payout_scaler ?? profile?.payout_scaler ?? 1.5)
     };
   }

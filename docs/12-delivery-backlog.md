@@ -25,8 +25,8 @@ Current statuses below represent **documentation and planning completion**, not 
    - [x] Rules draft v1 (`DONE`)
 4. Math/RNG
    - [x] Paytable + reel strips v1 (`DONE`)
-   - [ ] 10M spin simulation run (`TODO`)
-   - [ ] RTP/variance validation report (`TODO`)
+   - [x] 10M spin simulation run (`DONE` — 30M/200M seeded runs, `qa/data/rtp-certification/`)
+   - [x] RTP/variance validation report (`DONE` — `qa/rtp-certification-report.md`)
 5. Backend
    - [x] Session API (`DONE`)
    - [x] Bet/settlement idempotency (`DONE`)

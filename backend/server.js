@@ -79,9 +79,6 @@ function getRtpProfileByGameId(gameId) {
     ante_bet_percent: Number(source.ante_bet_percent ?? source.theoretical_percent ?? 96),
     buy_free_spins_percent: Number(source.buy_free_spins_percent ?? source.theoretical_percent ?? 96),
     payout_scaler: Number(source.payout_scaler ?? gameRules.rtp?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER),
-    base_payout_scaler: Number(
-      source.base_payout_scaler ?? source.payout_scaler ?? gameRules.rtp?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
-    ),
     free_spin_payout_scaler: Number(
       source.free_spin_payout_scaler ?? source.payout_scaler ?? gameRules.rtp?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
     ),
@@ -304,8 +301,10 @@ function payoutByCount(payoutMap, count) {
   return 0;
 }
 
+// Scatter tiers are lower bounds: 7+ scatters pays the top ("6") tier (mirrors client/engine/payouts.js).
 function scatterPayoutByCount(count) {
-  return Number(SCATTER_PAYOUTS[String(count)] || 0);
+  const tier = Object.keys(SCATTER_PAYOUTS).map(Number).filter((n) => Number.isFinite(n)).sort((a, b) => b - a).find((t) => count >= t);
+  return tier === undefined ? 0 : Number(SCATTER_PAYOUTS[String(tier)] || 0);
 }
 
 function evaluateWaysWin(matrix, betAmount) {
@@ -435,7 +434,7 @@ function injectForcedMultiplier(matrix, multipliers, forcedValue) {
 function evaluateSpinRound(session, betAmount, options = {}) {
   const rtpProfile = options.rtp_profile || getRtpProfileByGameId(options.game_id || session?.gameId);
   const basePayoutScaler = Number(
-    rtpProfile?.payout_scaler ?? rtpProfile?.base_payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
+    rtpProfile?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
   );
   const freeSpinPayoutScaler = Number(
     rtpProfile?.free_spin_payout_scaler ?? rtpProfile?.payout_scaler ?? DEFAULT_RTP_PAYOUT_SCALER
@@ -457,7 +456,8 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     session.freeSpinsLeft -= 1;
   }
 
-  const scatterChance = Math.min(0.045, anteEnabled ? 0.0172 : 0.0086);
+  // Base / ante / free-spin scatter rates (mirrors client/engine/crazy-mode.js).
+  const scatterChance = isFreeSpin ? 0.0086 : anteEnabled ? 0.02192 : 0.020;
   const multiChance = isFreeSpin ? 0.014 : anteEnabled ? 0.0072 : 0.0042;
   let { matrix, multipliers } = createMatrixWithMetaRates(scatterChance, multiChance);
   if (!isFreeSpin && forceFreeSpinTrigger) {
@@ -531,14 +531,13 @@ function evaluateSpinRound(session, betAmount, options = {}) {
     const prevPersistent = Number.isFinite(Number(session.freeSpinPersistentMultiplier))
       ? Number(session.freeSpinPersistentMultiplier)
       : 0;
-    if (sequenceWin > 0) {
+    // Global multiplier bank: applies only to a winning sequence on which a
+    // multiplier appeared (mirrors client/engine/spin-engine.js).
+    if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
       multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
       const nextPersistent = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
       session.freeSpinPersistentMultiplier = nextPersistent;
-      multiplierApplied = Math.max(1, nextPersistent);
-    } else {
-      multiplierGainApplied = 0;
-      multiplierApplied = Math.max(1, prevPersistent);
+      multiplierApplied = nextPersistent;
     }
   } else if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
     multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));

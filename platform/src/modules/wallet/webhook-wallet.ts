@@ -10,7 +10,8 @@ import {
   type RollbackArgs,
   type WalletTxResult,
   type WalletRollbackResult,
-  WalletDeclinedError
+  WalletDeclinedError,
+  assertFreeRoundArgs
 } from "./wallet.types";
 
 /**
@@ -37,11 +38,15 @@ export class WebhookWallet implements WalletAdapter {
     return this.call<Money>(ctx, "balance", args);
   }
 
+  // Free rounds reach the casino as the same debit/credit calls with
+  // txType FREE_ROUND_BET (amount 0.00) / FREE_ROUND_WIN + campaignId in the body.
   async debit(ctx: WalletContext, args: DebitArgs): Promise<WalletTxResult> {
+    assertFreeRoundArgs(args);
     return this.call<WalletTxResult>(ctx, "debit", args);
   }
 
   async credit(ctx: WalletContext, args: CreditArgs): Promise<WalletTxResult> {
+    assertFreeRoundArgs(args);
     return this.call<WalletTxResult>(ctx, "credit", args);
   }
 

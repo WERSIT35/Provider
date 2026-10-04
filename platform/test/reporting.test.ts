@@ -31,13 +31,17 @@ describe("reporting + reconciliation", () => {
     wallet.setBalance("p_r", "GEL", 1000);
     const { c, op, session } = setup(wallet);
 
+    // A spin can trigger the bonus; its free spins are rounds with no bet charged.
+    let charged = 0;
     for (let i = 0; i < 25; i += 1) {
-      await c.orchestrator.spin(session.id, { bet_amount: 1, idempotency_key: `r${i}` });
+      const out = await c.orchestrator.spin(session.id, { bet_amount: 1, idempotency_key: `r${i}` });
+      charged += out.bet_charged;
     }
 
     const summary = c.reporting.roundsSummary(op.id);
     expect(summary.rounds).toBe(25);
-    expect(summary.total_bet).toBeCloseTo(25, 2);
+    expect(charged).toBeGreaterThanOrEqual(1);
+    expect(summary.total_bet).toBeCloseTo(charged, 2);
     expect(summary.ggr).toBeCloseTo(summary.total_bet - summary.total_win, 2);
 
     const rtp = c.reporting.rtpReport(op.id);

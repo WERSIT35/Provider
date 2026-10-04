@@ -38,6 +38,13 @@ export interface DemoOperatorConfig {
   currency: string;
   sessionSecret: string;
   startingBalance: number;
+  /** SQLite file for players, providers, the wallet ledger and staff sessions. Unset = in-memory. */
+  dbPath?: string;
+  /** Back-office staff login (demo: one account from env; defaults casino_admin / demo123). */
+  staffUsername?: string;
+  staffPassword?: string;
+  /** Operator Portal base URL for the "Verify on provider" deep link. Defaults to platformUrl. */
+  providerPortalUrl?: string;
 }
 
 function required(name: string): string {
@@ -64,6 +71,10 @@ export function loadConfig(): DemoOperatorConfig {
     gameCode: process.env.GAME_CODE ?? "bananax",
     currency: process.env.CURRENCY ?? "GEL",
     sessionSecret: process.env.SESSION_TOKEN_SECRET ?? "dev-demo-operator-session-secret",
-    startingBalance: Number(process.env.STARTING_BALANCE ?? 1000)
+    startingBalance: Number(process.env.STARTING_BALANCE ?? 1000),
+    dbPath: process.env.DB_PATH ?? join(__dirname, "..", "data", "casino.sqlite"),
+    staffUsername: process.env.CASINO_STAFF_USERNAME ?? "casino_admin",
+    staffPassword: process.env.CASINO_STAFF_PASSWORD ?? "demo123",
+    providerPortalUrl: process.env.PROVIDER_PORTAL_URL
   };
 }

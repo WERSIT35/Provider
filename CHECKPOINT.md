@@ -1,13 +1,17 @@
-# CHECKPOINT — 2026-10-02
+# CHECKPOINT — 2026-10-05
 
-Where the work stands, the decisions behind it, and what comes next. Written at the end of the
-long client-overhaul session so nothing is lost. Branch: `fix/board-aspect-ratio-and-asset-hardening`.
+Where the work stands, the decisions behind it, and what comes next. Branch:
+`fix/board-aspect-ratio-and-asset-hardening`.
+
+**Milestone status:** the cinematic client overhaul (§1), Platform Phase 3 (§1b), **Phase 4,
+math certification (§1c)**, the **Demo Casino integration** and the **Campaign Manager UI +
+expiry job (§1d)** are complete; the branch is merged to `main`. The certified math build is
+commit `6d75826` (engine 1.2.0, rules 3.1.0); the lab report is
+`qa/rtp-certification-report.md`. Before lab submission, open items O1–O4 (§5) must be closed.
 
 ---
 
-## 1. What shipped this session (client: Vault 20K UI + motion)
-
-Commits, oldest first:
+## 1. Client: Vault 20K UI + motion (shipped 2026-10-02)
 
 | Commit | What |
 |--------|------|
@@ -17,108 +21,150 @@ Commits, oldest first:
 | `d87522a` | Pragmatic-style player shell (CSS named-area grid), vector Spin/Buy/Ante, heavy drops |
 | `b05c1f6` | Input layer: tap vs hold, Space, modal system (tabs, focus trap, Esc), HUD ticker |
 | `6e9b1c9` | Rigid physics + AAA spin lifecycle (instant lock, 500ms autoplay gap, settle guard) |
-| `001a3c7` | Scatter pings + live count, reel anticipation, trigger lock-on, Option B suppression |
+| `001a3c7` | Scatter pings + live count, reel anticipation, trigger lock-on |
 | `25f103b` | 44px touch targets; frame cadence 24→30fps fix + governor threshold fix |
 | `ba7ae35` | Art originals moved to `art-src/`, dead UI plates dropped, inspector symbol URL fix |
-| `b84f283` | **Final motion + UI pass:** no shake anywhere, `ShardEmitter` shatter, per-symbol independent drops, no wind-up, reel inertia groups, micro-squash + glints, tumble vacuum + momentum, fast-stop zip, reel mask, **top bar removed + ticker state machine** |
+| `b84f283` | Final motion + UI pass: no shake, `ShardEmitter`, per-symbol independent drops, no wind-up, reel inertia, tumble vacuum + momentum, fast-stop zip, reel mask, top bar removed + ticker state machine |
 
-Then (the "checkpoint" commits): platform/demo-operator work + dev 2FA default, docs rewrite,
-probes saved into `tools/probes/`, this file.
+## 1b. Platform Phase 3: Operator Portal + Free Rounds (shipped 2026-10-03/04)
+
+| Commit | Phase | What |
+|--------|-------|------|
+| `e46dcf9` | 3A + 3B | Round Inspector deep link `/admin#inspector?round=<ref>` + verification banner; Player Reports (`/admin/v1/reports/players`, `/admin/v1/players/:id/summary`, tenant-scoped, CSV) |
+| `ba3c31b` | 3C | Campaign data model (`src/modules/campaigns/campaign.repository.ts`, atomic grant deduction), `0002_campaigns.sql` |
+| `46b1249` | 3C | Admin campaign routes, orchestrator free-round path (no debit), `FREE_ROUND_BET` tagging (`0003`), mid-feature `locked_bet` / `locked_ante` (`0004`) |
+| `4e413c6` | 3D | HMAC `POST /operator/v1/free-rounds/grant`, `GET /operator/v1/free-rounds/player/:id`; client free-rounds modal + ticker countdown |
+
+## 1c. Phase 4: math certification (shipped 2026-10-04/05)
+
+| Commit | What |
+|--------|------|
+| `a4ea4f5` | Engine 1.0.0. Near-miss fabrication removed (`near-miss.js` deleted). Free-spin multiplier **bank** applies only to a winning sequence on which a multiplier landed. 20,000x cap covers the **whole feature round** (trigger spin seeds `bonusRoundWin`); the platform now carries `player_sessions.bonus_round_win` between spins (`0006`) — before this every RGS free spin was capped on its own. Rounds record `engine_version` (`0005`); verification is version-aware. `base_payout_scaler` removed. `tools/rtp-parity.js` rewritten (seeded xoshiro128**, 20 fixed shards, iid samples = paid round incl. bonus, PASS iff \|Δ\| ≤ 3·SE and SE ≤ 0.25%, `MODE=buy`, scaler overrides). |
+| `14ff281` | Engine 1.1.0. Scatter chance split by spin type: base **0.020** (natural trigger ~1 in 248), ante **0.02192** (~1 in 182), free spins **0.0086**. Recalibrated scalers (payout / free-spin): 96.38 → **0.9807 / 3.8058**, 94.40 → **0.9605 / 3.7276**, 92.38 → **0.9399 / 3.6478**. Rounds record `rules_hash` (SHA-256 of canonical rules JSON, `0007`); a different engine version **or** rules hash replays as *inconclusive*, never *tampered*. Four tests fixed that assumed spins never trigger the bonus. Parity defaults 30M (4M buy). |
+| `6d75826` | Engine 1.2.0, rules **3.1.0**. Scatter tiers are lower bounds (7+ scatters pay the 6+ tier; was 0). Ante declared **96.59%**. Seed/e2e scripts register math config 3.1.0 with `config_hash` = `sha256:` + rules hash. Certification report + raw data in `qa/`. |
+
+**How the gap was actually found:** a 24M-sample side-by-side showed `client/engine/` and
+`backend/server.js` statistically identical (95.77% both). There was no engine bug; the scalers
+were stale after the earlier multiplier fix, and the old ±0.20% tolerance at 1M spins was half a
+standard error. Calibration is linear in the two scalers: measure coefficients at scaler = 1
+on seed `calib`, solve per profile, then raise the free-spin scaler ~0.16% for the cap's trim.
+Never calibrate on the default seed.
+
+**Certified results (96.38 profile, `qa/rtp-certification-report.md`):**
+
+| Mode | 30M (seed `vault20k`) | Pooled with 200M independent | Declared |
+|---|---|---|---|
+| Base | 96.535% ± 0.202 | 96.359% ± 0.073 | 96.38 |
+| Ante | 96.935% ± 0.201 | 96.698% ± 0.070 | 96.59 |
+| Buy (100x) | 96.407% ± 0.026 | — | 96.38 |
+
+Hit frequency 24.18%, bonus 1 in 247 (ante 1 in 183), average bonus 89.5x, volatility index
+21.7, cap hit by 52 of 30M buys, each at exactly 20,000.00x, never exceeded.
+
+## 1d. Demo Casino + Campaign Manager (shipped 2026-10-05)
+
+| Commit | What |
+|--------|------|
+| `195c58e` | **demo-operator backend.** SQLite via built-in `node:sqlite` (`demo-operator/data/casino.sqlite`, WAL, forward-only migrations; Node ≥ 22.13): players, providers, append-only `wallet_transactions` (minor units, per-provider idempotency, single rollback per debit), `staff_sessions`. Webhooks recorded as WAGER / FREE_ROUND_BET / CREDIT / FREE_ROUND_WIN / ROLLBACK with game, round type and campaign. Staff auth on `/api/admin/*` (config creds, default `casino_admin` / `demo123`; opaque token in an HttpOnly SameSite=Strict cookie, SHA-256 stored; logout revokes; failed-login throttle). `GET /api/admin/rounds` with a provider `verifyUrl`. Fixed leaks (player password hashes, raw provider secrets). **Platform:** wallet webhooks carry `gameCode` + `roundType`. |
+| `12c4075` | **Casino back-office UI** (`/back-office`): sign-in view, Spin history (timestamp, player, game, round type, bet, win) with **Verify on Provider** → Operator Portal Round Inspector (new tab, noopener/noreferrer); Players / Transactions / Providers. All values escaped (closed a stored-XSS path via player emails); nonce CSP, `frame-ancestors 'none'`, no-store, no-referrer. `npm run check:back-office` (headless Chrome, 20 checks). |
+| `d84ac8f` | **Campaign Manager UI** in `/admin` (and `/provider`): campaign table with server-side state, players drawer, create dialog (bet list locked to the game's allowed bets), grant dialog (duplicates skipped), cancel with confirm; write controls only for `campaigns.write` (from `/admin/v1/me` `permissions`). **Background expiry job** `src/jobs/campaign-expiry.ts`: start-up + interval sweep (`CAMPAIGN_EXPIRY_INTERVAL_MS`, default 60s, 0 = start-up only), flushes its own writes, never stacks. Console `esc()` now escapes quotes (attribute-injection hardening). `npm run check:campaigns` (headless Chrome, 25 checks). |
+
+User decisions for this phase: SQLite for demo-operator; no signed round APIs for now (webhooks
++ the visual deep-link bridge only); two localhost ports (platform :8080, casino :4000).
 
 ## 2. Rules the user set (keep them)
 
-- **`client/engine/` is sacred.** Presentation never edits it. Visuals are a pure function of the
-  payload; `Math.random()` for visuals only; never `SlotEngine.RNG`.
-- **No screen/board shake, ever** ("literally hurts the eyes and feels cheap"). Impact = local
-  light, particles, audio.
-- **No upward wind-up** before drops ("feels unnatural"). Gravity from the press.
-- **Per-symbol independence**, not column blocks: bottom-up rat-a-tat landings.
-- **No top bar.** `#psTicker` is the only message line; WIN holds until the next spin.
-- **Zero layout thrash**; overlays outside the flow; 60fps without GC spikes.
-- Internal ids stay `bananax` (game code, RTP keys, storage keys, DB names). Display name only
-  changed. demo-operator keeps its folder name; display name "Lumina Sandbox Casino". Board 6×5.
-- Near-miss: **Option B** (client suppresses anticipation on engine-fabricated teases). Option C
-  (engine switch + lab review) is the user's call.
-- The user reviews code before commits and approves each step.
+- **`client/engine/` is sacred for presentation work.** Visuals are a pure function of the
+  payload; `Math.random()` for visuals only; never `SlotEngine.RNG`. Math changes go in the
+  engine, mirrored in `backend/server.js`, and **bump `ENGINE_VERSION`** when a seed would
+  resolve differently.
+- **No screen/board shake, ever.** No upward wind-up. Per-symbol independent drops. No top
+  bar; `#psTicker` is the only message line. Zero layout thrash; 60fps without GC spikes.
+- Internal ids stay `bananax`. Display name Vault 20K / Lumina Games. Board 6×5.
+- **No engineered near-misses** (Option C, done). Every board is RNG-natural.
+- **Math rulings (2026-10-04/05):** multiplier bank rule as in §1c; buy feature stays at 100x
+  (bonus buffed instead); ante stays 1.25x and triggers ~1.36x the base rate (calibrated to its
+  RTP, not 2x); ante RTP is **declared** (96.59%), not tuned down; lower profiles stay
+  **94.40 / 92.38**; cap covers the whole round.
+- The user reviews code before commits and approves each step; the user names commit messages.
 
-## 3. Platform changes in this checkpoint
+## 3. Platform state worth knowing
 
-- **Admin 2FA off for development.** `ADMIN_TOTP_REQUIRED` (`platform/src/config/env.ts`): unset
-  = OFF for `NODE_ENV=local|test`, ON for sandbox/staging/production; explicit value wins;
-  staging/production refuse to boot with it off. TOTP code untouched. Verified live:
-  `admin` / `change-me-admin` → `provider_super_admin` session.
-- The user's own in-progress work committed alongside: production env guards + `env.test.ts`,
-  `platform/Dockerfile` + `.dockerignore`, `verify:release` / `audit:prod` / `operator:launch`
-  scripts and the CI `release-check` job, Fastify logger API update, demo-operator multi-provider
-  admin (`ProviderStore`, `/admin` routes, `/api/play/:provider/:game`,
-  `/wallet/:provider/*`), `tools/operator-launch.js`.
-- `demo-operator/test/e2e.test.ts`: updated for the multi-provider API and fixed (the
-  `ProviderStore` copied the webhook secret before the test set the real one →
-  `SIGNATURE_INVALID`). **Note:** three of its lines were reconstructed after an accidental
-  `git checkout` of that file; worth a quick review.
+- Admin 2FA: `ADMIN_TOTP_REQUIRED` unset = OFF for `NODE_ENV=local|test`, ON elsewhere;
+  staging/production refuse to boot with it off. Dev login `admin` / `change-me-admin`.
+- Migrations `0001`–`0007` are forward-only; new hash-chained round columns must be
+  `omitNull` and only set when present (see `persistence.ts` `TABLES`).
+- Round records carry `engine_version`, `rules_hash`, `pre_state.bonus_round_win`.
+- `demo-operator/test/e2e.test.ts`: three lines were reconstructed after an accidental
+  `git checkout` (2026-10-02); still worth a quick review.
 
-## 4. Status (2026-10-02)
+## 4. Status (re-verified 2026-10-05 on `d84ac8f`)
 
 | Check | Result |
 |-------|--------|
-| `npm run test:client` | PASS |
-| platform typecheck / 113 tests / build | PASS |
-| demo-operator typecheck / 24 tests | PASS |
-| `tools/probes/*` (motion, mask, ticker, audio, scatter, input, touch, big-win, perf) | PASS |
-| `npm run test:rtp-parity` | FAIL 95.97% vs 96.38% (known shared-engine shortfall, engine untouched) |
-| `tools/probes/hit-target-probe.js` | FAIL (pre-existing: autoplay/turbo hit area past the left edge at 844×390 / 740×360) |
+| `npm run test:client` (spin-lock, layout, spin-e2e) | PASS |
+| platform `npm run typecheck` | PASS |
+| platform `npx vitest run` | PASS, 28 files / 174 tests |
+| platform `npm run check:campaigns` (headless Chrome) | PASS, 25 checks |
+| demo-operator `npx vitest run` | PASS, 6 files / 37 tests (incl. e2e against a real platform) |
+| demo-operator `npm run check:back-office` (headless Chrome) | PASS, 20 checks |
+| platform `npm run e2e` | PASS (incl. cross-tenant 404) |
+| `npm run test:rtp-parity` (30M, seeded) | PASS |
+| `tools/api-test.js` (MVP) | runs clean; its simulate band check uses 1,000 steps and is noise at this volatility |
+| `tools/probes/*` | not re-run since 2026-10-02 |
+| `tools/probes/hit-target-probe.js` | FAIL as of 2026-10-02 (autoplay/turbo hit area at 844×390 / 740×360) |
 
-## 5. Open items / known issues
+## 5. Open items
 
-1. **RTP shortfall** in `client/engine/` (~0.4–1.7% under target across runs); the MVP math is
-   fine. Needs a math investigation; never touch it as part of UI work.
-2. **Landscape-phone hit areas** for autoplay/turbo (see above).
-3. **Round ID strip** still sits above the board in platform (`/play`) mode only; could move into
-   the deck if the user wants the top completely clear.
-4. **Base-game multiplier readout** was removed with the top bar (souls now fly to the ticker).
-5. `.claude/settings.local.json` is still tracked by git although `.gitignore` lists it (see
-   `SECURITY_INCIDENT.md`); its local changes are never committed. Consider
-   `git rm --cached .claude/settings.local.json`.
-6. Rules pages text in the rules file still says "BANANA X" / "5 reels x 4 rows" (needs a copy
-   pass); some seed scripts still title the game "Banana X".
+**Before lab submission (from the certification report §7):**
 
-## 6. Next: Operator Portal features (Phase 3, planned, not started)
+- **O1 — Ante declaration trails the math.** The 7+ scatter fix raised ante to 96.70% ± 0.07
+  pooled; the declaration is 96.59%. Passes, but declare **96.70%** to match.
+- **O2 — In-game paytable shows unscaled pays (lab blocker).** It shows raw values while paid
+  spins pay ×0.9807 and free spins ×3.8058; displayed pays must equal actual pays.
+- **O3 — Player rules copy is stale (lab blocker).** Still "BANANA X", "5 reels x 4 rows",
+  "Apex Wild", and a "Live markets" list (UK, Malta, Ontario…) the game is not certified in.
+- **O4 — Other profiles.** `bananax_94` / `bananax_92` need their own 30M reports and ante
+  declarations.
 
-Existing map: routes `platform/src/http/admin.routes.ts` (`/admin/v1/*`), RBAC sets in
-`src/modules/admin/admin-auth.ts`, reporting in `src/modules/reporting/reporting.service.ts`,
-operator console nav in `src/http/operator-console.ts`, view JS in `admin-console-views.ts`,
-HTML in `admin-console-sections.ts`, shared shell `/console/app.js` in `admin-assets.ts`.
+**Carried over:**
 
-**A. Round Inspector (exists, make it prominent):** first in the operator nav; deep link
-`/admin#inspector?round=<ref>`; verification verdict up top. No backend change.
+5. No operator-side (HMAC) cancel for free-round campaigns; cancel exists in the Admin API and
+   the Campaign Manager UI.
+6. Demo Casino blueprint items not built: `featureRef` bonus grouping in webhooks; iframe
+   `postMessage` contract + `frame-ancestors` on `/play` (any site can still embed it);
+   failure-path e2e (insufficient funds, credit retry, rollback). Signed round APIs were
+   deliberately skipped.
+7. `platform/scripts/e2e-operator.ts` does not exercise free rounds.
+8. Landscape-phone hit areas for autoplay/turbo.
+9. Round ID strip sits above the board in `/play` mode only.
+10. `.claude/settings.local.json` is tracked although `.gitignore` lists it; never committed —
+    consider `git rm --cached`.
+11. `backend/server.js` (legacy MVP) still caps each free spin rather than the whole round.
+12. `docs/multiplier-rules.md` still describes the old multiplier rule (user scheduled a docs chore).
 
-**B. Player Reports (read-only):** `playerReport()` / `playerSummary()` in the reporting service
-(rounds, turnover, wins, GGR, RTP, last seen; voided rounds excluded) →
-`GET /admin/v1/reports/players?from&to&game&sort&limit` and
-`GET /admin/v1/players/:id/summary` (`reports.read`, tenant-scoped). Console "Player Reports" view
-with CSV export, rows linking to the inspector.
+## 6. Next
 
-**C. Free Rounds / Campaign Manager (money path, last):** must **not** reuse the engine's
-`free_spins_left` (that is the scatter-triggered bonus feature; reusing it would change RTP).
-New `src/modules/bonus/` (campaign: game, fixed bet, spins, expiry; grants per player ID with
-remaining count; consume/expire/cancel), persisted via the write-through pattern
-(`migrations/0001_core.sql` + `TABLES` registry). Admin routes in a new
-`src/http/admin-bonus.routes.ts` (`bonuses.read` / `bonuses.write`); matching HMAC operator
-routes `POST /operator/v1/free-rounds` (+ status, cancel). Spin path: `round-orchestrator.ts`
-plays a granted round at the grant's bet with no debit, credits wins tagged
-`funding: "free_round"` + campaign ref; `RoundRecord` gains `funding` / `grant_id`
-(additive, hash chain intact); session init returns `free_rounds`. Client follow-up: ticker spin
-line "FREE ROUND · N LEFT", bet locked. Verify with `test:rtp-parity` before/after.
+The functional epic is done. Remaining work, in the order it unblocks launch:
 
-**Order:** A + B → C data model + operator routes + wallet tagging (with tests) → orchestrator
-spin path + client display.
+1. **Lab submission readiness** — close O1–O4 (§5): declare ante 96.70%, show scaled pays in the
+   in-game paytable, rewrite the player rules copy, produce 30M reports for the 94 / 92 profiles.
+2. **First provider sandbox pass** with the demo casino (backlog 8.3), then regression
+   automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
+   headless-Chrome checks, and a reduced seeded parity run.
+3. **Hardening follow-ups** — `frame-ancestors` on `/play` from registered operator domains,
+   the iframe `postMessage` contract, failure-path e2e, operator-side HMAC cancel.
 
 ## 7. How to resume
 
 ```bash
-npm run test:client                    # client gate
-node tools/probes/motion-probe.js      # motion invariants
-cd platform && npm run dev:seed        # platform: consoles + seeded logins (2FA off locally)
+npm run test:client                                   # client gate
+npm run test:rtp-parity                               # seeded 30M parity (~40s on 20 threads)
+cd platform && npx vitest run && npm run dev:seed     # platform tests; consoles + seeded logins
+cd demo-operator && npm run dev                       # demo casino on :4000; back-office at /back-office
+cd platform && npm run check:campaigns                # Campaign Manager in real Chrome
+cd demo-operator && npm run check:back-office         # casino back-office in real Chrome
 ```
 
-Read first: `CLAUDE.md` (invariants), `docs/animation-guide.md` (motion), `README.md`.
+Read first: `CLAUDE.md` (invariants), `qa/rtp-certification-report.md` (math and open items),
+`docs/16-demo-casino-blueprint.md` (demo casino design).

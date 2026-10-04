@@ -16,7 +16,32 @@ export interface Session {
   status: "active" | "closed";
   free_spins_left: number;
   free_spin_multiplier_carry: number;
+  /** Running win of the current feature round (trigger spin + free spins so far); the engine caps it at max win. */
+  bonus_round_win: number;
+  /**
+   * Bonus-feature lock. Snapshotted from the round that TRIGGERED the engine's
+   * free-spins feature and held until the feature ends (free_spins_left back to 0).
+   * While set, every feature spin plays exactly these terms and the client's
+   * requested bet/ante are ignored: otherwise a player could trigger at 1.00 and
+   * play the (0-cost) feature at 500.00, or switch ante on mid-feature to double
+   * the scatter rate for free. A campaign id/grant id means the feature was
+   * triggered by an operator free round, so its wins are FREE_ROUND_WIN.
+   */
+  locked_bet: number | null;
+  locked_currency: string | null;
+  locked_ante: boolean | null;
+  locked_campaign_id: string | null;
+  locked_grant_id: string | null;
   created_at: string;
+}
+
+/** The terms a bonus feature is locked to (see Session.locked_*). */
+export interface FeatureLock {
+  bet: number;
+  currency: string;
+  ante_enabled: boolean;
+  campaign_id: string | null;
+  grant_id: string | null;
 }
 
 export interface LaunchRequest {
@@ -26,6 +51,14 @@ export interface LaunchRequest {
   currency: string;
   origin: string;
 }
+
+const UNLOCKED = {
+  locked_bet: null,
+  locked_currency: null,
+  locked_ante: null,
+  locked_campaign_id: null,
+  locked_grant_id: null
+} as const;
 
 /**
  * Phase 4: signed launch tokens → player sessions (plan §4/§5 steps 1–2).
@@ -83,6 +116,8 @@ export class SessionService {
       status: "active",
       free_spins_left: 0,
       free_spin_multiplier_carry: 0,
+      bonus_round_win: 0,
+      ...UNLOCKED,
       created_at: new Date().toISOString()
     };
     this.sessions.set(session.id, session);
@@ -110,14 +145,56 @@ export class SessionService {
       .map((s) => ({ ...s }));
   }
 
-  /** Sync engine-driven game state (free spins, persistent multiplier) post-round. */
-  applyResult(sessionId: string, result: SpinResult): void {
+  /**
+   * Sync engine-driven game state (free spins, persistent multiplier) post-round,
+   * and maintain the bonus-feature lock: `roundTerms` are the terms the round was
+   * played at. Entering the feature snapshots them; leaving it clears the lock.
+   * Retriggers inside the feature keep the original lock (the terms are identical).
+   */
+  applyResult(sessionId: string, result: SpinResult, roundTerms: FeatureLock): void {
     const s = this.sessions.get(sessionId);
     if (!s) return;
     s.free_spins_left = Number(result.free_spins_left ?? s.free_spins_left);
     const carry = (result as { free_spin_multiplier_current?: number }).free_spin_multiplier_current;
     if (typeof carry === "number") s.free_spin_multiplier_carry = carry;
+    const bonusTotal = (result as { bonus_round_win?: number }).bonus_round_win;
+    if (typeof bonusTotal === "number") s.bonus_round_win = bonusTotal;
+    if (s.free_spins_left <= 0) {
+      s.bonus_round_win = 0;
+      Object.assign(s, UNLOCKED);
+    } else if (s.locked_bet == null) {
+      this.writeLock(s, roundTerms);
+    }
     this.persistence.save("player_sessions", s);
+  }
+
+  /** The active feature lock, or null when the session is not in a locked feature. */
+  featureLock(sessionId: string): FeatureLock | null {
+    const s = this.sessions.get(sessionId);
+    if (!s || s.locked_bet == null) return null;
+    return {
+      bet: s.locked_bet,
+      currency: s.locked_currency as string,
+      ante_enabled: Boolean(s.locked_ante),
+      campaign_id: s.locked_campaign_id ?? null,
+      grant_id: s.locked_grant_id ?? null
+    };
+  }
+
+  /** Install a lock on a session already mid-feature (legacy sessions; see orchestrator). */
+  lockFeature(sessionId: string, terms: FeatureLock): void {
+    const s = this.sessions.get(sessionId);
+    if (!s || s.free_spins_left <= 0) return;
+    this.writeLock(s, terms);
+    this.persistence.save("player_sessions", s);
+  }
+
+  private writeLock(s: Session, t: FeatureLock): void {
+    s.locked_bet = t.bet;
+    s.locked_currency = t.currency;
+    s.locked_ante = t.ante_enabled;
+    s.locked_campaign_id = t.campaign_id;
+    s.locked_grant_id = t.grant_id;
   }
 
   close(sessionId: string): void {

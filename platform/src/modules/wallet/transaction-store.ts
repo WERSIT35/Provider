@@ -4,7 +4,11 @@ import { NullPersistence, type Persistence } from "../../persistence/persistence
 /** Money-movement ledger (plan §3.3 wallet_transactions). Append-only + idempotent
  * by idempotency_key. Feeds reporting, reconciliation, and the failed-settlement queue. */
 
-export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK" | "ADJUSTMENT";
+export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK" | "ADJUSTMENT" | "FREE_ROUND_BET" | "FREE_ROUND_WIN";
+
+/** Types that take a round's stake / pay a round's win (cash or operator free round). */
+export const BET_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["DEBIT", "FREE_ROUND_BET"]);
+export const WIN_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["CREDIT", "FREE_ROUND_WIN"]);
 export type TxStatus = "confirmed" | "failed" | "rolled_back";
 
 export interface TxInput {
@@ -18,6 +22,8 @@ export interface TxInput {
   operator_tx_ref?: string;
   status: TxStatus;
   error_code?: string;
+  /** Set on FREE_ROUND_BET / FREE_ROUND_WIN rows (operator promo reconciliation). */
+  campaign_id?: string;
 }
 
 export interface TxRecord extends TxInput {
@@ -84,11 +90,11 @@ export class InMemoryTransactionStore {
   listFailedSettlements(operatorId?: string): TxRecord[] {
     const confirmedCreditRounds = new Set(
       this.entries
-        .filter((t) => t.type === "CREDIT" && t.status === "confirmed")
+        .filter((t) => WIN_TX_TYPES.has(t.type) && t.status === "confirmed")
         .map((t) => t.round_ref)
     );
     return this.entries
-      .filter((t) => t.type === "CREDIT" && t.status === "failed")
+      .filter((t) => WIN_TX_TYPES.has(t.type) && t.status === "failed")
       .filter((t) => !confirmedCreditRounds.has(t.round_ref))
       .filter((t) => (operatorId ? t.operator_id === operatorId : true))
       .map(clone);

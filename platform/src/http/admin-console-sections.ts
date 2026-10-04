@@ -83,8 +83,110 @@ export const SECTION_PLAYERS = /* html */ `
       <button onclick="loadPlayer()">Look up</button>
       <span id="plStatus" class="muted"></span>
     </div>
+    <div id="playerSummary"></div>
     <div id="playerRounds">–</div>
   </div>
+</section>`;
+
+export const SECTION_PLAYER_REPORTS = /* html */ `
+<section id="playerReportsView" hidden>
+  <div class="panel">
+    <h2>Player Reports</h2>
+    <p class="muted">Turnover, wins, GGR and RTP per player for a period. Voided rounds are excluded. Click a row to open that player's rounds; from there, any round opens in the inspector.</p>
+    <div class="toolbar">
+      <input class="search" id="prOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <label class="muted">From <input type="date" id="prFrom"/></label>
+      <label class="muted">To <input type="date" id="prTo"/></label>
+      <input class="search" id="prGame" placeholder="game code (optional)"/>
+      <select id="prSort">
+        <option value="total_bet">sort: turnover</option>
+        <option value="ggr">sort: GGR</option>
+        <option value="total_win">sort: total win</option>
+        <option value="rounds">sort: rounds</option>
+        <option value="rtp_percent">sort: RTP %</option>
+        <option value="last_seen">sort: last seen</option>
+      </select>
+      <button onclick="loadPlayerReport()">Run</button>
+      <button class="ghost" onclick="exportPlayerReportCsv()">Export CSV</button>
+      <span id="prStatus" class="muted"></span>
+    </div>
+    <div id="playerReportTable">–</div>
+  </div>
+</section>`;
+
+export const SECTION_CAMPAIGNS = /* html */ `
+<section id="campaignsView" hidden>
+  <div class="panel">
+    <h2>Campaign Manager</h2>
+    <p class="muted">Operator free rounds: each campaign gives every granted player a number of spins at one locked bet, inside a validity window. Free rounds are funded by the campaign, not the player's balance, and never change the game's RTP. Grants that outlive the window expire automatically.</p>
+    <div class="toolbar">
+      <input class="search" id="campOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <select id="campState" aria-label="Filter by status">
+        <option value="">all statuses</option>
+        <option value="active">active</option>
+        <option value="scheduled">scheduled</option>
+        <option value="expired">expired</option>
+        <option value="cancelled">cancelled</option>
+      </select>
+      <button class="ghost" id="campRefresh" type="button">Refresh</button>
+      <button id="campNewBtn" type="button" data-campaigns-write>+ New campaign</button>
+      <span id="campStatus" class="muted"></span>
+    </div>
+    <div id="campTable">–</div>
+    <div id="campDrawer" class="drawer" hidden></div>
+  </div>
+
+  <dialog id="campCreateDlg" class="modal" aria-labelledby="campCreateTitle">
+    <form id="campCreateForm" method="dialog" novalidate>
+      <h3 id="campCreateTitle">New free-round campaign</h3>
+      <label data-provider>Operator id<input id="ccOp" placeholder="operator id"/></label>
+      <label>Campaign name<input id="ccName" maxlength="120" placeholder="e.g. Weekend 20 free spins" required/></label>
+      <div class="form-2">
+        <label>Game &amp; currency<select id="ccGame" required></select></label>
+        <label>Bet per spin<select id="ccBet" required></select></label>
+      </div>
+      <p class="hint">Bets are limited to the ones this game is offered at for your casino.</p>
+      <div class="form-2">
+        <label>Spins per player<input id="ccSpins" type="number" min="1" max="1000" step="1" value="10" required/></label>
+        <span></span>
+      </div>
+      <div class="form-2">
+        <label>Valid from<input id="ccFrom" type="datetime-local" required/></label>
+        <label>Valid until<input id="ccTo" type="datetime-local" required/></label>
+      </div>
+      <label>Grant to players now (optional)<textarea id="ccPlayers" placeholder="operator_player_id per line or comma-separated"></textarea></label>
+      <div id="ccMsg" class="status err" hidden></div>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button type="submit" id="ccSubmit">Create campaign</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="campGrantDlg" class="modal" aria-labelledby="campGrantTitle">
+    <form id="campGrantForm" method="dialog" novalidate>
+      <h3 id="campGrantTitle">Grant free spins</h3>
+      <p id="cgInfo" class="muted"></p>
+      <label>Player ids<textarea id="cgPlayers" placeholder="operator_player_id per line or comma-separated" required></textarea></label>
+      <p class="hint">Each player receives the campaign's full spin count once. Players already in the campaign are skipped, never topped up.</p>
+      <div id="cgMsg" class="status" hidden></div>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Close</button>
+        <button type="submit" id="cgSubmit">Grant spins</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="campConfirmDlg" class="modal" aria-labelledby="campConfirmTitle">
+    <form method="dialog">
+      <h3 id="campConfirmTitle">Cancel campaign?</h3>
+      <p id="cfText" class="muted"></p>
+      <div class="actions">
+        <button type="button" class="ghost" data-close>Keep campaign</button>
+        <button type="button" class="danger" id="cfConfirm">Cancel campaign</button>
+      </div>
+    </form>
+  </dialog>
 </section>`;
 
 export const SECTION_REPORTS = /* html */ `
@@ -159,7 +261,7 @@ export const SECTION_ONBOARDING = /* html */ `
     <hr style="border:0; border-top:1px solid var(--line); margin:12px 0;"/>
     <div class="row">
       <label>Game <select id="mcGame"></select></label>
-      <label>Version <input id="mcVersion" placeholder="3.0.0" value="3.0.0"/></label>
+      <label>Version <input id="mcVersion" placeholder="3.1.0" value="3.1.0"/></label>
       <label>RTP profile key <input id="mcKey" placeholder="bananax" value="bananax"/></label>
       <label>Theoretical RTP % <input id="mcRtp" type="number" step="0.01" value="96.38"/></label>
       <label>Config hash <input id="mcHash" placeholder="sha256:…" value="sha256:demo"/></label>

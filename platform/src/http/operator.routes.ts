@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { operatorHmacAuth } from "./auth";
 import { envelope, sendDomainError } from "./errors";
+import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
 
 interface LaunchBody {
   game_code?: string;
@@ -9,9 +10,40 @@ interface LaunchBody {
   origin?: string;
 }
 
-/** Operator (server-to-server) API — HMAC-signed. Currently: game launch. */
+interface GrantBody {
+  campaign_id?: string;
+  operator_player_id?: string;
+}
+
+/** Wire shape of one player grant for the casino (no internal version counters). */
+function grantView(grant: PlayerCampaign, campaign: Campaign, gameCode: string | null) {
+  return {
+    grant_id: grant.id,
+    campaign_id: campaign.id,
+    campaign_name: campaign.name,
+    game_code: gameCode,
+    currency: campaign.currency,
+    bet_amount: campaign.bet_amount, // locked bet every free round plays at
+    spins_granted: grant.spins_granted,
+    spins_remaining: grant.spins_remaining,
+    total_won: grant.total_won,
+    status: grant.status,
+    valid_from: campaign.valid_from,
+    valid_to: campaign.valid_to
+  };
+}
+
+/**
+ * Operator (server-to-server) API — HMAC-signed (src/lib/security/hmac.ts via
+ * operatorHmacAuth: api key, timestamp skew, single-use nonce, signature over
+ * method + path + raw body). The authenticated operator comes ONLY from the API
+ * key (req.operatorId), never from the request, so a casino can act on nothing
+ * but its own campaigns and players.
+ */
 const operatorRoutes: FastifyPluginAsync = async (app) => {
   const auth = operatorHmacAuth(app.container);
+  const gameCode = (gameId: string): string | null =>
+    app.container.mgmt.listGames().find((g) => g.id === gameId)?.code ?? null;
 
   app.post("/operator/v1/launch", { preHandler: auth }, async (req, reply) => {
     const body = (req.body ?? {}) as LaunchBody;
@@ -30,6 +62,52 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
+  });
+
+  // Award a campaign's free rounds to one player. Idempotent: re-sending the same
+  // (campaign, player) returns the existing grant with already_granted=true and is
+  // never topped up, so a casino retrying after a timeout can't double the award.
+  app.post("/operator/v1/free-rounds/grant", { preHandler: auth }, async (req, reply) => {
+    const operatorId = req.operatorId as string;
+    const body = (req.body ?? {}) as GrantBody;
+    const playerId = typeof body.operator_player_id === "string" ? body.operator_player_id.trim() : "";
+    if (!body.campaign_id || !playerId) {
+      return reply.code(422).send(envelope("VALIDATION", "campaign_id, operator_player_id required", req.id));
+    }
+    const campaign = app.container.campaigns.getCampaign(body.campaign_id);
+    // Another operator's campaign is indistinguishable from a missing one.
+    if (!campaign || campaign.operator_id !== operatorId) {
+      return reply.code(404).send(envelope("CAMPAIGN_NOT_FOUND", "no such campaign", req.id));
+    }
+    try {
+      const res = app.container.campaigns.grantPlayers(campaign.id, [playerId]);
+      const grant = res.granted[0] ?? app.container.campaigns.listGrants(campaign.id).find((g) => g.operator_player_id === playerId);
+      if (!grant) throw new Error("GRANT_NOT_FOUND");
+      if (res.granted.length) {
+        app.container.auditRepo.append({
+          operator_id: operatorId,
+          actor_type: "operator",
+          actor_id: req.apiKeyId as string,
+          action: "campaign.grant",
+          target_type: "campaign",
+          target_id: campaign.id
+        });
+      }
+      return reply
+        .code(res.granted.length ? 201 : 200)
+        .send({ already_granted: res.granted.length === 0, grant: grantView(grant, campaign, gameCode(campaign.game_id)) });
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  // A player's open free rounds with this operator (active grants, soonest expiry first).
+  app.get("/operator/v1/free-rounds/player/:operatorPlayerId", { preHandler: auth }, async (req) => {
+    const { operatorPlayerId } = req.params as { operatorPlayerId: string };
+    const grants = app.container.campaigns
+      .playerGrants(req.operatorId as string, operatorPlayerId)
+      .map(({ grant, campaign }) => grantView(grant, campaign, gameCode(campaign.game_id)));
+    return { operator_player_id: operatorPlayerId, grants, count: grants.length };
   });
 };
 

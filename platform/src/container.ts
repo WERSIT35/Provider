@@ -15,6 +15,7 @@ import { InMemoryRoundAdjustmentStore } from "./modules/rounds/round-adjustment.
 import { RoundLifecycleService } from "./modules/rounds/round-lifecycle.service";
 import { RoundVerificationService } from "./modules/rounds/round-verification.service";
 import { DisputeService } from "./modules/disputes/dispute.service";
+import { InMemoryCampaignRepository } from "./modules/campaigns/campaign.repository";
 import { NonceStore } from "./lib/security/nonce-store";
 import { RateLimiter } from "./lib/security/rate-limiter";
 import { NullPersistence, type Persistence } from "./persistence/persistence";
@@ -57,6 +58,8 @@ export interface Container {
   lifecycle: RoundLifecycleService;
   verification: RoundVerificationService;
   disputes: DisputeService;
+  // Operator-granted Free Rounds (NOT the engine scatter feature).
+  campaigns: InMemoryCampaignRepository;
   adminAuth: AdminAuthService;
   adminAccounts: AdminAccountService;
   nonceStore: NonceStore;
@@ -84,10 +87,11 @@ export function buildContainer(
   if (wallet instanceof SandboxWallet) wallet.usePersistence(persistence);
   const resolver = new AuthoritativeResolver(engine);
   const transactions = new InMemoryTransactionStore(persistence);
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions);
+  const campaigns = new InMemoryCampaignRepository(persistence);
+  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns);
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
-  const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit);
+  const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
   const verification = new RoundVerificationService(ledger, resolver);
   const disputes = new DisputeService(lifecycle, ledger, audit, persistence);
 
@@ -106,6 +110,7 @@ export function buildContainer(
     lifecycle,
     verification,
     disputes,
+    campaigns,
     adminAuth: new AdminAuthService(config.adminSecret),
     adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
     nonceStore: new NonceStore(config.hmacSkewSeconds * 4 * 1000),

@@ -26,6 +26,8 @@ export interface RoundPreState {
   balance: number;
   free_spins_left: number;
   free_spin_multiplier_carry: number;
+  /** Feature-round running win before this spin (max-win cap state). Absent on older rounds = 0. */
+  bonus_round_win?: number;
   ante_enabled: boolean;
   resolve_mode: "spin" | "buy";
 }
@@ -52,6 +54,13 @@ export interface RoundInput {
   outcome: StoredOutcome;
   /** Optional for rounds recorded before pre-state capture; verification is inconclusive without it. */
   pre_state?: RoundPreState;
+  /** Operator free round only (absent on cash rounds — never null; see TableSpec.omitNull). */
+  campaign_id?: string;
+  grant_id?: string;
+  /** Engine version that resolved the round (absent on rounds recorded before versioning). */
+  engine_version?: string;
+  /** SHA-256 of the canonical rules payload that resolved the round (absent on older rounds). */
+  rules_hash?: string;
 }
 
 export interface RoundRecord extends RoundInput {

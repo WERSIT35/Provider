@@ -2,9 +2,13 @@
   "use strict";
 
   const ALLOWED_BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 250, 500];
+  // Recorded on every platform round. Bump it on ANY change that alters what a
+  // seed resolves to (math, RNG draw order, board generation): a round can only
+  // be replay-verified by the engine version that produced it.
+  const ENGINE_VERSION = "1.2.0";
 
   function buildEngineContext(rules) {
-    const { Symbols, Multipliers, Matrix, Payouts, Tumble, NearMiss } = root.SlotEngine;
+    const { Symbols, Multipliers, Matrix, Payouts, Tumble } = root.SlotEngine;
     const tables = Symbols.buildSymbolTables(rules);
     const multiplierValues = Multipliers.buildMultiplierValues(rules);
     const matrixCtx = Matrix.makeMatrixContext({
@@ -15,8 +19,7 @@
     });
     const payoutsCtx = Payouts.makePayouts({ rules, tables, matrixCtx });
     const tumbleCtx = Tumble.makeTumble({ matrixCtx, multiplierValues, multiplierWeights: null });
-    const nearMissCtx = NearMiss.makeNearMiss({ rules, matrixCtx, payoutsCtx, tables });
-    return { tables, multiplierValues, matrixCtx, payoutsCtx, tumbleCtx, nearMissCtx };
+    return { tables, multiplierValues, matrixCtx, payoutsCtx, tumbleCtx };
   }
 
   class SpinEngine {
@@ -188,27 +191,6 @@
         multipliers = ctx.matrixCtx.sanitizeMultipliersForMatrix(matrix, multipliers);
       }
 
-      let nearMissInfo = null;
-      if (!isFreeSpin && !crazyMode) {
-        const initialScatterPeek = ctx.matrixCtx.countSymbol(matrix, SCATTER_SYMBOL);
-        const mutated = ctx.nearMissCtx.maybeMutate({
-          matrix,
-          multipliers,
-          scatterPeak: initialScatterPeek,
-          isFreeSpin,
-          crazyMode,
-          betAmount,
-          multiplierValues: ctx.multiplierValues,
-          payouts: ctx.payoutsCtx
-        });
-        if (mutated) {
-          matrix = mutated.matrix;
-          if (Array.isArray(mutated.multipliers)) multipliers = mutated.multipliers;
-          multipliers = ctx.matrixCtx.sanitizeMultipliersForMatrix(matrix, multipliers);
-          nearMissInfo = mutated.near_miss;
-        }
-      }
-
       const tumbleSteps = [];
       let sequenceWin = 0;
       let sequenceMultiplierSum = 0;
@@ -265,16 +247,18 @@
       let multiplierApplied = 1;
       let multiplierGainApplied = 0;
       if (isFreeSpin) {
+        // Global multiplier bank (free spins). Multipliers that appear during a
+        // WINNING sequence are added to the bank, and the whole bank then applies
+        // to that sequence. A win with no multiplier symbol pays at 1x even when
+        // the bank holds value; a losing sequence never touches the bank.
         const prevPersistent = Number.isFinite(Number(session.freeSpinPersistentMultiplier))
           ? Number(session.freeSpinPersistentMultiplier)
           : 0;
-        if (sequenceWin > 0) {
+        if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
           multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
           const nextPersistent = Number((prevPersistent + sequenceMultiplierSum).toFixed(2));
           session.freeSpinPersistentMultiplier = nextPersistent;
-          multiplierApplied = Math.max(1, nextPersistent);
-        } else {
-          multiplierApplied = Math.max(1, prevPersistent);
+          multiplierApplied = nextPersistent;
         }
       } else if (sequenceWin > 0 && sequenceMultiplierSum > 0) {
         multiplierGainApplied = Number(sequenceMultiplierSum.toFixed(2));
@@ -313,11 +297,14 @@
       }
 
       let freeSpinsAwarded = 0;
-      if (!isFreeSpin && scatterPeak >= this.FREE_SPINS_TRIGGER) {
+      // The max-win cap covers the WHOLE feature round: the bonus total starts at
+      // the triggering spin's win, so trigger + free spins never exceed the cap. A
+      // trigger spin that already reached the cap ends the round (no free spins).
+      if (!isFreeSpin && scatterPeak >= this.FREE_SPINS_TRIGGER && !capReached) {
         freeSpinsAwarded = this.FREE_SPINS_AWARD;
         session.freeSpinsLeft += freeSpinsAwarded;
         session.freeSpinPersistentMultiplier = root.SlotEngine.CrazyMode.persistentMultiplierStart(crazyMode);
-        session.bonusRoundWin = 0;
+        session.bonusRoundWin = totalWin;
       }
       if (isFreeSpin && scatterPeak >= this.FREE_SPINS_RETRIGGER_TRIGGER && !capReached) {
         // Any 3+ scatter catch during free spins always awards the flat
@@ -357,13 +344,16 @@
         total_win: totalWin,
         balance_after: session.balance,
         events,
-        near_miss: nearMissInfo
+        // The engine never fabricates near-misses: every board is exactly what the
+        // RNG produced. The field stays (always null) so the outcome shape, and the
+        // outcome hash of every round that was not mutated, are unchanged.
+        near_miss: null
       };
     }
 
     _cloneContextForWeights(weights, symbolWeightOverrides = null) {
       if (!weights && !symbolWeightOverrides) return this.ctx;
-      const { Symbols, Multipliers, Matrix, Payouts, Tumble, NearMiss } = root.SlotEngine;
+      const { Symbols, Multipliers, Matrix, Payouts, Tumble } = root.SlotEngine;
       // Crazy symbol overrides rebuild the weighted symbol tables so BOTH the
       // initial board and the tumble refills lean premium; otherwise reuse the
       // base tables unchanged.
@@ -379,8 +369,7 @@
       });
       const payoutsCtx = Payouts.makePayouts({ rules: this.rules, tables, matrixCtx });
       const tumbleCtx = Tumble.makeTumble({ matrixCtx, multiplierValues, multiplierWeights: weights });
-      const nearMissCtx = NearMiss.makeNearMiss({ rules: this.rules, matrixCtx, payoutsCtx, tables });
-      return { tables, multiplierValues, matrixCtx, payoutsCtx, tumbleCtx, nearMissCtx };
+      return { tables, multiplierValues, matrixCtx, payoutsCtx, tumbleCtx };
     }
 
     spin(payload = {}) {
@@ -457,4 +446,5 @@
   root.SlotEngine = root.SlotEngine || {};
   root.SlotEngine.SpinEngine = SpinEngine;
   root.SlotEngine.ALLOWED_BETS = ALLOWED_BETS;
+  root.SlotEngine.ENGINE_VERSION = ENGINE_VERSION;
 })(typeof window !== "undefined" ? window : globalThis);

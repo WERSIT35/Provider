@@ -22,6 +22,13 @@ export interface RoundContext {
   is_free_spin?: boolean;
   ante_enabled?: boolean;
   pre_state?: RoundPreState;
+  /** Operator free round: the campaign + player grant that funded it. */
+  campaign_id?: string;
+  grant_id?: string;
+  /** Engine version that resolved the outcome (EngineService.engineVersion()). */
+  engine_version?: string;
+  /** Rules payload hash the outcome was resolved with (EngineService.rulesHash()). */
+  rules_hash?: string;
 }
 
 /**
@@ -56,7 +63,12 @@ export class RoundLedgerService {
       multiplier_applied: Number(resolved.result.multiplier_applied ?? 1),
       status,
       outcome: resolved.result,
-      pre_state: ctx.pre_state
+      pre_state: ctx.pre_state,
+      // Added ONLY when set: the payload hash covers every key, so a cash round must
+      // hash exactly as it did before free rounds existed (see TableSpec.omitNull).
+      ...(ctx.campaign_id ? { campaign_id: ctx.campaign_id, grant_id: ctx.grant_id } : {}),
+      ...(ctx.engine_version ? { engine_version: ctx.engine_version } : {}),
+      ...(ctx.rules_hash ? { rules_hash: ctx.rules_hash } : {})
     });
 
     this.audit.append({
@@ -73,6 +85,12 @@ export class RoundLedgerService {
 
   getRound(roundRef: string): RoundRecord | null {
     return this.rounds.getByRef(roundRef);
+  }
+
+  /** The most recently recorded round of a session (highest seq), or null. */
+  lastRoundForSession(sessionId: string): RoundRecord | null {
+    const list = this.rounds.list({ session_id: sessionId });
+    return list.length ? list.reduce((a, b) => (b.seq > a.seq ? b : a)) : null;
   }
 
   verifyIntegrity(): { rounds: ChainVerification; audit: ChainVerification } {

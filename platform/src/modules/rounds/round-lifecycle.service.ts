@@ -1,8 +1,9 @@
 import type { RoundLedgerService } from "../ledger/round-ledger.service";
 import type { AuditRepository, RoundStatus } from "../ledger/ledger.types";
-import type { InMemoryTransactionStore, TxRecord } from "../wallet/transaction-store";
+import { BET_TX_TYPES, WIN_TX_TYPES, type InMemoryTransactionStore, type TxRecord } from "../wallet/transaction-store";
 import type { WalletAdapter } from "../wallet/wallet.types";
 import type { InMemoryRoundAdjustmentStore } from "./round-adjustment.store";
+import type { InMemoryCampaignRepository } from "../campaigns/campaign.repository";
 
 /**
  * Provider-executed manual round lifecycle actions (operators can only *request*
@@ -33,7 +34,8 @@ export class RoundLifecycleService {
     private readonly wallet: WalletAdapter,
     private readonly transactions: InMemoryTransactionStore,
     private readonly adjustments: InMemoryRoundAdjustmentStore,
-    private readonly audit: AuditRepository
+    private readonly audit: AuditRepository,
+    private readonly campaigns?: InMemoryCampaignRepository
   ) {}
 
   async voidRound(roundRef: string, actorId: string, reason: string): Promise<LifecycleResult> {
@@ -50,8 +52,9 @@ export class RoundLifecycleService {
     const notes: string[] = [];
 
     // 1) Refund the bet by reversing the original confirmed debit.
-    const debit = txs.find((t) => t.type === "DEBIT" && t.status === "confirmed");
-    if (debit?.operator_tx_ref) {
+    // A FREE_ROUND_BET is a confirmed 0.00 stake: nothing to refund.
+    const debit = txs.find((t) => BET_TX_TYPES.has(t.type) && t.status === "confirmed");
+    if (debit?.operator_tx_ref && debit.amount > 0) {
       const rb = await this.wallet.rollback(ctx, {
         idempotencyKey: `${roundRef}:void:rollback`,
         originalOperatorTxRef: debit.operator_tx_ref,
@@ -75,7 +78,7 @@ export class RoundLifecycleService {
     }
 
     // 2) Claw back any paid win via a compensating debit.
-    const credit = txs.find((t) => t.type === "CREDIT" && t.status === "confirmed");
+    const credit = txs.find((t) => WIN_TX_TYPES.has(t.type) && t.status === "confirmed");
     if (credit && credit.amount > 0) {
       try {
         const claw = await this.wallet.debit(ctx, {
@@ -114,6 +117,22 @@ export class RoundLifecycleService {
       }
     }
 
+    // 3) A voided free round never happened: hand the spin back to the player. Only a
+    // round that CONSUMED a free round qualifies (grant_id on a non-feature round);
+    // feature spins a free round triggered carry the grant for attribution only.
+    if (round.grant_id && !round.is_free_spin && this.campaigns) {
+      try {
+        const g = this.campaigns.restoreSpin(round.grant_id);
+        notes.push(
+          g.status === "active"
+            ? `free round returned to player (${g.spins_remaining} left)`
+            : `free round not returned: grant is ${g.status}`
+        );
+      } catch (err) {
+        notes.push(`free round not returned: ${(err as Error).message}`);
+      }
+    }
+
     this.adjustments.append({
       round_ref: roundRef,
       operator_id: round.operator_id,
@@ -144,12 +163,12 @@ export class RoundLifecycleService {
     }
 
     const txs = this.transactions.list({ round_ref: roundRef });
-    const confirmedCredit = txs.find((t) => t.type === "CREDIT" && t.status === "confirmed");
+    const confirmedCredit = txs.find((t) => WIN_TX_TYPES.has(t.type) && t.status === "confirmed");
     if (confirmedCredit) {
       return { round_ref: roundRef, action: "settle", effective_status: "settled", wallet_tx_refs: [], already: true, notes: ["win already paid"] };
     }
 
-    const failedCredit = txs.find((t) => t.type === "CREDIT" && t.status === "failed");
+    const failedCredit = txs.find((t) => WIN_TX_TYPES.has(t.type) && t.status === "failed");
     if (!failedCredit) throw new Error("NO_PENDING_SETTLEMENT");
 
     const ctx = { operatorId: round.operator_id };
@@ -158,13 +177,16 @@ export class RoundLifecycleService {
       roundRef,
       operatorPlayerId: round.operator_player_id,
       amount: failedCredit.amount,
-      currency: failedCredit.currency
+      currency: failedCredit.currency,
+      // A free-round win is re-paid as the same tagged FREE_ROUND_WIN.
+      ...(failedCredit.type === "FREE_ROUND_WIN" ? { txType: "FREE_ROUND_WIN" as const, campaignId: failedCredit.campaign_id } : {})
     });
     this.transactions.record({
       operator_id: round.operator_id,
       session_id: round.session_id,
       round_ref: roundRef,
-      type: "CREDIT",
+      type: failedCredit.type,
+      ...(failedCredit.campaign_id ? { campaign_id: failedCredit.campaign_id } : {}),
       amount: failedCredit.amount,
       currency: failedCredit.currency,
       idempotency_key: `${roundRef}:settle:credit`,

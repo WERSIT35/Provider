@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import { envelope, sendDomainError } from "./errors";
-import { can, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
+import { can, permissionsOf, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
 import type { Container } from "../container";
+import { PLAYER_REPORT_SORTS, type PlayerReportSort } from "../modules/reporting/reporting.service";
 
 /** Admin API (plan §4/§7). RBAC + tenant scoping enforced per route. */
 const adminRoutes: FastifyPluginAsync = async (app) => {
@@ -106,6 +107,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       game,
       math_config_id: round.math_config_id,
       math_config: mathConfig,
+      engine_version: round.engine_version ?? null,
+      rules_hash: round.rules_hash ?? null,
       session_id: round.session_id,
       currency: app.container.sessions.tryGet(round.session_id)?.currency ?? null,
       bet_amount: round.bet_amount,
@@ -174,6 +177,38 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       ggr: summary.ggr,
       hold_percent: summary.hold_percent,
       recent_transactions
+    };
+  });
+
+  // Player Reports: per-player turnover / wins / GGR / RTP (voided rounds excluded).
+  // `game` accepts a game code or id; `sort` is one of PLAYER_REPORT_SORTS (desc).
+  app.get("/admin/v1/reports/players", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "reports.read");
+    if (!claims) return reply;
+    const q = req.query as { operator_id?: string; from?: string; to?: string; game?: string; sort?: string; limit?: string };
+    const operatorId = resolveOperatorScope(claims, q.operator_id);
+    if (q.sort && !(PLAYER_REPORT_SORTS as readonly string[]).includes(q.sort)) {
+      return reply.code(422).send(envelope("VALIDATION", `sort must be one of: ${PLAYER_REPORT_SORTS.join(", ")}`, req.id));
+    }
+    const limit = q.limit === undefined ? undefined : Number(q.limit);
+    if (limit !== undefined && !(Number.isFinite(limit) && limit >= 1)) {
+      return reply.code(422).send(envelope("VALIDATION", "limit must be a positive number", req.id));
+    }
+    let gameId: string | undefined;
+    if (q.game) {
+      const game = app.container.mgmt.listGames().find((g) => g.id === q.game || g.code === q.game);
+      if (!game) return reply.code(422).send(envelope("VALIDATION", "unknown game", req.id));
+      gameId = game.id;
+    }
+    return {
+      operator_id: operatorId ?? null,
+      ...app.container.reporting.playerReport(operatorId, {
+        from: q.from,
+        to: q.to,
+        game_id: gameId,
+        sort: q.sort as PlayerReportSort | undefined,
+        limit
+      })
     };
   });
 
@@ -392,7 +427,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       admin_id: claims.admin_id,
       scope: claims.scope,
       operator_id: claims.operator_id,
-      role: claims.role
+      role: claims.role,
+      permissions: permissionsOf(claims)
     };
   });
 
@@ -454,6 +490,21 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       created_at: r.created_at
     }));
     return { player_id: playerId, operator_id: operatorId, rounds, count: rounds.length };
+  });
+
+  // Player lifetime summary (header of the player lookup view).
+  app.get("/admin/v1/players/:playerId/summary", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "players.read");
+    if (!claims) return reply;
+    const { playerId } = req.params as { playerId: string };
+    const q = req.query as { operator_id?: string };
+    const operatorId = resolveOperatorScope(claims, q.operator_id);
+    if (!operatorId) {
+      return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
+    }
+    const summary = app.container.reporting.playerSummary(operatorId, playerId);
+    if (!summary) return reply.code(404).send(envelope("PLAYER_NOT_FOUND", "no rounds for this player", req.id));
+    return summary;
   });
 
   // ── Manual round lifecycle (provider only; operators go via disputes) ─────────
@@ -637,7 +688,15 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const q = req.query as { operator_id?: string };
     const operatorId = resolveOperatorScope(claims, q.operator_id);
     if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
-    return { operator_games: app.container.mgmt.listOperatorGames(operatorId) };
+    // Include each game's code/title so UIs (e.g. the Campaign Manager) can address games by code.
+    const games = new Map(app.container.mgmt.listGames().map((g) => [g.id, g]));
+    return {
+      operator_games: app.container.mgmt.listOperatorGames(operatorId).map((og) => ({
+        ...og,
+        game_code: games.get(og.game_id)?.code ?? null,
+        game_title: games.get(og.game_id)?.title ?? null
+      }))
+    };
   });
 
   // Toggle a game on/off. Operators may toggle their OWN assignments; provider any.
@@ -691,7 +750,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 };
 
-function adminAuthPreHandler(container: Container): preHandlerHookHandler {
+export function adminAuthPreHandler(container: Container): preHandlerHookHandler {
   return async (req, reply) => {
     const auth = req.headers["authorization"];
     if (typeof auth !== "string" || !auth.startsWith("Bearer ")) {

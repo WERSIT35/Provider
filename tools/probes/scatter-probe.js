@@ -121,8 +121,8 @@ async function evaluate(cdp, expression) {
     for (;;) { window.__tries++; const r = await __realApi(p, { ...payload, spin_id: crypto.randomUUID() }); const m0 = r.tumble_steps?.[0]?.matrix || r.matrix;
       if (r.free_spins_awarded) continue; if ((${cond})(r, m0)) { window.__forced = r; return r; } } }; return true; })()`);
 
-  console.log("\ngenuine anticipation round");
-  await forceBoard(`(r, m0) => findAnticipation(m0, 4) && r.near_miss?.pattern !== "scatter_one_short"`);
+  console.log("\nanticipation round");
+  await forceBoard(`(r, m0) => findAnticipation(m0, 4)`);
   await evaluate(cdp, `(__ev.length = 0, window.__lanes = 0, el.spinBtn.click(), true)`);
   await settle();
   let ev = await evaluate(cdp, `({ ev: __ev.slice(), from: findAnticipation((__forced.tumble_steps?.[0]?.matrix || __forced.matrix), 4).fromCol, tries: __tries, lanes: __lanes, drone: anticipationDrone.isPlaying() })`);
@@ -143,21 +143,8 @@ async function evaluate(cdp, expression) {
   const pings = counts.map((c) => ev.ev.find((e) => e.k === "tick" && Math.abs(e.t - c.t) <= 1)?.p).filter((p) => p !== undefined);
   check("pings ascend in pitch", pings.length >= 3 && pings.every((p, i) => i === 0 || p > pings[i - 1]), pings.map((p) => p.toFixed(2)).join(" → "));
 
-  console.log("\nOption B: engineered near-miss");
-  // An engineered tease whose scatters WOULD trigger anticipation: only the
-  // suppression can explain the absence of a slowdown.
-  await forceBoard(`(r, m0) => r.near_miss?.pattern === "scatter_one_short" && !!findAnticipation(m0, 4)`);
-  await evaluate(cdp, `(__ev.length = 0, window.__lanes = 0, el.spinBtn.click(), true)`);
-  await settle();
-  ev = await evaluate(cdp, `({ ev: __ev.slice(), tries: __tries, lanes: __lanes, would: !!findAnticipation((__forced.tumble_steps?.[0]?.matrix || __forced.matrix), 4) })`);
-  const t2 = ev.ev.filter((e) => e.k === "thud").slice(0, 6);
-  check("no slowdown, no drone, no red lanes on an engineered tease", ev.would && t2.slice(1).every((x, i) => x.t - t2[i].t < 90) && !ev.ev.some((e) => e.k === "antic") && ev.lanes === 0,
-    `gaps ${t2.slice(1).map((x, i) => x.t - t2[i].t).join(",")}ms; board would have anticipated: ${ev.would}; ${ev.tries} draws`);
-  const c2 = ev.ev.filter((e) => e.k === "count");
-  check("…but its scatters still ping and count (that part is truthful)", c2.length >= 1 && c2[c2.length - 1].n >= 3, c2.map((c) => `${c.n}/${c.need}`).join(" "));
-
   console.log("\nfast-stop during anticipation");
-  await forceBoard(`(r, m0) => { const a = findAnticipation(m0, 4); return a && a.fromCol <= 4 && r.near_miss?.pattern !== "scatter_one_short"; }`);
+  await forceBoard(`(r, m0) => { const a = findAnticipation(m0, 4); return a && a.fromCol <= 4; }`);
   await evaluate(cdp, `(__ev.length = 0, el.spinBtn.click(), true)`);
   for (let i = 0; i < 400; i++) { if (await evaluate(cdp, `__ev.some((e) => e.k === "antic" && e.ph === "start")`)) break; await sleep(10); }
   const tPress = await evaluate(cdp, `(el.spinBtn.click(), performance.now())`);

@@ -3739,3 +3739,24 @@ pre,
 }
 .big-win-overlay.is-reduced .bw-canvas,
 .big-win-overlay.is-reduced .bw-lasers { display: none; }
+
+/* ===========================================================================
+   OPERATOR FREE ROUNDS (Campaign Manager)
+   Award modal on the Step 6 shell (.ps-modal: fixed, contained, outside the
+   flow) with the buy-confirm dialog's vault-gold look. While free rounds run the
+   deck's Bet readout becomes the counter; bet/ante/buy are disabled by
+   setControls(). Colour only: nothing here changes any element's size.
+   =========================================================================== */
+.fr-dialog { position: relative; }
+.fr-kicker {
+  margin: 0 0 10px;
+  font: 800 0.72rem/1 var(--font-ui, "Segoe UI", sans-serif);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-laser-hot, #ffd166);
+}
+.fr-count { font-variant-numeric: tabular-nums; }
+.fr-play { width: 100%; }
+.fr-play:focus-visible { outline: 2px solid var(--win-gold-bright, #ffe08a); outline-offset: 3px; }
+body.free-rounds-on #betReadoutLabel { color: var(--accent-laser-hot, #ffd166); }
+body.free-rounds-on #footerBet { color: var(--win-gold-bright, #ffe08a); }

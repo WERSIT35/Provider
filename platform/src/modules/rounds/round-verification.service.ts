@@ -14,7 +14,9 @@ import type { AuthoritativeResolver } from "../rng/authoritative-resolver";
  * Verdict:
  *   legitimate    — both checks pass
  *   tampered      — either check fails (outcome forged or ledger edited)
- *   inconclusive  — round predates pre-state capture, so it can't be replayed
+ *   inconclusive  — round predates pre-state capture, or it was resolved by a different
+ *                   engine version or rules payload than the one running, so it can't
+ *                   be replayed here
  */
 export type Verdict = "legitimate" | "tampered" | "inconclusive";
 
@@ -73,18 +75,43 @@ export class RoundVerificationService {
         balance: round.pre_state.balance,
         freeSpinsLeft: round.pre_state.free_spins_left,
         freeSpinPersistentMultiplier: round.pre_state.free_spin_multiplier_carry,
+        bonusRoundWin: round.pre_state.bonus_round_win ?? 0,
         anteEnabled: round.pre_state.ante_enabled
       },
       { bet_amount: round.bet_amount, ante_enabled: round.ante_enabled },
       round.pre_state.resolve_mode
     );
+    // A seed only reproduces its outcome under the engine version AND the rules payload
+    // that resolved it. When either differs from what this platform runs (or the round
+    // predates recording it), a hash mismatch proves nothing either way, so the verdict
+    // is inconclusive. The chain check still guards against edits: the recorded
+    // engine_version and rules_hash are themselves covered by the chain hash.
+    const currentEngine = this.resolver.engineVersion();
+    const currentRules = this.resolver.rulesHash();
+    const engineMismatch = round.engine_version !== currentEngine;
+    const rulesMismatch = round.rules_hash !== currentRules;
     if (!replay.ok) {
       notes.push("recomputed outcome hash does not match the stored hash");
+      if (engineMismatch) {
+        notes.push(
+          round.engine_version
+            ? `round was resolved by engine ${round.engine_version}; this platform runs ${currentEngine} — replay needs engine ${round.engine_version}`
+            : `round predates engine versioning; this platform runs ${currentEngine} and the engine may have changed since`
+        );
+      }
+      if (rulesMismatch) {
+        notes.push(
+          round.rules_hash
+            ? `round was resolved with rules ${round.rules_hash.slice(0, 12)}…; this platform runs rules ${currentRules.slice(0, 12)}… — replay needs the original rules payload`
+            : `round predates rules hashing; this platform runs rules ${currentRules.slice(0, 12)}… and the rules may have changed since`
+        );
+      }
     }
+    const replayable = !engineMismatch && !rulesMismatch;
 
     return {
       round_ref: round.round_ref,
-      verdict: chain_ok && replay.ok ? "legitimate" : "tampered",
+      verdict: !chain_ok ? "tampered" : replay.ok ? "legitimate" : replayable ? "tampered" : "inconclusive",
       outcome_ok: replay.ok,
       chain_ok,
       stored_hash: round.outcome_hash,

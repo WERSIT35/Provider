@@ -71,6 +71,14 @@ const el = {
   psMenuBtn: $("psMenuBtn"),
   psInfoBtn: $("psInfoBtn"),
   psInfoModal: $("psInfoModal"),
+  frModal: $("frModal"),
+  frCount: $("frCount"),
+  frNoun: $("frNoun"),
+  frBet: $("frBet"),
+  frCurrency: $("frCurrency"),
+  frMeta: $("frMeta"),
+  frPlayBtn: $("frPlayBtn"),
+  betReadoutLabel: $("betReadoutLabel"),
   psTicker: $("psTicker"),
   psTickerText: $("psTickerText"),
   symbolLegend: $("symbolLegend"),
@@ -384,8 +392,8 @@ const ANTICIPATION = { holdMs: 650, slowFall: 1.6 };
 
 // Pure function of the board: columns land left to right, so scan them in that
 // order and find the first column after which the scatters on screen are one
-// short of the trigger. Never reads payload.near_miss (Option B suppression is
-// applied by the caller).
+// short of the trigger. Every board is RNG-natural (the engine fabricates no
+// near-misses), so anticipation always reflects a real chance.
 function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
   const cols = matrix?.[0]?.length || 0;
   let seen = 0;
@@ -4033,6 +4041,71 @@ const _platform = (() => {
   };
 })();
 
+// ─── Operator free rounds (Campaign Manager) ────────────────────────────────
+// Free rounds the CASINO granted (not the scatter feature). The server decides
+// everything: it consumes one per spin, soonest-expiring campaign first, at the
+// campaign's locked bet. The client only mirrors that state to lock the UI:
+//   queue  open grants in the server's consume order (session/init, then each
+//          spin's free_round updates the grant it used);
+//   won    everything paid while free rounds ran, including a scatter feature a
+//          free round triggered (the server pays those against the campaign too);
+//   featureLeft  the scatter feature's spins left after the last result: free
+//          rounds aren't "complete" until a feature they triggered has finished.
+const freeRounds = {
+  active: false,
+  queue: [],
+  won: 0,
+  featureLeft: 0,
+  get remaining() { return this.queue.reduce((s, g) => s + g.spins_remaining, 0); },
+  get bet() { return this.queue.length ? this.queue[0].bet_amount : null; }
+};
+
+function freeRoundsLoad(list, featureLeft) {
+  freeRounds.queue = (Array.isArray(list) ? list : [])
+    .map((g) => ({
+      campaign_id: g.campaign_id,
+      name: g.name || "",
+      bet_amount: Number(g.bet_amount),
+      spins_remaining: Number(g.spins_remaining || 0),
+      valid_to: g.valid_to || null
+    }))
+    .filter((g) => g.spins_remaining > 0 && Number.isFinite(g.bet_amount));
+  freeRounds.active = freeRounds.queue.length > 0;
+  freeRounds.won = 0;
+  freeRounds.featureLeft = Number(featureLeft || 0);
+}
+
+/** Fold one platform spin result into the mirror (server truth wins). */
+function freeRoundsNote(result) {
+  const fr = result?.free_round;
+  if (fr) {
+    let g = freeRounds.queue.find((q) => q.campaign_id === fr.campaign_id);
+    if (!g) {
+      // Granted after this session loaded: the server already played it as a free
+      // round, so start mirroring now.
+      g = { campaign_id: fr.campaign_id, name: "", bet_amount: Number(fr.bet_amount), spins_remaining: 0, valid_to: null };
+      freeRounds.queue.unshift(g);
+    }
+    g.spins_remaining = Number(fr.spins_remaining || 0);
+    freeRounds.active = true;
+  } else if (!result?.is_free_spin) {
+    // A cash spin: the server has no usable free round for us (spent, expired or
+    // cancelled by the casino).
+    freeRounds.queue = [];
+  }
+  if (freeRounds.active) freeRounds.won = Number((freeRounds.won + Number(result?.total_win || 0)).toFixed(2));
+  freeRounds.featureLeft = Number(result?.free_spins_left || 0);
+  freeRounds.queue = freeRounds.queue.filter((g) => g.spins_remaining > 0);
+}
+
+/** The deck's Bet readout while free rounds run: the count, "FREE ROUNDS 7"
+ *  (null = show the normal bet). Count only: "7 × 5.00" overflowed the readout
+ *  strip on phones and pushed CREDIT into an ellipsis. The locked bet is on the
+ *  ticker line and in the award modal. */
+function freeRoundsReadoutText() {
+  return freeRounds.active && freeRounds.queue.length ? String(freeRounds.remaining) : null;
+}
+
 async function platformInitSession() {
   const res = await fetch("/game/v1/session/init", {
     method: "POST",
@@ -4046,6 +4119,7 @@ async function platformInitSession() {
   }
   _platform.sessionToken = body.session_token;
   _platform.sessionMeta = body;
+  freeRoundsLoad(body.free_rounds, body.free_spins_left);
   // Adapt the platform response to the shape the local engine returns so the
   // rest of the client (initSession()) needs no changes.
   return {
@@ -4164,6 +4238,7 @@ async function api(path, payload) {
   if (_platform.enabled && path === "/api/v1/spin") {
     const result = await platformSpin(payload || {});
     showRoundId(result.round_ref);
+    freeRoundsNote(result);
     return result;
   }
   if (_platform.enabled && path === "/api/v1/buy-free-spins") {
@@ -4230,15 +4305,18 @@ function setControls(disabled) {
   el.spinBtn.setAttribute("aria-label", disabled || state.roundAnimating ? "Stop spin" : "Spin");
   el.simulateBtn.disabled = disabled;
   if (el.simulateBonusBtn) el.simulateBonusBtn.disabled = disabled;
-  el.betSelect.disabled = disabled;
+  // Operator free rounds play at the campaign's locked bet with no ante and no
+  // buy, so those controls stay locked for as long as free rounds run.
+  const frLock = freeRounds.active;
+  el.betSelect.disabled = disabled || frLock;
   // Buy-free-spins is server-authoritative in platform mode (/game/v1/buy-feature)
   // and local otherwise. It's only disabled while busy or when Ante is on (the
   // engine forbids buying the feature with an active ante bet).
-  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked);
-  el.anteToggle.disabled = disabled;
+  el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked) || frLock;
+  el.anteToggle.disabled = disabled || frLock;
   // The bet is fixed for the round from the instant it starts.
-  if (el.betDownBtn) el.betDownBtn.disabled = disabled;
-  if (el.betUpBtn) el.betUpBtn.disabled = disabled;
+  if (el.betDownBtn) el.betDownBtn.disabled = disabled || frLock;
+  if (el.betUpBtn) el.betUpBtn.disabled = disabled || frLock;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
 }
 
@@ -4867,7 +4945,7 @@ function renderPaytable(bet = Number(el.betSelect.value || 1)) {
   });
 
   const scatterTr = document.createElement("tr");
-  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
+  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6+: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
   el.paytableBody.appendChild(scatterTr);
 }
 
@@ -5319,12 +5397,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
   // Step 5: scatter feedback + reel anticipation for this round's opening board.
   const scatterTarget = scatterTargetFor(payload);
-  // Option B: a board the engine ENGINEERED to be one scatter short
-  // (near_miss.pattern "scatter_one_short") gets no anticipation slowdown — the
-  // client must not dramatise a fabricated tease. Its scatters still ping and
-  // count, because that part only reports what is actually on the board.
-  const engineeredTease = payload.near_miss?.pattern === "scatter_one_short";
-  const anticipation = engineeredTease ? null : findAnticipation(steps[0].matrix, scatterTarget);
+  const anticipation = findAnticipation(steps[0].matrix, scatterTarget);
   await reelRenderer.intro(steps[0].matrix, steps[0].multipliers || [], {
     animateMultipliers: true,
     scatterTarget,
@@ -5513,9 +5586,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
 
-  // Near-miss / no-win / bonus-trigger only touch the admin log (no over-reel
-  // text — the player can see the board).
-  if (payload.near_miss && totalWinAmt <= 0) pushGameMessage("So close!", "info");
+  // No-win / bonus-trigger only touch the admin log (no over-reel text — the
+  // player can see the board).
   if (Number(payload.free_spins_awarded || 0) > 0) {
     pushGameMessage(`Bonus triggered: +${payload.free_spins_awarded} free spins.`, "bonus");
   } else if (totalWinAmt <= 0) {
@@ -5681,6 +5753,7 @@ async function spin(options = {}) {
     if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
     ticker.roundEnd();
+    freeRoundsUi.settle(); // after roundEnd, so a completion line wins over the tips
     state.roundSettledAt = performance.now();
   }
 }
@@ -5795,7 +5868,7 @@ function bindFooterMirror() {
   if (!el.footerBalance && !el.footerBet) return;
   const sync = () => {
     if (el.footerBalance && el.balance) el.footerBalance.textContent = el.balance.textContent;
-    if (el.footerBet && el.betView) el.footerBet.textContent = el.betView.textContent;
+    if (el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
   };
   sync();
   const obs = new MutationObserver(sync);
@@ -6010,6 +6083,8 @@ async function initSession() {
   }
   setCrazyMode(Boolean(payload.crazy_mode), { silent: true });
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
+  // Operator free rounds waiting: lock bet/ante/buy to the campaign and announce.
+  if (freeRounds.active) await freeRoundsUi.begin();
   // If a persisted session left the player mid-bonus, auto-resume the
   // autoplay instead of leaving stale free spins lying around. Otherwise
   // the player would unknowingly burn them by clicking spin manually, and
@@ -6018,6 +6093,7 @@ async function initSession() {
   if (pendingFreeSpins > 0) {
     await showFeature(`Resuming Bonus — ${pendingFreeSpins} Free Spins`, "Press anywhere to continue.");
     await autoplayBonus();
+    freeRoundsUi.settle(); // a resumed feature may have been the last free round's
   }
 }
 
@@ -6064,7 +6140,7 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 // only when the controls next refresh at spin time.
 if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
-    el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight();
+    el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
   });
 }
 el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
@@ -6272,6 +6348,11 @@ const ticker = (() => {
   }
   const show = () => { if (!flashing) paint(line, mode); };
   function tips() {
+    // While operator free rounds run they ARE the message; no rotating tips.
+    if (freeRounds.active && freeRounds.queue.length) {
+      const n = freeRounds.remaining;
+      return [`${n} Free Round${n === 1 ? "" : "s"} left · Bet ${fmt(freeRounds.bet)}`];
+    }
     const r = state.rules || {};
     const f = r.features || {};
     const out = [`Minimum ${Number(r.layout?.min_match_count) || 8} matches to win`];
@@ -6306,6 +6387,8 @@ const ticker = (() => {
   }
   function spinLine() {
     if (state.bonusAutoplay) return `Free spin · ${el.freeSpins?.textContent || 0} left`;
+    // This spin uses one free round (the server consumes it), so show what's left after it.
+    if (freeRounds.active && freeRounds.queue.length) return `Free round · ${Math.max(0, freeRounds.remaining - 1)} left`;
     if (state.autoplayActive) {
       return state.autoplayLeft === Infinity ? "Autoplay · press spin to stop" : `Autoplay · ${state.autoplayLeft} left`;
     }
@@ -6374,6 +6457,133 @@ const ticker = (() => {
   return { idle, roundStart, roundEnd, refresh, say, flash, bump, get mode() { return mode; } };
 })();
 ticker.idle();
+
+// ── Operator free rounds: UI lockdown, award modal, completion ──
+// Data lives in `freeRounds` (mirrored from the server). This only presents it:
+// on load an award modal; while they run, bet/ante/buy locked, the bet forced to
+// the campaign's and the deck's Bet readout turned into the counter; when the last
+// one (and any feature it triggered) is done, a ticker line with the total and the
+// player's own bet + ante back. Nothing here moves or resizes the board.
+const freeRoundsUi = (() => {
+  const modal = el.frModal;
+  let locked = false;
+  let saved = null; // the player's cash selections, restored afterwards
+
+  function setBet(value) {
+    const v = String(value);
+    if (el.betSelect.value === v || ![...el.betSelect.options].some((o) => o.value === v)) return;
+    el.betSelect.value = v;
+    el.betSelect.dispatchEvent(new Event("change"));
+  }
+  function paintReadout() {
+    const text = freeRoundsReadoutText();
+    if (el.betReadoutLabel) el.betReadoutLabel.textContent = text ? "Free Rounds" : "Bet";
+    if (el.footerBet) el.footerBet.textContent = text ?? el.betView.textContent;
+  }
+  function apply() {
+    if (!locked) {
+      locked = true;
+      saved = { bet: el.betSelect.value, ante: Boolean(el.anteToggle?.checked) };
+      document.body.classList.add("free-rounds-on");
+      if (el.anteToggle?.checked) {
+        el.anteToggle.checked = false;
+        el.anteToggle.dispatchEvent(new Event("change"));
+      }
+    }
+    if (freeRounds.bet != null) setBet(freeRounds.bet); // the next campaign may lock another bet
+    if (!isRoundInFlight()) setControls(false);
+    paintReadout();
+    ticker.refresh();
+  }
+  function release() {
+    if (!locked) return;
+    locked = false;
+    document.body.classList.remove("free-rounds-on");
+    if (saved) {
+      setBet(saved.bet);
+      if (el.anteToggle && saved.ante !== el.anteToggle.checked) {
+        el.anteToggle.checked = saved.ante;
+        el.anteToggle.dispatchEvent(new Event("change"));
+      }
+    }
+    saved = null;
+    if (!isRoundInFlight()) setControls(false);
+    paintReadout();
+    ticker.refresh();
+  }
+
+  /** "You have X Free Rounds!" on the Step 6 modal shell; resolves when dismissed. */
+  function announce() {
+    if (!modal) return Promise.resolve();
+    const n = freeRounds.remaining;
+    const head = freeRounds.queue[0];
+    if (el.frCount) el.frCount.textContent = String(n);
+    if (el.frNoun) el.frNoun.textContent = n === 1 ? "Free Round" : "Free Rounds";
+    if (el.frBet) el.frBet.textContent = fmt(freeRounds.bet);
+    if (el.frCurrency) el.frCurrency.textContent = state.currency || "";
+    if (el.frMeta) {
+      const until = head?.valid_to ? new Date(head.valid_to) : null;
+      el.frMeta.textContent = until && !Number.isNaN(until.getTime())
+        ? `Bet per round · valid until ${until.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+        : "Bet per round";
+    }
+    return new Promise((resolve) => {
+      const opener = document.activeElement;
+      const close = () => {
+        modal.hidden = true;
+        document.removeEventListener("keydown", onKey, true);
+        modal.removeEventListener("click", onClick);
+        if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+        resolve();
+      };
+      // Capture phase: while open, the modal owns the keyboard (Space must not spin
+      // behind it; Tab stays on its single button).
+      const onKey = (e) => {
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          close();
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          el.frPlayBtn?.focus();
+        }
+      };
+      const onClick = (e) => {
+        if (e.target === modal || e.target.closest("[data-fr-close]")) close();
+      };
+      modal.addEventListener("click", onClick);
+      document.addEventListener("keydown", onKey, true);
+      modal.hidden = false;
+      el.frPlayBtn?.focus();
+      window.Sound?.play("click");
+    });
+  }
+
+  /** On load: lock the UI, then tell the player. */
+  async function begin() {
+    if (!freeRounds.active) return;
+    apply();
+    await announce();
+  }
+
+  /** After every round: keep the lock in step with the server, or finish. */
+  function settle() {
+    if (!freeRounds.active) return;
+    if (freeRounds.queue.length) {
+      apply();
+      return;
+    }
+    // Last free round played; a scatter feature it triggered still belongs to it.
+    if (freeRounds.featureLeft > 0 || state.bonusAutoplay) return;
+    const won = freeRounds.won;
+    freeRounds.active = false;
+    freeRounds.won = 0;
+    release();
+    ticker.flash(`Free Rounds complete · Total won ${fmt(won)} ${state.currency || ""}`.trim(), "win", 3600);
+  }
+
+  return { begin, settle };
+})();
 
 // ── Anticipation drone (Step 5b) ──
 // A rising tension tone while the anticipated reels wait. Its own small Web
@@ -6552,7 +6762,7 @@ el.spinBtn.addEventListener("click", (e) => {
 });
 
 window.addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || psModal.isOpen()) return;
+  if (e.code !== "Space" || psModal.isOpen() || (el.frModal && !el.frModal.hidden)) return;
   const t = e.target;
   const typing = t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t?.tagName || "");
   if (typing && t !== el.spinBtn) return;

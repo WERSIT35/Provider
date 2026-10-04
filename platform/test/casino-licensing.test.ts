@@ -255,6 +255,9 @@ describe("Wallet webhook: casino-held funds over a signed HTTP callback", () => 
 
     let lastRoundRef = "";
     let lastTotalWin = 0;
+    // A spin can trigger the bonus; the free spins that follow are not debited, so
+    // track which rounds were paid instead of assuming all 8 were.
+    const paidKeys = new Set<string>();
     for (let i = 0; i < 8; i++) {
       const key = `wh-spin-${i}`;
       const res = await app.inject({
@@ -264,7 +267,8 @@ describe("Wallet webhook: casino-held funds over a signed HTTP callback", () => 
         payload: JSON.stringify({ bet_amount: 1 })
       });
       expect(res.statusCode).toBe(200);
-      const out = res.json() as { round_ref: string; total_win: number };
+      const out = res.json() as { round_ref: string; total_win: number; bet_charged: number };
+      if (out.bet_charged > 0) paidKeys.add(`${key}:debit`);
       lastRoundRef = out.round_ref;
       lastTotalWin = out.total_win;
     }
@@ -273,14 +277,17 @@ describe("Wallet webhook: casino-held funds over a signed HTTP callback", () => 
     // preHandler itself rejects bad signatures with 401, so a 200 spin response
     // proves the signature verified) and carrying the right idempotency key shape.
     const debits = mockWallet.calls.filter((c2) => c2.action === "debit");
-    expect(debits.length).toBe(8);
+    expect(paidKeys.size).toBeGreaterThanOrEqual(1);
+    expect(debits.map((d) => d.body.idempotencyKey).sort()).toEqual([...paidKeys].sort());
     expect(debits[0].body.idempotencyKey).toBe("wh-spin-0:debit");
     expect(debits[0].body.currency).toBe("GEL");
 
-    // Debit always precedes its round's credit (when a round won).
+    // Debit always precedes its round's credit (when a paid round won); a free spin
+    // has no debit by design, so its credit stands alone.
     for (const call of mockWallet.calls) {
       if (call.action === "credit") {
         const roundKey = String(call.body.idempotencyKey).replace(":credit", ":debit");
+        if (!paidKeys.has(roundKey)) continue;
         const debitIdx = mockWallet.calls.findIndex((x) => x.action === "debit" && x.body.idempotencyKey === roundKey);
         const creditIdx = mockWallet.calls.indexOf(call);
         expect(debitIdx).toBeGreaterThanOrEqual(0);

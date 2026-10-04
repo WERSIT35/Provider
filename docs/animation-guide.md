@@ -30,7 +30,7 @@ the top of `client/main.js`; the renderer is `ReelCanvasRenderer` (canvas, not D
 | Win | The caught cluster holds and breathes (spotlight dims the rest), then **shatters**: cell flare, gem/gold/steel fragments and sparks burst from the cluster centre. | `MOTION`, `SHATTER` |
 | Tumble | For 30ms the neighbours lean into the cleared cells (symbols above dip, same-row neighbours lean sideways), then the refill drops. Each tumble in a chain is 15% faster (floor 50%). | `VACUUM`, `TUMBLE_MOMENTUM` |
 | Multiplier BANG | A landing multiplier: thud, local bloom (~2 cells), spotlight flash. No board movement. | `spawnHeavyImpact` |
-| Scatters | Each landing scatter pings (rising pitch) with a laser reticle; on a near trigger the remaining reels hold and fall slower with a drone and red lanes (anticipation). Engine-fabricated teases (`near_miss.pattern = "scatter_one_short"`) get **no** anticipation (Option B). | `ANTICIPATION`, `findAnticipation` |
+| Scatters | Each landing scatter pings (rising pitch) with a laser reticle; on a near trigger the remaining reels hold and fall slower with a drone and red lanes (anticipation). Every board is RNG-natural (the engine fabricates no near-misses), so anticipation always reflects a real chance. | `ANTICIPATION`, `findAnticipation` |
 | Fast-stop | A skip zips every airborne reel into place left to right by 110ms with motion-blur ghosts, then a double click. Reels already landed never thud twice. | `FAST_ZIP` |
 | Big win | ≥10× opens the full-screen overlay (`client/big-win.js`): VAULT CRACKED (10×), LASER BREACH (25×), MOTHERLODE (50×), MAX WIN. Tap skips the count, tap again dismisses. | `WIN_TIERS` |
 

@@ -88,12 +88,38 @@ pre.code { background:#070b1a; border:1px solid var(--line); padding:8px 10px; b
 .banner { padding:8px 12px; border-radius:8px; border:1px solid var(--line); margin-top:8px; font-weight:600; }
 .banner.fs { background: #28203a; color:#d8c4ff; border-color:#3e3270; }
 .banner.bonus { background:#3a2a10; color:#ffd089; border-color:#6e4d20; }
+.verdict { display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel-2); margin-bottom:12px; font-size:14px; }
+.verdict b { font-size:16px; letter-spacing:.04em; }
+.verdict.good { background:#10301f; color:var(--ok); border-color:#1b4f33; }
+.verdict.bad { background:#2a1320; color:var(--err); border-color:#5c2236; }
 .breakdown { font-size:13px; }
 .breakdown details { background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:6px; }
 .breakdown summary { cursor:pointer; font-weight:600; }
 .breakdown ul { margin:6px 0 0 18px; }
 .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
 .toolbar input.search { min-width: 280px; }
+
+/* ── Campaign Manager ─────────────────────────────────── */
+.badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); text-transform:capitalize; white-space:nowrap; }
+.badge.active { color:var(--ok); border-color:#1b4f33; background:#0f2a1c; }
+.badge.scheduled { color:var(--accent-2); border-color:#2a3d73; }
+.badge.expired { color:var(--warn); border-color:#5c4321; }
+.badge.cancelled { color:var(--err); border-color:#5c2236; }
+.badge.exhausted { color:var(--muted); }
+.num { text-align:right; font-variant-numeric: tabular-nums; }
+td.actions { text-align:right; white-space:nowrap; }
+td.nowrap { white-space:nowrap; }
+td.actions button { padding:5px 10px; font-size:12px; }
+dialog.modal { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:14px; padding:0; width:min(560px, calc(100vw - 32px)); box-shadow:0 20px 60px rgba(0,0,0,.5); }
+dialog.modal::backdrop { background:rgba(3,6,18,.65); }
+dialog.modal form { padding:18px 20px; display:grid; gap:12px; }
+dialog.modal h3 { margin:0; font-size:16px; }
+dialog.modal .form-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width: 560px) { dialog.modal .form-2 { grid-template-columns:1fr; } }
+dialog.modal textarea { min-height:96px; resize:vertical; font-family: ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+dialog.modal .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+dialog.modal .hint { font-size:12px; color:var(--muted); margin:-6px 0 0; }
+.drawer { margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); }
 `;
 
 // The application script. Kept as one served file so both consoles share it.
@@ -108,7 +134,10 @@ const $ = (id) => document.getElementById(id);
 const fmtMoney = (n) => Number(n ?? 0).toFixed(2);
 const fmt = (v) => v === undefined || v === null ? "" : (typeof v === "object" ? JSON.stringify(v) : String(v));
 const setHTML = (id, html) => { const e = $(id); if (e) e.innerHTML = html; };
-function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// Escapes quotes too: views interpolate esc() into HTML attributes as well as text.
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+// Effective permissions from /admin/v1/me ("*" = all); UIs hide what the role can't do.
+function hasPerm(p) { const ps = state.permissions || []; return ps.includes("*") || ps.includes(p); }
 function flash(el, msg, ok) { if (!el) return; el.hidden = false; el.className = "status " + (ok ? "ok" : "err"); el.textContent = msg; }
 function clearFlash(el) { if (el) { el.hidden = true; el.textContent = ""; } }
 
@@ -254,12 +283,26 @@ async function afterSignIn() {
   const so = $("signOutBtn"); if (so) so.hidden = false;
   renderAuth();
   applyScopeVisibility();
-  if (state.scope !== "provider") {
-    try { const me = await api("/admin/v1/me"); state.operatorId = me.operator_id; } catch {}
+  try {
+    const me = await api("/admin/v1/me");
+    state.permissions = me.permissions || [];
+    if (state.scope !== "provider") state.operatorId = me.operator_id;
+  } catch {}
+  if (!openDeepLink()) {
+    const initial = (location.hash || "#dashboard").slice(1).split("?")[0];
+    show(VIEWS.includes(initial) ? initial : "dashboard");
   }
-  const initial = (location.hash || "#dashboard").slice(1);
-  show(VIEWS.includes(initial) ? initial : "dashboard");
 }
+// Deep link: #inspector?round=<ref> opens that round straight in the inspector.
+function openDeepLink() {
+  const m = /^#inspector\\?(.*)$/.exec(location.hash || "");
+  const ref = m ? new URLSearchParams(m[1]).get("round") : null;
+  if (!ref) return false;
+  openRound(ref);
+  return true;
+}
+window.addEventListener("hashchange", () => { if (state.token && state.scope) openDeepLink(); });
+function openRound(ref) { $("roundRefInput").value = ref; show("inspector"); lookupRound(); }
 function applyScopeVisibility() {
   const isProvider = state.scope === "provider";
   document.querySelectorAll("[data-provider]").forEach(el => { el.style.display = isProvider ? "" : "none"; });
@@ -288,6 +331,8 @@ function show(view) {
   if (view === "games") { loadGames(); if (state.scope !== "provider") loadWebhook(); }
   if (view === "disputes") loadDisputes();
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
+  if (view === "playerReports") loadPlayerReport();
+  if (view === "campaigns") loadCampaigns();
   if (view === "onboarding") refreshOnboardingDropdowns();
   if (view === "reports") loadReports();
   if (view === "accounts") loadAccounts();
@@ -346,7 +391,7 @@ async function loadRounds() {
         '<td>' + r.status + '</td>' +
         '<td>' + (r.created_at || '').replace('T', ' ').slice(0, 19) + '</td></tr>').join('');
     setHTML("roundsList", '<table>' + head + body + '</table>');
-    $("roundsList").querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => { $("roundRefInput").value = tr.dataset.ref; show('inspector'); lookupRound(); }));
+    $("roundsList").querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => openRound(tr.dataset.ref)));
   } catch (e) { setHTML("roundsList", '<span class="err">'+e.message+'</span>'); }
 }
 
@@ -357,6 +402,8 @@ __ROUNDACTIONS__
 __GAMES__
 __DISPUTES__
 __PLAYERS__
+__PLAYER_REPORTS__
+__CAMPAIGNS__
 __OPERATORS__
 __ACCOUNTS__
 
@@ -366,7 +413,8 @@ if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
 
 // The inspector/onboarding/etc. blocks are big and unchanged in behavior from the
 // original single console; kept in separate template pieces for readability.
-import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
+import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, PLAYER_REPORTS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
+import { CAMPAIGNS_JS } from "./admin-console-campaigns";
 
 function buildAppJs(): string {
   return CONSOLE_JS
@@ -377,6 +425,8 @@ function buildAppJs(): string {
     .replace("__GAMES__", GAMES_JS)
     .replace("__DISPUTES__", DISPUTES_JS)
     .replace("__PLAYERS__", PLAYERS_JS)
+    .replace("__PLAYER_REPORTS__", PLAYER_REPORTS_JS)
+    .replace("__CAMPAIGNS__", () => CAMPAIGNS_JS)
     .replace("__OPERATORS__", OPERATORS_JS)
     .replace("__ACCOUNTS__", ACCOUNTS_JS);
 }

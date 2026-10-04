@@ -38,6 +38,8 @@ const EnvSchema = z.object({
   // Operator HMAC request signing: max allowed clock skew, and per-key rate limit.
   HMAC_SKEW_SECONDS: z.coerce.number().int().positive().max(300).default(30),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),
+  // Background sweep that expires lapsed free-round grants (0 disables it).
+  CAMPAIGN_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
   // Optional Postgres persistence. When set, state is durably mirrored to Postgres
   // (loaded on boot, written through per request). Unset → pure in-memory (default).
   DATABASE_URL: z.string().url().optional(),
