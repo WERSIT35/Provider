@@ -8,7 +8,8 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:back-office": "tsx scripts/back-office-check.ts"
   },
   "engines": {
     "node": ">=22.13"
