@@ -77,6 +77,31 @@ describe("SQLite casino ledger", () => {
     expect(s.recentRounds()[0]).toMatchObject({ roundRef: "rb", bet: 0, rolledBack: true });
   });
 
+  it("groups a bonus by featureRef: trigger round + its free spins", () => {
+    const s = new PlayerStore();
+    const p = s.register("bonus@example.com", "hash", 1000);
+    // Trigger (a buy), then two paying free spins of it, then an unrelated paid round.
+    s.debit({ playerId: p.id, idempotencyKey: "t:debit", amount: 100, currency: "GEL", roundRef: "r_t", roundType: "buy" });
+    s.credit({ playerId: p.id, idempotencyKey: "t:credit", amount: 6, currency: "GEL", roundRef: "r_t", roundType: "buy" });
+    s.credit({ playerId: p.id, idempotencyKey: "fs1:credit", amount: 2.5, currency: "GEL", roundRef: "r_fs1", roundType: "free_spin", featureRef: "r_t" });
+    s.credit({ playerId: p.id, idempotencyKey: "fs2:credit", amount: 40, currency: "GEL", roundRef: "r_fs2", roundType: "free_spin", featureRef: "r_t" });
+    s.debit({ playerId: p.id, idempotencyKey: "x:debit", amount: 1, currency: "GEL", roundRef: "r_x", roundType: "paid" });
+
+    const rounds = new Map(s.recentRounds().map((r) => [r.roundRef, r]));
+    expect(rounds.get("r_t")?.featureRef).toBeNull();
+    expect(rounds.get("r_fs1")?.featureRef).toBe("r_t");
+    expect(rounds.get("r_fs2")?.featureRef).toBe("r_t");
+    expect(rounds.get("r_x")?.featureRef).toBeNull();
+    const summaries = s.bonusSummaries(["r_t", "r_x", "r_unknown"]);
+    expect([...summaries.keys()]).toEqual(["r_t"]);
+    expect(summaries.get("r_t")).toMatchObject({ payingSpins: 2, win: 42.5, currency: "GEL" });
+
+    // A rollback inherits the group of the move it reverses.
+    const d = s.debit({ playerId: p.id, idempotencyKey: "g:debit", amount: 3, currency: "GEL", roundRef: "r_g", roundType: "free_spin", featureRef: "r_t" });
+    s.rollback({ idempotencyKey: "g:rollback", originalOperatorTxRef: d.operatorTxRef, roundRef: "r_g" });
+    expect(s.transactionsFor(p.id).find((t) => t.type === "rollback")?.featureRef).toBe("r_t");
+  });
+
   it("idempotency keys are scoped per provider", () => {
     const s = new PlayerStore();
     const p = s.register("scope@example.com", "hash", 100);

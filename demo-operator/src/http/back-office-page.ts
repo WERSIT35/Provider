@@ -214,6 +214,10 @@ table.data { width:100%; border-collapse:collapse; font-variant-numeric:tabular-
 .badge.buy { color:var(--gold); border-color:#5e5320; }
 .badge.free_round { color:#c49bff; border-color:#45306b; }
 .badge.rolled { color:var(--err); border-color:#5a2a27; }
+/* Bonus grouping: free spins carry their trigger round (featureRef). */
+.data tr.in-bonus td:first-child { box-shadow: inset 3px 0 0 #2c3a66; }
+.bonus-chip { display:block; font:inherit; font-size:11px; font-weight:700; margin:4px 0 0; padding:2px 8px; border-radius:999px; cursor:pointer; background:rgba(159,184,255,.08); border:1px solid #2c3a66; color:#9fb8ff; }
+.bonus-chip:hover { background:rgba(159,184,255,.16); }
 
 .form-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-bottom:8px; }
 .form-grid input { margin-top:4px; }
@@ -327,7 +331,7 @@ async function loadRounds() {
 }
 function renderRounds() {
   const q = $('roundsFilter').value.trim().toLowerCase();
-  const list = q ? rounds.filter((r) => [r.playerId, r.playerEmail, r.gameCode, r.roundRef].some((v) => String(v || '').toLowerCase().includes(q))) : rounds;
+  const list = q ? rounds.filter((r) => [r.playerId, r.playerEmail, r.gameCode, r.roundRef, r.featureRef].some((v) => String(v || '').toLowerCase().includes(q))) : rounds;
   const body = $('roundsBody');
   if (!list.length) {
     body.innerHTML = '<tr><td colspan="7" class="empty">' + (rounds.length ? 'No rounds match this filter.' : 'No rounds yet. They appear here as soon as a player spins.') + '</td></tr>';
@@ -336,14 +340,20 @@ function renderRounds() {
   body.innerHTML = list.map((r) => {
     const type = r.rolledBack ? '<span class="badge rolled">Rolled back</span>'
       : '<span class="badge ' + esc(r.roundType || '') + '">' + esc(ROUND_LABEL[r.roundType] || 'Round') + '</span>';
+    // A trigger round heads its bonus: the chip filters the table to the whole group.
+    const bonus = r.bonus
+      ? '<button type="button" class="bonus-chip" data-bonus="' + esc(r.roundRef) + '" title="Show this bonus: the trigger and its free spins. ' + esc(r.bonus.payingSpins) + ' free spin(s) paid; free spins that won nothing move no money and are not listed.">Bonus · ' +
+        esc(r.bonus.payingSpins) + ' spin' + (r.bonus.payingSpins === 1 ? '' : 's') + ' · ' + money(r.bonus.win, r.bonus.currency) + '</button>'
+      : '';
+    const group = r.featureRef ? '<span class="sub">Bonus of <span class="mono" title="' + esc(r.featureRef) + '">' + esc(shortId(r.featureRef)) + '</span></span>' : '';
     const verify = r.verifyUrl
       ? '<a class="btn btn-verify" href="' + esc(r.verifyUrl) + '" target="_blank" rel="noopener noreferrer" title="Open round ' + esc(r.roundRef) + ' in the provider\\'s Round Inspector">Verify on Provider ↗</a>'
       : '<span class="btn btn-verify" aria-disabled="true" title="No provider portal configured">Verify on Provider</span>';
-    return '<tr>' +
+    return '<tr' + (r.featureRef ? ' class="in-bonus"' : '') + '>' +
       '<td>' + when(r.settledAt) + '</td>' +
       '<td><span class="mono" title="' + esc(r.playerId) + '">' + esc(shortId(r.playerId)) + '</span>' + (r.playerEmail ? '<span class="sub">' + esc(r.playerEmail) + '</span>' : '') + '</td>' +
       '<td class="mono">' + esc(r.gameCode || '—') + '</td>' +
-      '<td>' + type + '<span class="sub mono" title="' + esc(r.roundRef) + '">' + esc(shortId(r.roundRef)) + '</span></td>' +
+      '<td>' + type + '<span class="sub mono" title="' + esc(r.roundRef) + '">' + esc(shortId(r.roundRef)) + '</span>' + group + bonus + '</td>' +
       '<td class="num">' + money(r.bet, r.currency) + '</td>' +
       '<td class="num ' + (r.win > 0 ? 'win' : 'zero') + '">' + money(r.win, r.currency) + '</td>' +
       '<td class="act">' + verify + '</td>' +
@@ -351,6 +361,12 @@ function renderRounds() {
   }).join('');
 }
 $('roundsFilter').addEventListener('input', renderRounds);
+$('roundsBody').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-bonus]');
+  if (!chip) return;
+  $('roundsFilter').value = chip.dataset.bonus;
+  renderRounds();
+});
 $('roundsRefresh').addEventListener('click', loadRounds);
 
 /* ── Players / transactions ──────────────────────────── */

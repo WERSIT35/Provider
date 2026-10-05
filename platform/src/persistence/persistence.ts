@@ -100,7 +100,7 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "updated_at" }
   ),
   player_sessions: spec(
-    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "created_at"],
+    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "locked_feature_ref", "created_at"],
     ["id"],
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),

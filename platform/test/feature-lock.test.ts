@@ -86,7 +86,7 @@ describe("bonus feature bet lock", () => {
     const s = openSession();
     // Simulate an ante-on trigger through the same entry point the orchestrator uses.
     c.sessions.applyResult(s.id, { free_spins_left: 3 } as unknown as SpinResult, {
-      bet: 5, currency: "GEL", ante_enabled: true, campaign_id: null, grant_id: null
+      bet: 5, currency: "GEL", ante_enabled: true, campaign_id: null, grant_id: null, feature_ref: "r_sim_trigger"
     });
     const out = await spin(s.id, 500, false);
     expect(c.ledger.getRound(out.round_ref)).toMatchObject({ bet_amount: 5, ante_enabled: true, bet_charged: 0 });
@@ -134,7 +134,7 @@ describe("feature triggered by an operator free round", () => {
     // with the terms that round was played at (what the orchestrator passes).
     if (live(s.id).free_spins_left === 0) {
       c.sessions.applyResult(s.id, { free_spins_left: spins } as unknown as SpinResult, {
-        bet: 5, currency: "GEL", ante_enabled: false, campaign_id: campaign.id, grant_id: grant.id
+        bet: 5, currency: "GEL", ante_enabled: false, campaign_id: campaign.id, grant_id: grant.id, feature_ref: "r_sim_trigger"
       });
     }
     expect(live(s.id)).toMatchObject({ locked_bet: 5, locked_campaign_id: campaign.id, locked_grant_id: grant.id });
@@ -204,7 +204,7 @@ describe("voiding a free round returns the spin", () => {
     await spin(s.id, 1);
     if (live(s.id).free_spins_left === 0) {
       c.sessions.applyResult(s.id, { free_spins_left: 2 } as unknown as SpinResult, {
-        bet: 5, currency: "GEL", ante_enabled: false, campaign_id: campaign.id, grant_id: grant.id
+        bet: 5, currency: "GEL", ante_enabled: false, campaign_id: campaign.id, grant_id: grant.id, feature_ref: "r_sim_trigger"
       });
     }
     const featureSpin = await spin(s.id, 1);

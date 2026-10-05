@@ -206,6 +206,9 @@ async function main() {
       calls.spin === 1, `resolved spins=${calls.spin}`);
 
     // ── 2. a normal single press still works ─────────────────────────────────
+    // A press within SPIN_SETTLE_GUARD_MS of the round settling is a deliberate skip,
+    // not a spin; waitIdle() can return inside that window, so wait it out first.
+    for (let i = 0; i < 40 && await ev(`performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS`); i++) await sleep(25);
     calls.spin = 0;
     await ev(`document.getElementById("spinBtn").click();`);
     check("base game: a single press does start a spin", await waitForSpins(1) === 1,

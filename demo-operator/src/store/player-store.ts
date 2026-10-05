@@ -34,6 +34,8 @@ export interface PlayerTransaction {
   gameCode: string | null;
   roundType: RoundType | null;
   campaignId: string | null;
+  /** Bonus group: round_ref of the round that triggered the feature (free-spin moves only). */
+  featureRef: string | null;
   idempotencyKey: string;
   operatorTxRef: string;
   reversesTxRef: string | null;
@@ -50,12 +52,25 @@ export interface LedgerRound {
   gameCode: string | null;
   roundType: RoundType | null;
   campaignId: string | null;
+  /** Free spins: the trigger round's ref (the bonus this round belongs to). Else null. */
+  featureRef: string | null;
   currency: string;
   bet: number;
   win: number;
   rolledBack: boolean;
   startedAt: string;
   settledAt: string;
+}
+
+/** A bonus as the casino saw it: its trigger round plus the free spins that paid. */
+export interface BonusSummary {
+  featureRef: string;
+  /** Free spins that moved money (a free spin that wins nothing sends no webhook). */
+  payingSpins: number;
+  win: number;
+  currency: string;
+  firstAt: string;
+  lastAt: string;
 }
 
 export class InsufficientFundsError extends Error {
@@ -77,6 +92,7 @@ export interface MoneyMoveMeta {
   gameCode?: string;
   roundType?: string;
   campaignId?: string;
+  featureRef?: string;
 }
 
 interface MoneyMove extends MoneyMoveMeta {
@@ -94,8 +110,8 @@ interface PlayerRow { id: string; email: string; password_hash: string; balance_
 interface TxRow {
   seq: number; id: string; provider_id: string; player_id: string; kind: TxType; tx_type: LedgerTxType;
   amount_minor: number; currency: string; round_ref: string; game_code: string | null; round_type: RoundType | null;
-  campaign_id: string | null; idempotency_key: string; operator_tx_ref: string; reverses_tx_ref: string | null;
-  balance_after_minor: number; created_at: string;
+  campaign_id: string | null; feature_ref: string | null; idempotency_key: string; operator_tx_ref: string;
+  reverses_tx_ref: string | null; balance_after_minor: number; created_at: string;
 }
 
 const toPlayer = (r: PlayerRow): Player => ({
@@ -104,7 +120,7 @@ const toPlayer = (r: PlayerRow): Player => ({
 const toTx = (r: TxRow): PlayerTransaction => ({
   id: r.id, seq: r.seq, providerId: r.provider_id, playerId: r.player_id, type: r.kind, txType: r.tx_type,
   amount: toMajor(r.amount_minor), currency: r.currency, roundRef: r.round_ref, gameCode: r.game_code,
-  roundType: r.round_type, campaignId: r.campaign_id, idempotencyKey: r.idempotency_key,
+  roundType: r.round_type, campaignId: r.campaign_id, featureRef: r.feature_ref ?? null, idempotencyKey: r.idempotency_key,
   operatorTxRef: r.operator_tx_ref, reversesTxRef: r.reverses_tx_ref, balanceAfter: toMajor(r.balance_after_minor),
   createdAt: r.created_at
 });
@@ -159,6 +175,7 @@ export class PlayerStore {
     const rows = this.db.prepare(`
       SELECT t.round_ref, t.provider_id, t.player_id, p.email AS player_email,
              MAX(t.game_code) AS game_code, MAX(t.round_type) AS round_type, MAX(t.campaign_id) AS campaign_id,
+             MAX(t.feature_ref) AS feature_ref,
              MAX(t.currency) AS currency,
              SUM(CASE WHEN t.kind = 'debit'    THEN t.amount_minor ELSE 0 END) AS debit_minor,
              SUM(CASE WHEN t.kind = 'rollback' THEN t.amount_minor ELSE 0 END) AS rollback_minor,
@@ -170,15 +187,43 @@ export class PlayerStore {
       ORDER BY last_seq DESC
       LIMIT ?`).all(...params) as unknown as Array<{
         round_ref: string; provider_id: string; player_id: string; player_email: string | null; game_code: string | null;
-        round_type: RoundType | null; campaign_id: string | null; currency: string; debit_minor: number;
+        round_type: RoundType | null; campaign_id: string | null; feature_ref: string | null; currency: string; debit_minor: number;
         rollback_minor: number; credit_minor: number; started_at: string; settled_at: string;
       }>;
     return rows.map((r) => ({
       roundRef: r.round_ref, providerId: r.provider_id, playerId: r.player_id, playerEmail: r.player_email,
-      gameCode: r.game_code, roundType: r.round_type, campaignId: r.campaign_id, currency: r.currency,
+      gameCode: r.game_code, roundType: r.round_type, campaignId: r.campaign_id, featureRef: r.feature_ref, currency: r.currency,
       bet: toMajor(r.debit_minor - r.rollback_minor), win: toMajor(r.credit_minor), rolledBack: r.rollback_minor > 0,
       startedAt: r.started_at, settledAt: r.settled_at
     }));
+  }
+
+  /**
+   * Bonus groups keyed by their trigger round: how many free spins paid and their total
+   * win (free spins are never debited, so there is nothing to roll back). Computed over the whole ledger, not just the recent page.
+   */
+  bonusSummaries(featureRefs: string[]): Map<string, BonusSummary> {
+    const out = new Map<string, BonusSummary>();
+    const refs = [...new Set(featureRefs)].filter(Boolean);
+    for (let i = 0; i < refs.length; i += 500) {
+      const chunk = refs.slice(i, i + 500);
+      const rows = this.db.prepare(`
+        SELECT feature_ref, COUNT(DISTINCT round_ref) AS spins, MAX(currency) AS currency,
+               SUM(CASE WHEN kind = 'credit' THEN amount_minor ELSE 0 END) AS credit_minor,
+               MIN(created_at) AS first_at, MAX(created_at) AS last_at
+        FROM wallet_transactions
+        WHERE feature_ref IN (${chunk.map(() => "?").join(",")})
+        GROUP BY feature_ref`).all(...chunk) as unknown as Array<{
+          feature_ref: string; spins: number; currency: string; credit_minor: number; first_at: string; last_at: string;
+        }>;
+      for (const r of rows) {
+        out.set(r.feature_ref, {
+          featureRef: r.feature_ref, payingSpins: r.spins, win: toMajor(r.credit_minor), currency: r.currency,
+          firstAt: r.first_at, lastAt: r.last_at
+        });
+      }
+    }
+    return out;
   }
 
   /** Debit the player's balance. Rejects (no balance change) if funds are insufficient. */
@@ -211,7 +256,7 @@ export class PlayerStore {
         providerId, playerId: original.player_id, kind: "rollback", txType: "ROLLBACK",
         amountMinor: original.amount_minor, currency: original.currency, roundRef: args.roundRef,
         gameCode: original.game_code, roundType: original.round_type, campaignId: original.campaign_id,
-        idempotencyKey: args.idempotencyKey, reversesTxRef: original.operator_tx_ref, balanceAfterMinor: balanceAfter
+        featureRef: original.feature_ref ?? null, idempotencyKey: args.idempotencyKey, reversesTxRef: original.operator_tx_ref, balanceAfterMinor: balanceAfter
       });
     });
   }
@@ -231,7 +276,8 @@ export class PlayerStore {
         providerId, playerId: args.playerId, kind, txType, amountMinor, currency: args.currency, roundRef: args.roundRef,
         gameCode: args.gameCode ?? null,
         roundType: args.roundType && ROUND_TYPES.has(args.roundType) ? (args.roundType as RoundType) : null,
-        campaignId: args.campaignId ?? null, idempotencyKey: args.idempotencyKey, reversesTxRef: null,
+        campaignId: args.campaignId ?? null, featureRef: args.featureRef ?? null,
+        idempotencyKey: args.idempotencyKey, reversesTxRef: null,
         balanceAfterMinor: balanceAfter
       });
     });
@@ -253,16 +299,16 @@ export class PlayerStore {
   private insert(t: {
     providerId: string; playerId: string; kind: TxType; txType: LedgerTxType; amountMinor: number; currency: string;
     roundRef: string; gameCode: string | null; roundType: RoundType | null; campaignId: string | null;
-    idempotencyKey: string; reversesTxRef: string | null; balanceAfterMinor: number;
+    featureRef: string | null; idempotencyKey: string; reversesTxRef: string | null; balanceAfterMinor: number;
   }): AppliedResult {
     const operatorTxRef = `dop_${randomUUID()}`;
     this.db.prepare(`
       INSERT INTO wallet_transactions
         (id, provider_id, player_id, kind, tx_type, amount_minor, currency, round_ref, game_code, round_type,
-         campaign_id, idempotency_key, operator_tx_ref, reverses_tx_ref, balance_after_minor, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+         campaign_id, feature_ref, idempotency_key, operator_tx_ref, reverses_tx_ref, balance_after_minor, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       randomUUID(), t.providerId, t.playerId, t.kind, t.txType, t.amountMinor, t.currency, t.roundRef, t.gameCode,
-      t.roundType, t.campaignId, t.idempotencyKey, operatorTxRef, t.reversesTxRef, t.balanceAfterMinor,
+      t.roundType, t.campaignId, t.featureRef, t.idempotencyKey, operatorTxRef, t.reversesTxRef, t.balanceAfterMinor,
       new Date().toISOString()
     );
     return { operatorTxRef, balanceAfter: toMajor(t.balanceAfterMinor) };
