@@ -80,7 +80,10 @@ async function main(): Promise<void> {
   const s = c.sessions.initSession(c.sessions.createLaunchToken({ operator_id: op.id, game_code: "bananax", operator_player_id: "player-7", currency: "GEL", origin: "casino.example.com" }));
   let k = 0;
   const triggers: string[] = [];
+  // A paid spin may trigger the bonus naturally (~1 in 248); play any such feature out.
+  const drain = async () => { while (c.sessions.get(s.id).free_spins_left > 0) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `fs${k++}` }); };
   for (let i = 0; i < 8; i++) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `p${k++}` });
+  await drain();
   // Keep buying until a bonus has a free spin that banked a multiplier (for the HUD checks).
   let bankedSpin: string | null = null;
   for (let b = 0; b < 12 && (!bankedSpin || triggers.length < 2); b++) {
@@ -91,6 +94,9 @@ async function main(): Promise<void> {
     }
   }
   for (let i = 0; i < 4; i++) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `p${k++}` });
+  await drain();
+  // Every bonus the player had, bought or natural (the search must tag them all).
+  const allTriggers = c.reporting.listRoundsByPlayer(op.id, "player-7").filter((r) => c.ledger.featureFamily(r.round_ref)?.feature_ref === r.round_ref).length;
   console.log(`seeded: ${triggers.length} bonuses, banked multiplier spin: ${bankedSpin ? "yes" : "no"}`);
   const providerToken = c.adminAuth.mintToken({ admin_id: "prov", scope: "provider", role: "provider_super_admin" });
   const operatorToken = c.adminAuth.mintToken({ admin_id: "op", scope: "operator", operator_id: op.id, role: "operator_admin" });
@@ -171,7 +177,7 @@ async function main(): Promise<void> {
     check("search lists every round of the player", await waitFor(`document.querySelectorAll('#ipResults tr.clickable').length === ${total}`), String(await evaluate(`document.querySelectorAll('#ipResults tr.clickable').length`)));
     const headers = await evaluate(`[...document.querySelectorAll('#ipResults th')].map(t => t.textContent)`);
     check("columns: Timestamp, Operator, Game, Bet, Win, Bonus, Round", JSON.stringify(headers) === JSON.stringify(["Timestamp", "Operator", "Game", "Bet", "Win", "Bonus", "Round"]), JSON.stringify(headers));
-    check("bonus triggers are tagged with their free-spin count", (await evaluate(`[...document.querySelectorAll('#ipResults .tag.trig')].length`)) === triggers.length);
+    check("bonus triggers are tagged with their free-spin count", (await evaluate(`[...document.querySelectorAll('#ipResults .tag.trig')].length`)) === allTriggers);
     check("free spins are tagged k/N and marked as bonus rows", await evaluate(`(() => { const fs = [...document.querySelectorAll('#ipResults tr.in-bonus')]; return fs.length > 0 && fs.every(tr => /Free spin \\d+\\/\\d+/.test(tr.textContent)); })()`));
     check("free spins show bet as 'free'", await evaluate(`[...document.querySelectorAll('#ipResults tr.in-bonus')].every(tr => tr.cells[3].textContent === 'free')`));
     await shot("player-search");

@@ -87,12 +87,15 @@ describe("Round Inspector: bonus families, forensics and player search", () => {
       wallet.setBalance(player, "GEL", 1_000_000);
       const s = c.sessions.initSession(c.sessions.createLaunchToken({ operator_id: op, game_code: "bananax", operator_player_id: player, currency: "GEL", origin: "casino.example.com" }));
       let k = 0;
+      // A paid spin may trigger the bonus naturally; play any such feature out before buying.
+      const drain = async () => { while (c.sessions.get(s.id).free_spins_left > 0) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `${op}-fs${k++}` }); };
       for (let i = 0; i < 20; i++) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `${op}-p${k++}` });
+      await drain();
       if (op === opA) {
         for (let b = 0; b < 3; b++) {
           const buy = await c.orchestrator.buyFeature(s.id, { bet_amount: 1, idempotency_key: `${op}-buy${b}` });
           triggers.push(buy.round_ref);
-          while (c.sessions.get(s.id).free_spins_left > 0) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `${op}-fs${k++}` });
+          await drain();
         }
         for (let i = 0; i < 5; i++) await c.orchestrator.spin(s.id, { bet_amount: 1, idempotency_key: `${op}-p${k++}` });
       }
@@ -121,8 +124,8 @@ describe("Round Inspector: bonus families, forensics and player search", () => {
     expect(fromMember.feature.spins.map((s: { round_ref: string }) => s.round_ref)).toEqual(f.spins.map((s: { round_ref: string }) => s.round_ref));
     expect(fromMember.feature.position).toBe(mid.index);
 
-    // A plain paid spin has no family.
-    const plain = c.reporting.listRoundsByPlayer(opA, "shared").find((r) => !r.is_free_spin && !triggers.includes(r.round_ref))!;
+    // A plain paid spin (one that did not trigger the bonus, naturally or bought) has no family.
+    const plain = c.reporting.listRoundsByPlayer(opA, "shared").find((r) => !r.is_free_spin && !Number((r.outcome as { free_spins_awarded?: number }).free_spins_awarded || 0))!;
     expect((await get(`/admin/v1/rounds/${plain.round_ref}`, provider)).json().feature).toBeNull();
   });
 
