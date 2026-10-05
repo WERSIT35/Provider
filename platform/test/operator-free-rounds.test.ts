@@ -116,3 +116,95 @@ describe("operator API — free rounds", () => {
     expect((replay.json() as { error: { code: string } }).error.code).toBe("REPLAY_DETECTED");
   });
 });
+
+describe("operator API — free-round cancel", () => {
+  beforeEach(setup);
+  const cancel = (as: "a" | "b", body: object) => signed(as, "POST", "/operator/v1/free-rounds/cancel", body);
+  const auditActions = (op: string) => c.auditRepo.list({ operator_id: op }).map((e) => e.action);
+
+  it("cancels one player's grant; the other players keep theirs; a repeat changes nothing", async () => {
+    c.campaigns.grantPlayers(ops.a.campaign, ["p1", "p2"]);
+    const res = await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: "p1" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      scope: "player", cancelled: true, already_cancelled: false,
+      grant: { campaign_id: ops.a.campaign, status: "cancelled", spins_remaining: 10 }
+    });
+    const byPlayer = Object.fromEntries(c.campaigns.listGrants(ops.a.campaign).map((g) => [g.operator_player_id, g.status]));
+    expect(byPlayer).toEqual({ p1: "cancelled", p2: "active" });
+    expect(c.campaigns.getCampaign(ops.a.campaign)!.status).toBe("active");
+
+    const again = await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: "p1" });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ cancelled: false, already_cancelled: true, grant: { status: "cancelled" } });
+    expect(auditActions(ops.a.id).filter((a) => a === "campaign.grant.cancel")).toHaveLength(1);
+  });
+
+  it("cancels a whole campaign and all its active grants, idempotently", async () => {
+    c.campaigns.grantPlayers(ops.a.campaign, ["p1", "p2"]);
+    const res = await cancel("a", { campaign_id: ops.a.campaign });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ scope: "campaign", cancelled: true, already_cancelled: false, campaign_id: ops.a.campaign, status: "cancelled", grants_cancelled: 2 });
+    expect(c.campaigns.listGrants(ops.a.campaign).every((g) => g.status === "cancelled")).toBe(true);
+    const again = await cancel("a", { campaign_id: ops.a.campaign });
+    expect(again.json()).toMatchObject({ cancelled: false, already_cancelled: true, grants_cancelled: 0 });
+    expect(auditActions(ops.a.id).filter((a) => a === "campaign.cancel")).toHaveLength(1);
+    // A cancelled campaign can't be granted again.
+    expect((await signed("a", "POST", "/operator/v1/free-rounds/grant", { campaign_id: ops.a.campaign, operator_player_id: "p3" })).statusCode).toBe(409);
+  });
+
+  it("another operator cannot cancel (or detect) a campaign it does not own", async () => {
+    c.campaigns.grantPlayers(ops.a.campaign, ["p1"]);
+    for (const body of [{ campaign_id: ops.a.campaign }, { campaign_id: ops.a.campaign, operator_player_id: "p1" }]) {
+      const res = await cancel("b", body);
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error.code).toBe("CAMPAIGN_NOT_FOUND");
+    }
+    expect(c.campaigns.getCampaign(ops.a.campaign)!.status).toBe("active");
+    expect(c.campaigns.listGrants(ops.a.campaign)[0].status).toBe("active");
+    expect(auditActions(ops.a.id).some((a) => a.includes("cancel"))).toBe(false);
+  });
+
+  it("validates the body; an unknown player is 404; unsigned calls are rejected", async () => {
+    expect((await cancel("a", {})).statusCode).toBe(422);
+    expect((await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: "  " })).statusCode).toBe(422);
+    expect((await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: 7 })).statusCode).toBe(422);
+    expect((await cancel("a", { campaign_id: "cmp_missing" })).statusCode).toBe(404);
+    const unknown = await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: "nobody" });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json().error.code).toBe("GRANT_NOT_FOUND");
+    const unsigned = await app.inject({ method: "POST", url: "/operator/v1/free-rounds/cancel", headers: { "content-type": "application/json" }, payload: JSON.stringify({ campaign_id: ops.a.campaign }) });
+    expect(unsigned.statusCode).toBe(401);
+  });
+
+  it("played free rounds stand; after the cancel the player's next spin is a cash spin", async () => {
+    c.mgmt.addDomain(ops.a.id, "casino-a.example.com", "prod");
+    (c.wallet as SandboxWallet).setBalance("p1", "GEL", 100);
+    c.campaigns.grantPlayers(ops.a.campaign, ["p1"]);
+    const lt = c.sessions.createLaunchToken({ operator_id: ops.a.id, game_code: "bananax", operator_player_id: "p1", currency: "GEL", origin: "casino-a.example.com" });
+    const session = c.sessions.initSession(lt);
+    const play = (bet: number) => c.orchestrator.spin(session.id, { bet_amount: bet, idempotency_key: randomUUID() });
+    // Play two free rounds (skip ahead if one triggers the scatter feature: those spins are owed).
+    let freeRoundsPlayed = 0;
+    while (freeRoundsPlayed < 2) {
+      const out = await play(1);
+      if (out.free_round) freeRoundsPlayed += 1;
+      while (c.sessions.get(session.id).free_spins_left > 0) await play(1);
+    }
+    const before = c.campaigns.listGrants(ops.a.campaign)[0];
+    expect(before.spins_remaining).toBe(8);
+
+    const res = await cancel("a", { campaign_id: ops.a.campaign, operator_player_id: "p1" });
+    expect(res.json()).toMatchObject({ cancelled: true, grant: { status: "cancelled", spins_remaining: 8 } });
+    const playedRounds = c.reporting.listRoundsByPlayer(ops.a.id, "p1").filter((r) => r.campaign_id === ops.a.campaign && !r.is_free_spin);
+    expect(playedRounds).toHaveLength(2); // the rounds already played stand
+
+    const balanceBefore = (await c.wallet.balance({ operatorId: ops.a.id }, { operatorPlayerId: "p1", currency: "GEL" })).amount;
+    const next = await play(1);
+    expect(next.free_round).toBeNull();
+    expect(next.bet_charged).toBe(1);
+    const balanceAfter = (await c.wallet.balance({ operatorId: ops.a.id }, { operatorPlayerId: "p1", currency: "GEL" })).amount;
+    expect(balanceAfter).toBeCloseTo(balanceBefore - 1 + next.total_win, 2);
+    expect(c.campaigns.listGrants(ops.a.campaign)[0].spins_remaining).toBe(8);
+  });
+});

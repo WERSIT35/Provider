@@ -130,8 +130,8 @@ User decisions for this phase: SQLite for demo-operator; no signed round APIs fo
 
 **Carried over:**
 
-5. No operator-side (HMAC) cancel for free-round campaigns; cancel exists in the Admin API and
-   the Campaign Manager UI.
+5. ~~No operator-side (HMAC) cancel for free-round campaigns~~ — done on `feat/campaign-cancel-and-rng-docs`:
+   `POST /operator/v1/free-rounds/cancel` (GUIDE §4c); `npm run e2e` STEP 8 covers grant → play → cancel (also closes item 7).
 6. ~~iframe `postMessage` contract + `frame-ancestors` on `/play`~~ — done on
    `feat/iframe-security-and-reconciliation` (GUIDE §4a; `client/embed-bridge.js`;
    `npm run check:embed`, `demo-operator: npm run check:casino-embed`). Signed round APIs
@@ -140,7 +140,7 @@ User decisions for this phase: SQLite for demo-operator; no signed round APIs fo
     `src/jobs/debit-reconciliation.ts`, casino `voided_debits`). A lost debit answer is retried
     in line under its key; one that stays unknown voids the round and rolls back by
     `originalIdempotencyKey` (refund, or tombstone so a late debit is refused).
-7. `platform/scripts/e2e-operator.ts` does not exercise free rounds.
+7. ~~`e2e-operator.ts` does not exercise free rounds~~ — done (STEP 8).
 8. Landscape-phone hit areas for autoplay/turbo.
 9. Round ID strip sits above the board in `/play` mode only.
 10. `.claude/settings.local.json` is tracked although `.gitignore` lists it; never committed —
@@ -153,13 +153,14 @@ User decisions for this phase: SQLite for demo-operator; no signed round APIs fo
 The functional epic is done. Remaining work, in the order it unblocks launch:
 
 1. **Lab submission** — O1–O4 closed (§5). Remaining: package the three reports + rules 3.2.0
-   for the lab; RNG certification of the platform stream is a separate deliverable.
+   for the lab, with `qa/rng-certification-notes.md` and an `npm run rng:dump` sample for the
+   lab's RNG battery.
 2. **First provider sandbox pass** with the demo casino (backlog 8.3), then regression
    automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
    headless-Chrome checks, and a reduced seeded parity run.
-3. **Hardening follow-ups** — framing + postMessage and lost-debit reversal are done (§5 items
-   6, 13). Left: operator-side HMAC campaign cancel (+ free rounds in `e2e-operator.ts`), and
-   the platform RNG certification notes (`qa/rng-certification-notes.md` + stream dump).
+3. **Hardening follow-ups** — all done: framing + postMessage and lost-debit reversal (§5 items
+   6, 13), operator HMAC campaign cancel (items 5, 7), and the RNG notes `qa/rng-certification-notes.md`
+   (`npm run rng:stats` battery, `npm run rng:dump` lab sample).
 
 ## 7. How to resume
 

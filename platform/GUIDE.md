@@ -167,6 +167,18 @@ with `ROUND_VOIDED` (409), so a round is never played while its stake is being
 refunded. The demo casino implements all of this (`voided_debits` table,
 `PlayerStore.rollback`).
 
+### 4c. Free rounds over the operator API (HMAC-signed)
+
+| Call | Body | Notes |
+|---|---|---|
+| `POST /operator/v1/free-rounds/grant` | `campaign_id, operator_player_id` | `201` new grant; `200 already_granted: true` on a re-send (never topped up) |
+| `GET /operator/v1/free-rounds/player/:operatorPlayerId` | – | the player's open grants with you |
+| `POST /operator/v1/free-rounds/cancel` | `campaign_id` (+ `operator_player_id` for one player) | Withdraws the unplayed spins. A repeat returns `already_cancelled: true` and changes nothing. Rounds already played stand, and a bonus that a free round already triggered still plays out. `404 GRANT_NOT_FOUND` if that player has no grant. |
+
+Campaigns are created in the Operator Portal (**Campaigns**). Another operator's
+campaign always answers `404 CAMPAIGN_NOT_FOUND`. `npm run e2e` (STEP 8) runs
+grant → play → cancel over real HTTP.
+
 ---
 
 ## 5. How a player plays — and finds their Round ID

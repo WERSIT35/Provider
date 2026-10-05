@@ -20,7 +20,9 @@
     "check:campaigns": "tsx scripts/campaign-console-check.ts",
     "check:inspector": "tsx scripts/inspector-console-check.ts",
     "check:resume": "tsx scripts/resume-check.ts",
-    "check:embed": "tsx scripts/embed-check.ts"
+    "check:embed": "tsx scripts/embed-check.ts",
+    "rng:dump": "tsx scripts/rng-dump.ts",
+    "rng:stats": "tsx scripts/rng-stats.ts"
   },
   "engines": {
     "node": ">=20"
