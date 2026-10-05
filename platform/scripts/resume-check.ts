@@ -8,6 +8,9 @@
  *   B. Mid-bonus, the casino relaunches the game (new launch URL, no saved token):
  *      the RGS resumes the same session.
  *   C. Base game: after a spin at 10.00 with ante, a reload starts on 10.00 + ante.
+ *   D. A bet + ante the player chose but has not played yet survive a reload and a relaunch.
+ *   E. Standalone client (no launch token): bet + ante survive a reload after a spin and
+ *      without one; a reload on the bonus award screen resumes the bonus at its bet.
  *
  *   npm run check:resume              (screenshots go to the OS temp dir)
  */
@@ -223,6 +226,48 @@ async function main(): Promise<void> {
       JSON.stringify(await evaluate(`[el.betSelect.value, el.anteToggle.checked, ${featureUp}]`)));
     check("controls are usable", await evaluate(`!el.betSelect.disabled && !el.anteToggle.disabled`));
     await shot("C-base-reload");
+
+    const choose = (bet: number, ante: boolean) => evaluate(`(() => { el.betSelect.value = '${bet}'; el.betSelect.dispatchEvent(new Event('change')); if (el.anteToggle.checked !== ${ante}) { el.anteToggle.checked = ${ante}; el.anteToggle.dispatchEvent(new Event('change')); } return true; })()`);
+    const betIs = (bet: number, ante: boolean) => waitFor(`el.betSelect.value === '${bet}' && el.betView.textContent === '${bet.toFixed(2)}' && el.anteToggle.checked === ${ante}`, 5000);
+    const shown = () => evaluate(`JSON.stringify([el.betSelect.value, el.betView.textContent, el.anteToggle.checked])`);
+
+    console.log("\nD. a bet chosen but not yet played survives a reload and a relaunch");
+    await choose(5, false); // the server's last played round is still 10.00 + ante
+    check("reload boots", await reload());
+    check("bet 5.00 with ante off (the player's newer choice, not the last played 10.00 + ante)", await betIs(5, false), await shown());
+    check("casino relaunch boots", await open(`${base}/play?lt=${encodeURIComponent(launch(60))}`));
+    check("…still 5.00 with ante off", await betIs(5, false), await shown());
+
+    console.log("\nE. standalone client (no launch token, local engine)");
+    check("standalone client boots", await open(`${base}/play/`));
+    await choose(5, true);
+    await turbo();
+    await waitFor(`performance.now() - state.roundSettledAt >= SPIN_SETTLE_GUARD_MS`, 5000);
+    await evaluate(`document.getElementById('spinBtn').click(), true`);
+    await sleep(300);
+    await waitFor(idle, 60000);
+    check("reload boots", await reload());
+    check("bet 5.00 + ante restored after a spin (was reset to 1.00)", await betIs(5, true), await shown());
+    await choose(10, false);
+    check("reload boots", await reload());
+    check("bet 10.00, ante off restored without a spin", await betIs(10, false), await shown());
+    // Buy at 2.00, then reload while the award screen is still up (before any free spin).
+    await choose(2, false);
+    await evaluate(`document.getElementById('buyFreeBtn').click(), true`);
+    await waitFor(`!document.getElementById('buyConfirmModal').classList.contains('hidden')`, 5000);
+    await evaluate(`document.getElementById('buyConfirmBtn').click(), true`);
+    check("bonus awarded", await waitFor(`Number(document.getElementById('freeSpins').textContent || 0) > 0 && ${featureUp}`, 20000));
+    await choose(2, false); // no-op while locked; the award screen is up
+    check("reload mid-bonus boots", await reload());
+    check("resume screen + bet 2.00 + controls locked (was 1.00)", await waitFor(`${featureUp} && /Resuming Bonus/.test(document.getElementById('featureScreen').textContent) && el.betSelect.value === '2' && el.betSelect.disabled`, 5000), await shown());
+    // Record the bet of every free spin the local engine plays from here on.
+    await evaluate(`getEngine().then((e) => { window.__bets = []; const spin = e.spin.bind(e); e.spin = (p) => { window.__bets.push(Number(p.bet_amount)); return spin(p); }; return true; })`);
+    await turbo();
+    await dismiss();
+    check("the bonus plays to the end", await waitFor(idle, 120000));
+    const bets = (await evaluate(`window.__bets`)) as number[];
+    check("every resumed free spin played at 2.00", bets.length > 0 && bets.every((b) => b === 2), JSON.stringify(bets));
+    await shot("E-standalone-bonus");
     check("no script errors", exceptions.length === 0, JSON.stringify(exceptions));
     console.log(`\nscreenshots: ${shots.join("\n             ")}`);
   } finally {
