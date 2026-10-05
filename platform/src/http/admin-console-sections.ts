@@ -218,6 +218,7 @@ export const SECTION_REPORTS = /* html */ `
       <div class="panel"><h2>GGR by day</h2><div id="repGgr">–</div></div>
       <div class="panel"><h2>Reconciliation</h2><div id="repRecon">–</div></div>
       <div class="panel"><h2>Failed settlements</h2><div id="repFailed">–</div></div>
+      <div class="panel"><h2>Pending debit reversals</h2><div id="repReversals">–</div></div>
     </div>
   </div>
 </section>`;

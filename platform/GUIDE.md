@@ -67,7 +67,11 @@ In the portal click **Onboarding**. Walk down the panels:
 
 1. **Create operator** — enter a Name + Slug + Default currency → **Create**.
 2. **Allowlist a launch domain** — pick the operator, enter the casino's domain
-   (e.g. `play.luckyspin.com`) and environment → **Add**.
+   (e.g. `play.luckyspin.com`, or `localhost:4000` with a port) and environment →
+   **Add**. This list is also the **only** set of sites allowed to embed the game
+   (see §4a), so register every host the casino serves its game page from. A
+   pasted origin (`https://play.luckyspin.com/`) is stored as its host; anything
+   with a path, a wildcard or spaces is refused (`INVALID_DOMAIN`).
 3. **Issue API credential** — pick the operator + environment → **Issue**. The
    `api_secret` is shown **once**. Copy it now and hand it to the operator over a
    secure channel (it can never be retrieved again).
@@ -98,6 +102,70 @@ npm run e2e
 
 It prints every step (signed launch, session init, idempotent spin, RBAC checks,
 and a Round Inspector lookup) over real HTTP.
+
+### 4a. Embedding the game: who may frame it, and the postMessage contract
+
+**Framing.** `/play` answers with `Content-Security-Policy: frame-ancestors <hosts>`,
+where `<hosts>` are the launching operator's registered domains (§3 step 2). Any
+other site that puts the game in an iframe gets a blank frame from the browser,
+and no session opens. Without a valid launch token, or for a suspended operator,
+the page is unframeable (`frame-ancestors 'none'`). In production the hosts match
+over https only.
+
+**postMessage (protocol `vault20k.embed`, v1).** The game and the casino page
+exchange lifecycle signals. **No money moves over postMessage**: debits and credits
+are the signed wallet webhooks, and a balance in a message is a hint to re-read
+your own wallet. Every message has the shape `{ protocol: "vault20k.embed", v: 1, type, data }`.
+
+| Game → casino | `data` |
+|---|---|
+| `ready` | `game_code, currency, balance, resumed, in_feature, free_spins_left` |
+| `roundStarted` | `bet, ante, free_spin, free_round` (`buy: true` for a bought feature) |
+| `roundEnded` | `round_ref, bet, win, balance, free_spin, free_spins_left` |
+| `balanceChanged` | `balance, currency` |
+| `featureState` | `active, free_spins_left, bonus_win` |
+| `paused` / `muted` | `paused` / `muted` (answers, and when the player toggles sound) |
+| `state` | `paused, muted, in_round, in_feature, balance, currency` (answer to `getState`) |
+| `error` | `code, message` (e.g. `INSUFFICIENT_FUNDS`, so the casino can offer a deposit) |
+
+| Casino → game | effect |
+|---|---|
+| `pause` | No new round starts and base autoplay stops. A bonus waits before its next free spin (the spins stay owed). The round on screen finishes. Use it for reality checks and deposit modals. |
+| `resume` | Undo `pause`. |
+| `setMuted` `{ muted }` | Sound on/off. |
+| `getState` | Answered with `state`. |
+| `hello` | Handshake, needed only if your page sends `Referrer-Policy: no-referrer` and the browser has no `ancestorOrigins`. It is answered with `ready`. |
+
+Security rules, both sides. The game talks only to its direct parent, only when the
+parent's host is a registered domain, and always names that origin as
+`targetOrigin` (never `*`). Your page should do the same: check
+`event.source === iframe.contentWindow` and `event.origin === <platform origin>`, and
+post with the platform origin. The demo casino (`demo-operator/src/http/site.ts`)
+shows a complete listener. `npm run check:embed` (platform) and
+`npm run check:casino-embed` (demo casino) prove all of this in real Chrome.
+
+### 4b. Wallet webhook: a debit whose answer is lost
+
+If the RGS sends a debit and gets no answer (a timeout or a dropped connection), it
+cannot tell whether you took the stake. It handles that as follows:
+
+1. It re-sends the debit twice under the **same `idempotencyKey`**. If you have the
+   debit, return the original result (as for any replay) and the round plays.
+2. If the outcome is still unknown, the round is **voided** and the RGS sends
+   `rollback` naming the debit by **`originalIdempotencyKey`** (there is no
+   `originalOperatorTxRef`, because it never received yours). The body also carries
+   `operatorPlayerId`, `amount` and `currency`. Your wallet must:
+   - refund the debit if you have it, at most once, as for any rollback;
+   - if you never got it, record the key as voided, answer `200 rolled_back`, and
+     **refuse that debit if it arrives later** with `409 {"error":"TRANSACTION_VOIDED"}`.
+3. If the rollback cannot reach you either, it is queued and retried every
+   `DEBIT_RECONCILE_INTERVAL_MS` (default 30s), always under the same rollback key,
+   until you acknowledge it. Ops see the queue under **Reports → Pending debit reversals**.
+
+The player gets `DEBIT_UNCONFIRMED` (502). A client retry of that round is refused
+with `ROUND_VOIDED` (409), so a round is never played while its stake is being
+refunded. The demo casino implements all of this (`voided_debits` table,
+`PlayerStore.rollback`).
 
 ---
 
@@ -167,6 +235,8 @@ The **Reports** tab pulls live numbers from the same Admin API:
 - **Reconciliation** — rounds ledger vs money ledger; `ok` should be true
 - **Failed settlements** — wins where the operator wallet credit failed; these
   are kept on a queue rather than silently dropped
+- **Pending debit reversals** — voided rounds whose debit outcome was unknown and
+  whose rollback the casino has not acknowledged yet (§4b); retried automatically
 
 Operator-scoped admins are always forced back to their own operator's data —
 they cannot read another casino's rounds or reports.

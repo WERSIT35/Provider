@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:back-office": "tsx scripts/back-office-check.ts"
+    "check:back-office": "tsx scripts/back-office-check.ts",
+    "check:casino-embed": "tsx scripts/casino-embed-check.ts"
   },
   "engines": {
     "node": ">=22.13"

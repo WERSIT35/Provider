@@ -58,7 +58,11 @@ export class RoundLifecycleService {
       const rb = await this.wallet.rollback(ctx, {
         idempotencyKey: `${roundRef}:void:rollback`,
         originalOperatorTxRef: debit.operator_tx_ref,
-        roundRef
+        originalIdempotencyKey: debit.idempotency_key,
+        roundRef,
+        operatorPlayerId: round.operator_player_id,
+        amount: debit.amount,
+        currency: debit.currency
       });
       walletRefs.push(rb.operatorTxRef);
       this.transactions.record({

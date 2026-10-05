@@ -19,7 +19,8 @@
     "migrate": "tsx scripts/migrate.ts",
     "check:campaigns": "tsx scripts/campaign-console-check.ts",
     "check:inspector": "tsx scripts/inspector-console-check.ts",
-    "check:resume": "tsx scripts/resume-check.ts"
+    "check:resume": "tsx scripts/resume-check.ts",
+    "check:embed": "tsx scripts/embed-check.ts"
   },
   "engines": {
     "node": ">=20"

@@ -89,6 +89,27 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE wallet_transactions ADD COLUMN feature_ref TEXT;
   CREATE INDEX ix_tx_feature ON wallet_transactions (feature_ref) WHERE feature_ref IS NOT NULL;
+  `,
+  // 3 — voided debits. The RGS reverses a debit whose response it lost by naming the
+  // debit's idempotency key. When we never received that debit, nothing moves, but the
+  // key is recorded here so the debit is refused if it arrives late (TRANSACTION_VOIDED).
+  // Not a money row, so it lives outside wallet_transactions. Append-only too.
+  `
+  CREATE TABLE voided_debits (
+    provider_id               TEXT NOT NULL,
+    idempotency_key           TEXT NOT NULL,
+    rollback_idempotency_key  TEXT NOT NULL,
+    player_id                 TEXT,
+    round_ref                 TEXT NOT NULL,
+    void_ref                  TEXT NOT NULL UNIQUE,
+    created_at                TEXT NOT NULL,
+    PRIMARY KEY (provider_id, idempotency_key),
+    UNIQUE (provider_id, rollback_idempotency_key)
+  );
+  CREATE TRIGGER voided_debits_no_update BEFORE UPDATE ON voided_debits
+  BEGIN SELECT RAISE(ABORT, 'voided_debits is append-only'); END;
+  CREATE TRIGGER voided_debits_no_delete BEFORE DELETE ON voided_debits
+  BEGIN SELECT RAISE(ABORT, 'voided_debits is append-only'); END;
   `
 ];
 

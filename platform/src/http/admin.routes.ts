@@ -289,6 +289,16 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     return { failed_settlements: failed, count: failed.length };
   });
 
+  // Lost-debit queue: debits whose outcome was unknown, voided, and whose reversal the
+  // casino has not acknowledged yet (retried by the debit-reconciliation job).
+  app.get("/admin/v1/transactions/pending-reversals", { preHandler: auth }, async (req, reply) => {
+    const claims = guard(req, reply, "transactions.read");
+    if (!claims) return reply;
+    const q = req.query as { operator_id?: string };
+    const pending = app.container.transactions.listPendingReversals(resolveOperatorScope(claims, q.operator_id));
+    return { pending_reversals: pending, count: pending.length };
+  });
+
   // ── Provisioning (provider-only) ────────────────────────────────────────────
   // Mirrors what scripts/dev-seed.ts does in code, but exposed so an operator
   // can be onboarded from the portal. Every action is audited via the mgmt service.

@@ -6,6 +6,7 @@ import { SandboxWallet } from "./modules/wallet/sandbox-wallet";
 import type { WalletAdapter } from "./modules/wallet/wallet.types";
 import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
+import { DebitReconciler } from "./modules/wallet/debit-reconciler";
 import { ReportingService } from "./modules/reporting/reporting.service";
 import { AdminAuthService } from "./modules/admin/admin-auth";
 import { AdminAccountService } from "./modules/admin/admin-account";
@@ -53,6 +54,8 @@ export interface Container {
   resolver: AuthoritativeResolver;
   transactions: InMemoryTransactionStore;
   orchestrator: RoundOrchestrator;
+  /** Lost-debit reconciliation: in-line retry, void + reversal, and the reversal queue. */
+  debits: DebitReconciler;
   reporting: ReportingService;
   adjustments: InMemoryRoundAdjustmentStore;
   lifecycle: RoundLifecycleService;
@@ -72,7 +75,13 @@ export interface Container {
 
 export function buildContainer(
   config: PlatformConfig,
-  overrides: { wallet?: WalletAdapter; walletFactory?: (mgmt: ManagementService) => WalletAdapter; persistence?: Persistence } = {}
+  overrides: {
+    wallet?: WalletAdapter;
+    walletFactory?: (mgmt: ManagementService) => WalletAdapter;
+    persistence?: Persistence;
+    /** Pauses between in-line debit retries (default [250, 1000] ms). */
+    debitRetryDelaysMs?: number[];
+  } = {}
 ): Container {
   const persistence = overrides.persistence ?? NullPersistence;
   const engine = new EngineService();
@@ -88,7 +97,8 @@ export function buildContainer(
   const resolver = new AuthoritativeResolver(engine);
   const transactions = new InMemoryTransactionStore(persistence);
   const campaigns = new InMemoryCampaignRepository(persistence);
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns);
+  const debits = new DebitReconciler(wallet, transactions, { audit, retryDelaysMs: overrides.debitRetryDelaysMs });
+  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits);
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
@@ -105,6 +115,7 @@ export function buildContainer(
     resolver,
     transactions,
     orchestrator,
+    debits,
     reporting,
     adjustments,
     lifecycle,

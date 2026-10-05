@@ -125,6 +125,9 @@ const state = {
   crazyMode: false,
   turbo: false,
   autoplayActive: false,
+  // The embedding casino paused the game (embed-bridge "pause"): no new round may
+  // start; a bonus waits before its next free spin. Cleared by "resume".
+  embedPaused: false,
   // performance.now() when the last round (or autoplay run) fully settled.
   roundSettledAt: -Infinity,
   autoplayLeft: 0,
@@ -4106,6 +4109,91 @@ function freeRoundsReadoutText() {
   return freeRounds.active && freeRounds.queue.length ? String(freeRounds.remaining) : null;
 }
 
+// ─── Casino embed bridge (client/embed-bridge.js) ───────────────────────────
+// Lifecycle signals to the casino that framed /play, and its pause / resume /
+// mute commands. Platform mode only; a no-op when the game is not framed or the
+// parent is not one of the operator's registered hosts.
+function embedEmit(type, data) {
+  if (_platform.enabled) window.EmbedBridge?.emit(type, data);
+}
+
+function embedSnapshot() {
+  return {
+    paused: state.embedPaused,
+    muted: window.Sound ? window.Sound.isMuted() : false,
+    in_round: isRoundInFlight(),
+    in_feature: Number(el.freeSpins?.textContent || 0) > 0,
+    balance: state.lastBalance ?? null,
+    currency: state.currency || null
+  };
+}
+
+/** Balance as the server last reported it (informational for the casino). */
+function embedBalance(balance) {
+  const n = Number(balance);
+  if (!Number.isFinite(n)) return;
+  state.lastBalance = n;
+  embedEmit("balanceChanged", { balance: n, currency: state.currency || null });
+}
+
+function embedRoundEnded(payload, bet) {
+  embedEmit("roundEnded", {
+    round_ref: payload?.round_ref || null,
+    bet,
+    win: Number(payload?.total_win || 0),
+    balance: Number.isFinite(Number(payload?.balance_after)) ? Number(payload.balance_after) : null,
+    free_spin: Boolean(payload?.is_free_spin),
+    free_spins_left: Number(payload?.free_spins_left || 0)
+  });
+  embedBalance(payload?.balance_after);
+}
+
+/** "INSUFFICIENT_FUNDS: …" → { code, message }; the casino may react (deposit prompt). */
+function embedError(err) {
+  const text = String(err?.message || err || "error");
+  const m = /^([A-Z][A-Z0-9_]+):\s*(.*)$/.exec(text);
+  embedEmit("error", m ? { code: m[1], message: m[2] } : { code: "CLIENT_ERROR", message: text });
+}
+
+/** Resolves once the casino has not (or no longer) paused the game. */
+async function waitWhileEmbedPaused() {
+  while (state.embedPaused) await sleep(150);
+}
+
+function embedConnect(meta) {
+  const bridge = window.EmbedBridge;
+  if (!_platform.enabled || !bridge || !bridge.framed) return;
+  bridge.on("pause", () => {
+    if (!state.embedPaused) {
+      state.embedPaused = true;
+      if (state.autoplayActive) stopAutoplay();
+      pushGameMessage("Game paused by the casino.", "info");
+    }
+    bridge.emit("paused", { paused: true });
+  });
+  bridge.on("resume", () => {
+    if (state.embedPaused) {
+      state.embedPaused = false;
+      pushGameMessage("Game resumed.", "info");
+    }
+    bridge.emit("paused", { paused: false });
+  });
+  bridge.on("setMuted", (data) => {
+    const before = window.Sound ? window.Sound.isMuted() : false;
+    if (window.Sound && typeof data.muted === "boolean") window.Sound.setMuted(data.muted);
+    // A change is announced by the onChange listener below; answer a no-op here.
+    if ((window.Sound ? window.Sound.isMuted() : false) === before) bridge.emit("muted", { muted: before });
+  });
+  bridge.on("getState", () => bridge.emit("state", embedSnapshot()));
+  bridge.connect(meta?.embed?.allowed_hosts);
+  let lastMuted = window.Sound ? window.Sound.isMuted() : false;
+  window.Sound?.onChange(({ muted }) => {
+    if (muted === lastMuted) return;
+    lastMuted = muted;
+    bridge.emit("muted", { muted });
+  });
+}
+
 // The session token of THIS launch, kept per tab so a page reload resumes the same
 // RGS session: the launch token in the URL is a 60s handoff and is usually expired
 // by the time a player refreshes. Keyed by the launch token, so a fresh launch from
@@ -5824,6 +5912,11 @@ async function spin(options = {}) {
     lifecycleStats.blockedPresses += 1;
     return;
   }
+  // The casino paused the game (reality check, deposit modal): no new round.
+  if (state.embedPaused) {
+    lifecycleStats.blockedPresses += 1;
+    return;
+  }
   // Acquire BEFORE any await so a rapid double-tap can never slip a second spin
   // through the network window. Autoplay spins are serialized by their driving
   // loop, which holds the lock for the whole run.
@@ -5842,6 +5935,12 @@ async function spin(options = {}) {
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
+    embedEmit("roundStarted", {
+      bet,
+      ante: Boolean(el.anteToggle.checked),
+      free_spin: Number(el.freeSpins.textContent || 0) > 0,
+      free_round: freeRounds.active
+    });
     window.Sound?.play("spin_start");
     window.Ambiance?.react("spin");
     const preparedTransition = reelRenderer.dropOff();
@@ -5868,6 +5967,7 @@ async function spin(options = {}) {
     // or the trailing waitForIdle settle window.
     el.spinBtn?.classList.remove("is-spinning", "is-fast-stopping");
     await animateRound(payload, bet, undefined, { preparedTransition });
+    embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
       await celebrateScatterCatch(payload, "Bonus Catch");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
@@ -5892,6 +5992,7 @@ async function spin(options = {}) {
     reelRenderer.setBoard(randomMatrix());
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Spin error: ${err.message}`, "error");
+    embedError(err);
   } finally {
     // Release reliably on every exit path — success, error, or fast-stop
     // cancel. Held across the trailing bonus flow above so manual taps stay
@@ -5915,9 +6016,12 @@ async function autoplayBonus() {
   state.bonusAutoplay = true;
   setControls(true);
   let total = 0;
+  embedEmit("featureState", { active: true, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: 0 });
   try {
     pushGameMessage("Bonus autoplay started.", "bonus");
     while (Number(el.freeSpins.textContent || "0") > 0) {
+      // A casino pause holds the bonus between free spins (they stay owed on the server).
+      await waitWhileEmbedPaused();
       const payload = await spin({ autoplay: true });
       total += Number(payload?.total_win || 0);
       const capEvent = (payload?.events || []).find((evt) => evt?.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP");
@@ -5930,6 +6034,7 @@ async function autoplayBonus() {
     await showFeature(`Bonus Win ${fmt(total)}`, "Press anywhere to continue.");
     pushGameMessage(`Bonus autoplay complete. Total bonus win: ${fmt(total)}.`, "bonus");
   } finally {
+    embedEmit("featureState", { active: false, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: total });
     state.bonusAutoplay = false;
     // Clear any fast-stop latched on the final free spin so the next base-game
     // spin does not inherit it and play out instantly.
@@ -5969,7 +6074,7 @@ function updateAutoplayUi() {
 // or when the count runs out. A bonus award mid-run is handled inside spin()
 // (it runs the bonus autoplay, then returns and we continue).
 async function startAutoplay(count) {
-  if (state.autoplayActive || state.bonusAutoplay || !state.sessionId) return;
+  if (state.autoplayActive || state.bonusAutoplay || !state.sessionId || state.embedPaused) return;
   // Dismiss the picker on any outcome, including the refusal below — leaving it
   // open after a choice was made reads as a dead control.
   el.autoplayPopover?.classList.add("hidden");
@@ -6023,13 +6128,13 @@ function bindFooterMirror() {
 }
 
 async function buyFreeSpins() {
-  if (!state.sessionId || state.bonusAutoplay) return;
+  if (!state.sessionId || state.bonusAutoplay || state.embedPaused) return;
   if (el.anteToggle.checked) return;
   const bet = Number(el.betSelect.value || 1);
   const costMultiplier = Number(state.rules?.features?.buy_free_spins?.cost_multiplier || 100);
   const cost = Number((bet * costMultiplier).toFixed(2));
   const ok = await confirmBuy({ cost, currency: state.currency || "GEL", costMultiplier });
-  if (!ok) return;
+  if (!ok || state.embedPaused) return;
   // A bought feature is a round like any other and must own the lifecycle for
   // its whole duration — the paid base round AND the free spins that follow.
   // Without this the bought round animated with the lock idle, so a tap during
@@ -6039,9 +6144,11 @@ async function buyFreeSpins() {
   setControls(true);
   try {
     pulseBanner("Buying Free Spins...", "bonus", 900);
+    embedEmit("roundStarted", { bet, ante: false, free_spin: false, free_round: false, buy: true });
     const payload = await api("/api/v1/buy-free-spins", { session_id: state.sessionId, bet_amount: bet });
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
     await animateRound(payload, bet, Number(payload.buy_cost || 0));
+    embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0) {
       await celebrateScatterCatch(payload, "Bonus Catch");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
@@ -6050,6 +6157,7 @@ async function buyFreeSpins() {
   } catch (err) {
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Buy error: ${err.message}`, "error");
+    embedError(err);
   } finally {
     spinLock.release();
     state.fastStopRequested = false;
@@ -6238,6 +6346,18 @@ async function initSession() {
   }
   setCrazyMode(Boolean(payload.crazy_mode), { silent: true });
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
+  state.lastBalance = Number(payload.balance);
+  if (_platform.enabled) {
+    embedConnect(_platform.sessionMeta);
+    window.EmbedBridge?.ready({
+      game_code: state.gameId,
+      currency: state.currency,
+      balance: state.lastBalance,
+      resumed: Boolean(_platform.sessionMeta?.resume?.resumed),
+      in_feature: pendingFreeSpins > 0,
+      free_spins_left: pendingFreeSpins
+    });
+  }
   // Operator free rounds waiting: lock bet/ante/buy to the campaign and announce.
   if (freeRounds.active) await freeRoundsUi.begin();
   // If a persisted session left the player mid-bonus, auto-resume the
@@ -7062,6 +7182,8 @@ runBootLoader();
 initSession().catch((err) => {
   el.resultDump.textContent = `Init failed: ${err.message}`;
   pushGameMessage(`Init failed: ${err.message}`, "error");
+  // The bridge is not armed without a session (no allowlist), so nothing reaches
+  // the casino here; it sees no "ready" and can time out on that.
   // In platform mode an expired/invalid launch token leaves balance "-" and the
   // controls clickable-but-dead, which looks like a generic break. Make the real
   // cause obvious and lock the controls so nothing silently no-ops.

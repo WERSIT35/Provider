@@ -8,6 +8,12 @@ export function envelope(code: string, message: string, requestId: string): { er
 /** Map a thrown domain error (Error.message is a stable code) to an HTTP response. */
 const STATUS_BY_CODE: Record<string, number> = {
   DOMAIN_NOT_ALLOWED: 403,
+  INVALID_DOMAIN: 422,
+  // Lost-debit reconciliation: the stake's fate was unknown, so the round was voided
+  // and the debit reversed; a retry of that round is refused.
+  DEBIT_UNCONFIRMED: 502,
+  ROUND_VOIDED: 409,
+  TRANSACTION_VOIDED: 409,
   OPERATOR_SUSPENDED: 403,
   GAME_NOT_ASSIGNED: 404,
   GAME_NOT_FOUND: 404,

@@ -80,6 +80,14 @@ export class InsufficientFundsError extends Error {
   }
 }
 
+/** A debit whose idempotency key the provider already rolled back before it arrived. */
+export class DebitVoidedError extends Error {
+  constructor() {
+    super("TRANSACTION_VOIDED");
+    this.name = "DebitVoidedError";
+  }
+}
+
 interface AppliedResult {
   operatorTxRef: string;
   balanceAfter: number;
@@ -237,19 +245,55 @@ export class PlayerStore {
     return this.move("credit", txType, +1, args);
   }
 
-  /** Reverse the exact debit identified by its operatorTxRef (at most once). */
-  rollback(args: { providerId?: string; idempotencyKey: string; originalOperatorTxRef: string; roundRef: string; currency?: string }): AppliedResult {
+  /**
+   * Reverse a debit (at most once), named by its operatorTxRef or, when the provider
+   * lost our answer to it, by the debit's own idempotency key. A debit named only by
+   * key that we never received is VOIDED instead: nothing moves, and the key is refused
+   * if the debit arrives late.
+   */
+  rollback(args: {
+    providerId?: string;
+    idempotencyKey: string;
+    originalOperatorTxRef?: string;
+    originalIdempotencyKey?: string;
+    roundRef: string;
+    operatorPlayerId?: string;
+    /** Ignored: a rollback always takes its amount and currency from the debit it reverses. */
+    currency?: string;
+  }): AppliedResult & { voided?: boolean } {
     const providerId = args.providerId ?? DEFAULT_PROVIDER;
     return inTransaction(this.db, () => {
       const replay = this.replayed(providerId, args.idempotencyKey);
       if (replay) return replay;
-      const original = this.db
-        .prepare("SELECT * FROM wallet_transactions WHERE operator_tx_ref = ? AND kind = 'debit'")
-        .get(args.originalOperatorTxRef) as TxRow | undefined;
-      if (!original) throw new Error("ORIGINAL_DEBIT_NOT_FOUND");
+      const priorVoid = this.db
+        .prepare("SELECT void_ref, player_id FROM voided_debits WHERE provider_id = ? AND rollback_idempotency_key = ?")
+        .get(providerId, args.idempotencyKey) as { void_ref: string; player_id: string | null } | undefined;
+      if (priorVoid) return { operatorTxRef: priorVoid.void_ref, balanceAfter: this.balanceOf(priorVoid.player_id), voided: true };
+
+      const original = (
+        args.originalOperatorTxRef
+          ? this.db.prepare("SELECT * FROM wallet_transactions WHERE operator_tx_ref = ? AND kind = 'debit'").get(args.originalOperatorTxRef)
+          : args.originalIdempotencyKey
+            ? this.db
+                .prepare("SELECT * FROM wallet_transactions WHERE provider_id = ? AND idempotency_key = ? AND kind = 'debit'")
+                .get(providerId, args.originalIdempotencyKey)
+            : undefined
+      ) as TxRow | undefined;
+      if (!original) {
+        // Only a by-key rollback may void: a named operatorTxRef we don't have is an error.
+        if (args.originalOperatorTxRef || !args.originalIdempotencyKey) throw new Error("ORIGINAL_DEBIT_NOT_FOUND");
+        const voidRef = `dop_void_${randomUUID()}`;
+        const playerId = args.operatorPlayerId && this.getById(args.operatorPlayerId) ? args.operatorPlayerId : null;
+        this.db.prepare(`
+          INSERT INTO voided_debits (provider_id, idempotency_key, rollback_idempotency_key, player_id, round_ref, void_ref, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+          providerId, args.originalIdempotencyKey, args.idempotencyKey, playerId, args.roundRef, voidRef, new Date().toISOString()
+        );
+        return { operatorTxRef: voidRef, balanceAfter: this.balanceOf(playerId), voided: true };
+      }
       const already = this.db
         .prepare("SELECT * FROM wallet_transactions WHERE reverses_tx_ref = ?")
-        .get(args.originalOperatorTxRef) as TxRow | undefined;
+        .get(original.operator_tx_ref) as TxRow | undefined;
       if (already) return { operatorTxRef: already.operator_tx_ref, balanceAfter: toMajor(already.balance_after_minor) };
       const balanceAfter = this.adjustBalance(original.player_id, original.amount_minor);
       return this.insert({
@@ -268,6 +312,10 @@ export class PlayerStore {
     return inTransaction(this.db, () => {
       const replay = this.replayed(providerId, args.idempotencyKey);
       if (replay) return replay;
+      if (kind === "debit") {
+        const voided = this.db.prepare("SELECT 1 FROM voided_debits WHERE provider_id = ? AND idempotency_key = ?").get(providerId, args.idempotencyKey);
+        if (voided) throw new DebitVoidedError();
+      }
       const player = this.db.prepare("SELECT balance_minor FROM players WHERE id = ?").get(args.playerId) as { balance_minor: number } | undefined;
       if (!player) throw new Error("PLAYER_NOT_FOUND");
       if (sign < 0 && player.balance_minor < amountMinor) throw new InsufficientFundsError();
@@ -289,6 +337,12 @@ export class PlayerStore {
       .prepare("SELECT operator_tx_ref, balance_after_minor FROM wallet_transactions WHERE provider_id = ? AND idempotency_key = ?")
       .get(providerId, idempotencyKey) as { operator_tx_ref: string; balance_after_minor: number } | undefined;
     return r ? { operatorTxRef: r.operator_tx_ref, balanceAfter: toMajor(r.balance_after_minor) } : null;
+  }
+
+  private balanceOf(playerId: string | null): number {
+    if (!playerId) return 0;
+    const r = this.db.prepare("SELECT balance_minor FROM players WHERE id = ?").get(playerId) as { balance_minor: number } | undefined;
+    return r ? toMajor(r.balance_minor) : 0;
   }
 
   private adjustBalance(playerId: string, deltaMinor: number): number {

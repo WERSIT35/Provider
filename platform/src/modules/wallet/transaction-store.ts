@@ -11,6 +11,9 @@ export const BET_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["DEBIT", "FREE
 export const WIN_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["CREDIT", "FREE_ROUND_WIN"]);
 export type TxStatus = "confirmed" | "failed" | "rolled_back";
 
+/** error_code of a debit the casino may or may not have applied (see DebitReconciler). */
+export const DEBIT_OUTCOME_UNKNOWN = "DEBIT_OUTCOME_UNKNOWN";
+
 export interface TxInput {
   operator_id: string;
   session_id: string;
@@ -96,6 +99,19 @@ export class InMemoryTransactionStore {
     return this.entries
       .filter((t) => WIN_TX_TYPES.has(t.type) && t.status === "failed")
       .filter((t) => !confirmedCreditRounds.has(t.round_ref))
+      .filter((t) => (operatorId ? t.operator_id === operatorId : true))
+      .map(clone);
+  }
+
+  /**
+   * Debits whose outcome is unknown (the casino may hold the stake) and whose
+   * reversal the casino has not yet acknowledged: the debit-reconciliation queue.
+   */
+  listPendingReversals(operatorId?: string): TxRecord[] {
+    const reversedRounds = new Set(this.entries.filter((t) => t.type === "ROLLBACK").map((t) => t.round_ref));
+    return this.entries
+      .filter((t) => BET_TX_TYPES.has(t.type) && t.status === "failed" && t.error_code === DEBIT_OUTCOME_UNKNOWN)
+      .filter((t) => !reversedRounds.has(t.round_ref))
       .filter((t) => (operatorId ? t.operator_id === operatorId : true))
       .map(clone);
   }
