@@ -52,6 +52,25 @@
   --win-gold-bright:   #FFE7A3;
   --win-gold-deep:     #9C6B12;
 
+  /* — Win aura per symbol (the glow behind a winning symbol; #rrggbb, read by THEME.aura) — */
+  --aura-crown:        #FFC94A;
+  --aura-hourglass:    #3FE0B5;
+  --aura-ring:         #FFB86B;
+  --aura-chalice:      #E070FF;
+  --aura-red:          #FF4D5E;
+  --aura-purple:       #A66BFF;
+  --aura-yellow:       #FFD23F;
+  --aura-green:        #3FE07A;
+  --aura-blue:         #4FD8FF;
+
+  /* — Glass surfaces (board + floating HUD pills) — */
+  --glass-fill:        rgba(0, 0, 0, 0.40);   /* blur available */
+  --glass-fill-solid:  rgba(8, 10, 14, 0.78); /* no backdrop blur (handhelds, perf-low, unsupported) */
+  --glass-edge:        rgba(255, 255, 255, 0.10);
+  --glass-sheen:       rgba(255, 255, 255, 0.06);
+  --glass-shadow:      0 25px 50px -12px rgba(0, 0, 0, 0.60);
+  --glass-blur:        blur(24px) saturate(125%);
+
   /* — Text — */
   --text-hud:          #EEF1F4;
   --text-muted:        #8E98A4;
@@ -3793,3 +3812,120 @@ pre,
 .fr-play:focus-visible { outline: 2px solid var(--win-gold-bright, #ffe08a); outline-offset: 3px; }
 body.free-rounds-on #betReadoutLabel { color: var(--accent-laser-hot, #ffd166); }
 body.free-rounds-on #footerBet { color: var(--win-gold-bright, #ffe08a); }
+
+/* ── FRAMELESS GLASS (v10) ─────────────────────────────────────────────────────
+   No painted reel frame: the canvas is transparent (buildStageCache bakes only the
+   cell-corner marks) and the board's surface is this glass panel. The HUD is a set
+   of floating dark-glass pills instead of one full-width bar.
+
+   Zero-reflow contract (docs/styling-guide.md): nothing here sets a size, a track
+   or a margin on the board or the deck. Edges are drawn with existing 1px borders
+   (colour only) or box-shadows, never a new border width, so every box keeps its
+   exact geometry; layout-check.js holds that at 9 viewports.
+
+   Blur: backdrop-filter re-samples what is behind the element. The perf-handheld /
+   perf-low rule above already strips every backdrop-filter on phones, so there the
+   glass falls back to a more opaque fill (--glass-bg below), same for browsers
+   without backdrop-filter. */
+body.public-mode { --glass-bg: var(--glass-fill); }
+body.public-mode.perf-handheld,
+body.public-mode.perf-low { --glass-bg: var(--glass-fill-solid); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body.public-mode { --glass-bg: var(--glass-fill-solid); }
+}
+
+/* The board: a dark glass panel, symbols floating on it. */
+body.public-mode .vault-window {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+body.public-mode .reels-stage {
+  border-radius: 16px;
+  border-color: var(--glass-edge);
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 22%),
+    var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Floating HUD pills. The deck keeps its grid, height and tracks; only its
+   full-width bar is gone, and its zones become pills. */
+body.public-mode .ps-deck {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+body.public-mode .ps-deck-sys,
+body.public-mode .ps-deck-status,
+body.public-mode .bonus-multi-badge {
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 55%),
+    var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), inset 0 0 0 1px var(--glass-edge);
+}
+body.public-mode .ps-deck-sys {
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
+  padding: clamp(4px, 0.6vh, 6px) clamp(6px, 0.8vw, 10px);
+  border-radius: 999px;
+}
+body.public-mode .ps-deck-status {
+  justify-self: center;
+  width: min(100%, 640px);
+  padding: 0 clamp(12px, 2vw, 28px);
+  border-radius: clamp(14px, 2vh, 22px);
+}
+/* System buttons inside a pill: borderless glass discs, not steel plates. */
+body.public-mode .ps-icon-btn {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+body.public-mode .ps-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: transparent;
+}
+/* Crisp readout type: tabular figures, tighter tracking on the values. */
+body.public-mode .ps-readout span {
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+body.public-mode .ps-readout strong {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--text-hud);
+}
+
+/* Bonus "Total Multiplier": a floating glass pill; the tier still colours its
+   edge glow (--badge-glow) and the value. */
+body.public-mode .bonus-multi-badge {
+  border-radius: 999px;
+  border-color: var(--glass-edge);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), 0 0 18px var(--badge-glow), inset 0 0 0 1px var(--glass-edge);
+}
+body.public-mode .bonus-multi-badge-label,
+body.public-mode .bonus-multi-badge-value {
+  font-family: var(--font-display);
+}
+
+/* Ante Bet: the same dark glass as the deck pills (Buy Feature stays gold). */
+body.public-mode .vx-ante {
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 55%),
+    var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  border-color: var(--glass-edge);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65);
+}
+/* Keep the "on" state readable on glass: the green edge + glow win over the glass edge. */
+body.public-mode .vx-ante:has(.vx-ante__input:checked) {
+  border-color: color-mix(in srgb, var(--signal-ok) 70%, transparent);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), 0 0 18px color-mix(in srgb, var(--signal-ok) 28%, transparent);
+}

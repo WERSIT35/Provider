@@ -180,15 +180,15 @@ function boxesEqual(a, b) {
 }
 const fmtBox = (b) => (b ? `${b.w}x${b.h} @${b.x},${b.y}` : "none");
 
-// ─── the run ─────────────────────────────────────────────────────────────────
-async function main() {
-  const chromePath = findChrome();
-  if (!chromePath) {
-    console.error("No Chrome/Edge found. Set CHROME_PATH to a Chromium binary.");
-    process.exit(2);
-  }
+// Headless Chrome prints its DevTools port on stderr at start-up. On a loaded,
+// shared CI runner that can take well over the old 20s (seen in GitHub Actions),
+// which failed the gate before any layout was checked. So: wait up to 60s, and if
+// that launch still reports nothing, kill it and try once more with a fresh
+// profile.
+const CHROME_PORT_TIMEOUT_MS = 60000;
+const CHROME_LAUNCH_ATTEMPTS = 2;
 
-  const server = await startServer();
+function startChrome(chromePath) {
   const userDataDir = fs.mkdtempSync(path.join(require("os").tmpdir(), "bx-layout-"));
   const chrome = spawn(chromePath, [
     "--headless=new",
@@ -199,17 +199,46 @@ async function main() {
     "--force-device-scale-factor=1",
     "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
-
-  // Chrome prints the chosen debug port on stderr.
-  const wsBase = await new Promise((resolve, reject) => {
+  const wsBase = new Promise((resolve, reject) => {
     let buf = "";
-    const t = setTimeout(() => reject(new Error("chrome did not report a debug port")), 20000);
+    const t = setTimeout(() => reject(new Error(
+      `chrome did not report a debug port within ${CHROME_PORT_TIMEOUT_MS / 1000}s` +
+      (buf.trim() ? ` (stderr: ${buf.trim().slice(-300)})` : "")
+    )), CHROME_PORT_TIMEOUT_MS);
+    chrome.on("exit", (code) => { clearTimeout(t); reject(new Error(`chrome exited (${code}) before reporting a debug port`)); });
     chrome.stderr.on("data", (d) => {
       buf += d.toString();
       const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
       if (m) { clearTimeout(t); resolve(`http://127.0.0.1:${m[1]}`); }
     });
   });
+  return { chrome, wsBase, userDataDir };
+}
+
+async function launchChrome(chromePath) {
+  for (let attempt = 1; ; attempt += 1) {
+    const { chrome, wsBase, userDataDir } = startChrome(chromePath);
+    try {
+      return { chrome, wsBase: await wsBase, userDataDir };
+    } catch (err) {
+      chrome.kill();
+      try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
+      if (attempt >= CHROME_LAUNCH_ATTEMPTS) throw err;
+      console.warn(`chrome launch attempt ${attempt} failed (${err.message}); retrying`);
+    }
+  }
+}
+
+// ─── the run ─────────────────────────────────────────────────────────────────
+async function main() {
+  const chromePath = findChrome();
+  if (!chromePath) {
+    console.error("No Chrome/Edge found. Set CHROME_PATH to a Chromium binary.");
+    process.exit(2);
+  }
+
+  const server = await startServer();
+  const { chrome, wsBase, userDataDir } = await launchChrome(chromePath);
 
   let cdp;
   try {

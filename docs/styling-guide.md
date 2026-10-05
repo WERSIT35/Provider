@@ -1,4 +1,4 @@
-# Styling Guide — Vault 20K (v9)
+# Styling Guide — Vault 20K (v10)
 
 ## Direction
 
@@ -19,8 +19,31 @@ carry the impact, never camera movement.
 | Win tiers | `--tier-nice`, `--tier-big`, `--tier-mega`, `--tier-epic`, `--tier-max` |
 | Multiplier rarity | `--mult-common` → `--mult-legendary` (cold steel → hot laser) |
 
+| Win aura | `--aura-crown`, `--aura-hourglass`, `--aura-ring`, `--aura-chalice`, `--aura-red`, `--aura-purple`, `--aura-yellow`, `--aura-green`, `--aura-blue` (read by `THEME.aura`; scatter = laser, multiplier = bright gold) |
+| Glass | `--glass-fill` (blur available), `--glass-fill-solid` (no blur), `--glass-edge`, `--glass-sheen`, `--glass-shadow`, `--glass-blur` |
+
 CSS is the source of truth: `THEME` reads the computed tokens at boot, so canvas and DOM can
 never drift apart.
+
+## Frameless glass (v10)
+
+- **No painted reel frame.** The canvas is transparent. `buildStageCache` bakes only a small
+  dot with faint cross arms where four cells meet. The board surface is CSS glass on
+  `.reels-stage`: a dark fill, a backdrop blur, a 1px `--glass-edge` and `--glass-shadow`.
+  The canvas does not clip to an inner table any more; the glass edge is the board edge.
+- **Wins light up instead of getting boxed.** Each winner gets a halo in its symbol's aura
+  colour, plus an additive inner glow over the art. Both breathe with the celebration
+  pulse, and the swell peaks at 5% (`MOTION.breathBase` + `breathDepth`).
+- **Floating HUD.** The deck keeps its grid and height, but the full-width bar is gone.
+  System buttons and the ticker/readouts are dark-glass pills; the spin cluster floats.
+  The bonus "Total Multiplier" badge and Ante Bet use the same glass.
+- **Blur only where it is cheap.** `perf-handheld` / `perf-low` strip every
+  `backdrop-filter`. There, and in browsers without it, `--glass-bg` switches to
+  `--glass-fill-solid`.
+- Glass edges are colour on existing borders or box-shadows only, never a new border
+  width, so the zero-reflow contract still holds.
+- `node tools/probes/ui-shot-probe.js` captures idle and win shots at desktop, landscape
+  and portrait sizes for review by eye.
 
 **Fonts** (local, `client/assets/fonts/`): `Vault UI` (Inter, variable) for UI text,
 `Vault Display` (Oswald, variable) for headings, labels and the big-win overlay.
