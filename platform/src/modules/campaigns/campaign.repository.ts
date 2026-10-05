@@ -171,6 +171,20 @@ export class InMemoryCampaignRepository {
     return { campaign: clone(c), grants_cancelled: cancelled };
   }
 
+  /**
+   * Withdraw ONE player's unplayed spins in a campaign. Only an active grant changes;
+   * an exhausted / expired / already-cancelled one is returned as it is
+   * (`cancelled: false`), so a retry is harmless. Spins already played stand, and a
+   * scatter feature a free round already triggered still plays out (it is owed).
+   */
+  cancelGrant(campaignId: string, operatorPlayerId: string, now = new Date().toISOString()): { grant: PlayerCampaign; cancelled: boolean } {
+    const g = Array.from(this.grants.values()).find((x) => x.campaign_id === campaignId && x.operator_player_id === operatorPlayerId);
+    if (!g) throw new Error("GRANT_NOT_FOUND");
+    if (g.status !== "active") return { grant: clone(g), cancelled: false };
+    this.mutate(g, now, () => (g.status = "cancelled"));
+    return { grant: clone(g), cancelled: true };
+  }
+
   // ── grants ─────────────────────────────────────────────────────────────────
 
   /**

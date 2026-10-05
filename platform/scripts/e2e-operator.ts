@@ -7,7 +7,8 @@
  *   • PROVIDER (you)        — onboard the operator + assign the game (control plane).
  *   • OPERATOR backend      — server-to-server HMAC-signed call to launch a player.
  *   • PLAYER browser        — opens a session and spins (bearer-token Game API).
- * Then PROVIDER + OPERATOR read reports.
+ * Then PROVIDER + OPERATOR read reports, and the OPERATOR runs a free-rounds
+ * campaign end to end (grant → play → cancel).
  *
  * Provisioning is done in-process (the provider's admin actions); the operator and
  * player steps are genuine HTTP requests so the signing/token/idempotency flow is real.
@@ -164,9 +165,124 @@ async function main(): Promise<void> {
     log("no rounds recorded (unexpected)");
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  hr("STEP 8 · Free rounds: OPERATOR grant → PLAYER plays → OPERATOR cancel");
+  // A signed operator-API call (the same HMAC scheme as the launch in STEP 3).
+  const signed = async (method: "GET" | "POST", path: string, body?: object) => {
+    const rawBody = body ? JSON.stringify(body) : "";
+    const t = Math.floor(Date.now() / 1000).toString();
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
+        "x-api-key": cred.credential.api_key_id,
+        "x-timestamp": t,
+        "x-nonce": randomUUID(),
+        "x-signature": computeSignature(cred.api_secret, { timestamp: t, method, path, rawBody })
+      },
+      ...(body ? { body: rawBody } : {})
+    });
+    return { status: res.status, json: (await res.json()) as any };
+  };
+  const spinOnce = async () => {
+    const res = await fetch(`${BASE}/game/v1/spin`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${init.session_token}`, "content-type": "application/json", "idempotency-key": randomUUID() },
+      body: JSON.stringify({ bet_amount: 5 })
+    });
+    return (await res.json()) as { round_ref: string; bet_charged: number; total_win: number; free_spins_left: number; free_round: { spins_remaining: number } | null };
+  };
+
+  // The casino's admin creates the promotion in the Operator Portal (Admin API).
+  const created = await fetch(`${BASE}/admin/v1/campaigns`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${operatorTok}`, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Welcome 5 x 1.00", game_code: "bananax", currency: "GEL", bet_amount: 1, total_spins: 5, valid_to: new Date(Date.now() + 7 * 864e5).toISOString() })
+  });
+  const campaignId = ((await created.json()) as { campaign: { id: string } }).campaign.id;
+  check(created.status === 201, `campaign created (${created.status})`);
+  log(`OPERATOR  POST /admin/v1/campaigns -> ${created.status} · 5 free rounds at 1.00 GEL (${campaignId})`);
+
+  const grant = await signed("POST", "/operator/v1/free-rounds/grant", { campaign_id: campaignId, operator_player_id: "player-7781" });
+  check(grant.status === 201 && grant.json.grant.spins_remaining === 5, "grant awarded 5 spins");
+  log(`OPERATOR  POST /operator/v1/free-rounds/grant -> ${grant.status} · spins_remaining ${grant.json.grant.spins_remaining}`);
+  const regrant = await signed("POST", "/operator/v1/free-rounds/grant", { campaign_id: campaignId, operator_player_id: "player-7781" });
+  check(regrant.json.already_granted === true && regrant.json.grant.spins_remaining === 5, "a re-sent grant is not topped up");
+  log(`   ↳ re-sent grant -> ${regrant.status} already_granted=${regrant.json.already_granted} (never topped up)`);
+
+  // The player's next spins are free rounds at the campaign's locked bet (the client
+  // asked for 5.00; the server plays 1.00 and charges nothing).
+  let freePlayed = 0;
+  while (freePlayed < 2) {
+    const out = await spinOnce();
+    if (out.free_round) {
+      freePlayed += 1;
+      check(out.bet_charged === 0, "a free round charges nothing");
+      log(`PLAYER    free round ${freePlayed}: charged ${out.bet_charged.toFixed(2)} · win ${out.total_win.toFixed(2)} · ${out.free_round.spins_remaining} left`);
+    }
+    // A scatter feature a free round triggers plays out first (those spins are owed).
+    for (let left = out.free_spins_left; left > 0; left = (await spinOnce()).free_spins_left);
+  }
+  const open = await signed("GET", "/operator/v1/free-rounds/player/player-7781");
+  check(open.json.grants[0]?.spins_remaining === 3, "3 free rounds left before the cancel");
+  log(`OPERATOR  GET /operator/v1/free-rounds/player/player-7781 -> ${open.status} · ${open.json.grants[0].spins_remaining} left`);
+
+  const cancelled = await signed("POST", "/operator/v1/free-rounds/cancel", { campaign_id: campaignId, operator_player_id: "player-7781" });
+  check(cancelled.status === 200 && cancelled.json.cancelled === true && cancelled.json.grant.status === "cancelled", "player grant cancelled");
+  log(`OPERATOR  POST /operator/v1/free-rounds/cancel -> ${cancelled.status} · grant ${cancelled.json.grant.status}, ${cancelled.json.grant.spins_remaining} unplayed spins withdrawn`);
+  const recancel = await signed("POST", "/operator/v1/free-rounds/cancel", { campaign_id: campaignId, operator_player_id: "player-7781" });
+  check(recancel.status === 200 && recancel.json.already_cancelled === true, "a repeated cancel changes nothing");
+  log(`   ↳ re-sent cancel -> ${recancel.status} already_cancelled=${recancel.json.already_cancelled}`);
+
+  const cash = await spinOnce();
+  check(cash.free_round === null && cash.bet_charged === 5, "after the cancel the next spin is a cash spin at 5.00");
+  log(`PLAYER    next spin is cash again: charged ${cash.bet_charged.toFixed(2)} · free_round=${cash.free_round}`);
+  const left = await signed("GET", "/operator/v1/free-rounds/player/player-7781");
+  check(left.json.count === 0, "no open grants left");
+  log(`OPERATOR  open grants for player-7781 -> ${left.json.count}`);
+
+  // Another casino's credential cannot touch (or even see) this campaign.
+  const otherOp = container.mgmt.createOperator({ name: "Rival", slug: "rival-casino" });
+  const otherCred = container.mgmt.issueCredential(otherOp.id, "prod");
+  const otherBody = JSON.stringify({ campaign_id: campaignId });
+  const ots = Math.floor(Date.now() / 1000).toString();
+  const rival = await fetch(`${BASE}/operator/v1/free-rounds/cancel`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": otherCred.credential.api_key_id,
+      "x-timestamp": ots,
+      "x-nonce": randomUUID(),
+      "x-signature": computeSignature(otherCred.api_secret, { timestamp: ots, method: "POST", path: "/operator/v1/free-rounds/cancel", rawBody: otherBody })
+    },
+    body: otherBody
+  });
+  check(rival.status === 404, "another operator's cancel is refused as not found");
+  log(`RIVAL     cancel someone else's campaign -> ${rival.status} (correctly hidden)`);
+
+  // Whole-campaign cancel: withdraws every remaining grant in one call.
+  const whole = await signed("POST", "/operator/v1/free-rounds/cancel", { campaign_id: campaignId });
+  check(whole.status === 200 && whole.json.status === "cancelled", "campaign cancelled");
+  log(`OPERATOR  cancel the whole campaign -> ${whole.status} · status ${whole.json.status}, ${whole.json.grants_cancelled} more grant(s) withdrawn`);
+
+  const recon2 = (await adminGet(`/admin/v1/reports/reconciliation?operator_id=${op.id}`, providerTok)) as { ok: boolean };
+  check(recon2.ok, "reconciliation still ok after free rounds");
+  log(`PROVIDER  /reports/reconciliation -> ok=${recon2.ok}`);
+
   hr("DONE");
   await app.close();
   process.exit(0);
 }
 
-void main();
+/** A walkthrough that is also a check: any broken step fails the run. */
+function check(cond: boolean, what: string): void {
+  if (!cond) {
+    console.error(`\nFAIL: ${what}`);
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

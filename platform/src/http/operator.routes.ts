@@ -15,6 +15,12 @@ interface GrantBody {
   operator_player_id?: string;
 }
 
+interface CancelBody {
+  campaign_id?: string;
+  /** Present: cancel only this player's grant. Absent: the whole campaign. */
+  operator_player_id?: string;
+}
+
 /** Wire shape of one player grant for the casino (no internal version counters). */
 function grantView(grant: PlayerCampaign, campaign: Campaign, gameCode: string | null) {
   return {
@@ -96,6 +102,60 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
       return reply
         .code(res.granted.length ? 201 : 200)
         .send({ already_granted: res.granted.length === 0, grant: grantView(grant, campaign, gameCode(campaign.game_id)) });
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  // Withdraw free rounds: the whole campaign, or one player's grant when
+  // operator_player_id is given. Idempotent (a repeat reports already_cancelled and
+  // changes nothing). Rounds already played stand; a feature a free round triggered
+  // still plays out. Another operator's campaign is indistinguishable from a missing one.
+  app.post("/operator/v1/free-rounds/cancel", { preHandler: auth }, async (req, reply) => {
+    const operatorId = req.operatorId as string;
+    const body = (req.body ?? {}) as CancelBody;
+    if (!body.campaign_id || typeof body.campaign_id !== "string") {
+      return reply.code(422).send(envelope("VALIDATION", "campaign_id required", req.id));
+    }
+    if (body.operator_player_id !== undefined && (typeof body.operator_player_id !== "string" || !body.operator_player_id.trim())) {
+      return reply.code(422).send(envelope("VALIDATION", "operator_player_id must be a non-empty string", req.id));
+    }
+    const campaign = app.container.campaigns.getCampaign(body.campaign_id);
+    if (!campaign || campaign.operator_id !== operatorId) {
+      return reply.code(404).send(envelope("CAMPAIGN_NOT_FOUND", "no such campaign", req.id));
+    }
+    const auditCancel = (action: string, targetType: string, targetId: string) =>
+      app.container.auditRepo.append({
+        operator_id: operatorId,
+        actor_type: "operator",
+        actor_id: req.apiKeyId as string,
+        action,
+        target_type: targetType,
+        target_id: targetId
+      });
+    try {
+      if (body.operator_player_id !== undefined) {
+        const playerId = body.operator_player_id.trim();
+        const res = app.container.campaigns.cancelGrant(campaign.id, playerId);
+        if (res.cancelled) auditCancel("campaign.grant.cancel", "player_campaign", res.grant.id);
+        return {
+          scope: "player",
+          already_cancelled: !res.cancelled && res.grant.status === "cancelled",
+          cancelled: res.cancelled,
+          grant: grantView(res.grant, campaign, gameCode(campaign.game_id))
+        };
+      }
+      const res = app.container.campaigns.cancelCampaign(campaign.id);
+      const changed = campaign.status !== "cancelled";
+      if (changed) auditCancel("campaign.cancel", "campaign", campaign.id);
+      return {
+        scope: "campaign",
+        already_cancelled: !changed,
+        cancelled: changed,
+        campaign_id: campaign.id,
+        status: res.campaign.status,
+        grants_cancelled: res.grants_cancelled
+      };
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
