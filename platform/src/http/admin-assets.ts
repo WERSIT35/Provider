@@ -92,6 +92,41 @@ pre.code { background:#070b1a; border:1px solid var(--line); padding:8px 10px; b
 .verdict b { font-size:16px; letter-spacing:.04em; }
 .verdict.good { background:#10301f; color:var(--ok); border-color:#1b4f33; }
 .verdict.bad { background:#2a1320; color:var(--err); border-color:#5c2236; }
+/* Inspector tabs + player search */
+.itabs { display:flex; gap:4px; margin:4px 0 10px; border-bottom:1px solid var(--line); }
+.itab { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; border-radius:0; padding:8px 12px; font-weight:600; }
+.itab.active { color:var(--text); border-bottom-color:var(--accent); }
+.tbl-wrap { overflow-x:auto; max-height:360px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; }
+.ip-table { width:100%; border-collapse:collapse; font-size:13px; }
+.ip-table th { position:sticky; top:0; background:var(--panel-2); text-align:left; padding:7px 10px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+.ip-table td { padding:7px 10px; border-top:1px solid var(--line); white-space:nowrap; }
+.ip-table .num { text-align:right; }
+.ip-table tr.clickable { cursor:pointer; }
+.ip-table tr.clickable:hover td { background:rgba(79,140,255,.06); }
+.ip-table tr.sel td { background:rgba(79,140,255,.12); }
+.ip-table tr.in-bonus td:first-child { box-shadow: inset 3px 0 0 #3e3270; }
+.tag { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+.tag.trig { color:#ffd089; border-color:#6e4d20; background:#3a2a10; }
+.tag.fs { color:#d8c4ff; border-color:#3e3270; background:#28203a; }
+/* Bonus timeline (dimension 1: the spins of the bonus) */
+.bonus-tl .tl-head { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+.bonus-tl .tl-head h2 { margin:0; }
+.bonus-tl .tl-nav { margin-left:auto; display:flex; gap:8px; align-items:center; }
+.tl-strip { display:flex; align-items:center; gap:6px; overflow-x:auto; padding:10px 2px 6px; scroll-behavior:smooth; }
+.tl-chip { flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:6px 10px; background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:8px; font-weight:500; font-size:12px; }
+.tl-chip b { font-size:12px; }
+.tl-chip span { color:var(--muted); font-size:11px; }
+.tl-chip.won span { color:var(--ok); }
+.tl-chip.capped { border-color:#5c2236; }
+.tl-chip.cur { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:#12224a; }
+.tl-arrow { color:var(--muted); flex:0 0 auto; }
+/* Forensic HUD + multiplier log (dimension 2: the tumbles of the spin on screen) */
+.totals.hud { margin-bottom:6px; }
+.mlog { margin-top:6px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); font-size:13px; }
+.mlog.good { background:#10301f; color:var(--ok); border-color:#1b4f33; }
+.mlog.held { background:var(--panel-2); color:var(--text); }
+.mlog.void { background:#2a1320; color:var(--err); border-color:#5c2236; }
+.matrix .cell.mnew { box-shadow: 0 0 0 2px var(--warn) inset; }
 .breakdown { font-size:13px; }
 .breakdown details { background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:6px; }
 .breakdown summary { cursor:pointer; font-weight:600; }
@@ -418,7 +453,7 @@ import { CAMPAIGNS_JS } from "./admin-console-campaigns";
 
 function buildAppJs(): string {
   return CONSOLE_JS
-    .replace("__INSPECTOR__", INSPECTOR_JS)
+    .replace("__INSPECTOR__", () => INSPECTOR_JS) // function form: the code contains $ (a string replacement would expand $' / $&)
     .replace("__ONBOARDING__", ONBOARDING_JS)
     .replace("__REPORTS__", REPORTS_JS)
     .replace("__ROUNDACTIONS__", ROUNDACTIONS_JS)

@@ -23,6 +23,7 @@ import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
 import { NullPersistence, PostgresPersistence, type Persistence } from "../src/persistence/persistence";
 import { hydrateContainer } from "../src/persistence/hydrate";
+import { ensureDevOperatorAdmin } from "./dev-credentials";
 import { createPool, getPool } from "../src/db/pool";
 import { runMigrations } from "../src/db/migrate";
 
@@ -146,18 +147,11 @@ async function main(): Promise<void> {
     DEMO_TTL_SECONDS
   );
 
-  // Real logins for the two consoles: seed the bootstrap provider super-admin and
-  // create a demo operator (casino) admin. Both must set a new password + enroll a
-  // TOTP authenticator on first sign-in.
+  // Real logins for the two consoles, with fixed local-dev credentials: the bootstrap
+  // provider super-admin and the demo operator (casino) admin (see dev-credentials.ts).
+  // With ADMIN_TOTP_REQUIRED=true both still enroll an authenticator on first sign-in.
   seedBootstrapAdmin(c);
-  let operatorAdmin: { username: string; temp_password: string } | null = null;
-  if (!c.adminAccounts.getByUsername("demo-operator")) {
-    const created = c.adminAccounts.create(
-      { username: "demo-operator", scope: "operator", operator_id: op.id, role: "operator_admin" },
-      "dev-seed"
-    );
-    operatorAdmin = { username: created.account.username, temp_password: created.temp_password };
-  }
+  const operatorAdmin = ensureDevOperatorAdmin(c, op.id, "dev-seed");
 
   const app = buildApp({
     logger: createLogger({ level: "info", pretty: true, env: "local" }),
@@ -184,9 +178,7 @@ async function main(): Promise<void> {
       cfg.totpRequired ? "  on first login. Seeded logins:" : "  Seeded logins:",
       "",
       `    PROVIDER  → username: ${BOOTSTRAP_USER}   password: ${BOOTSTRAP_PASS}   (at /provider)`,
-      operatorAdmin
-        ? `    OPERATOR  → username: ${operatorAdmin.username}   one-time password: ${operatorAdmin.temp_password}   (at /admin)`
-        : "    OPERATOR  → already seeded (reuse your existing password)",
+      `    OPERATOR  → username: ${operatorAdmin.username}   password: ${operatorAdmin.password}   (at /admin)`,
       "",
       `  Seeded operator:     '${op.slug}' (${op.id})`,
       `  Plays:               50 × bet 5 GEL`,

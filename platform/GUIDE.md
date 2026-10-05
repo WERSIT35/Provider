@@ -22,7 +22,7 @@ That single command:
 - creates a demo casino (operator slug `demo`) with an approved math config
 - plays 50 spins so the **Round Inspector** has something to show
 - seeds a **PROVIDER** login (`admin` / `change-me-admin`) and a demo **OPERATOR**
-  login (`demo-operator` + a printed one-time password)
+  login (`operator_admin` / `demo123`; override with `DEV_OPERATOR_ADMIN_USERNAME` / `DEV_OPERATOR_ADMIN_PASSWORD`)
 - prints a sample **Round ID** (e.g. `r_seed-3`) to paste into the inspector
 - prints a **player launch URL** at `/play?lt=…`
 
@@ -45,7 +45,8 @@ for security):
 1. Open `http://127.0.0.1:8080/provider`.
 2. Enter the **PROVIDER** username + password from the terminal → **Continue**.
    - **Local development (the default):** 2FA is off, so that is all. A brand-new
-     operator account is asked to set a new password first.
+     operator account created in the console is asked to set a new password first
+     (the seeded `operator_admin` / `demo123` login is not).
    - **With 2FA on** (any sandbox/staging/production server, or locally with
      `ADMIN_TOTP_REQUIRED=true`): on the first sign-in you enroll a **TOTP
      authenticator** — add the shown secret to Google Authenticator / Authy /
