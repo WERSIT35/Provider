@@ -24,6 +24,13 @@ interface MoneyMoveArgs {
   gameCode?: string;
   /** paid (cash spin) · free_spin (engine bonus spin, never debited) · buy · free_round (operator grant). */
   roundType?: RoundType;
+  /**
+   * Bonus grouping: on every money move of an engine free spin, the round_ref of the
+   * round that triggered the feature (a paid spin, a buy or a free round). The casino
+   * groups a bonus as that trigger round plus every move carrying its ref. Absent
+   * outside the feature. Free spins that win nothing move no money, so send nothing.
+   */
+  featureRef?: string;
 }
 
 /**

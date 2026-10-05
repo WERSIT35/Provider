@@ -15,6 +15,8 @@ interface DebitCreditBody {
   /** Round attribution from the RGS (signed with the rest of the body). */
   gameCode?: string;
   roundType?: string;
+  /** Bonus grouping: the trigger round_ref, on every free-spin move (signed with the body). */
+  featureRef?: string;
 }
 
 /** The ledger fields carried by a signed debit/credit body. */
@@ -28,7 +30,8 @@ const moveFrom = (providerId: string, body: DebitCreditBody) => ({
   txType: body.txType,
   campaignId: body.campaignId,
   gameCode: body.gameCode,
-  roundType: body.roundType
+  roundType: body.roundType,
+  featureRef: typeof body.featureRef === "string" && body.featureRef ? body.featureRef : undefined
 });
 interface RollbackBody {
   idempotencyKey: string;

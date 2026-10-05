@@ -80,6 +80,15 @@ const MIGRATIONS: string[] = [
     created_at  TEXT NOT NULL,
     expires_at  TEXT NOT NULL
   );
+  `,
+  // 2 — bonus grouping. feature_ref = the round_ref of the round that triggered the
+  // provider's free-spins feature, sent as featureRef on every free-spin money move.
+  // A bonus is that trigger round plus every row carrying its ref. NULL elsewhere
+  // (and on rows written before this column). ADD COLUMN is not an UPDATE, so the
+  // append-only triggers are untouched.
+  `
+  ALTER TABLE wallet_transactions ADD COLUMN feature_ref TEXT;
+  CREATE INDEX ix_tx_feature ON wallet_transactions (feature_ref) WHERE feature_ref IS NOT NULL;
   `
 ];
 

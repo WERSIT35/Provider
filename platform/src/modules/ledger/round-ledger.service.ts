@@ -93,6 +93,12 @@ export class RoundLedgerService {
     return list.length ? list.reduce((a, b) => (b.seq > a.seq ? b : a)) : null;
   }
 
+  /** The session's newest round that was not a free spin (a feature's trigger), or null. */
+  lastTriggerRoundForSession(sessionId: string): RoundRecord | null {
+    const list = this.rounds.list({ session_id: sessionId }).filter((r) => !r.is_free_spin);
+    return list.length ? list.reduce((a, b) => (b.seq > a.seq ? b : a)) : null;
+  }
+
   verifyIntegrity(): { rounds: ChainVerification; audit: ChainVerification } {
     return { rounds: this.rounds.verifyChain(), audit: this.audit.verifyChain() };
   }

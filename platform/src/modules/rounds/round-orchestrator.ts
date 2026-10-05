@@ -217,6 +217,7 @@ export class RoundOrchestrator {
       anteEnabled,
       resolveMode: "spin",
       resolved,
+      featureRef: featureLock?.feature_ref ?? null,
       freeRound,
       campaign: freeRound
         ? { campaign_id: freeRound.campaign.id, grant_id: freeRound.grant.id }
@@ -300,6 +301,7 @@ export class RoundOrchestrator {
       anteEnabled: false,
       resolveMode: "buy",
       resolved,
+      featureRef: null,
       freeRound: null,
       campaign: null
     });
@@ -323,13 +325,15 @@ export class RoundOrchestrator {
       anteEnabled: boolean;
       resolveMode: "spin" | "buy";
       resolved: AuthoritativeRound;
+      /** Inside the feature: the triggering round's ref (bonus group key). Else null. */
+      featureRef: string | null;
       /** The free round this spin consumed (null for cash and feature spins). */
       freeRound: ConsumedSpin | null;
       /** Campaign funding this round: a free round, or a feature one triggered. */
       campaign: { campaign_id: string; grant_id: string } | null;
     }
   ): Promise<SpinOutcome> {
-    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, freeRound, campaign } = args;
+    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, featureRef, freeRound, campaign } = args;
 
     // Snapshot the exact pre-spin state BEFORE applyResult mutates the session, so
     // the verification service can deterministically replay this round later.
@@ -389,6 +393,7 @@ export class RoundOrchestrator {
           currency: session.currency,
           gameCode: session.game_code,
           roundType: freeRound ? "free_round" : isFreeSpin ? "free_spin" : resolveMode === "buy" ? "buy" : "paid",
+          ...(isFreeSpin && featureRef ? { featureRef } : {}),
           ...freeRoundCreditTag
         });
         this.transactions.record({
@@ -425,13 +430,15 @@ export class RoundOrchestrator {
 
     // 5) Sync engine-driven game state back onto the session.
     // The terms this round was played at: if it triggered the feature, they become
-    // the feature lock (bet, currency, ante, and the funding campaign).
+    // the feature lock (bet, currency, ante, the funding campaign, and this round's ref
+    // as the bonus group key). Inside the feature the existing lock is kept as is.
     this.sessions.applyResult(session.id, resolved.result, {
       bet: betAmount,
       currency: session.currency,
       ante_enabled: anteEnabled,
       campaign_id: campaign?.campaign_id ?? null,
-      grant_id: campaign?.grant_id ?? null
+      grant_id: campaign?.grant_id ?? null,
+      feature_ref: featureRef ?? roundRef
     });
 
     const balance = await this.wallet.balance(ctx, {
@@ -486,7 +493,9 @@ export class RoundOrchestrator {
       currency: session.currency,
       ante_enabled: last.ante_enabled,
       campaign_id: last.campaign_id ?? null,
-      grant_id: last.grant_id ?? null
+      grant_id: last.grant_id ?? null,
+      // The feature began at the session's newest round that was not a free spin.
+      feature_ref: this.ledger.lastTriggerRoundForSession(session.id)?.round_ref ?? null
     };
     this.sessions.lockFeature(session.id, rebuilt);
     return rebuilt;

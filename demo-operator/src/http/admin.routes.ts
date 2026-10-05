@@ -50,7 +50,10 @@ export default function adminRoutes(playerStore: PlayerStore, providerStore: Pro
         const base = portalFor.get(r.providerId);
         return { ...r, verifyUrl: base ? `${base}/admin#inspector?round=${encodeURIComponent(r.roundRef)}` : null };
       });
-      return { rounds };
+      // Bonus grouping: a round that triggered a feature gets its group summary (free
+      // spins carry featureRef = that round's ref). Summed over the whole ledger.
+      const bonuses = playerStore.bonusSummaries(rounds.map((r) => r.roundRef));
+      return { rounds: rounds.map((r) => ({ ...r, bonus: bonuses.get(r.roundRef) ?? null })) };
     });
 
     // Providers

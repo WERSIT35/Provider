@@ -172,8 +172,12 @@ export class RoundLifecycleService {
     if (!failedCredit) throw new Error("NO_PENDING_SETTLEMENT");
 
     const ctx = { operatorId: round.operator_id };
+    // Re-send the ORIGINAL credit's idempotency key. A credit that "failed" may have
+    // landed at the casino with only the response lost (timeout); under the same key
+    // the casino returns that credit instead of paying the win a second time. The
+    // platform's own record of the retry is kept under its own key below.
     const credit = await this.wallet.credit(ctx, {
-      idempotencyKey: `${roundRef}:settle:credit`,
+      idempotencyKey: failedCredit.idempotency_key,
       roundRef,
       operatorPlayerId: round.operator_player_id,
       amount: failedCredit.amount,

@@ -79,13 +79,17 @@ async function main(): Promise<void> {
   });
   const alice = store.register("alice@example.com", "x", 500);
   const mallory = store.register(XSS_EMAIL, "x", 500);
-  const move = (p: { id: string }, ref: string, bet: number, win: number, roundType = "paid") => {
-    if (bet > 0) store.debit({ playerId: p.id, idempotencyKey: `${ref}:debit`, amount: bet, currency: "GEL", roundRef: ref, gameCode: "bananax", roundType });
-    if (win > 0) store.credit({ playerId: p.id, idempotencyKey: `${ref}:credit`, amount: win, currency: "GEL", roundRef: ref, gameCode: "bananax", roundType });
+  const move = (p: { id: string }, ref: string, bet: number, win: number, roundType = "paid", featureRef?: string) => {
+    if (bet > 0) store.debit({ playerId: p.id, idempotencyKey: `${ref}:debit`, amount: bet, currency: "GEL", roundRef: ref, gameCode: "bananax", roundType, featureRef });
+    if (win > 0) store.credit({ playerId: p.id, idempotencyKey: `${ref}:credit`, amount: win, currency: "GEL", roundRef: ref, gameCode: "bananax", roundType, featureRef });
   };
   move(alice, "r_paid_loss", 1, 0);
   move(alice, "r_paid_win", 1, 12.4);
   move(alice, "r_free_spin", 0, 3.75, "free_spin");
+  // A bought bonus: the trigger plus two paying free spins that carry its ref.
+  move(alice, "r_bonus_buy", 100, 6, "buy");
+  move(alice, "r_bonus_fs1", 0, 2.5, "free_spin", "r_bonus_buy");
+  move(alice, "r_bonus_fs2", 0, 40, "free_spin", "r_bonus_buy");
   move(mallory, "r_xss_round", 2, 0);
   await app.listen({ host: "127.0.0.1", port: 0 });
   const addr = app.server.address();
@@ -164,7 +168,7 @@ async function main(): Promise<void> {
     console.log("\nspin history");
     await signIn("casino_admin", "demo123");
     check("right credentials → dashboard on Spin history", await waitFor(`${visible("appView")} && ${visible("roundsView")}`));
-    check("seeded rounds are listed", await waitFor(`document.querySelectorAll('#roundsBody tr').length === 4`), String(await evaluate(`document.querySelectorAll('#roundsBody tr').length`)));
+    check("seeded rounds are listed", await waitFor(`document.querySelectorAll('#roundsBody tr').length === 7`), String(await evaluate(`document.querySelectorAll('#roundsBody tr').length`)));
     const headers = await evaluate(`[...document.querySelectorAll('#roundsView thead th')].map(th => th.textContent.trim())`);
     check("columns: Timestamp, Player ID, Game, Round, Bet, Win, Verify", JSON.stringify(headers) === JSON.stringify(["Timestamp", "Player ID", "Game", "Round", "Bet", "Win", "Verify"]), JSON.stringify(headers));
     const winRow = await evaluate(`(() => { const a = document.querySelector('a[href$="round=r_paid_win"]'); const tr = a && a.closest('tr');
@@ -176,7 +180,20 @@ async function main(): Promise<void> {
     const freeSpin = await evaluate(`(() => { const tr = document.querySelector('a[href$="round=r_free_spin"]').closest('tr'); return [...tr.cells].map(td => td.textContent.trim()); })()`);
     check("a free spin shows bet 0.00 and its win, badged Free spin", freeSpin[4] === "0.00 GEL" && freeSpin[5] === "3.75 GEL" && freeSpin[3].startsWith("Free spin"), JSON.stringify(freeSpin));
     await evaluate(`(() => { const f = document.getElementById('roundsFilter'); f.value = 'alice'; f.dispatchEvent(new Event('input')); return true; })()`);
-    check("filter narrows the table", await waitFor(`document.querySelectorAll('#roundsBody tr').length === 3`));
+    check("filter narrows the table", await waitFor(`document.querySelectorAll('#roundsBody tr').length === 6`));
+    await evaluate(`(() => { const f = document.getElementById('roundsFilter'); f.value = ''; f.dispatchEvent(new Event('input')); return true; })()`);
+    // Bonus grouping: the trigger carries a summary chip; its free spins are marked.
+    const chip = await evaluate(`(() => { const b = document.querySelector('#roundsBody [data-bonus="r_bonus_buy"]'); return b ? b.textContent.trim() : null; })()`);
+    check("a bonus trigger shows its summary chip (paying spins + total win)", chip === "Bonus · 2 spins · 42.50 GEL", String(chip));
+    const verifyVisible = await evaluate(`(() => { const w = document.querySelector('#roundsView .table-wrap'); return w.scrollWidth <= w.clientWidth; })()`);
+    check("the table fits its panel (no clipped Verify column)", verifyVisible === true);
+    const marked = await evaluate(`[...document.querySelectorAll('#roundsBody tr.in-bonus')].map(tr => tr.querySelector('a.btn-verify').getAttribute('href').split('round=')[1]).sort()`);
+    check("its free spins are marked as part of the bonus", JSON.stringify(marked) === JSON.stringify(["r_bonus_fs1", "r_bonus_fs2"]), JSON.stringify(marked));
+    check("…and name the trigger round", await evaluate(`[...document.querySelectorAll('#roundsBody tr.in-bonus')].every(tr => tr.textContent.includes('Bonus of'))`));
+    check("an ungrouped free spin is not marked", await evaluate(`!document.querySelector('a[href$="round=r_free_spin"]').closest('tr').classList.contains('in-bonus')`));
+    await evaluate(`document.querySelector('#roundsBody [data-bonus="r_bonus_buy"]').click(), true`);
+    check("clicking the chip shows just that bonus (trigger + its free spins)", await waitFor(`document.getElementById('roundsFilter').value === 'r_bonus_buy' && document.querySelectorAll('#roundsBody tr').length === 3`));
+    const bonusShot = await shot("spin-history-bonus");
     await evaluate(`(() => { const f = document.getElementById('roundsFilter'); f.value = ''; f.dispatchEvent(new Event('input')); return true; })()`);
     const dashShot = await shot("spin-history");
 

@@ -132,10 +132,13 @@ User decisions for this phase: SQLite for demo-operator; no signed round APIs fo
 
 5. No operator-side (HMAC) cancel for free-round campaigns; cancel exists in the Admin API and
    the Campaign Manager UI.
-6. Demo Casino blueprint items not built: `featureRef` bonus grouping in webhooks; iframe
-   `postMessage` contract + `frame-ancestors` on `/play` (any site can still embed it);
-   failure-path e2e (insufficient funds, credit retry, rollback). Signed round APIs were
-   deliberately skipped.
+6. Demo Casino blueprint items not built: iframe `postMessage` contract + `frame-ancestors`
+   on `/play` (any site can still embed it). Signed round APIs were deliberately skipped.
+   (`featureRef` bonus grouping and the failure-path e2e are done on `feat/sandbox-pass`.)
+13. A debit whose response is lost leaves the stake at the casino with no round until the
+    client retries the same idempotency key (then it completes, debited once). There is no
+    automatic reversal: the rollback webhook reverses by `originalOperatorTxRef`, which the
+    RGS never received. Needs a rollback-by-idempotency-key contract or a reconciliation job.
 7. `platform/scripts/e2e-operator.ts` does not exercise free rounds.
 8. Landscape-phone hit areas for autoplay/turbo.
 9. Round ID strip sits above the board in `/play` mode only.
@@ -154,7 +157,7 @@ The functional epic is done. Remaining work, in the order it unblocks launch:
    automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
    headless-Chrome checks, and a reduced seeded parity run.
 3. **Hardening follow-ups** — `frame-ancestors` on `/play` from registered operator domains,
-   the iframe `postMessage` contract, failure-path e2e, operator-side HMAC cancel.
+   the iframe `postMessage` contract, operator-side HMAC cancel, lost-debit reversal (§5 item 13).
 
 ## 7. How to resume
 

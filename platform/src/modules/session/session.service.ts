@@ -32,6 +32,12 @@ export interface Session {
   locked_ante: boolean | null;
   locked_campaign_id: string | null;
   locked_grant_id: string | null;
+  /**
+   * round_ref of the round that TRIGGERED the feature: the bonus group key. Every
+   * feature spin's wallet calls carry it as featureRef so the casino can group the
+   * free spins under their trigger. Retriggers keep it; it clears with the lock.
+   */
+  locked_feature_ref: string | null;
   created_at: string;
 }
 
@@ -42,6 +48,8 @@ export interface FeatureLock {
   ante_enabled: boolean;
   campaign_id: string | null;
   grant_id: string | null;
+  /** round_ref of the triggering round (see Session.locked_feature_ref). */
+  feature_ref: string | null;
 }
 
 export interface LaunchRequest {
@@ -57,7 +65,8 @@ const UNLOCKED = {
   locked_currency: null,
   locked_ante: null,
   locked_campaign_id: null,
-  locked_grant_id: null
+  locked_grant_id: null,
+  locked_feature_ref: null
 } as const;
 
 /**
@@ -177,7 +186,8 @@ export class SessionService {
       currency: s.locked_currency as string,
       ante_enabled: Boolean(s.locked_ante),
       campaign_id: s.locked_campaign_id ?? null,
-      grant_id: s.locked_grant_id ?? null
+      grant_id: s.locked_grant_id ?? null,
+      feature_ref: s.locked_feature_ref ?? null
     };
   }
 
@@ -195,6 +205,7 @@ export class SessionService {
     s.locked_ante = t.ante_enabled;
     s.locked_campaign_id = t.campaign_id;
     s.locked_grant_id = t.grant_id;
+    s.locked_feature_ref = t.feature_ref;
   }
 
   close(sessionId: string): void {
