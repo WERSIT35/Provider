@@ -207,6 +207,12 @@ table.data { width:100%; border-collapse:collapse; font-variant-numeric:tabular-
 .data .empty { text-align:center; color:var(--muted); padding:28px 12px; white-space:normal; }
 .mono { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px; }
 .sub { display:block; color:var(--muted); font-size:12px; }
+/* Text cells may wrap so the table always fits its panel, whatever the fonts: Linux's
+   fallback faces are wider, and an e-mail or bonus chip used to push the Verify
+   column out of view. Amounts and actions stay on one line. */
+.data td:not(.num):not(.act) { white-space:normal; overflow-wrap:anywhere; }
+.data td .mono, .data td .btn { white-space:nowrap; }
+.bonus-chip { white-space:normal; text-align:left; }
 .win { color:var(--ok); font-weight:700; }
 .zero { color:var(--muted); }
 .badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
