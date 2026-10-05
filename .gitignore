@@ -11,3 +11,6 @@ npm-debug.log*
 
 # demo-operator SQLite database (players, wallet ledger, staff sessions)
 demo-operator/data/
+
+# Release artifacts (e.g. the lab compliance package) are built locally, never committed.
+*.zip
