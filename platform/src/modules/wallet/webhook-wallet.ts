@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { computeSignature } from "../../lib/security/hmac";
+import { outboundTraceparent } from "../../lib/trace-context";
+import { metrics } from "../../lib/metrics";
 import type { ManagementService } from "../management/management.service";
 import {
   type WalletAdapter,
@@ -70,6 +72,11 @@ export class WebhookWallet implements WalletAdapter {
     const timeoutMs = this.opts.timeoutMs ?? 5000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // The casino sees the same trace as the round (a child span), and stores it.
+    const traceparent = outboundTraceparent();
+    const started = performance.now();
+    const observe = (outcome: "ok" | "declined" | "failed") =>
+      metrics.walletCall.observe((performance.now() - started) / 1000, { action, outcome });
 
     let res: Response;
     try {
@@ -80,12 +87,14 @@ export class WebhookWallet implements WalletAdapter {
           "x-operator-id": ctx.operatorId,
           "x-timestamp": timestamp,
           "x-nonce": nonce,
-          "x-signature": signature
+          "x-signature": signature,
+          ...(traceparent ? { traceparent } : {})
         },
         body: rawBody,
         signal: controller.signal
       });
     } catch {
+      observe("failed");
       throw new Error("WEBHOOK_CALL_FAILED");
     } finally {
       clearTimeout(timer);
@@ -100,9 +109,11 @@ export class WebhookWallet implements WalletAdapter {
 
     if (!res.ok) {
       const err = payload as { error?: string; message?: string } | null;
+      observe(err?.error ? "declined" : "failed");
       if (err?.error) throw new WalletDeclinedError(err.error, err.message);
       throw new Error("WEBHOOK_CALL_FAILED");
     }
+    observe("ok");
     return payload as T;
   }
 }

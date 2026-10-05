@@ -16,9 +16,8 @@
  *
  *   npm run check:embed
  */
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -27,21 +26,14 @@ import { buildApp } from "../src/app";
 import { buildContainer } from "../src/container";
 import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
+import { buildRegulatoryProfile } from "../src/modules/regulatory/regulatory";
+import { CHROME_LAUNCH_BUDGET_MS, findChrome, launchHeadlessChrome } from "./support/chrome-launch";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string): void {
   if (cond) console.log(`  ok   - ${name}`);
   else { failures += 1; console.error(`  FAIL - ${name}${detail ? `  [${detail}]` : ""}`); }
-}
-function findChrome(): string | undefined {
-  return [
-    process.env.CHROME_PATH,
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "/usr/bin/google-chrome",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  ].filter((p): p is string => Boolean(p)).find((p) => existsSync(p));
 }
 function connect(wsUrl: string) {
   const ws = new WebSocket(wsUrl);
@@ -106,6 +98,7 @@ async function main(): Promise<void> {
   c.mgmt.assignGame({ operator_id: op.id, game_id: game.id, math_config_id: cfg.id, currency: "GEL", allowed_bets: [1, 5, 10] });
   wallet.setBalance("player-1", "GEL", 100_000);
   wallet.setBalance("player-2", "GEL", 100_000);
+  wallet.setBalance("player-3", "GEL", 100_000);
   const launch = (player: string) => c.sessions.createLaunchToken({ operator_id: op.id, game_code: "bananax", operator_player_id: player, currency: "GEL", origin: registeredHost }, 60);
   const rounds = (player: string) => c.reporting.listRoundsByPlayer(op.id, player);
 
@@ -115,25 +108,16 @@ async function main(): Promise<void> {
   if (!addr || typeof addr === "string") throw new Error("not listening");
   const base = `http://127.0.0.1:${addr.port}`;
 
-  const userDataDir = mkdtempSync(join(tmpdir(), "embed-check-"));
-  const chrome = spawn(chromePath, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${userDataDir}`, "--no-first-run",
+  // Hardened launch (60s port wait, one retry): platform/scripts/support/chrome-launch.ts
+  const { chrome, wsBase, userDataDir } = await launchHeadlessChrome(chromePath, "embed-check-", [
+    "--headless=new", "--no-first-run",
     "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio",
     "--autoplay-policy=no-user-gesture-required",
     // Keep the cross-site iframe in the page's process so CDP can evaluate inside it.
     // Process placement only: CSP framing and postMessage origin checks are unaffected.
     "--disable-site-isolation-trials", "--disable-features=IsolateOrigins,site-per-process",
     "about:blank"
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  const wsBase = await new Promise<string>((resolve, reject) => {
-    let buf = "";
-    const t = setTimeout(() => reject(new Error("chrome debug port not reported")), 20000);
-    chrome.stderr!.on("data", (d) => {
-      buf += d.toString();
-      const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
-      if (m) { clearTimeout(t); resolve(`http://127.0.0.1:${m[1]}`); }
-    });
-  });
+  ]);
   const list = (await (await fetch(`${wsBase}/json/list`)).json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
   const cdp = connect(list.find((t) => t.type === "page")!.webSocketDebuggerUrl);
   await cdp.ready;
@@ -194,7 +178,9 @@ async function main(): Promise<void> {
   };
   const send = (type: string, data?: object) => evaluate(`window.send(${JSON.stringify(type)}, ${JSON.stringify(data ?? {})}), true`);
   const clickSpin = async () => {
-    await waitFor(() => inGame(`!isRoundInFlight() && performance.now() - state.roundSettledAt >= SPIN_SETTLE_GUARD_MS`), 10000);
+    // Booted (app-ready), button enabled, nothing in flight, settle guard passed: a click
+    // before that is legitimately ignored by the game and would make a check flaky.
+    await waitFor(() => inGame(`document.body.classList.contains("app-ready") && !document.getElementById("spinBtn").disabled && !isRoundInFlight() && performance.now() - state.roundSettledAt >= SPIN_SETTLE_GUARD_MS`), 15000);
     await inGame(`document.getElementById('spinBtn').click(), true`);
   };
   const gameIdle = () => inGame(`(() => { const f = document.getElementById('featureScreen'); if (!f.classList.contains('hidden')) f.click(); return !isRoundInFlight() && Number(document.getElementById('freeSpins').textContent || 0) === 0; })()`);
@@ -231,6 +217,12 @@ async function main(): Promise<void> {
     const walletBal = (await c.wallet.balance({ operatorId: op.id }, { operatorPlayerId: "player-1", currency: "GEL" })).amount;
     check("roundEnded balance = the wallet's balance", ended?.data?.balance === walletBal, `${ended?.data?.balance} vs ${walletBal}`);
     check("balanceChanged sent with the same balance", Boolean(await waitMsg("balanceChanged", (m) => m.data?.balance === walletBal)));
+    // One W3C trace for the round: in the casino messages and on the RGS money rows.
+    const started = (await msgsOf("roundStarted")).at(-1);
+    const debitTrace = c.transactions.list({ round_ref: last?.round_ref }).find((t) => t.type === "DEBIT")?.trace_id;
+    check("the round's trace_id is the same in roundStarted, roundEnded and the RGS ledger",
+      /^[0-9a-f]{32}$/.test(String(ended?.data?.trace_id)) && started?.data?.trace_id === ended?.data?.trace_id && debitTrace === ended?.data?.trace_id,
+      JSON.stringify({ started: started?.data?.trace_id, ended: ended?.data?.trace_id, ledger: debitTrace }));
     await waitFor(gameIdle, 30000);
 
     console.log("\nC. pause / resume, and forged commands");
@@ -279,6 +271,51 @@ async function main(): Promise<void> {
     check("featureState active:false with the bonus win", Boolean(await waitMsg("featureState", (m) => m.data?.active === false, 10000)));
     check("no script errors in the game", exceptions.length === 0, JSON.stringify(exceptions));
 
+    console.log("\nF. a strict jurisdiction profile: hidden controls, paced rounds, reality check");
+    // UKGC-style. Pacing first, with the reality check off so it cannot interrupt.
+    c.mgmt.setRegulatoryProfile(op.id, buildRegulatoryProfile({ preset: "UKGC", reality_check_minutes: null }));
+    await openCasino(registeredHost, launch("player-3"));
+    check("game ready under the profile", Boolean(await waitMsg("ready", (m) => m.data?.balance === 100_000, 20000)));
+    check("autoplay, turbo and buy feature are switched off (hidden in place)",
+      await inGame(`[el.autoplayBtn, el.turboBtn, el.buyFreeBtn].every((b) => b.classList.contains("is-reg-off"))`));
+    await inGame(`(setTurbo(true), true)`);
+    check("turbo cannot be switched on", (await inGame(`state.turbo`)) === false);
+    const roundsOf3 = () => rounds("player-3").filter((r) => !r.is_free_spin);
+    const rcHidden = `document.getElementById("realityCheck").hidden`;
+    // Two presses as fast as the UI allows: the client must hold the second one back.
+    for (let i = 0; i < 2; i++) {
+      const n = roundsOf3().length;
+      await clickSpin();
+      await waitFor(async () => roundsOf3().length > n || !(await inGame(rcHidden)), 20000);
+      await waitFor(gameIdle, 30000);
+    }
+    const starts = roundsOf3().map((r) => Date.parse(r.created_at)).sort((a, b) => a - b);
+    const gaps = starts.slice(1).map((t, i) => t - starts[i]);
+    check("back-to-back presses are paced >= 2.5s apart (the client waits; the RGS never refuses)",
+      starts.length >= 2 && gaps.every((g) => g >= 2400) && !(await inGame(`/SPIN_TOO_FAST/.test(el.resultDump.textContent)`)),
+      JSON.stringify({ gaps, rounds: starts.length, client: await inGame(`({ life: lifecycleStats, locked: spinLock.isLocked(), disabled: el.spinBtn.disabled, paused: state.embedPaused, msgs: (state.activityLog || []).slice(-3).map((m) => m.text) })`) }));
+    // Then a 6-second reality check on a fresh launch (a new session: the timer runs
+    // from the session start), so the check can watch it fire twice.
+    c.mgmt.setRegulatoryProfile(op.id, buildRegulatoryProfile({ preset: "UKGC", reality_check_minutes: 0.1 }));
+    await openCasino(registeredHost, launch("player-3"));
+    await waitMsg("ready", () => true, 20000);
+    check("the reality check appears when due", await waitFor(async () => !(await inGame(rcHidden)), 15000),
+      String(await inGame(`JSON.stringify({ rules: regulatory.rules, due: regulatory.due, modal: !!document.getElementById("realityCheck"), inFlight: isRoundInFlight(), paused: state.embedPaused })`).catch((e) => e.message)));
+    const rc = await waitMsg("realityCheck", () => true, 5000);
+    check("…and the casino gets realityCheck with the session figures",
+      rc?.data?.elapsed_ms >= 5000 && typeof rc?.data?.wagered === "number" && typeof rc?.data?.net === "number", JSON.stringify(rc?.data));
+    await inGame(`document.getElementById("realityContinue").click(), true`);
+    // The newest of player-3's sessions (the relaunch above opened a second one).
+    const s3 = () => c.sessions.listByOperator(op.id).filter((x) => x.operator_player_id === "player-3").sort((x, y) => y.created_at.localeCompare(x.created_at))[0];
+    check("Continue closes it and the RGS re-arms the next check",
+      await waitFor(async () => Boolean(await inGame(rcHidden)) && (c.regulatory.realityCheckDueIn(s3()) ?? 0) > 3000, 5000));
+    check("the reality check comes back after the next interval", await waitFor(async () => !(await inGame(rcHidden)), 15000));
+    await inGame(`document.getElementById("realityLeave").click(), true`);
+    check("Leave asks the casino to close the game (exitRequested) and pauses play",
+      Boolean(await waitMsg("exitRequested", (m) => m.data?.reason === "reality_check", 5000)) && (await inGame(`state.embedPaused`)) === true);
+    c.mgmt.setRegulatoryProfile(op.id, null);
+    check("no script errors in the game", exceptions.length === 0, JSON.stringify(exceptions));
+
     console.log(`\nE. an unregistered site (127.0.0.1:${casinoPort}) cannot frame the game`);
     const sessionsBefore = c.sessions.listByOperator(op.id).filter((s) => s.operator_player_id === "player-2").length;
     consoleText.length = 0;
@@ -301,5 +338,5 @@ async function main(): Promise<void> {
   process.exit(failures ? 1 : 0);
 }
 
-setTimeout(() => { console.error("embed-check: TIMEOUT"); process.exit(1); }, 300_000).unref();
+setTimeout(() => { console.error("embed-check: TIMEOUT"); process.exit(1); }, 300_000 + CHROME_LAUNCH_BUDGET_MS).unref();
 main().catch((err) => { console.error(err); process.exit(1); });

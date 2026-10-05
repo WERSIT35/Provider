@@ -1,5 +1,6 @@
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import type { AuditRepository } from "../ledger/ledger.types";
+import { REGULATORY_PRESETS, type RegulatoryProfile } from "../regulatory/regulatory";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
 import type {
   Operator,
@@ -162,6 +163,22 @@ export class ManagementService {
   /** Provider-scoped: list all operators. */
   listOperators(): Operator[] {
     return Array.from(this.operators.values()).map((o) => ({ ...o }));
+  }
+
+  /** Set (or with null, clear back to DEFAULT) the operator's jurisdiction profile. Audited. */
+  setRegulatoryProfile(operatorId: string, profile: RegulatoryProfile | null): Operator {
+    const op = this.operators.get(operatorId);
+    if (!op) throw new Error("OPERATOR_NOT_FOUND");
+    if (profile) op.regulatory = { ...profile };
+    else delete op.regulatory;
+    this.saveOperator(op);
+    this.record(operatorId, "operator.regulatory.set", "operator", operatorId);
+    return { ...op };
+  }
+
+  /** The profile in force for an operator (DEFAULT when none is set). */
+  regulatoryProfile(operatorId: string): RegulatoryProfile {
+    return this.operators.get(operatorId)?.regulatory ?? REGULATORY_PRESETS.DEFAULT;
   }
 
   setOperatorStatus(operatorId: string, status: OperatorStatus): Operator {

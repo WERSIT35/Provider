@@ -1,7 +1,36 @@
-# CHECKPOINT — 2026-10-05
+# CHECKPOINT — 2026-10-06
 
-Where the work stands, the decisions behind it, and what comes next. Branch:
-`fix/board-aspect-ratio-and-asset-hardening`.
+Where the work stands, the decisions behind it, and what comes next. Everything below is
+merged to `main`.
+
+## 0. Latest (2026-10-05/06): merged PRs, newest last
+
+| PR | What |
+|---|---|
+| #40 | Session resume on reload / relaunch (RGS path), bet restore, mid-feature recovery |
+| #41 | `/play` frame-ancestors, the casino postMessage bridge, lost-debit reconciliation |
+| #42 | Operator HMAC campaign cancel; RNG certification notes + `rng:dump` / `rng:stats` |
+| #43 | Bet / ante restore on BOTH boot paths (standalone client too), award-screen reload |
+| #44 | Frameless glass board, symbol-tinted win auras, floating HUD pills; layout-check Chrome launch 60s + retry |
+| #45 | **Enterprise expansion** (`feat/enterprise-expansion-and-ci`), below |
+
+**#45, enterprise expansion:**
+- **CI.** A new parallel `browser-checks` job runs every real-Chrome check plus the operator
+  e2e (`npm run verify:browser`). CI now runs on PRs and on pushes to `main` only (no
+  duplicate runs), its path filter covers all of `client/**`, and a newer push cancels the
+  older run. All browser checks share `platform/scripts/support/chrome-launch.ts` (60s +
+  retry). Probes now clean up their temp Chrome profiles.
+- **Jurisdiction profiles** (GUIDE §4d): presets are illustrative; compliance must confirm values.
+- **Signed round export** (GUIDE §4e) + offline verifier.
+- **Observability** (GUIDE §4f): W3C trace across the client, the RGS, both ledgers and the
+  webhooks; a `wallet.tx` log line per money move; Prometheus `/metrics`.
+- **Canvas context-loss guard.** Adaptive FPS already existed (tiers + governor).
+- **Migrations:** platform 0009 (`operators.regulatory`), 0010
+  (`wallet_transactions.trace_id`); casino 4 (`wallet_transactions.trace_id`).
+- **New env:** `EXPORT_SIGNING_KEY` (required in staging/production; an Ed25519 PKCS#8 PEM),
+  `METRICS_TOKEN` (optional).
+- **Known, not fixed:** item 8 (landscape-phone autoplay/turbo hit areas) is still failing
+  `hit-target-probe`. It predates the glass UI (verified against the pre-glass client).
 
 **Milestone status:** the cinematic client overhaul (§1), Platform Phase 3 (§1b), **Phase 4,
 math certification (§1c)**, the **Demo Casino integration** and the **Campaign Manager UI +
@@ -155,9 +184,10 @@ The functional epic is done. Remaining work, in the order it unblocks launch:
 1. **Lab submission** — O1–O4 closed (§5). Remaining: package the three reports + rules 3.2.0
    for the lab, with `qa/rng-certification-notes.md` and an `npm run rng:dump` sample for the
    lab's RNG battery.
-2. **First provider sandbox pass** with the demo casino (backlog 8.3), then regression
-   automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
-   headless-Chrome checks, and a reduced seeded parity run.
+2. **First provider sandbox pass** with the demo casino (backlog 8.3). Regression
+   automation in CI (backlog 9.2) is done except the parity run: `release-check` (platform +
+   demo-operator tests, `test:client`, audit) and `browser-checks` (every real-Chrome check +
+   operator e2e). Still to add: a reduced seeded parity run.
 3. **Hardening follow-ups** — all done: framing + postMessage and lost-debit reversal (§5 items
    6, 13), operator HMAC campaign cancel (items 5, 7), and the RNG notes `qa/rng-certification-notes.md`
    (`npm run rng:stats` battery, `npm run rng:dump` lab sample).

@@ -1,16 +1,17 @@
 name: platform-ci
 
+# PRs are checked on pull_request; main is checked on push (the merge). Pushes to
+# feature branches no longer start a second, duplicate run of the same commit: those
+# doubled the load on shared runners and twice left a PR waiting on a runner that
+# never came (PRs #43/#44).
 on:
   push:
+    branches: [main]
     paths:
       - "platform/**"
       - "demo-operator/**"
       - "tools/**"
-      - "client/engine/**"
-      - "client/math/**"
-      - "client/index.html"
-      - "client/main.js"
-      - "client/styles.css"
+      - "client/**"
       - "package.json"
       - "package-lock.json"
       - ".dockerignore"
@@ -21,19 +22,23 @@ on:
       - "platform/**"
       - "demo-operator/**"
       - "tools/**"
-      - "client/engine/**"
-      - "client/math/**"
-      - "client/index.html"
-      - "client/main.js"
-      - "client/styles.css"
+      - "client/**"
       - "package.json"
       - "package-lock.json"
       - ".dockerignore"
       - "platform/Dockerfile"
+      - ".github/workflows/platform-ci.yml"
+  workflow_dispatch:
+
+# A newer push to the same PR / branch supersedes the run in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   release-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,3 +57,37 @@ jobs:
       # The single release gate: platform typecheck/test/build, demo-operator typecheck/test,
       # the client browser tests, and the production dependency audit (see package.json).
       - run: npm run verify:release
+
+  # The end-to-end, real-Chrome checks (see package.json verify:browser): session
+  # resume on both boot paths, the casino embedding boundary, the Round Inspector and
+  # Campaign Manager consoles, the HMAC operator walkthrough, and the demo casino's
+  # back-office and game page. Runs alongside release-check.
+  browser-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            platform/package-lock.json
+            demo-operator/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: platform
+      - run: npm ci
+        working-directory: demo-operator
+      # Screenshot dir for the checks that save PNGs (resume, embed); uploaded on failure.
+      - run: echo "SHOTS_DIR=$RUNNER_TEMP/shots" >> "$GITHUB_ENV" && mkdir -p "$RUNNER_TEMP/shots"
+      - run: npm run verify:browser
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+          retention-days: 7

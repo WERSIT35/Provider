@@ -11,11 +11,12 @@
  *   D. A bet + ante the player chose but has not played yet survive a reload and a relaunch.
  *   E. Standalone client (no launch token): bet + ante survive a reload after a spin and
  *      without one; a reload on the bonus award screen resumes the bonus at its bet.
+ *   G. Canvas context loss: the loop pauses, then on restore rebuilds its caches and
+ *      re-syncs the balance from the RGS.
  *
  *   npm run check:resume              (screenshots go to the OS temp dir)
  */
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyBaseLogger } from "fastify";
@@ -23,21 +24,13 @@ import { buildApp } from "../src/app";
 import { buildContainer } from "../src/container";
 import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
+import { CHROME_LAUNCH_BUDGET_MS, findChrome, launchHeadlessChrome } from "./support/chrome-launch";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string): void {
   if (cond) console.log(`  ok   - ${name}`);
   else { failures += 1; console.error(`  FAIL - ${name}${detail ? `  [${detail}]` : ""}`); }
-}
-function findChrome(): string | undefined {
-  return [
-    process.env.CHROME_PATH,
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "/usr/bin/google-chrome",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  ].filter((p): p is string => Boolean(p)).find((p) => existsSync(p));
 }
 function connect(wsUrl: string) {
   const ws = new WebSocket(wsUrl);
@@ -88,21 +81,12 @@ async function main(): Promise<void> {
   if (!addr || typeof addr === "string") throw new Error("not listening");
   const base = `http://127.0.0.1:${addr.port}`;
 
-  const userDataDir = mkdtempSync(join(tmpdir(), "resume-check-"));
-  const chrome = spawn(chromePath, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${userDataDir}`, "--no-first-run",
+  // Hardened launch (60s port wait, one retry): platform/scripts/support/chrome-launch.ts
+  const { chrome, wsBase, userDataDir } = await launchHeadlessChrome(chromePath, "resume-check-", [
+    "--headless=new", "--no-first-run",
     "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio",
     "--autoplay-policy=no-user-gesture-required", "about:blank"
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  const wsBase = await new Promise<string>((resolve, reject) => {
-    let buf = "";
-    const t = setTimeout(() => reject(new Error("chrome debug port not reported")), 20000);
-    chrome.stderr!.on("data", (d) => {
-      buf += d.toString();
-      const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
-      if (m) { clearTimeout(t); resolve(`http://127.0.0.1:${m[1]}`); }
-    });
-  });
+  ]);
   const list = (await (await fetch(`${wsBase}/json/list`)).json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
   const cdp = connect(list.find((t) => t.type === "page")!.webSocketDebuggerUrl);
   await cdp.ready;
@@ -268,6 +252,20 @@ async function main(): Promise<void> {
     const bets = (await evaluate(`window.__bets`)) as number[];
     check("every resumed free spin played at 2.00", bets.length > 0 && bets.every((b) => b === 2), JSON.stringify(bets));
     await shot("E-standalone-bonus");
+
+    console.log("\nG. canvas context loss: pause, rebuild, re-sync with the RGS");
+    check("platform game boots", await open(`${base}/play?lt=${encodeURIComponent(launch(60))}`));
+    await waitFor(idle, 60000);
+    // Browsers have no API to force a 2D context loss; dispatch the same events.
+    await evaluate(`(document.getElementById("reels").dispatchEvent(new Event("contextlost", { cancelable: true })), true)`);
+    check("on loss the render loop stops", (await evaluate(`window.__reelRenderer._paused === true && contextGuard.lost === 1`)) === true);
+    wallet.setBalance("player-1", "GEL", 4242); // the server's balance moved meanwhile
+    await evaluate(`(document.getElementById("reels").dispatchEvent(new Event("contextrestored")), true)`);
+    check("on restore it resumes and rebuilds its caches",
+      await waitFor(`window.__reelRenderer._paused === false && contextGuard.restored === 1 && !!window.__reelRenderer.stageCacheFront`, 5000),
+      String(await evaluate(`JSON.stringify({ paused: window.__reelRenderer._paused, restored: contextGuard.restored, sprites: window.__reelRenderer.symbolSprites.size, stage: !!window.__reelRenderer.stageCacheFront, hidden: document.hidden })`)));
+    check("…and re-syncs the balance from the RGS", await waitFor(`el.balance.textContent === "4,242.00" || el.balance.textContent === "4242.00"`, 5000),
+      String(await evaluate(`el.balance.textContent`)));
     check("no script errors", exceptions.length === 0, JSON.stringify(exceptions));
     console.log(`\nscreenshots: ${shots.join("\n             ")}`);
   } finally {
@@ -280,5 +278,5 @@ async function main(): Promise<void> {
   process.exit(failures ? 1 : 0);
 }
 
-setTimeout(() => { console.error("resume-check: TIMEOUT"); process.exit(1); }, 240_000).unref();
+setTimeout(() => { console.error("resume-check: TIMEOUT"); process.exit(1); }, 240_000 + CHROME_LAUNCH_BUDGET_MS).unref();
 main().catch((err) => { console.error(err); process.exit(1); });

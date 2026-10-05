@@ -173,6 +173,13 @@ export class SessionService {
     return s ? { ...s } : null;
   }
 
+  /** Sessions currently active (the rgs_active_sessions gauge). */
+  countActive(): number {
+    let n = 0;
+    for (const s of this.sessions.values()) if (s.status === "active") n += 1;
+    return n;
+  }
+
   /** Tenant-scoped read: every session (active or closed) opened for an operator. */
   listByOperator(operatorId: string): Session[] {
     return Array.from(this.sessions.values())

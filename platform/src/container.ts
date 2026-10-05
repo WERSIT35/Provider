@@ -7,6 +7,7 @@ import type { WalletAdapter } from "./modules/wallet/wallet.types";
 import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
 import { DebitReconciler } from "./modules/wallet/debit-reconciler";
+import { RegulatoryService, type SessionStats } from "./modules/regulatory/regulatory";
 import { ReportingService } from "./modules/reporting/reporting.service";
 import { AdminAuthService } from "./modules/admin/admin-auth";
 import { AdminAccountService } from "./modules/admin/admin-account";
@@ -15,6 +16,8 @@ import { InMemoryRoundRepository, InMemoryAuditRepository } from "./modules/ledg
 import { InMemoryRoundAdjustmentStore } from "./modules/rounds/round-adjustment.store";
 import { RoundLifecycleService } from "./modules/rounds/round-lifecycle.service";
 import { RoundVerificationService } from "./modules/rounds/round-verification.service";
+import { RoundExportService } from "./modules/rounds/round-export.service";
+import { ExportSigner } from "./lib/security/export-signer";
 import { DisputeService } from "./modules/disputes/dispute.service";
 import { InMemoryCampaignRepository } from "./modules/campaigns/campaign.repository";
 import { NonceStore } from "./lib/security/nonce-store";
@@ -37,6 +40,8 @@ export interface PlatformConfig {
   // unchanged; local dev/demo entry points (dev-seed.ts, seed-demo-operator.ts)
   // pass false explicitly to skip the authenticator step entirely.
   totpRequired?: boolean;
+  /** Ed25519 PKCS#8 PEM for round exports; absent = an ephemeral key (local/test only). */
+  exportSigningKey?: string;
 }
 
 /**
@@ -56,10 +61,15 @@ export interface Container {
   orchestrator: RoundOrchestrator;
   /** Lost-debit reconciliation: in-line retry, void + reversal, and the reversal queue. */
   debits: DebitReconciler;
+  /** Jurisdiction rules per operator (round pacing, reality check, feature-buy switch). */
+  regulatory: RegulatoryService;
   reporting: ReportingService;
   adjustments: InMemoryRoundAdjustmentStore;
   lifecycle: RoundLifecycleService;
   verification: RoundVerificationService;
+  /** Signed round-history exports (GET /operator/v1/rounds/:ref/export). */
+  roundExport: RoundExportService;
+  exportSigner: ExportSigner;
   disputes: DisputeService;
   // Operator-granted Free Rounds (NOT the engine scatter feature).
   campaigns: InMemoryCampaignRepository;
@@ -98,11 +108,30 @@ export function buildContainer(
   const transactions = new InMemoryTransactionStore(persistence);
   const campaigns = new InMemoryCampaignRepository(persistence);
   const debits = new DebitReconciler(wallet, transactions, { audit, retryDelaysMs: overrides.debitRetryDelaysMs });
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits);
+  // Reality-check stats come from the round ledger (bound late: reporting is built below).
+  const regulatory = new RegulatoryService(
+    (operatorId) => mgmt.regulatoryProfile(operatorId),
+    (session, now): SessionStats => {
+      const rounds = reporting.listRoundsByPlayer(session.operator_id, session.operator_player_id).filter((r) => r.session_id === session.id);
+      const wagered = Math.round(rounds.reduce((s, r) => s + r.bet_charged, 0) * 100) / 100;
+      const won = Math.round(rounds.reduce((s, r) => s + r.total_win, 0) * 100) / 100;
+      return {
+        session_started_at: session.created_at,
+        elapsed_ms: now - Date.parse(session.created_at),
+        rounds: rounds.length,
+        wagered,
+        won,
+        net: Math.round((won - wagered) * 100) / 100
+      };
+    }
+  );
+  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory);
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
   const verification = new RoundVerificationService(ledger, resolver);
+  const exportSigner = new ExportSigner(config.exportSigningKey);
+  const roundExport = new RoundExportService(ledger, transactions, adjustments, verification, mgmt, exportSigner);
   const disputes = new DisputeService(lifecycle, ledger, audit, persistence);
 
   return {
@@ -116,10 +145,13 @@ export function buildContainer(
     transactions,
     orchestrator,
     debits,
+    regulatory,
     reporting,
     adjustments,
     lifecycle,
     verification,
+    roundExport,
+    exportSigner,
     disputes,
     campaigns,
     adminAuth: new AdminAuthService(config.adminSecret),

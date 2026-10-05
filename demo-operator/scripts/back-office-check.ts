@@ -9,13 +9,13 @@
  *   npm run check:back-office            (screenshots go to the OS temp dir)
  *   SHOTS_DIR=./shots npm run check:back-office
  */
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildApp } from "../src/app";
 import { openCasinoDb } from "../src/db/database";
 import { PlayerStore } from "../src/store/player-store";
+import { CHROME_LAUNCH_BUDGET_MS, findChrome, launchHeadlessChrome } from "../../platform/scripts/support/chrome-launch";
 
 const XSS_EMAIL = `"><img src=x onerror="window.__pwned=1">@evil.test`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -25,15 +25,6 @@ function check(name: string, cond: boolean, detail?: string): void {
   else { failures += 1; console.error(`  FAIL - ${name}${detail ? `  [${detail}]` : ""}`); }
 }
 
-function findChrome(): string | undefined {
-  return [
-    process.env.CHROME_PATH,
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "/usr/bin/google-chrome",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  ].filter((p): p is string => Boolean(p)).find((p) => existsSync(p));
-}
 
 function connect(wsUrl: string) {
   const ws = new WebSocket(wsUrl);
@@ -97,20 +88,11 @@ async function main(): Promise<void> {
   const base = `http://127.0.0.1:${addr.port}`;
 
   // ── Chrome ────────────────────────────────────────────────────────────────
-  const userDataDir = mkdtempSync(join(tmpdir(), "bo-check-"));
-  const chrome = spawn(chromePath, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${userDataDir}`, "--no-first-run",
+  // Hardened launch (60s port wait, one retry): platform/scripts/support/chrome-launch.ts
+  const { chrome, wsBase, userDataDir } = await launchHeadlessChrome(chromePath, "bo-check-", [
+    "--headless=new", "--no-first-run",
     "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1", "--window-size=1366,860", "about:blank"
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  const wsBase = await new Promise<string>((resolve, reject) => {
-    let buf = "";
-    const t = setTimeout(() => reject(new Error("chrome debug port not reported")), 20000);
-    chrome.stderr!.on("data", (d) => {
-      buf += d.toString();
-      const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
-      if (m) { clearTimeout(t); resolve(`http://127.0.0.1:${m[1]}`); }
-    });
-  });
+  ]);
   const list = (await (await fetch(`${wsBase}/json/list`)).json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
   const cdp = connect(list.find((t) => t.type === "page")!.webSocketDebuggerUrl);
   await cdp.ready;
@@ -228,5 +210,5 @@ async function main(): Promise<void> {
 }
 
 // Never hang silently (e.g. a navigation that fires no load event).
-setTimeout(() => { console.error("back-office-check: TIMEOUT"); process.exit(1); }, 60_000).unref();
+setTimeout(() => { console.error("back-office-check: TIMEOUT"); process.exit(1); }, 60_000 + CHROME_LAUNCH_BUDGET_MS).unref();
 main().catch((err) => { console.error(err); process.exit(1); });

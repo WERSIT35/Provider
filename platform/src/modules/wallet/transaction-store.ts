@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
+import { currentTrace } from "../../lib/trace-context";
 
 /** Money-movement ledger (plan §3.3 wallet_transactions). Append-only + idempotent
  * by idempotency_key. Feeds reporting, reconciliation, and the failed-settlement queue. */
@@ -27,6 +28,8 @@ export interface TxInput {
   error_code?: string;
   /** Set on FREE_ROUND_BET / FREE_ROUND_WIN rows (operator promo reconciliation). */
   campaign_id?: string;
+  /** W3C trace id of the request that made the move (filled from the current trace). */
+  trace_id?: string;
 }
 
 export interface TxRecord extends TxInput {
@@ -60,11 +63,20 @@ export class InMemoryTransactionStore {
   }
 
   /** Append a transaction. Idempotent: a repeated idempotency_key returns the stored row. */
+  private readonly listeners: Array<(tx: TxRecord) => void> = [];
+
+  /** Called once per NEW transaction (not on an idempotent replay): logs, metrics. */
+  onRecord(fn: (tx: TxRecord) => void): void {
+    this.listeners.push(fn);
+  }
+
   record(input: TxInput): TxRecord {
     const existing = this.byKey.get(input.idempotency_key);
     if (existing) return clone(existing);
+    const traceId = input.trace_id ?? currentTrace()?.traceId;
     const record: TxRecord = {
       ...input,
+      ...(traceId ? { trace_id: traceId } : {}),
       id: randomUUID(),
       seq: this.entries.length,
       created_at: new Date().toISOString()
@@ -72,6 +84,9 @@ export class InMemoryTransactionStore {
     this.entries.push(record);
     this.byKey.set(record.idempotency_key, record);
     this.persistence.save("wallet_transactions", record);
+    for (const fn of this.listeners) {
+      try { fn(clone(record)); } catch { /* an observer must never fail a money move */ }
+    }
     return clone(record);
   }
 

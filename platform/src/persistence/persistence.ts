@@ -73,7 +73,8 @@ function spec(
 
 /** The single source of table shapes shared by save() and loadTable(). */
 const TABLES: Record<string, TableSpec> = {
-  operators: spec(["id", "name", "slug", "status", "default_currency", "created_at"], ["id"], { orderBy: "created_at" }),
+  // regulatory: jsonb, omitted when unset (migration 0009; NULL = DEFAULT profile).
+  operators: spec(["id", "name", "slug", "status", "default_currency", "regulatory", "created_at"], ["id"], { orderBy: "created_at", jsonb: ["regulatory"], omitNull: ["regulatory"] }),
   operator_domains: spec(["id", "operator_id", "domain", "environment", "status", "created_at"], ["id"], { orderBy: "created_at" }),
   operator_api_credentials: spec(
     ["id", "operator_id", "api_key_id", "secret_hash", "secret_last4", "hmac_secret", "environment", "status", "ip_allowlist", "created_at", "expires_at"],
@@ -110,9 +111,9 @@ const TABLES: Record<string, TableSpec> = {
     { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version", "rules_hash"] }
   ),
   wallet_transactions: spec(
-    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "created_at"],
+    ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "trace_id", "created_at"],
     ["id"],
-    { appendOnly: true, orderBy: "seq", omitNull: ["campaign_id"] }
+    { appendOnly: true, orderBy: "seq", omitNull: ["campaign_id", "trace_id"] }
   ),
   round_adjustments: spec(
     ["id", "seq", "round_ref", "operator_id", "operator_player_id", "kind", "effective_status", "reason", "actor_id", "wallet_tx_refs", "created_at"],

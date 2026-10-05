@@ -45,6 +45,12 @@ const EnvSchema = z.object({
   // Optional Postgres persistence. When set, state is durably mirrored to Postgres
   // (loaded on boot, written through per request). Unset → pure in-memory (default).
   DATABASE_URL: z.string().url().optional(),
+  // Ed25519 private key (PKCS#8 PEM; escaped newlines allowed) that signs round-history
+  // exports. Required in staging/production; local/test generate an ephemeral one.
+  EXPORT_SIGNING_KEY: z.string().optional(),
+  // Bearer token GET /metrics requires (Prometheus scrape). Unset: /metrics is open,
+  // so keep it on an internal network or set this.
+  METRICS_TOKEN: z.string().min(16).optional(),
   // Optional overrides; default resolution lives in the engine loader.
   ENGINE_DIR: z.string().optional(),
   ENGINE_RULES_PATH: z.string().optional()
@@ -87,6 +93,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (!env.ADMIN_TOTP_REQUIRED) {
       throw new Error("Unsafe production environment: ADMIN_TOTP_REQUIRED must not be false");
+    }
+    // Exports signed with a per-process key could never be verified after a restart.
+    if (!env.EXPORT_SIGNING_KEY) {
+      throw new Error("Unsafe production environment: EXPORT_SIGNING_KEY is required");
     }
   }
   return env;

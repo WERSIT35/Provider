@@ -19,8 +19,15 @@ interface DebitCreditBody {
   featureRef?: string;
 }
 
+/** The W3C trace id from a `traceparent` header (00-<32 hex>-<16 hex>-<2 hex>), if valid. */
+function traceIdOf(header: unknown): string | undefined {
+  const m = typeof header === "string" ? /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(header.trim().toLowerCase()) : null;
+  return m && !/^0+$/.test(m[1]) ? m[1] : undefined;
+}
+
 /** The ledger fields carried by a signed debit/credit body. */
-const moveFrom = (providerId: string, body: DebitCreditBody) => ({
+const moveFrom = (providerId: string, body: DebitCreditBody, traceId?: string) => ({
+  traceId,
   providerId,
   playerId: body.operatorPlayerId,
   idempotencyKey: body.idempotencyKey,
@@ -56,7 +63,7 @@ export default function walletRoutes(store: PlayerStore, providerStore: Provider
     app.post("/wallet/:providerId/debit", { preHandler: auth }, async (req, reply) => {
       const body = req.body as DebitCreditBody;
       try {
-        const result = store.debit(moveFrom((req.params as { providerId: string }).providerId, body));
+        const result = store.debit(moveFrom((req.params as { providerId: string }).providerId, body, traceIdOf(req.headers.traceparent)));
         return { operatorTxRef: result.operatorTxRef, balanceAfter: { amount: result.balanceAfter, currency: body.currency }, status: "confirmed" };
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
@@ -74,7 +81,7 @@ export default function walletRoutes(store: PlayerStore, providerStore: Provider
     app.post("/wallet/:providerId/credit", { preHandler: auth }, async (req, reply) => {
       const body = req.body as DebitCreditBody;
       try {
-        const result = store.credit(moveFrom((req.params as { providerId: string }).providerId, body));
+        const result = store.credit(moveFrom((req.params as { providerId: string }).providerId, body, traceIdOf(req.headers.traceparent)));
         return { operatorTxRef: result.operatorTxRef, balanceAfter: { amount: result.balanceAfter, currency: body.currency }, status: "confirmed" };
       } catch (err) {
         req.log.error({ err }, "wallet_credit_failed");
@@ -93,7 +100,8 @@ export default function walletRoutes(store: PlayerStore, providerStore: Provider
           originalOperatorTxRef: str(body.originalOperatorTxRef),
           originalIdempotencyKey: str(body.originalIdempotencyKey),
           roundRef: body.roundRef,
-          operatorPlayerId: str(body.operatorPlayerId)
+          operatorPlayerId: str(body.operatorPlayerId),
+          traceId: traceIdOf(req.headers.traceparent)
         });
         // voided: we never had the debit; its key is now refused.
         return { operatorTxRef: result.operatorTxRef, status: "rolled_back", ...(result.voided ? { voided: true } : {}) };

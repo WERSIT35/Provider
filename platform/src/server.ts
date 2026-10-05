@@ -37,7 +37,8 @@ async function main(): Promise<void> {
       bootstrapAdminUsername: env.BOOTSTRAP_ADMIN_USERNAME,
       bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD,
       totpIssuer: env.TOTP_ISSUER,
-      totpRequired: env.ADMIN_TOTP_REQUIRED
+      totpRequired: env.ADMIN_TOTP_REQUIRED,
+      exportSigningKey: env.EXPORT_SIGNING_KEY
     },
     { persistence }
   );
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
 
   logger.info({ rules_version: container.engine.rulesVersion() }, "container_ready");
 
-  const app = buildApp({ logger, container, campaignExpiryIntervalMs: env.CAMPAIGN_EXPIRY_INTERVAL_MS, debitReconcileIntervalMs: env.DEBIT_RECONCILE_INTERVAL_MS });
+  const app = buildApp({ logger, container, campaignExpiryIntervalMs: env.CAMPAIGN_EXPIRY_INTERVAL_MS, debitReconcileIntervalMs: env.DEBIT_RECONCILE_INTERVAL_MS, metricsToken: env.METRICS_TOKEN });
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "shutting_down");
