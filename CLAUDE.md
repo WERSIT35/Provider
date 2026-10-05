@@ -28,6 +28,7 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 - **Per-symbol independent drops:** `WATERFALL` (reels 80ms, bottom-up 18ms), `cellFallMs` (√distance), `REEL_INERTIA` groups + `inertiaLag`, `REEL_MASK` (in-flight symbols clipped to the grid), `VACUUM`, `TUMBLE_MOMENTUM`, `FAST_ZIP` fast-stop. Docs: `docs/animation-guide.md`, `docs/spin-animation-spec.md`, `docs/styling-guide.md`.
 - The spin lock is per-RUN; `isRoundInFlight()` is the single gate; `SPIN_SETTLE_GUARD_MS` turns a late press into a skip, not a paid spin.
 - 60fps without GC spikes: `ShardEmitter` pool (time-based, ≤8ms sub-steps), sprite cache band, `TIER_PROFILES` throttles just below vsync multiples (governor threshold `max(30, maxFrameMs*1.25)`).
+- **Displayed pays = paid pays (lab requirement).** The player paytable and RTP lines in the Info modal are generated from `symbol_payout_display` × the active profile's `payout_scaler` / `free_spin_payout_scaler`, rounded as the engine rounds (`paytableRows()` / `renderPlayerPaytable()` in `main.js`). Never hard-code pays or RTP in the client; `tools/probes/paytable-probe.js` checks it.
 - Verify every client change with `npm run test:client` (needs Chrome). Motion is verified with headless CDP probes (see `CHECKPOINT.md`).
 
 ## Game rules config
@@ -65,6 +66,8 @@ npm run simulate          # math/simulate.js
 npm run test:api          # tools/api-test.js — requires the MVP server running
 npm run test:rtp-parity   # validate client engine RTP vs. theoretical
 npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e, real Chrome via CDP
+GAME_ID=bananax_94 node tools/rtp-report.js > qa/rtp-certification-report-94.md  # lab report from qa/data/rtp-certification/<game_id>-*.json
+node tools/probes/paytable-probe.js  # displayed pays = paid pays, all profiles/bets (needs Chrome)
 ```
 `rtp-parity` env: `STEPS` (default 30M, 4M for `MODE=buy`), `MODE=base|buy` (`BONUS_ONLY=1` = buy), `ANTE=1`, `GAME_ID`, `SEED`, `Z` (default 3), `MAX_SE` (default 0.25%), `SHARDS` (fixed 20, keeps results machine-independent), `WORKERS`, `BET`, `JSON=1`, and `PAYOUT_SCALER` / `FREE_SPIN_PAYOUT_SCALER` overrides for calibration. Exits non-zero on FAIL. Every engine change that alters what a seed resolves to must bump `ENGINE_VERSION` in `client/engine/spin-engine.js` (it is recorded on every platform round for replay verification).
 

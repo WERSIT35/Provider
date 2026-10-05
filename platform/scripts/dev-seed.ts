@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     const game = c.mgmt.registerGame({ code: "bananax", title: "Banana X" });
     let mc = c.mgmt.createMathConfig({
       game_id: game.id,
-      version: "3.1.0",
+      version: c.engine.rulesVersion(),
       rtp_profile_key: "bananax",
       theoretical_rtp: 96.38,
       config_hash: `sha256:${c.engine.rulesHash()}`

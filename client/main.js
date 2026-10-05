@@ -138,7 +138,8 @@ const spinLock = window.SlotEngine.SpinLock.createSpinLock();
 
 const rows = 5;
 const cols = 6;
-const payoutGroups = ["8-9", "10-11", "12-30"];
+// Symbol keys only (symbol list, art lookups). Displayed pays come from the
+// rules file via paytableRows(), scaled like the engine scales them.
 const payouts = {
   TOP_CROWN: { "8-9": 20, "10-11": 50, "12-30": 100 },
   HOURGLASS: { "8-9": 5, "10-11": 20, "12-30": 50 },
@@ -150,7 +151,6 @@ const payouts = {
   GREEN_TRIANGLE: { "8-9": 0.8, "10-11": 1.8, "12-30": 8 },
   BLUE_DIAMOND: { "8-9": 0.5, "10-11": 1.5, "12-30": 4 }
 };
-const scatterPayouts = { 4: 6, 5: 10, 6: 200 };
 
 // All art is WebP, generated from the source PNGs by `npm run assets:optimize`
 // (tools/optimize-assets.js). The PNGs stay in the repo as the authoring
@@ -4025,7 +4025,7 @@ function getEngine() {
 
 // ─── Platform mode ──────────────────────────────────────────────────────────
 // When the page is opened with a launch token (?lt=…), this client stops
-// computing spins locally and instead talks to the Banana X platform's
+// computing spins locally and instead talks to the Vault 20K platform's
 // server-authoritative Game API. The local engine is still loaded so the UI
 // can read rules/paytable/symbol art from it, but every real money operation
 // (session init, spin) hits the platform over HTTP.
@@ -4925,7 +4925,7 @@ function renderExamples() {
     "Symbols pay anywhere",
     "Minimum 8 matching symbols for a win",
     "Tumble continues while wins keep appearing",
-    "Wild multipliers and bonus spins can trigger high-volatility sequences"
+    "Multiplier symbols and Free Spins drive the high-volatility sequences"
   ].forEach((text) => {
     const li = document.createElement("li");
     li.textContent = text;
@@ -4933,20 +4933,133 @@ function renderExamples() {
   });
 }
 
+// ── Displayed pays = paid pays ──
+// The rules file holds raw pays; the engine multiplies every win by the active
+// profile's scaler (payout_scaler on paid spins, free_spin_payout_scaler on free
+// spins). Everything shown to the player goes through these helpers, which read
+// the same profile and scalers the engine does and round the way it rounds
+// (symbol: round(round(pay × bet) × scaler); scatter: round(pay × bet × scaler)).
+function activeRtpProfile() {
+  const rules = state.rules;
+  if (!rules) return null;
+  return window.SlotEngine.Config.getRtpProfileByGameId(rules, state.gameId);
+}
+
+function activePayScalers() {
+  const profile = activeRtpProfile();
+  if (!profile) return null;
+  return window.SlotEngine.CrazyMode.getPayoutScalers({ crazyMode: state.crazyMode, profile });
+}
+
+const round2 = (n) => Number(Number(n).toFixed(2));
+const scaledSymbolPay = (raw, bet, scaler) => round2(round2(raw * bet) * scaler);
+const scaledScatterPay = (raw, bet, scaler) => round2(raw * bet * scaler);
+
+// [{ label, cells: [amount per group] }] for one scaler, built from the rules
+// file's symbol_payout_display (the table the engine itself loads).
+function paytableRows(bet, scaler) {
+  const display = state.rules?.symbol_payout_display;
+  if (!display) return { groups: [], rows: [], scatter: [] };
+  const groups = (display.groups || []).map((g) => g.label);
+  const rows = [];
+  let scatter = [];
+  (display.symbols || []).forEach((s) => {
+    if (s.symbol === "SCATTER") {
+      const tiers = Object.keys(s.payouts || {}).map(Number).sort((a, b) => a - b);
+      scatter = tiers.map((t, i) => ({
+        label: i === tiers.length - 1 ? `${t}+` : String(t),
+        amount: scaledScatterPay(s.payouts[String(t)], bet, scaler)
+      }));
+      return;
+    }
+    rows.push({ label: s.symbol, cells: groups.map((g) => scaledSymbolPay(Number(s.payouts?.[g] || 0), bet, scaler)) });
+  });
+  return { groups, rows, scatter };
+}
+
 function renderPaytable(bet = Number(el.betSelect.value || 1)) {
-  const [g1, g2, g3] = payoutGroups;
-  el.paytableTitle.textContent = `Payout Table (${g1} / ${g2} / ${g3}) - Bet ${fmt(bet)}`;
+  renderPlayerPaytable();
+  const scalers = activePayScalers();
+  if (!scalers) return; // rules not loaded yet; loadRules() re-renders
+  const { groups, rows, scatter } = paytableRows(bet, scalers.basePayoutScaler);
+  el.paytableTitle.textContent = `Payout Table (${groups.join(" / ")}) - Bet ${fmt(bet)} - paid spins ×${scalers.basePayoutScaler}`;
   el.paytableBody.innerHTML = "";
 
-  Object.entries(payouts).forEach(([symbol, values]) => {
+  rows.forEach(({ label, cells }) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${symbol}</td><td>${fmt((values[g1] || 0) * bet)}</td><td>${fmt((values[g2] || 0) * bet)}</td><td>${fmt((values[g3] || 0) * bet)}</td>`;
+    [label, ...cells.map(fmt)].forEach((text) => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    });
     el.paytableBody.appendChild(tr);
   });
 
   const scatterTr = document.createElement("tr");
-  scatterTr.innerHTML = `<td>SCATTER</td><td>4: ${fmt((scatterPayouts[4] || 0) * bet)}</td><td>5: ${fmt((scatterPayouts[5] || 0) * bet)}</td><td>6+: ${fmt((scatterPayouts[6] || 0) * bet)}</td>`;
+  ["SCATTER", ...scatter.map((t) => `${t.label}: ${fmt(t.amount)}`)].forEach((text) => {
+    const td = document.createElement("td");
+    td.textContent = text;
+    scatterTr.appendChild(td);
+  });
   el.paytableBody.appendChild(scatterTr);
+}
+
+// Player-facing paytable in the Info modal (the codex-strip table above is
+// admin-only). Two tables: paid spins and free spins, at the current bet,
+// before multipliers. Re-rendered on bet, profile and rules changes.
+function renderPlayerPaytable() {
+  const host = el.psInfoModal?.querySelector(".ps-paytable");
+  const scalers = activePayScalers();
+  if (!host || !scalers) return;
+  // RTP is the active profile's declaration, never another profile's.
+  const profile = activeRtpProfile();
+  const pct = (n) => `${Number(n).toFixed(2)}%`;
+  const meta = el.psInfoModal.querySelector(".ps-rules-meta");
+  if (meta) meta.textContent = `RTP ${pct(profile.theoretical_percent)} · Volatility ${String(state.rules.volatility || "").toUpperCase()}`;
+  const rtpList = el.psInfoModal.querySelector(".ps-rtp");
+  if (rtpList) {
+    rtpList.textContent = "";
+    [
+      `The theoretical return to player of this game is ${pct(profile.theoretical_percent)}.`,
+      `With Ante Bet active, the theoretical return to player is ${pct(profile.ante_bet_percent)}.`,
+      `The theoretical return to player of Buy Free Spins is ${pct(profile.buy_free_spins_percent)}.`
+    ].forEach((text) => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      rtpList.appendChild(li);
+    });
+  }
+  const bet = Number(el.betSelect?.value || 1);
+  host.textContent = "";
+  const table = (caption, scaler) => {
+    const { groups, rows, scatter } = paytableRows(bet, scaler);
+    const t = document.createElement("table");
+    t.className = "ps-paytable__table";
+    const cap = document.createElement("caption");
+    cap.textContent = caption;
+    t.appendChild(cap);
+    const addRow = (cells, tag) => {
+      const tr = document.createElement("tr");
+      cells.forEach((text) => {
+        const c = document.createElement(tag);
+        c.textContent = text;
+        tr.appendChild(c);
+      });
+      t.appendChild(tr);
+    };
+    addRow(["Symbol", ...groups], "th");
+    rows.forEach(({ label, cells }) => addRow([label, ...cells.map(fmt)], "td"));
+    addRow(["Scatter", ...scatter.map((s) => `${s.label}: ${fmt(s.amount)}`)], "td");
+    return t;
+  };
+  const note = document.createElement("p");
+  note.className = "ps-paytable__note";
+  note.textContent = `Pays shown for a bet of ${fmt(bet)}, before multipliers. Symbol pays are by number of matching symbols anywhere on the grid.`;
+  host.append(
+    note,
+    table("Base game", scalers.basePayoutScaler),
+    table("Free Spins", scalers.freeSpinPayoutScaler)
+  );
 }
 
 function renderCaughtLines(wins = [], multipliers = []) {
@@ -6032,6 +6145,7 @@ async function loadRules() {
     const engine = await getEngine();
     const rules = engine.getDecoratedRules();
     state.rules = rules;
+    renderPaytable();
     const allowed = rules.features?.multipliers?.allowed_values || [];
     renderMultiplierInfo(allowed);
     ticker.refresh();
@@ -6108,6 +6222,7 @@ function setCrazyMode(on, opts = {}) {
     if (stateLabel) stateLabel.textContent = next ? "ON" : "OFF";
   }
   getEngine().then((engine) => engine.setCrazyMode(next)).catch(() => {});
+  renderPaytable(); // crazy mode swaps the pay scalers
   if (opts.silent) return;
   pushGameMessage(`Crazy Mode ${next ? "ENABLED" : "disabled"}.`, next ? "bonus" : "info");
   if (next !== wasOn) {
@@ -6211,7 +6326,6 @@ function renderInfoRules() {
   const frag = document.createDocumentFragment();
   const meta = document.createElement("p");
   meta.className = "ps-rules-meta";
-  meta.textContent = `RTP ${Number(rules.rtp?.theoretical_percent || 0).toFixed(2)}% · Volatility ${String(rules.volatility || "").toUpperCase()}`;
   frag.appendChild(meta);
   (rules.rules_pages || []).forEach((page) => {
     const h = document.createElement("h4");
@@ -6224,8 +6338,20 @@ function renderInfoRules() {
     });
     frag.append(h, ul);
   });
+  // RTP and paytable depend on the session's profile and bet, so they are
+  // filled (and refilled) by renderPlayerPaytable(), not generated once here.
+  const rtpHead = document.createElement("h4");
+  rtpHead.textContent = "Return to Player";
+  const rtpList = document.createElement("ul");
+  rtpList.className = "ps-rtp";
+  const payHead = document.createElement("h4");
+  payHead.textContent = "Paytable";
+  const pay = document.createElement("div");
+  pay.className = "ps-paytable";
+  frag.append(rtpHead, rtpList, payHead, pay);
   section.appendChild(frag);
   section.dataset.generated = "1";
+  renderPlayerPaytable();
 }
 
 const psModal = (() => {
