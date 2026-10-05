@@ -10,12 +10,27 @@ export const SECTION_INSPECTOR = /* html */ `
 <section id="inspectorView" hidden>
   <div class="panel">
     <h2>Round Inspector</h2>
-    <p class="muted">Paste a Round ID a player shared (e.g. <code>r_abc…</code>) to see exactly what happened on that spin. The matrix below is a faithful playback of the stored outcome — no re-computation.</p>
-    <div class="toolbar">
-      <input class="search" id="roundRefInput" placeholder="r_… (paste round id)"/>
-      <button onclick="lookupRound()">Look up</button>
-      <span id="inspectorStatus" class="muted"></span>
+    <p class="muted">Find a round by its ID, or search a player's history. The playback is the stored outcome — no re-computation. A spin that belongs to a bonus opens with the whole bonus on a timeline (trigger ➔ free spins).</p>
+    <div class="itabs" role="tablist">
+      <button type="button" class="itab active" data-itab="round" onclick="inspectorTab('round')">Round ID</button>
+      <button type="button" class="itab" data-itab="player" onclick="inspectorTab('player')">Player search</button>
     </div>
+    <div data-ipane="round">
+      <div class="toolbar">
+        <input class="search" id="roundRefInput" placeholder="r_… (paste round id)" onkeydown="if (event.key === 'Enter') lookupRound()"/>
+        <button onclick="lookupRound()">Look up</button>
+      </div>
+    </div>
+    <div data-ipane="player" hidden>
+      <div class="toolbar">
+        <input class="search" id="ipOp" placeholder="operator id (optional: all operators)" data-provider/>
+        <input class="search" id="ipPlayer" placeholder="operator_player_id" onkeydown="if (event.key === 'Enter') searchPlayerRounds()"/>
+        <button onclick="searchPlayerRounds()">Search</button>
+        <span id="ipStatus" class="muted"></span>
+      </div>
+      <div id="ipResults"></div>
+    </div>
+    <span id="inspectorStatus" class="muted"></span>
   </div>
   <div class="panel">
     <h2>Legitimacy &amp; actions</h2>

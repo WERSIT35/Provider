@@ -7,6 +7,7 @@ import type {
   RoundPreState,
   ChainVerification
 } from "./ledger.types";
+import { deriveFeatureFamilies } from "./feature-family";
 
 /** Context the platform supplies alongside the engine outcome to record a round. */
 export interface RoundContext {
@@ -91,6 +92,24 @@ export class RoundLedgerService {
   lastRoundForSession(sessionId: string): RoundRecord | null {
     const list = this.rounds.list({ session_id: sessionId });
     return list.length ? list.reduce((a, b) => (b.seq > a.seq ? b : a)) : null;
+  }
+
+  /**
+   * The bonus family a round belongs to (see feature-family.ts): the trigger plus
+   * its free spins in play order, and this round's position in it. null when the
+   * round is not part of a bonus.
+   */
+  featureFamily(roundRef: string): { feature_ref: string; position: number; rounds: RoundRecord[] } | null {
+    const round = this.rounds.getByRef(roundRef);
+    if (!round) return null;
+    const sessionRounds = this.rounds.list({ session_id: round.session_id });
+    const families = deriveFeatureFamilies(sessionRounds);
+    const me = families.get(roundRef);
+    if (!me) return null;
+    const rounds = sessionRounds
+      .filter((r) => families.get(r.round_ref)?.feature_ref === me.feature_ref)
+      .sort((a, b) => a.seq - b.seq);
+    return { feature_ref: me.feature_ref, position: me.index, rounds };
   }
 
   /** The session's newest round that was not a free spin (a feature's trigger), or null. */

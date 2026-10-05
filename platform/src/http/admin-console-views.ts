@@ -41,22 +41,55 @@ function symbolImageUrl(code) {
   return file ? '/assets/symbols/' + file + '.webp' : null;
 }
 function multiValueFromCode(code) { const m = /MULTI(\\d+)/i.exec(String(code || '')); return m ? Number(m[1]) : null; }
+// ── Inspector state machine ─────────────────────────────────────────────────
+// State: inspectorRound (the spin on screen, full payload), inspectorFeature (its
+// bonus family timeline, or null), stepIdx (the board on screen within that spin),
+// playing (autoplay). Every move between spins — a fresh lookup, a timeline click,
+// prev/next spin, autoplay crossing into the next free spin, a click in the player
+// search — goes through openSpin(). roundCache keeps every spin already fetched, so
+// walking the timeline back and forth never re-fetches; a fresh lookup clears it.
+let inspectorFeature = null; const roundCache = new Map(); let inspectorSeq = 0; let playing = false;
+
 async function lookupRound() {
   const ref = $('roundRefInput').value.trim();
-  $('inspectorContent').innerHTML = ''; clearFlash($('inspectorStatus'));
+  clearFlash($('inspectorStatus'));
   if (!ref) { flash($('inspectorStatus'), 'paste a Round ID first', false); return; }
-  $('inspectorStatus').className = 'muted'; $('inspectorStatus').textContent = 'looking up…'; $('inspectorStatus').hidden = false;
-  try {
-    const data = await api('/admin/v1/rounds/' + encodeURIComponent(ref));
-    inspectorRound = data; inspectorVerdict = { pending: true }; stepIdx = 0; renderInspector();
-    $('inspectorStatus').textContent = ''; $('inspectorStatus').className = 'ok';
-    // Shareable link: /admin#inspector?round=<ref>
-    history.replaceState(null, '', '#inspector?round=' + encodeURIComponent(ref));
-    loadVerdict(ref);
-  } catch (e) {
-    inspectorRound = null; inspectorVerdict = null;
-    if (e.status === 404) renderInspectorEmpty(ref); else flash($('inspectorStatus'), e.message, false);
+  await openSpin(ref, { fresh: true });
+}
+async function openSpin(ref, opts = {}) {
+  const seq = ++inspectorSeq; // the newest request wins; a slower earlier one is dropped
+  if (!opts.keepPlaying) stopPlay();
+  if (opts.fresh) roundCache.clear();
+  let data = roundCache.get(ref);
+  if (!data) {
+    const st = $('inspectorStatus'); st.className = 'muted'; st.textContent = 'looking up…'; st.hidden = false;
+    try { data = await api('/admin/v1/rounds/' + encodeURIComponent(ref)); }
+    catch (e) {
+      if (seq !== inspectorSeq) return;
+      stopPlay(); inspectorRound = null; inspectorFeature = null; inspectorVerdict = null;
+      $('inspectorContent').innerHTML = '';
+      if (e.status === 404) renderInspectorEmpty(ref); else flash($('inspectorStatus'), e.message, false);
+      return;
+    }
+    roundCache.set(ref, data);
   }
+  if (seq !== inspectorSeq) return;
+  inspectorRound = data; inspectorFeature = data.feature || null; stepIdx = 0;
+  inspectorVerdict = data.__verdict || { pending: true };
+  $('roundRefInput').value = ref;
+  $('inspectorStatus').textContent = ''; $('inspectorStatus').className = 'ok';
+  // Shareable link: /admin#inspector?round=<ref>
+  history.replaceState(null, '', '#inspector?round=' + encodeURIComponent(ref));
+  renderInspector();
+  if (!data.__verdict) loadVerdict(ref);
+}
+function spinPosition() {
+  if (!inspectorFeature || !inspectorRound) return -1;
+  return inspectorFeature.spins.findIndex(s => s.round_ref === inspectorRound.round_ref);
+}
+function selectSpin(i) {
+  const f = inspectorFeature; if (!f || i < 0 || i >= f.spins.length) return;
+  openSpin(f.spins[i].round_ref);
 }
 function renderInspectorEmpty(ref) {
   $('inspectorContent').innerHTML = '<div class="panel"><h2>Not found</h2>' +
@@ -64,54 +97,104 @@ function renderInspectorEmpty(ref) {
     'and that you have permission to view this round.</p></div>';
   $('inspectorStatus').textContent = '';
 }
+
+// The boards of a spin, in play order: tumble_steps[0] is the spin's board, each
+// later step the board after a tumble; the last step is the final (no-win) board.
+// (outcome.matrix is that final board, not the initial one.)
+function boardsOf(r) {
+  const steps = Array.isArray(r?.outcome?.tumble_steps) ? r.outcome.tumble_steps : [];
+  return steps.length ? steps : [{ matrix: r?.outcome?.matrix, multipliers: r?.outcome?.multipliers || [], ways_wins: [], win_total: 0, winning_positions: [] }];
+}
+const num = (v) => String(Number(Number(v || 0).toFixed(2)));
+const r2 = (v) => Number(Number(v || 0).toFixed(2));
+
+// Forensics, from stored data only. landed[i] = multipliers first seen on board i
+// (by id), i.e. what actually dropped in on that board.
+function forensicsOf(r) {
+  const o = r.outcome || {}; const boards = boardsOf(r); const seen = new Set();
+  const landed = boards.map(b => (b.multipliers || []).filter(m => {
+    const id = m.id || (m.row + '-' + m.col + '-' + m.value);
+    if (seen.has(id)) return false; seen.add(id); return true;
+  }));
+  const raw = boards.reduce((s, b) => s + Number(b.win_total || 0), 0);
+  const won = raw > 0;
+  const mSum = landed.flat().reduce((s, m) => s + Number(m.value || 0), 0);
+  const scaler = r.pays ? r.pays.scaler : null;
+  const scatter = Number(o.scatter_win || 0);
+  // The engine's arithmetic: round(raw × scaler) + scatter = pre-multiplier win; × applied = paid (before the cap).
+  const pre = scaler === null ? null : r2(r2(raw * scaler) + scatter);
+  const applied = Number(o.multiplier_applied || 1);
+  const expected = pre === null ? null : r2(pre * applied);
+  const capped = (Array.isArray(o.events) ? o.events : []).some(e => /MAX_WIN_CAP/.test(String(e && e.type)));
+  return { boards, landed, raw, won, mSum, scaler, scatter, pre, applied, expected, capped,
+    bankBefore: Number(r.pre_state?.free_spin_multiplier_carry ?? 0), bankAfter: Number(o.free_spin_multiplier_current ?? 0),
+    gain: Number(o.multiplier_gain_applied || 0) };
+}
+// How the multipliers of this spin resolved — the engine rule, stated per case.
+function resolutionOf(r, f) {
+  if (r.is_free_spin) {
+    if (f.won && f.gain > 0) return { cls: 'good', text: 'Winning sequence with new multipliers (+' + num(f.gain) + '): ADDED to the bank (×' + num(f.bankBefore) + ' → ×' + num(f.bankAfter) + ') and the whole bank ×' + num(f.applied) + ' APPLIED to this spin\\'s win.' };
+    if (f.won) return { cls: 'held', text: 'Winning sequence with no new multiplier: paid at 1×. The bank (×' + num(f.bankBefore) + ') is held, NOT applied.' };
+    if (f.mSum > 0) return { cls: 'void', text: 'No win: the multipliers that landed (+' + num(f.mSum) + ') were DISCARDED, not banked. Bank unchanged at ×' + num(f.bankBefore) + '.' };
+    return { cls: 'held', text: 'No win and no multiplier. Bank unchanged at ×' + num(f.bankBefore) + '.' };
+  }
+  if (f.won && f.applied > 1) return { cls: 'good', text: 'Base game: the multipliers of this sequence summed to ×' + num(f.applied) + ' and APPLIED to its win (the bank exists only in free spins).' };
+  if (f.won) return { cls: 'held', text: 'Base game: win paid at 1× (no multiplier on the sequence).' };
+  if (f.mSum > 0) return { cls: 'void', text: 'Base game: no win, so the multipliers that landed (+' + num(f.mSum) + ') were DISCARDED.' };
+  return null;
+}
+
 function renderInspector() {
   if (!inspectorRound) return;
   const r = inspectorRound; const outcome = r.outcome || {};
-  const steps = Array.isArray(outcome.tumble_steps) ? outcome.tumble_steps : [];
-  const initialMatrix = outcome.matrix;
-  const totalStages = 1 + steps.length;
+  const boards = boardsOf(r); const totalStages = boards.length;
   if (stepIdx >= totalStages) stepIdx = totalStages - 1; if (stepIdx < 0) stepIdx = 0;
   const wins = Array.isArray(outcome.ways_wins) ? outcome.ways_wins : [];
   const totalSymbolsCaught = wins.reduce((s, w) => s + (Number(w.count) || 0), 0);
   const biggest = wins.slice().sort((a,b) => (Number(b.amount)||0) - (Number(a.amount)||0))[0];
-  const multipliers = Array.isArray(outcome.multipliers) ? outcome.multipliers : [];
+  const f = forensicsOf(r);
+  const pos = spinPosition();
   const text = '' +
   '<div class="panel"><h2>Round details</h2><div class="kv">' +
-      kv('Round ID', '<code>'+r.round_ref+'</code>') +
-      kv('Operator', r.operator ? (esc(r.operator.name) + ' <span class="muted">('+esc(r.operator.slug)+')</span>') : r.operator_id) +
-      kv('Game', r.game ? (esc(r.game.title) + ' <span class="muted">'+esc(r.game.code)+'</span>') : r.game_id) +
-      kv('Math config', r.math_config ? (r.math_config.version + ' · RTP ' + r.math_config.theoretical_rtp + '% · ' + r.math_config.status) : r.math_config_id) +
+      kv('Round ID', '<code>'+esc(r.round_ref)+'</code>') +
+      kv('Operator', r.operator ? (esc(r.operator.name) + ' <span class="muted">('+esc(r.operator.slug)+')</span>') : esc(r.operator_id)) +
+      kv('Game', r.game ? (esc(r.game.title) + ' <span class="muted">'+esc(r.game.code)+'</span>') : esc(r.game_id)) +
+      kv('Math config', r.math_config ? (esc(r.math_config.version) + ' · RTP ' + r.math_config.theoretical_rtp + '% · ' + esc(r.math_config.status)) : esc(r.math_config_id)) +
       kv('Engine', r.engine_version ? '<code>'+esc(r.engine_version)+'</code>' : '<span class="muted">unversioned</span>') +
       kv('Rules hash', r.rules_hash ? '<code title="'+esc(r.rules_hash)+'">'+esc(r.rules_hash.slice(0, 16))+'…</code>' : '<span class="muted">not recorded</span>') +
-      kv('Currency', r.currency || '—') +
+      kv('Currency', esc(r.currency || '—')) +
       kv('Bet', fmtMoney(r.bet_amount) + (r.ante_enabled ? ' (ante)' : '')) +
       kv('Bet charged', fmtMoney(r.bet_charged)) +
       kv('Total win', '<b'+(r.total_win > 0 ? ' class="ok"' : '')+'>'+fmtMoney(r.total_win)+'</b>') +
-      kv('Multiplier applied', r.multiplier_applied + '×') +
-      kv('Free spin?', r.is_free_spin ? 'yes' : 'no') +
+      kv('Multiplier applied', num(r.multiplier_applied) + '×') +
+      kv('Pay scaler', f.scaler === null ? '<span class="muted">not shown (round played under other rules)</span>' : ('×' + f.scaler + ' <span class="muted">(' + (r.pays.basis === 'free_spin' ? 'free spin' : 'paid spin') + ')</span>')) +
+      kv('Spin type', r.is_free_spin ? ('free spin' + (pos > 0 ? ' ' + pos + ' / ' + (inspectorFeature.spins.length - 1) : '')) : (inspectorFeature ? 'bonus trigger' : 'paid spin')) +
       kv('Free spins awarded', outcome.free_spins_awarded ?? 0) +
       kv('Scatters', outcome.scatter_count ?? 0) +
-      kv('Status', r.status) + kv('Created at', r.created_at) +
-      kv('Outcome hash', '<code>'+r.outcome_hash+'</code>') +
-      kv('RNG', r.rng_algo + ' (seed ref)') + kv('Seq', r.chain?.seq) +
+      kv('Status', esc(r.status)) + kv('Created at', esc(r.created_at)) +
+      kv('Outcome hash', '<code>'+esc(r.outcome_hash)+'</code>') +
+      kv('RNG', esc(r.rng_algo) + ' (seed ref)') + kv('Seq', r.chain?.seq) +
     '</div></div>' +
   '<div class="panel"><h2>What the player caught</h2><div class="cards">' +
       cardHtml('symbols caught', totalSymbolsCaught) + cardHtml('clusters', wins.length) +
-      cardHtml('biggest cluster', biggest ? (biggest.symbol+' ×'+biggest.count+' = '+fmtMoney(biggest.amount)) : '—') +
-      cardHtml('multipliers', multipliers.length) + cardHtml('tumble steps', steps.length) +
+      cardHtml('biggest cluster', biggest ? (esc(biggest.symbol)+' ×'+biggest.count+' = '+fmtMoney(biggest.amount)) : '—') +
+      cardHtml('multipliers landed', f.landed.flat().length) + cardHtml('tumbles', Math.max(0, boards.length - 1)) +
     '</div>' +
-    (outcome.free_spins_awarded ? '<div class="banner fs">🎁 Free spins triggered: '+outcome.free_spins_awarded+'</div>' : '') +
+    (outcome.free_spins_awarded ? '<div class="banner fs">🎁 Free spins ' + (r.is_free_spin ? 'retriggered: +' : 'triggered: ') + outcome.free_spins_awarded + '</div>' : '') +
     (r.is_free_spin ? '<div class="banner bonus">⭐ This spin was a FREE SPIN</div>' : '') +
-    '<h2 style="margin-top:14px;">Per-step breakdown</h2><div class="breakdown">' + buildBreakdown(steps) + '</div></div>';
-  const visual = '<div class="panel"><h2>Visual playback</h2>' + renderStageHtml(outcome, initialMatrix, steps, stepIdx) + renderStepControls(totalStages) + '</div>';
-  $('inspectorContent').innerHTML = verdictBannerHtml() + '<div class="inspector">'+text+visual+'</div>';
+    '<h2 style="margin-top:14px;">Per-board breakdown</h2><div class="breakdown">' + buildBreakdown(r, f) + '</div></div>';
+  const visual = '<div class="panel"><h2>Visual playback</h2>' + hudHtml(r, f) + renderStageHtml(r, f, stepIdx) + renderStepControls(totalStages) + '</div>';
+  $('inspectorContent').innerHTML = verdictBannerHtml() + timelineHtml() + '<div class="inspector">'+text+visual+'</div>';
   bindStepControls(totalStages);
+  bindTimeline();
 }
 // Verification verdict leads the inspector: recomputed from the stored seed + hash chain.
 async function loadVerdict(ref) {
-  try { inspectorVerdict = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/verify'); }
-  catch (e) { inspectorVerdict = { error: e.status === 403 ? 'your role cannot verify rounds' : e.message }; }
-  if (inspectorRound && inspectorRound.round_ref === ref) renderInspector();
+  let v;
+  try { v = await api('/admin/v1/rounds/' + encodeURIComponent(ref) + '/verify'); }
+  catch (e) { v = { error: e.status === 403 ? 'your role cannot verify rounds' : e.message }; }
+  const cached = roundCache.get(ref); if (cached) cached.__verdict = v;
+  if (inspectorRound && inspectorRound.round_ref === ref) { inspectorVerdict = v; renderInspector(); }
 }
 function verdictBannerHtml() {
   const v = inspectorVerdict; if (!v) return '';
@@ -123,67 +206,162 @@ function verdictBannerHtml() {
     (v.notes && v.notes.length ? '<span class="muted">' + esc(v.notes.join(' · ')) + '</span>' : '') + '</div>';
 }
 function kv(k, v) { return '<span>'+k+'</span><div>'+(v ?? '')+'</div>'; }
-function buildBreakdown(steps) {
-  if (!steps.length) return '<p class="muted">no tumble steps (no win on initial board)</p>';
-  return steps.map((s, i) => {
-    const wins = (s.ways_wins || []).map(w => '<li>'+w.symbol+' × '+w.count+' → '+fmtMoney(w.payout)+'× = '+fmtMoney(w.amount)+'</li>').join('');
-    const mults = (s.multipliers || []).length ? ('<li>multipliers caught: ' + (s.multipliers || []).map(m => (multiValueFromCode((m).code) || m.value)+'× @ ['+m.row+','+m.col+']').join(', ') + '</li>') : '';
-    const winPos = (s.winning_positions || []).length;
-    return '<details '+(i===0?'open':'')+'><summary>Step '+(i+1)+' · win '+fmtMoney(s.win_total)+' · '+winPos+' cells highlighted</summary><ul>'+wins+mults+'</ul></details>';
+
+// Dimension 1 — the spins of the bonus: Trigger ➔ Free spin 1 ➔ … ➔ Free spin N.
+function timelineHtml() {
+  const fam = inspectorFeature; if (!fam) return '';
+  const pos = spinPosition();
+  const chips = fam.spins.map((s, i) => {
+    const bank = i > 0 && s.bank_after > 0 ? ' · bank ×' + num(s.bank_after) : '';
+    const tags = (s.free_spins_awarded && i > 0 ? ' · +' + s.free_spins_awarded + ' FS' : '') + (s.capped ? ' · CAP' : '');
+    return '<button type="button" class="tl-chip' + (i === pos ? ' cur' : '') + (s.total_win > 0 ? ' won' : '') + (s.capped ? ' capped' : '') +
+      '" data-spin="' + i + '" title="' + esc(s.round_ref) + '"><b>' + (i === 0 ? 'Trigger' : 'Free spin ' + i) + '</b>' +
+      '<span>' + (s.total_win > 0 ? '+' + fmtMoney(s.total_win) : '0.00') + bank + tags + '</span></button>';
+  }).join('<span class="tl-arrow" aria-hidden="true">➔</span>');
+  return '<div class="panel bonus-tl"><div class="tl-head"><h2>Bonus round</h2>' +
+    '<span class="muted">trigger <code>' + esc(fam.feature_ref) + '</code> · ' + fam.free_spins + ' free spins · total win <b class="ok">' + fmtMoney(fam.total_win) + '</b>' +
+    ' · final bank ×' + num(fam.final_bank) + (fam.capped ? ' · <b class="err">max-win cap reached</b>' : '') + '</span>' +
+    '<span class="tl-nav"><button class="ghost" id="prevSpin"' + (pos <= 0 ? ' disabled' : '') + '>◀ Prev spin</button>' +
+    '<span class="muted">spin <b>' + (pos + 1) + '</b> / ' + fam.spins.length + '</span>' +
+    '<button class="ghost" id="nextSpin"' + (pos >= fam.spins.length - 1 ? ' disabled' : '') + '>Next spin ▶</button></span></div>' +
+    '<div class="tl-strip" id="tlStrip">' + chips + '</div></div>';
+}
+function bindTimeline() {
+  const strip = $('tlStrip'); if (!strip) return;
+  strip.onclick = (e) => { const b = e.target.closest('[data-spin]'); if (b) selectSpin(Number(b.dataset.spin)); };
+  $('prevSpin').onclick = () => selectSpin(spinPosition() - 1);
+  $('nextSpin').onclick = () => selectSpin(spinPosition() + 1);
+  const cur = strip.querySelector('.tl-chip.cur');
+  if (cur) strip.scrollLeft = cur.offsetLeft - strip.clientWidth / 2 + cur.offsetWidth / 2;
+}
+
+// Persistent forensic HUD: the bonus bank and running bonus win (whole family), then
+// this spin's pay arithmetic and how its multipliers resolved.
+function hudHtml(r, f) {
+  const fam = inspectorFeature; const pos = spinPosition(); const parts = [];
+  if (fam && pos >= 0) {
+    const s = fam.spins[pos];
+    if (r.is_free_spin) parts.push('<div class="t">Global Multiplier Bank: <b>×' + num(f.bankBefore) + '</b> → <b>×' + num(f.bankAfter) + '</b></div>');
+    parts.push('<div class="t">Bonus running win: <b class="ok">' + fmtMoney(s.bonus_running_win) + '</b> <span class="muted">of ' + fmtMoney(fam.total_win) + '</span></div>');
+  }
+  const pays = f.pre === null ? '' :
+    '<div class="t">Pays: round(' + fmtMoney(f.raw) + ' × ' + f.scaler + ')' + (f.scatter ? ' + scatter ' + fmtMoney(f.scatter) : '') + ' = <b>' + fmtMoney(f.pre) + '</b>' +
+    (f.applied !== 1 ? ' × ' + num(f.applied) + ' = <b>' + fmtMoney(f.expected) + '</b>' : '') +
+    ' · paid <b class="ok">' + fmtMoney(r.total_win) + '</b>' + (f.capped ? ' <span class="err">(max-win cap)</span>' : (f.expected !== null && r2(f.expected) !== r2(r.total_win) ? ' <span class="err">(≠ — check)</span>' : ' ✓')) + '</div>';
+  const res = resolutionOf(r, f);
+  return '<div class="totals hud">' + parts.join('') + pays + '</div>' + (res ? '<div class="mlog ' + res.cls + '">' + esc(res.text) + '</div>' : '');
+}
+function buildBreakdown(r, f) {
+  return f.boards.map((s, i) => {
+    const wins = (s.ways_wins || []).map(w => '<li>' + esc(w.symbol) + ' × ' + w.count + ' → ' + fmtMoney(w.payout) + '× = ' + fmtMoney(w.amount) + (f.scaler !== null ? ' <span class="muted">(pays ' + fmtMoney(r2(w.amount * f.scaler)) + ')</span>' : '') + '</li>').join('');
+    const landed = f.landed[i].length ? '<li>multipliers landed: ' + f.landed[i].map(m => num(m.value) + '× @ [' + m.row + ',' + m.col + ']').join(', ') + '</li>' : '';
+    const title = (i === 0 ? 'Spin board' : 'Tumble ' + i) + (i === f.boards.length - 1 && f.boards.length > 1 ? ' (final)' : '');
+    return '<details ' + (i === 0 ? 'open' : '') + '><summary>' + title + ' · win ' + fmtMoney(s.win_total) + ' · ' + (s.winning_positions || []).length + ' cells</summary><ul>' + (wins || '<li class="muted">no win</li>') + landed + '</ul></details>';
   }).join('');
 }
-function renderStageHtml(outcome, initialMatrix, steps, idx) {
-  let matrix, winningPositions = [], stepWin = 0, stepMultipliers = [], stepLabel = '';
-  if (idx === 0) { matrix = initialMatrix; stepLabel = 'Initial board'; }
-  else { const s = steps[idx - 1] || {}; matrix = s.matrix; winningPositions = s.winning_positions || []; stepWin = s.win_total || 0; stepMultipliers = s.multipliers || []; stepLabel = 'Tumble step ' + idx + ' / ' + steps.length; }
-  const rows = matrix?.length ?? 5, cols = matrix?.[0]?.length ?? 6;
-  const winSet = new Set(winningPositions.map(p => p.row+','+p.col));
-  const multiMap = new Map();
-  for (const m of stepMultipliers) { if (m && typeof m.row === 'number' && typeof m.col === 'number') { multiMap.set(m.row+','+m.col, (m.value ?? multiValueFromCode(m.code) ?? '×')); } }
+// Dimension 2 — the tumbles of the spin on screen.
+function renderStageHtml(r, f, idx) {
+  const b = f.boards[idx] || {}; const matrix = b.matrix;
+  const last = f.boards.length - 1;
+  const label = (idx === 0 ? 'Spin board' : 'Tumble ' + idx) + (idx === last && last > 0 ? ' (final)' : '');
+  const winSet = new Set((b.winning_positions || []).map(p => p.row + ',' + p.col));
+  const multiMap = new Map(); const newIds = new Set(f.landed[idx].map(m => m.row + ',' + m.col));
+  for (const m of (b.multipliers || [])) { if (m && typeof m.row === 'number' && typeof m.col === 'number') multiMap.set(m.row + ',' + m.col, m.value ?? multiValueFromCode(m.code) ?? '×'); }
+  const seqSoFar = f.boards.slice(0, idx + 1).reduce((s, x) => s + Number(x.win_total || 0), 0);
+  const scaled = (v) => f.scaler === null ? fmtMoney(v) + ' <span class="muted">raw</span>' : fmtMoney(r2(v * f.scaler));
   let html = '<div class="totals">' +
-    '<div class="t">Stage: <b>'+stepLabel+'</b></div>' +
-    (idx > 0 ? '<div class="t">Step win: <b class="ok">+'+fmtMoney(stepWin)+'</b></div>' : '') +
-    '<div class="t">Running total: <b>'+fmtMoney(runningTotal(steps, idx))+'</b></div>' +
-    '<div class="t">Final win: <b>'+fmtMoney(outcome.total_win || 0)+'</b></div>' +
-    (outcome.multiplier_applied && outcome.multiplier_applied !== 1 ? '<div class="t">Multiplier applied: <b>'+outcome.multiplier_applied+'×</b></div>' : '') + '</div>';
-  html += '<div class="matrix" style="grid-template-columns: repeat('+cols+',1fr); margin-top:10px;">';
-  for (let r = 0; r < rows; r++) { for (let c = 0; c < cols; c++) {
-      const sym = matrix?.[r]?.[c]; const isWin = winSet.has(r+','+c);
-      const isScatter = String(sym||'').toUpperCase() === 'SCATTER';
-      const multiBadge = multiMap.get(r+','+c) ?? (String(sym||'').toUpperCase().startsWith('MULTI') ? multiValueFromCode(sym) : null);
+    '<div class="t">Board: <b>' + label + '</b></div>' +
+    '<div class="t">Board win: <b class="ok">+' + scaled(b.win_total || 0) + '</b></div>' +
+    '<div class="t">Sequence pays so far: <b>' + scaled(seqSoFar) + '</b></div>' +
+    (f.landed[idx].length ? '<div class="t">Landed here: <b>' + f.landed[idx].map(m => num(m.value) + '×').join(' + ') + '</b></div>' : '') +
+    '</div>';
+  const rows = matrix?.length ?? 5, cols = matrix?.[0]?.length ?? 6;
+  html += '<div class="matrix" style="grid-template-columns: repeat(' + cols + ',1fr); margin-top:10px;">';
+  for (let rr = 0; rr < rows; rr++) { for (let c = 0; c < cols; c++) {
+      const sym = matrix?.[rr]?.[c]; const key = rr + ',' + c; const isWin = winSet.has(key);
+      const isScatter = String(sym || '').toUpperCase() === 'SCATTER';
+      const multiBadge = multiMap.get(key) ?? (String(sym || '').toUpperCase().startsWith('MULTI') ? multiValueFromCode(sym) : null);
       const url = sym ? symbolImageUrl(sym) : null;
-      html += '<div class="cell ' + (isWin?'win ':'') + (isScatter?'scatter':'') + '" data-rc="'+r+','+c+'">';
-      if (url) html += '<img src="'+url+'" alt="'+sym+'" onerror="this.style.display=\\'none\\'; this.parentElement.querySelector(\\'.lbl\\').style.display=\\'block\\';"/>';
-      html += '<span class="lbl" style="display:'+(url?'none':'block')+';">'+(SYMBOL_LABELS[String(sym||'').toUpperCase()] || sym || '')+'</span>';
-      if (multiBadge != null) html += '<span class="mbadge">'+multiBadge+'×</span>';
+      html += '<div class="cell ' + (isWin ? 'win ' : '') + (isScatter ? 'scatter ' : '') + (newIds.has(key) ? 'mnew' : '') + '" data-rc="' + key + '">';
+      if (url) html += '<img src="' + url + '" alt="' + esc(sym) + '" onerror="this.style.display=\\'none\\'; this.parentElement.querySelector(\\'.lbl\\').style.display=\\'block\\';"/>';
+      html += '<span class="lbl" style="display:' + (url ? 'none' : 'block') + ';">' + esc(SYMBOL_LABELS[String(sym || '').toUpperCase()] || sym || '') + '</span>';
+      if (multiBadge != null) html += '<span class="mbadge">' + multiBadge + '×</span>';
       html += '</div>';
   } }
-  html += '</div>'; return html;
+  return html + '</div>';
 }
-function runningTotal(steps, idx) { if (idx === 0) return 0; let s = 0; for (let i = 0; i < idx; i++) s += Number(steps[i]?.win_total || 0); return s; }
 function renderStepControls(totalStages) {
-  return '<div class="step-ctrl"><button class="ghost" id="prevStep">⏮ Prev</button><button id="playStep">▶ Play</button>' +
-    '<button class="ghost" id="nextStep">Next ⏭</button><span class="muted">stage <b id="stepLabel">'+(stepIdx+1)+'</b> / '+totalStages+'</span></div>';
+  const more = inspectorFeature && spinPosition() < inspectorFeature.spins.length - 1;
+  return '<div class="step-ctrl"><button class="ghost" id="prevStep">⏮ Prev</button><button id="playStep">' + (playing ? '⏸ Pause' : (more ? '▶ Play bonus' : '▶ Play')) + '</button>' +
+    '<button class="ghost" id="nextStep">Next ⏭</button><span class="muted">stage <b id="stepLabel">' + (stepIdx + 1) + '</b> / ' + totalStages + '</span>' +
+    (inspectorFeature ? '<span class="muted">· Shift+←/→ moves between spins</span>' : '') + '</div>';
 }
 function bindStepControls(totalStages) {
-  const goto = (i) => { stepIdx = Math.max(0, Math.min(totalStages-1, i)); renderInspector(); };
+  const goto = (i) => { stepIdx = Math.max(0, Math.min(totalStages - 1, i)); renderInspector(); };
   $('prevStep').onclick = () => { stopPlay(); goto(stepIdx - 1); };
   $('nextStep').onclick = () => { stopPlay(); goto(stepIdx + 1); };
-  $('playStep').onclick = () => togglePlay(totalStages);
-  document.addEventListener('keydown', handleKeyNav);
+  $('playStep').onclick = togglePlay;
+  document.addEventListener('keydown', handleKeyNav); // same reference: added once
 }
 function handleKeyNav(e) {
   const iv = $('inspectorView'); if (!iv || iv.hidden) return;
   if (e.target && /(INPUT|TEXTAREA|SELECT)/.test(e.target.tagName)) return;
+  if (e.shiftKey && e.key === 'ArrowLeft') { document.getElementById('prevSpin')?.click(); return; }
+  if (e.shiftKey && e.key === 'ArrowRight') { document.getElementById('nextSpin')?.click(); return; }
   if (e.key === 'ArrowLeft') document.getElementById('prevStep')?.click();
   if (e.key === 'ArrowRight') document.getElementById('nextStep')?.click();
   if (e.key === ' ') { e.preventDefault(); document.getElementById('playStep')?.click(); }
 }
-function stopPlay() { if (playTimer) { clearInterval(playTimer); playTimer = null; const b = $('playStep'); if (b) b.textContent = '▶ Play'; } }
-function togglePlay(totalStages) {
-  if (playTimer) { stopPlay(); return; }
-  const b = $('playStep'); if (b) b.textContent = '⏸ Pause';
-  playTimer = setInterval(() => { if (stepIdx >= totalStages - 1) { stopPlay(); return; } stepIdx += 1; renderInspector(); }, 900);
+// Autoplay walks the tumbles of the spin on screen, then (inside a bonus) carries on
+// into the next free spin until the end of the bonus. A chain of timeouts, not an
+// interval, so a spin being fetched can never be advanced twice.
+function stopPlay() { playing = false; if (playTimer) { clearTimeout(playTimer); playTimer = null; } const b = $('playStep'); if (b && inspectorRound) b.textContent = '▶ Play'; }
+function togglePlay() {
+  if (playing) { stopPlay(); renderInspector(); return; }
+  playing = true; renderInspector(); playTimer = setTimeout(playTick, 900);
+}
+async function playTick() {
+  playTimer = null; if (!playing || !inspectorRound) return;
+  if (stepIdx < boardsOf(inspectorRound).length - 1) { stepIdx += 1; renderInspector(); playTimer = setTimeout(playTick, 900); return; }
+  const pos = spinPosition();
+  if (!inspectorFeature || pos < 0 || pos >= inspectorFeature.spins.length - 1) { stopPlay(); renderInspector(); return; }
+  await openSpin(inspectorFeature.spins[pos + 1].round_ref, { keepPlaying: true });
+  if (playing) playTimer = setTimeout(playTick, 900);
+}
+
+// ── Player search (inspector tab) ───────────────────────────────────────────
+function inspectorTab(tab) {
+  document.querySelectorAll('#inspectorView [data-itab]').forEach(b => b.classList.toggle('active', b.dataset.itab === tab));
+  document.querySelectorAll('#inspectorView [data-ipane]').forEach(p => { p.hidden = p.dataset.ipane !== tab; });
+  const focus = tab === 'player' ? $('ipPlayer') : $('roundRefInput'); if (focus) focus.focus();
+}
+async function searchPlayerRounds() {
+  const st = $('ipStatus'); const out = $('ipResults');
+  const pid = $('ipPlayer').value.trim(); const opEl = $('ipOp'); const opId = opEl ? opEl.value.trim() : '';
+  if (!pid) { flash(st, 'enter a player id', false); return; }
+  st.hidden = false; st.className = 'muted'; st.textContent = 'searching…';
+  try {
+    const d = await api('/admin/v1/players/' + encodeURIComponent(pid) + '/rounds?limit=500' + (opId ? '&operator_id=' + encodeURIComponent(opId) : ''));
+    st.textContent = d.total > d.count ? ('latest ' + d.count + ' of ' + d.total + ' rounds') : (d.count + ' rounds');
+    if (!d.rounds.length) { out.innerHTML = '<p class="muted">no rounds for this player</p>'; return; }
+    const multiOp = new Set(d.rounds.map(x => x.operator_id)).size > 1 || state.scope === 'provider';
+    out.innerHTML = '<div class="tbl-wrap"><table class="ip-table"><tr><th>Timestamp</th>' + (multiOp ? '<th>Operator</th>' : '') + '<th>Game</th><th class="num">Bet</th><th class="num">Win</th><th>Bonus</th><th>Round</th></tr>' +
+      d.rounds.map(x => {
+        const f = x.feature;
+        const tag = !f ? '' : (f.role === 'trigger' ? '<span class="tag trig">Trigger · ' + f.free_spins + ' FS</span>' : '<span class="tag fs">Free spin ' + f.index + '/' + f.free_spins + '</span>');
+        const bet = x.bet_charged > 0 ? fmtMoney(x.bet_charged) : (x.is_free_spin ? '<span class="muted">free</span>' : fmtMoney(0));
+        return '<tr class="clickable' + (f && f.role === 'free_spin' ? ' in-bonus' : '') + '" data-ref="' + esc(x.round_ref) + '">' +
+          '<td>' + esc((x.created_at || '').replace('T', ' ').slice(0, 19)) + '</td>' + (multiOp ? '<td>' + esc(x.operator_slug || x.operator_id) + '</td>' : '') +
+          '<td>' + esc(x.game_code || '—') + '</td><td class="num">' + bet + '</td>' +
+          '<td class="num">' + (x.total_win > 0 ? '<span class="ok">+' + fmtMoney(x.total_win) + '</span>' : fmtMoney(0)) + '</td>' +
+          '<td>' + tag + (x.effective_status !== x.status ? ' <span class="err">' + esc(x.effective_status) + '</span>' : '') + '</td>' +
+          '<td><code>' + esc(x.round_ref) + '</code></td></tr>';
+      }).join('') + '</table></div>';
+    out.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => {
+      out.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel')); tr.classList.add('sel');
+      openSpin(tr.dataset.ref, { fresh: true });
+    }));
+  } catch (e) { flash(st, e.message, false); out.innerHTML = ''; }
 }
 `;
 

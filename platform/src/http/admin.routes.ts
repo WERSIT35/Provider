@@ -3,6 +3,8 @@ import { envelope, sendDomainError } from "./errors";
 import { can, permissionsOf, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
 import type { Container } from "../container";
 import { PLAYER_REPORT_SORTS, type PlayerReportSort } from "../modules/reporting/reporting.service";
+import type { RoundRecord } from "../modules/ledger/ledger.types";
+import { deriveFeatureFamilies, type FeatureMembership } from "../modules/ledger/feature-family";
 
 /** Admin API (plan §4/§7). RBAC + tenant scoping enforced per route. */
 const adminRoutes: FastifyPluginAsync = async (app) => {
@@ -124,9 +126,68 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       rng_seed_hex: round.rng_seed_hex,
       rng_bytes_drawn: round.rng_bytes_drawn,
       chain: { seq: round.seq, prev_hash: round.prev_hash, payload_hash: round.payload_hash, chain_hash: round.chain_hash },
+      pre_state: round.pre_state ?? null,
+      pays: paysFor(round),
+      // Bonus timeline: the whole family (trigger + free spins) this round belongs to.
+      feature: featureTimeline(round.round_ref),
       outcome: round.outcome
     };
   });
+
+  /**
+   * The pay scaler a round was paid at: tumble-step wins are stored as raw pays × bet,
+   * and the engine multiplies the sequence by this before any multiplier. Only given
+   * when the round's rules hash is the loaded one (otherwise the scaler may differ).
+   */
+  function paysFor(round: RoundRecord): { scaler: number; basis: "base" | "free_spin" } | null {
+    if (!round.rules_hash || round.rules_hash !== app.container.engine.rulesHash()) return null;
+    const profile = app.container.engine.getRtpProfile(round.pre_state?.game_code);
+    const scaler = Number(round.is_free_spin ? profile.free_spin_payout_scaler : profile.payout_scaler);
+    return Number.isFinite(scaler) ? { scaler, basis: round.is_free_spin ? "free_spin" : "base" } : null;
+  }
+
+  /**
+   * One row per spin of the bonus, from stored data only: what each spin paid, the
+   * Global Multiplier Bank before/after it, and the running bonus total (the sum of
+   * the family's paid wins, which is what the max-win cap counts).
+   */
+  function featureTimeline(roundRef: string) {
+    const family = app.container.ledger.featureFamily(roundRef);
+    if (!family) return null;
+    let running = 0;
+    const spins = family.rounds.map((r, index) => {
+      const o = (r.outcome ?? {}) as Record<string, unknown>;
+      running = Number((running + r.total_win).toFixed(2));
+      const events = Array.isArray(o.events) ? (o.events as Array<{ type?: string }>) : [];
+      return {
+        round_ref: r.round_ref,
+        role: index === 0 ? ("trigger" as const) : ("free_spin" as const),
+        index,
+        bet_amount: r.bet_amount,
+        bet_charged: r.bet_charged,
+        total_win: r.total_win,
+        free_spins_awarded: Number(o.free_spins_awarded ?? 0),
+        free_spins_left: Number(o.free_spins_left ?? 0),
+        bank_before: index === 0 ? null : Number(r.pre_state?.free_spin_multiplier_carry ?? 0),
+        bank_after: index === 0 ? null : Number(o.free_spin_multiplier_current ?? 0),
+        multiplier_applied: Number(o.multiplier_applied ?? 1),
+        multiplier_added: Number(o.multiplier_gain_applied ?? 0),
+        bonus_running_win: running,
+        capped: events.some((e) => e.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP" || e.type === "MAX_WIN_CAP_REACHED"),
+        created_at: r.created_at
+      };
+    });
+    const last = spins[spins.length - 1];
+    return {
+      feature_ref: family.feature_ref,
+      position: family.position,
+      free_spins: spins.length - 1,
+      total_win: running,
+      final_bank: last.bank_after ?? 0,
+      capped: spins.some((s) => s.capped),
+      spins
+    };
+  }
 
   // Reports.
   app.get("/admin/v1/reports/summary", { preHandler: auth }, async (req, reply) => {
@@ -473,23 +534,51 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "players.read");
     if (!claims) return reply;
     const { playerId } = req.params as { playerId: string };
-    const q = req.query as { operator_id?: string };
-    const operatorId = resolveOperatorScope(claims, q.operator_id);
-    if (!operatorId) {
+    const q = req.query as { operator_id?: string; limit?: string };
+    // Operator admins are pinned to their own operator. A provider admin may omit
+    // operator_id to search every operator (support often has only the player id).
+    const operatorId = resolveOperatorScope(claims, q.operator_id) || undefined;
+    if (claims.scope === "operator" && !operatorId) {
       return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
     }
-    const rounds = app.container.reporting.listRoundsByPlayer(operatorId, playerId).map((r) => ({
-      round_ref: r.round_ref,
-      operator_id: r.operator_id,
-      bet_amount: r.bet_amount,
-      bet_charged: r.bet_charged,
-      total_win: r.total_win,
-      is_free_spin: r.is_free_spin,
-      status: r.status,
-      effective_status: app.container.adjustments.effectiveStatus(r.round_ref, r.status),
-      created_at: r.created_at
-    }));
-    return { player_id: playerId, operator_id: operatorId, rounds, count: rounds.length };
+    const limit = Math.min(Math.max(Number(q.limit) || 200, 1), 1000);
+    const all = app.container.reporting.listRoundsByPlayer(operatorId, playerId);
+
+    // Bonus tags: derive each session's families from ALL of its rounds (a player's
+    // session holds only that player's rounds), so a family cut off by the limit is
+    // still labelled correctly.
+    const membership = new Map<string, FeatureMembership>();
+    for (const sessionId of new Set(all.map((r) => r.session_id))) {
+      for (const [ref, m] of deriveFeatureFamilies(all.filter((r) => r.session_id === sessionId))) membership.set(ref, m);
+    }
+    const slugs = new Map<string, string | null>();
+    const slugOf = (id: string) => {
+      if (!slugs.has(id)) {
+        try { slugs.set(id, app.container.mgmt.getOperator(id).slug); } catch { slugs.set(id, null); }
+      }
+      return slugs.get(id) ?? null;
+    };
+
+    const rounds = all.slice(0, limit).map((r) => {
+      const m = membership.get(r.round_ref);
+      return {
+        round_ref: r.round_ref,
+        operator_id: r.operator_id,
+        operator_slug: slugOf(r.operator_id),
+        game_code: r.pre_state?.game_code ?? null,
+        currency: app.container.sessions.tryGet(r.session_id)?.currency ?? null,
+        bet_amount: r.bet_amount,
+        bet_charged: r.bet_charged,
+        total_win: r.total_win,
+        is_free_spin: r.is_free_spin,
+        // Bonus tag: trigger (with its free-spin count) or free spin k of N.
+        feature: m ? { feature_ref: m.feature_ref, role: m.role, index: m.index, free_spins: m.free_spins } : null,
+        status: r.status,
+        effective_status: app.container.adjustments.effectiveStatus(r.round_ref, r.status),
+        created_at: r.created_at
+      };
+    });
+    return { player_id: playerId, operator_id: operatorId ?? null, rounds, count: rounds.length, total: all.length };
   });
 
   // Player lifetime summary (header of the player lookup view).

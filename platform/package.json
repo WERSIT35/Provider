@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "smoke:rtp": "tsx scripts/rtp-smoke.ts",
     "migrate": "tsx scripts/migrate.ts",
-    "check:campaigns": "tsx scripts/campaign-console-check.ts"
+    "check:campaigns": "tsx scripts/campaign-console-check.ts",
+    "check:inspector": "tsx scripts/inspector-console-check.ts"
   },
   "engines": {
     "node": ">=20"

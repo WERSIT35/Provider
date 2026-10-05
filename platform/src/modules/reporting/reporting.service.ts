@@ -136,11 +136,15 @@ export class ReportingService {
       .filter((r) => inRange(r.created_at, range));
   }
 
-  /** Rounds for a single player (support / dispute lookup). Newest first. */
-  listRoundsByPlayer(operatorId: string, operatorPlayerId: string): RoundRecord[] {
+  /**
+   * Rounds for a single player (support / dispute lookup). Newest first; ties (same
+   * millisecond) broken by ledger seq. No operatorId = across every operator
+   * (provider scope only — the route enforces that).
+   */
+  listRoundsByPlayer(operatorId: string | undefined, operatorPlayerId: string): RoundRecord[] {
     return this.rounds
       .list({ operator_id: operatorId, operator_player_id: operatorPlayerId })
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.seq - a.seq);
   }
 
   /** Full money-movement timeline for one round (the "why wasn't the player paid?" view). */
