@@ -352,6 +352,26 @@
       <p class="visually-hidden" data-bw-announce aria-live="assertive"></p>
     </div>
 
+    <!-- Reality check (jurisdiction profile, platform mode): shown when the session's
+         interval is up; play resumes only after "Continue playing" is acknowledged by
+         the RGS. Filled by realityCheckPrompt() in main.js. -->
+    <div class="ps-modal vx-reality" id="realityCheck" role="alertdialog" aria-modal="true" aria-labelledby="realityTitle" aria-describedby="realityBody" hidden>
+      <div class="vx-reality__panel">
+        <h2 class="vx-reality__title" id="realityTitle">Reality check</h2>
+        <p class="vx-reality__body" id="realityBody">You have been playing for <strong id="realityElapsed">—</strong>.</p>
+        <dl class="vx-reality__stats">
+          <div><dt>Rounds</dt><dd class="u-num" id="realityRounds">0</dd></div>
+          <div><dt>Wagered</dt><dd class="u-num" id="realityWagered">0.00</dd></div>
+          <div><dt>Won</dt><dd class="u-num" id="realityWon">0.00</dd></div>
+          <div><dt>Net</dt><dd class="u-num" id="realityNet">0.00</dd></div>
+        </dl>
+        <div class="vx-reality__actions">
+          <button type="button" class="vx-reality__leave" id="realityLeave">Leave game</button>
+          <button type="button" class="vx-reality__continue" id="realityContinue">Continue playing</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Info / settings modal shell. One section per page; the tabs and dots
          address sections by data-ps-section. Fill each section's body; the
          open/close/paging logic is the JS step. -->

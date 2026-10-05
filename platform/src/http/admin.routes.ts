@@ -1,3 +1,4 @@
+import { buildRegulatoryProfile } from "../modules/regulatory/regulatory";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import { envelope, sendDomainError } from "./errors";
 import { can, permissionsOf, resolveOperatorScope, type AdminClaims } from "../modules/admin/admin-auth";
@@ -343,6 +344,25 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       const d = app.container.mgmt.addDomain(operatorId, body.domain, body.environment);
       return { domain: d };
     } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  // Jurisdiction profile: { preset: "UKGC" | "MGA" | "SE" | "DEFAULT", ...field overrides },
+  // or { preset: null } to clear back to DEFAULT. Provider-only (it is licence terms).
+  app.put("/admin/v1/operators/:operatorId/regulatory", { preHandler: auth }, async (req, reply) => {
+    if (!requireProvider(req, reply)) return reply;
+    const { operatorId } = req.params as { operatorId: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const profile = body.preset === null ? null : buildRegulatoryProfile(body);
+      const op = app.container.mgmt.setRegulatoryProfile(operatorId, profile);
+      return { operator_id: op.id, regulatory: app.container.mgmt.regulatoryProfile(op.id) };
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      if (code.startsWith("REGULATORY_INVALID:")) {
+        return reply.code(422).send(envelope("REGULATORY_INVALID", `invalid ${code.slice(19)}`, req.id));
+      }
       return sendDomainError(reply, err, req.id);
     }
   });

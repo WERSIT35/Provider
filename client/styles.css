@@ -3929,3 +3929,49 @@ body.public-mode .vx-ante:has(.vx-ante__input:checked) {
   border-color: color-mix(in srgb, var(--signal-ok) 70%, transparent);
   box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), 0 0 18px color-mix(in srgb, var(--signal-ok) 28%, transparent);
 }
+
+/* ── Reality check (jurisdiction profile) ── a fixed overlay (never in the flow) on the
+   .ps-modal scrim; a compact glass card with the session's figures. */
+.vx-reality { z-index: 9200; } /* above the info modal: it interrupts play */
+.vx-reality__panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: clamp(18px, 3vh, 28px);
+  border-radius: 18px;
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 40%), var(--glass-fill-solid);
+  box-shadow: var(--glass-shadow);
+  color: var(--text-hud);
+  text-align: center;
+}
+.vx-reality__title {
+  margin: 0;
+  font: 700 clamp(1.1rem, 3vh, 1.5rem)/1.1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--win-gold-bright);
+}
+.vx-reality__body { margin: 0; color: var(--text-muted); }
+.vx-reality__body strong { color: var(--text-hud); }
+.vx-reality__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.vx-reality__stats div {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.vx-reality__stats dt { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+.vx-reality__stats dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vx-reality__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.vx-reality__actions button { min-height: 44px; border-radius: 999px; font-weight: 700; cursor: pointer; }
+.vx-reality__leave { border: 1px solid var(--glass-edge); background: transparent; color: var(--text-hud); }
+.vx-reality__continue { border: 1px solid var(--win-gold-deep); background: linear-gradient(180deg, var(--win-gold-bright), var(--win-gold)); color: #1a1a1a; }
+.vx-reality__actions button:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 2px; }
+
+/* Controls a jurisdiction profile switches off: hidden in place, so nothing moves. */
+.is-reg-off { visibility: hidden !important; pointer-events: none !important; }

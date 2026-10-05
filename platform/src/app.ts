@@ -8,6 +8,9 @@ import adminRoutes from "./http/admin.routes";
 import adminCampaignRoutes from "./http/admin-campaigns.routes";
 import { startCampaignExpiry, type CampaignExpiryJob } from "./jobs/campaign-expiry";
 import { startDebitReconciliation, type DebitReconciliationJob } from "./jobs/debit-reconciliation";
+import { installObservability, traceForRaw } from "./http/observability";
+import { metrics } from "./lib/metrics";
+import { NullPersistence } from "./persistence/persistence";
 import adminAuthRoutes from "./http/admin-auth.routes";
 import adminAccountRoutes from "./http/admin-accounts.routes";
 import adminAssetsRoutes from "./http/admin-assets";
@@ -38,6 +41,8 @@ export interface BuildAppDeps {
   campaignExpiryIntervalMs?: number;
   /** Retry interval for queued lost-debit reversals (default 30s; 0 = start-up sweep only). */
   debitReconcileIntervalMs?: number;
+  /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
+  metricsToken?: string;
 }
 
 /**
@@ -51,6 +56,13 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
     requestIdHeader: "x-request-id",
     logController: new LogController({ requestIdLogLabel: "request_id" }),
     genReqId: () => randomUUID(),
+    // Every log line of a request (Fastify's own "incoming request" / "request completed"
+    // included) carries its W3C trace: the context is built here, when the request's
+    // logger is, and the onRequest hook (http/observability.ts) makes it current.
+    childLoggerFactory: (logger, bindings, opts, rawReq) => {
+      const ctx = traceForRaw(rawReq);
+      return logger.child({ ...bindings, trace_id: ctx.traceId, span_id: ctx.spanId }, opts);
+    },
     trustProxy: true
   });
 
@@ -67,6 +79,8 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   });
 
   app.decorate("container", deps.container);
+  // Trace context, request metrics, the structured money log and GET /metrics.
+  installObservability(app, deps.container, { metricsToken: deps.metricsToken });
 
   // Background expiry of lapsed free-round grants: starts when the app is ready,
   // stops when it closes.
@@ -96,10 +110,14 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   // to Postgres in one transaction. No-op when persistence is disabled (in-memory).
   // A flush failure is logged, not surfaced — the batch is re-queued for the next
   // request so a transient DB hiccup never fails an otherwise-successful spin.
+  const persistenceOn = deps.container.persistence !== NullPersistence;
   app.addHook("onSend", async (req) => {
+    const started = performance.now();
     try {
       await deps.container.persistence.flush();
+      if (persistenceOn) metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "ok" });
     } catch (err) {
+      if (persistenceOn) metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "failed" });
       req.log.error({ err }, "persistence_flush_failed");
     }
   });

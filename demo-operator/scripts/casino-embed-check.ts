@@ -5,27 +5,16 @@
  *
  *   npm run check:casino-embed
  */
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { startStack } from "../test/support/stack";
+import { CHROME_LAUNCH_BUDGET_MS, findChrome, launchHeadlessChrome } from "../../platform/scripts/support/chrome-launch";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string): void {
   if (cond) console.log(`  ok   - ${name}`);
   else { failures += 1; console.error(`  FAIL - ${name}${detail ? `  [${detail}]` : ""}`); }
-}
-function findChrome(): string | undefined {
-  return [
-    process.env.CHROME_PATH,
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "/usr/bin/google-chrome",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  ].filter((p): p is string => Boolean(p)).find((p) => existsSync(p));
 }
 function connect(wsUrl: string) {
   const ws = new WebSocket(wsUrl);
@@ -63,20 +52,11 @@ async function main(): Promise<void> {
   const casinoHost = `localhost:${addr.port}`;
   stack.container.mgmt.addDomain(stack.container.mgmt.listOperators()[0].id, casinoHost, "prod");
 
-  const userDataDir = mkdtempSync(join(tmpdir(), "casino-embed-"));
-  const chrome = spawn(chromePath, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${userDataDir}`, "--no-first-run",
+  // Hardened launch (60s port wait, one retry): platform/scripts/support/chrome-launch.ts
+  const { chrome, wsBase, userDataDir } = await launchHeadlessChrome(chromePath, "casino-embed-", [
+    "--headless=new", "--no-first-run",
     "--disable-gpu", "--mute-audio", "--autoplay-policy=no-user-gesture-required", "about:blank"
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  const wsBase = await new Promise<string>((resolve, reject) => {
-    let buf = "";
-    const t = setTimeout(() => reject(new Error("chrome debug port not reported")), 20000);
-    chrome.stderr!.on("data", (d) => {
-      buf += d.toString();
-      const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
-      if (m) { clearTimeout(t); resolve(`http://127.0.0.1:${m[1]}`); }
-    });
-  });
+  ]);
   const list = (await (await fetch(`${wsBase}/json/list`)).json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
   const cdp = connect(list.find((t) => t.type === "page")!.webSocketDebuggerUrl);
   await cdp.ready;
@@ -124,5 +104,5 @@ async function main(): Promise<void> {
   process.exit(failures ? 1 : 0);
 }
 
-setTimeout(() => { console.error("casino-embed-check: TIMEOUT"); process.exit(1); }, 120_000).unref();
+setTimeout(() => { console.error("casino-embed-check: TIMEOUT"); process.exit(1); }, 120_000 + CHROME_LAUNCH_BUDGET_MS).unref();
 main().catch((err) => { console.error(err); process.exit(1); });

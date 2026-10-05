@@ -7,6 +7,27 @@ const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
 
+// Temp Chrome profiles: removed on exit so probe runs do not pile up in the OS temp dir.
+const _tempProfiles = [];
+function tempProfile(prefix) {
+  // A profile Chrome still held at our exit (Windows keeps child processes alive a
+  // few seconds after kill) is swept by the next run, once it is over an hour old.
+  if (!_tempProfiles.length) {
+    for (const name of fs.readdirSync(os.tmpdir())) {
+      if (!name.startsWith(prefix) || name.startsWith(`${prefix}out-`)) continue; // keep screenshot output dirs
+      const full = path.join(os.tmpdir(), name);
+      try { if (Date.now() - fs.statSync(full).mtimeMs > 3600e3) fs.rmSync(full, { recursive: true, force: true }); } catch { /* in use */ }
+    }
+  }
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  _tempProfiles.push(d);
+  return d;
+}
+process.on("exit", () => {
+  // Chrome may still be releasing its files just after kill(): retry briefly.
+  for (const d of _tempProfiles) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* best effort */ } }
+});
+
 // Usage: node tools/probes/<name>.js [repoRoot] [outDir]  (defaults: this repo, a temp dir)
 const ROOT = path.resolve(process.argv[2] || path.join(__dirname, "..", ".."), "client");
 const OUT = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "vx-probe-out-"));
@@ -52,7 +73,7 @@ async function evaluate(cdp, expression) {
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
   const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), "vx-probe-"))}`,
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${tempProfile("vx-probe-")}`,
     "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const base = await new Promise((resolve) => {

@@ -125,6 +125,17 @@ export function withSeed<T>(seed: Buffer, fn: () => T): { result: T; bytesDrawn:
   }
 }
 
+/**
+ * The first `n` bytes of the stream for `seed`, computed directly (no crypto wrapper,
+ * no engine): the bytes a round with that seed and rng_bytes_drawn = n consumed. The
+ * round export hashes them as its random-stream proof.
+ */
+export function streamBytes(seed: Buffer, n: number): Buffer {
+  const out = Buffer.alloc(n);
+  new SeededStream(seed).fill(out);
+  return out;
+}
+
 /** Fresh 32-byte server seed from the real CSPRNG (never the seeded stream). */
 export function generateSeed(): Buffer {
   return randomBytes(32);

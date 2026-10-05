@@ -29,6 +29,8 @@ export interface VerificationResult {
   recomputed_hash: string | null;
   chain: { seq: number; prev_hash: string; payload_hash: string; chain_hash: string };
   notes: string[];
+  /** The replayed engine result (original key order), only with verify(ref, { withResult: true }). */
+  replayed_result?: unknown;
 }
 
 export class RoundVerificationService {
@@ -38,7 +40,7 @@ export class RoundVerificationService {
   ) {}
 
   /** Returns null when the round does not exist (caller maps to 404). */
-  verify(roundRef: string): VerificationResult | null {
+  verify(roundRef: string, opts: { withResult?: boolean } = {}): VerificationResult | null {
     const round = this.ledger.getRound(roundRef);
     if (!round) return null;
 
@@ -122,7 +124,8 @@ export class RoundVerificationService {
         payload_hash: round.payload_hash,
         chain_hash: round.chain_hash
       },
-      notes
+      notes,
+      ...(opts.withResult ? { replayed_result: replay.result } : {})
     };
   }
 }

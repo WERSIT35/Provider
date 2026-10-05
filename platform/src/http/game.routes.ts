@@ -119,9 +119,36 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       game: { code: session.game_code, math_config_id: session.math_config_id },
       // The casino hosts the client may talk to over postMessage (the same list
       // /play's frame-ancestors allows); see client/embed-bridge.js.
-      embed: { allowed_hosts: app.container.mgmt.embedHosts(session.operator_id) }
+      embed: { allowed_hosts: app.container.mgmt.embedHosts(session.operator_id) },
+      // The jurisdiction rules the client must apply (autoplay / turbo / buy switches,
+      // round pacing) and when the next reality check is due. The RGS enforces pacing,
+      // the reality check and the buy switch itself regardless.
+      regulatory: {
+        ...app.container.regulatory.profile(session.operator_id),
+        reality_check_due_in_ms: app.container.regulatory.realityCheckDueIn(session)
+      }
     };
   }
+
+  // The reality check's figures, for the client to show when its own timer fires.
+  app.get("/game/v1/reality-check", { preHandler: bearer }, async (req, reply) => {
+    try {
+      return app.container.regulatory.status(app.container.sessions.get(req.sessionId as string));
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  // The player saw the reality check (REALITY_CHECK_REQUIRED, or the client's own
+  // timer) and chose to keep playing: the next one is a full interval away.
+  app.post("/game/v1/reality-check/ack", { preHandler: bearer }, async (req, reply) => {
+    try {
+      const session = app.container.sessions.get(req.sessionId as string);
+      return app.container.regulatory.acknowledgeRealityCheck(session);
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
 
   app.post("/game/v1/spin", { preHandler: bearer }, async (req, reply) => {
     const idem = req.headers["idempotency-key"];

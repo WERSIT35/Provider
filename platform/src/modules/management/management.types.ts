@@ -1,3 +1,4 @@
+import type { RegulatoryProfile } from "../regulatory/regulatory";
 /** Operator/game control-plane entities (plan §3.1/§3.2). In-memory for now; the
  * Postgres schema in migrations/0001_core.sql is the production storage. */
 
@@ -11,6 +12,8 @@ export interface Operator {
   slug: string;
   status: OperatorStatus;
   default_currency: string;
+  /** Jurisdiction profile the RGS enforces (src/modules/regulatory). Absent = DEFAULT. */
+  regulatory?: RegulatoryProfile;
   created_at: string;
 }
 

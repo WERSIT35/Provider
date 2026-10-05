@@ -14,6 +14,27 @@ const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
 
+// Temp Chrome profiles: removed on exit so probe runs do not pile up in the OS temp dir.
+const _tempProfiles = [];
+function tempProfile(prefix) {
+  // A profile Chrome still held at our exit (Windows keeps child processes alive a
+  // few seconds after kill) is swept by the next run, once it is over an hour old.
+  if (!_tempProfiles.length) {
+    for (const name of fs.readdirSync(os.tmpdir())) {
+      if (!name.startsWith(prefix) || name.startsWith(`${prefix}out-`)) continue; // keep screenshot output dirs
+      const full = path.join(os.tmpdir(), name);
+      try { if (Date.now() - fs.statSync(full).mtimeMs > 3600e3) fs.rmSync(full, { recursive: true, force: true }); } catch { /* in use */ }
+    }
+  }
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  _tempProfiles.push(d);
+  return d;
+}
+process.on("exit", () => {
+  // Chrome may still be releasing its files just after kill(): retry briefly.
+  for (const d of _tempProfiles) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* best effort */ } }
+});
+
 const PORT = Number(process.env.PORT || 3117);
 const ROOT = path.join(__dirname, "..", "..", "client");
 const OUT = process.env.SHOTS_DIR || os.tmpdir();
@@ -76,7 +97,7 @@ async function main() {
   const chromePath = findChrome();
   if (!chromePath) { console.error("No Chrome found. Set CHROME_PATH."); process.exit(2); }
   const server = await startServer();
-  const chrome = spawn(chromePath, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), "bx-shot-"))}`, "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  const chrome = spawn(chromePath, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${tempProfile("bx-shot-")}`, "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   const wsBase = await new Promise((resolve) => { let b = ""; chrome.stderr.on("data", (d) => { b += d; const m = b.match(/ws:\/\/127\.0\.0\.1:(\d+)\//); if (m) resolve(`http://127.0.0.1:${m[1]}`); }); });
   const list = await (await fetch(`${wsBase}/json/list`)).json();
   const cdp = connect(list.find((t) => t.type === "page").webSocketDebuggerUrl);

@@ -8,6 +8,8 @@ import type { InMemoryTransactionStore } from "../wallet/transaction-store";
 import { type WalletAdapter, type Money, WalletDeclinedError } from "../wallet/wallet.types";
 import type { InMemoryCampaignRepository, ConsumedSpin } from "../campaigns/campaign.repository";
 import { DebitReconciler } from "../wallet/debit-reconciler";
+import type { RegulatoryService } from "../regulatory/regulatory";
+import { metrics } from "../../lib/metrics";
 
 export interface ResolverPort {
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound;
@@ -85,7 +87,9 @@ export class RoundOrchestrator {
     /** Optional so callers without free rounds (tests, tools) need not wire it. */
     private readonly campaigns?: InMemoryCampaignRepository,
     /** Lost-debit handling (in-line retry, then void + reversal); a default one if omitted. */
-    debits?: DebitReconciler
+    debits?: DebitReconciler,
+    /** Jurisdiction rules (round pacing, reality check, feature-buy switch); none = no limits. */
+    private readonly regulatory?: RegulatoryService
   ) {
     this.debits = debits ?? new DebitReconciler(wallet, transactions);
   }
@@ -117,6 +121,9 @@ export class RoundOrchestrator {
     // round that triggered the feature. See Session.locked_* for the exploit this stops.
     const featureLock = isFreeSpin ? this.featureLockFor(session) : null;
     if (!featureLock && !session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
+    // Jurisdiction gate, before anything is consumed or debited: a due reality check
+    // stops every round; pacing applies to round starts, not to a feature's free spins.
+    this.regulatory?.beforeRound(session, isFreeSpin ? "feature_spin" : "round");
 
     // Operator free round (Campaign Manager). Taken BEFORE any real-money step, and
     // never inside the engine's own feature (those spins are already free).
@@ -262,6 +269,7 @@ export class RoundOrchestrator {
     this.mgmt.assertOperatorActive(session.operator_id);
     if (session.free_spins_left > 0) throw new Error("FEATURE_IN_PROGRESS");
     if (!session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
+    this.regulatory?.beforeRound(session, "buy");
 
     const ctx = { operatorId: session.operator_id };
     const charge = Number((req.bet_amount * this.engine.buyCostMultiplier()).toFixed(2));
@@ -365,6 +373,7 @@ export class RoundOrchestrator {
     }
   ): Promise<SpinOutcome> {
     const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, featureRef, freeRound, campaign } = args;
+    metrics.rounds.inc({ kind: resolveMode === "buy" ? "buy" : isFreeSpin ? "free_spin" : freeRound ? "free_round" : "paid" });
 
     // Snapshot the exact pre-spin state BEFORE applyResult mutates the session, so
     // the verification service can deterministically replay this round later.

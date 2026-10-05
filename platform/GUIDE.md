@@ -120,13 +120,15 @@ your own wallet. Every message has the shape `{ protocol: "vault20k.embed", v: 1
 | Game → casino | `data` |
 |---|---|
 | `ready` | `game_code, currency, balance, resumed, in_feature, free_spins_left` |
-| `roundStarted` | `bet, ante, free_spin, free_round` (`buy: true` for a bought feature) |
-| `roundEnded` | `round_ref, bet, win, balance, free_spin, free_spins_left` |
+| `roundStarted` | `trace_id, bet, ante, free_spin, free_round` (`buy: true` for a bought feature). `trace_id` is the round's W3C trace, also on both ledgers' rows (§4f) |
+| `roundEnded` | `round_ref, trace_id, bet, win, balance, free_spin, free_spins_left` |
 | `balanceChanged` | `balance, currency` |
 | `featureState` | `active, free_spins_left, bonus_win` |
 | `paused` / `muted` | `paused` / `muted` (answers, and when the player toggles sound) |
 | `state` | `paused, muted, in_round, in_feature, balance, currency` (answer to `getState`) |
 | `error` | `code, message` (e.g. `INSUFFICIENT_FUNDS`, so the casino can offer a deposit) |
+| `realityCheck` | `session_started_at, elapsed_ms, rounds, wagered, won, net` (the jurisdiction reality check is on screen, see §4d) |
+| `exitRequested` | `reason` (the player chose to leave, e.g. `reality_check`: close the game; it stays paused) |
 
 | Casino → game | effect |
 |---|---|
@@ -166,6 +168,70 @@ The player gets `DEBIT_UNCONFIRMED` (502). A client retry of that round is refus
 with `ROUND_VOIDED` (409), so a round is never played while its stake is being
 refunded. The demo casino implements all of this (`voided_debits` table,
 `PlayerStore.rollback`).
+
+### 4d. Jurisdiction profiles (responsible-gambling rules)
+
+Each operator can carry a regulatory profile. Set it with `PUT /admin/v1/operators/:id/regulatory`
+(provider admins only), sending `{ "preset": "UKGC" | "MGA" | "SE" | "DEFAULT", ...overrides }`.
+`{ "preset": null }` clears it back to DEFAULT. **The presets are illustrative starting points,
+not legal advice.** The operator's compliance team must confirm every value for its licence.
+
+| Field | Enforced by | Effect |
+|---|---|---|
+| `min_round_ms` | RGS + client | A new round (a paid spin, a buy or a free round) can't start sooner than this after the player's previous one. Free spins inside a feature aren't paced. The client waits by itself; the RGS answers a too-early round with `429 SPIN_TOO_FAST` (`details.retry_after_ms`, `Retry-After`). |
+| `reality_check_minutes` | RGS + client | When the interval is up, the next round is refused with `409 REALITY_CHECK_REQUIRED` plus the session figures, until the player picks "Continue playing" (`POST /game/v1/reality-check/ack`). The client shows the check on its own timer and sends `realityCheck`; "Leave game" pauses play and sends `exitRequested`. |
+| `buy_feature_enabled` | RGS + client | `false`: buy-feature returns `403 FEATURE_BUY_DISABLED` and the button is hidden. |
+| `autoplay_enabled`, `max_autoplay_spins`, `turbo_enabled` | client | The controls are hidden in place, and the autoplay choices are capped. |
+
+The session payload carries the profile and `reality_check_due_in_ms`. The timers are kept in
+memory, so a platform restart re-arms the reality check from the session start.
+
+### 4e. Signed round-history export (player disputes)
+
+`GET /operator/v1/rounds/:roundRef/export` (HMAC-signed; only the round's own operator gets
+it, anything else is `404`) returns `{ bundle, signature }`. The bundle
+(`vault20k.round-export/v1`) contains:
+- **round:** what was played, and its effective status after any void or settle;
+- **rng:** the seed, `seed_sha256`, `bytes_drawn`, `stream_sha256` (the SHA-256 of the exact
+  bytes the round drew), the engine version and the rules hash;
+- **outcome:** the pre-spin state, the engine result and `outcome_hash`;
+- **verification:** the platform's replay verdict and hash-chain check;
+- **ledger:** the round's chain link;
+- **wallet:** every money move for the round;
+- **adjustments:** any provider void or settle.
+
+The signature is Ed25519 over the bundle's canonical JSON (keys sorted). Public keys are at
+`GET /.well-known/round-export-keys`. Anyone can check a bundle offline:
+
+```
+npx tsx scripts/verify-round-export.ts export.json --platform https://<rgs>
+```
+
+That checks the signature, the seed digest, a rebuild of the random stream from the seed, and
+the outcome hash. Keep the bundle as delivered: the outcome hash depends on the engine's key
+order. The signing key is `EXPORT_SIGNING_KEY` (an Ed25519 PKCS#8 PEM). It is required in
+staging and production, because a per-process key would leave old exports unverifiable after a
+restart. Every export is audited (`round.export`).
+
+### 4f. Observability: tracing, the money log, metrics
+
+- **W3C Trace Context.** The game client starts one trace per round and sends it as
+  `traceparent` on the spin or buy. The RGS continues it, or starts one when none arrives:
+  - it gives each request a span and echoes `traceparent` on the response;
+  - it stamps `trace_id` on its request logs and on every `wallet_transactions` row;
+  - it forwards a child span to the casino's wallet webhooks, where the demo casino stores the
+    same `trace_id` on its own ledger row.
+
+  The casino also gets `trace_id` on `roundStarted` / `roundEnded`.
+- **Structured money log.** One JSON line per wallet transaction, with `event: "wallet.tx"`:
+  type, status, amount, currency, round, idempotency key, operator tx ref and trace id.
+- **Prometheus** at `GET /metrics`, protected with `METRICS_TOKEN` when that's set:
+  - `rgs_http_requests_total` and the `rgs_http_request_duration_seconds` histogram;
+  - `rgs_wallet_webhook_duration_seconds{action,outcome}`;
+  - `rgs_db_flush_duration_seconds` (Postgres write-through; use `histogram_quantile(0.99, …)`
+    for p99);
+  - `rgs_wallet_transactions_total`, `rgs_rounds_total{kind}`;
+  - gauges: `rgs_active_sessions`, `rgs_debit_reversals_pending`, `rgs_failed_settlements_pending`.
 
 ### 4c. Free rounds over the operator API (HMAC-signed)
 

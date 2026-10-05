@@ -3793,6 +3793,52 @@ const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCou
 // to assert nothing rebuilds them mid-round). Nothing in the game reads this.
 window.__reelRenderer = reelRenderer;
 
+// ─── Canvas context loss boundary ───────────────────────────────────────────
+// Under memory pressure (low-end phones, many tabs) the browser may drop the board's
+// 2D context ("contextlost"). Without a guard the render loop keeps drawing into a
+// dead context and the board stays blank after it comes back. So: on loss, stop the
+// loop (preventDefault asks the browser to restore it); on "contextrestored", drop
+// every baked sprite / stage cache (their canvases may have been dropped too), draw
+// fresh, and, when idle in platform mode, re-read the session from the RGS so the
+// balance and free-spin counters are the server's, not whatever was on screen.
+// The round itself never depended on the canvas: the result is server-side.
+const contextGuard = { lost: 0, restored: 0 };
+function installContextLossGuard(renderer) {
+  const cvs = renderer.canvas;
+  if (!cvs?.addEventListener) return;
+  cvs.addEventListener("contextlost", (event) => {
+    event.preventDefault();
+    contextGuard.lost += 1;
+    renderer.pauseRendering();
+  });
+  cvs.addEventListener("contextrestored", () => {
+    contextGuard.restored += 1;
+    renderer.glowSprites.clear();
+    renderer.symbolSprites.clear();
+    renderer.stageCacheBack = null;
+    renderer.stageCacheFront = null;
+    renderer.resumeRendering();
+    renderer.forceDrawNow();
+    resyncAfterContextLoss();
+  });
+}
+installContextLossGuard(reelRenderer);
+
+async function resyncAfterContextLoss() {
+  if (!_platform.enabled || !_platform.sessionToken || isRoundInFlight()) return;
+  try {
+    const res = await fetch("/game/v1/session", { headers: { authorization: `Bearer ${_platform.sessionToken}` } });
+    if (!res.ok) return;
+    const body = await res.json();
+    const balance = Number(body.balance?.amount);
+    if (Number.isFinite(balance)) {
+      el.balance.textContent = fmt(balance);
+      embedBalance(balance);
+    }
+    el.freeSpins.textContent = String(Number(body.free_spins_left || 0));
+  } catch { /* offline: the next round's answer brings the server's numbers */ }
+}
+
 // ─── WIN TIERS ──────────────────────────────────────────────────────────────
 // The ONE place a win's size becomes presentation. Everything that reacts to
 // "how big was that" (big-win overlay label + colour, sound, cluster blast
@@ -4028,6 +4074,7 @@ function embedBalance(balance) {
 function embedRoundEnded(payload, bet) {
   embedEmit("roundEnded", {
     round_ref: payload?.round_ref || null,
+    trace_id: roundTrace.traceId,
     bet,
     win: Number(payload?.total_win || 0),
     balance: Number.isFinite(Number(payload?.balance_after)) ? Number(payload.balance_after) : null,
@@ -4083,6 +4130,168 @@ function embedConnect(meta) {
   });
 }
 
+// ─── W3C Trace Context (platform mode) ────────────────────────────────────────
+// One trace per round: the spin / buy request carries `traceparent`, the RGS continues
+// it into its ledger and the casino's wallet webhooks, and the casino gets the same
+// trace_id on roundStarted / roundEnded, so one player action can be followed end to
+// end. crypto.getRandomValues here is the browser's own CSPRNG: ids, never outcomes.
+const roundTrace = { traceId: null };
+function hexId(bytes) {
+  const b = new Uint8Array(bytes);
+  window.crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+function startRoundTrace() {
+  roundTrace.traceId = hexId(16);
+  return roundTrace.traceId;
+}
+/** traceparent for a request in the current round's trace (a new span each call). */
+function roundTraceparent() {
+  return `00-${roundTrace.traceId || startRoundTrace()}-${hexId(8)}-01`;
+}
+
+/** An RGS error as an Error carrying its code and machine-readable details. */
+function platformError(body, status, fallback) {
+  const code = body?.error?.code || `HTTP_${status}`;
+  const err = new Error(`${code}: ${body?.error?.message || fallback}`);
+  err.code = code;
+  err.details = body?.error?.details || null;
+  return err;
+}
+
+// ─── Jurisdiction rules (platform mode; the session's `regulatory` block) ──────
+// The RGS enforces round pacing, the reality check and the feature-buy switch
+// itself (SPIN_TOO_FAST / REALITY_CHECK_REQUIRED / FEATURE_BUY_DISABLED). The client
+// mirrors them so the player never hits those errors in normal play, and applies the
+// switches only it can: autoplay (and its cap) and turbo. Switched-off controls are
+// hidden in place (.is-reg-off), so the layout never moves.
+const regulatory = {
+  rules: null,
+  lastRoundStart: -Infinity, // performance.now() of the last round this client started
+  due: false,                // the reality check is due (timer fired or the RGS said so)
+  timer: null,
+  prompt: null               // the open prompt's promise, so concurrent callers share it
+};
+
+function regRule(name, fallback) {
+  const v = regulatory.rules?.[name];
+  return v === undefined || v === null ? fallback : v;
+}
+
+function hideForRegulation(node, off) {
+  if (!node) return;
+  node.classList.toggle("is-reg-off", off);
+  if (off) node.setAttribute("aria-hidden", "true");
+  else node.removeAttribute("aria-hidden");
+}
+
+function applyRegulatory(rules) {
+  regulatory.rules = rules || null;
+  if (!rules) return;
+  const autoplayOff = !regRule("autoplay_enabled", true);
+  hideForRegulation(el.autoplayBtn, autoplayOff);
+  const cap = regRule("max_autoplay_spins", null);
+  el.autoplayPopover?.querySelectorAll("button[data-autoplay]").forEach((btn) => {
+    const n = btn.dataset.autoplay === "inf" ? Infinity : Number(btn.dataset.autoplay);
+    btn.hidden = cap !== null && n > cap;
+  });
+  if (!regRule("turbo_enabled", true)) {
+    if (state.turbo) setTurbo(false);
+    hideForRegulation(el.turboBtn, true);
+  }
+  hideForRegulation(el.buyFreeBtn, !regRule("buy_feature_enabled", true));
+  scheduleRealityCheck(rules.reality_check_due_in_ms);
+}
+
+function scheduleRealityCheck(dueInMs) {
+  clearTimeout(regulatory.timer);
+  if (dueInMs === null || dueInMs === undefined) return;
+  regulatory.timer = setTimeout(() => {
+    regulatory.due = true;
+    // Idle: show it now. Mid-round: the next round start shows it (realityCheckGate).
+    if (!isRoundInFlight()) realityCheckGate();
+  }, Math.max(0, dueInMs));
+}
+
+function fmtDuration(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(m / 60);
+  return h ? `${h} h ${m % 60} min` : `${m} min`;
+}
+
+/**
+ * Show the reality check and wait for the player. Resolves true when they chose to
+ * continue (the RGS has acknowledged it), false when they left (the game pauses and
+ * the casino is asked to close it). `stats`: from REALITY_CHECK_REQUIRED, else fetched.
+ */
+function realityCheckPrompt(stats) {
+  if (regulatory.prompt) return regulatory.prompt;
+  regulatory.prompt = (async () => {
+    let figures = stats;
+    if (!figures) {
+      try {
+        const res = await fetch("/game/v1/reality-check", { headers: { authorization: `Bearer ${_platform.sessionToken}` } });
+        figures = (await res.json()).stats || {};
+      } catch { figures = {}; }
+    }
+    const modal = document.getElementById("realityCheck");
+    const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+    set("realityElapsed", fmtDuration(Number(figures.elapsed_ms || 0)));
+    set("realityRounds", String(figures.rounds ?? 0));
+    set("realityWagered", fmt(Number(figures.wagered || 0)));
+    set("realityWon", fmt(Number(figures.won || 0)));
+    set("realityNet", fmt(Number(figures.net || 0)));
+    if (state.autoplayActive) stopAutoplay();
+    embedEmit("realityCheck", { ...figures });
+    modal.hidden = false;
+    document.getElementById("realityContinue")?.focus();
+    const choice = await new Promise((resolve) => {
+      const cont = document.getElementById("realityContinue");
+      const leave = document.getElementById("realityLeave");
+      const done = (v) => { cont.onclick = null; leave.onclick = null; resolve(v); };
+      cont.onclick = () => done(true);
+      leave.onclick = () => done(false);
+    });
+    modal.hidden = true;
+    if (!choice) {
+      state.embedPaused = true;
+      pushGameMessage("Session paused after the reality check.", "info");
+      embedEmit("exitRequested", { reason: "reality_check" });
+      return false;
+    }
+    try {
+      const res = await fetch("/game/v1/reality-check/ack", { method: "POST", headers: { authorization: `Bearer ${_platform.sessionToken}` } });
+      const ack = await res.json();
+      regulatory.due = false;
+      scheduleRealityCheck(ack.next_due_in_ms);
+    } catch { /* the RGS still enforces it: the next round asks again */ }
+    return true;
+  })().finally(() => { regulatory.prompt = null; });
+  return regulatory.prompt;
+}
+
+/** Before a round: a due reality check first. False = the player left. */
+async function realityCheckGate(stats) {
+  if (!_platform.enabled || !regulatory.rules) return true;
+  if (!regulatory.due && !stats) return true;
+  return realityCheckPrompt(stats);
+}
+
+/**
+ * Before a new round (not a feature's free spin): keep the jurisdiction's pace. The
+ * gap is measured from when the RGS ANSWERED the previous round (roundAnswered), not
+ * from when we sent it: the RGS times a round from its arrival, which is always before
+ * its answer, so this can never undercut the RGS's gap whatever the network jitter.
+ */
+async function paceRound() {
+  const min = Number(regRule("min_round_ms", 0));
+  const wait = min - (performance.now() - regulatory.lastRoundStart);
+  if (min > 0 && wait > 0) await sleep(wait);
+}
+function roundAnswered() {
+  regulatory.lastRoundStart = performance.now();
+}
+
 // The session token of THIS launch, kept per tab so a page reload resumes the same
 // RGS session: the launch token in the URL is a 60s handoff and is usually expired
 // by the time a player refreshes. Keyed by the launch token, so a fresh launch from
@@ -4116,9 +4325,7 @@ async function platformInitSession() {
     });
     body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const code = body?.error?.code || `HTTP_${res.status}`;
-      const msg = body?.error?.message || "session init failed";
-      throw new Error(`${code}: ${msg}`);
+      throw platformError(body, res.status, "session init failed");
     }
   }
   _platform.sessionToken = body.session_token;
@@ -4159,7 +4366,8 @@ async function platformSpin(payload) {
     headers: {
       authorization: `Bearer ${_platform.sessionToken}`,
       "content-type": "application/json",
-      "idempotency-key": idem
+      "idempotency-key": idem,
+      traceparent: roundTraceparent()
     },
     body: JSON.stringify({
       bet_amount: Number(payload?.bet_amount),
@@ -4168,9 +4376,7 @@ async function platformSpin(payload) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const code = body?.error?.code || `HTTP_${res.status}`;
-    const msg = body?.error?.message || "spin failed";
-    throw new Error(`${code}: ${msg}`);
+    throw platformError(body, res.status, "spin failed");
   }
   // The platform returns the full SpinResult + money fields. Adapt the few
   // engine-shaped fields the client UI relies on.
@@ -4196,15 +4402,14 @@ async function platformBuyFeature(payload) {
     headers: {
       authorization: `Bearer ${_platform.sessionToken}`,
       "content-type": "application/json",
-      "idempotency-key": idem
+      "idempotency-key": idem,
+      traceparent: roundTraceparent()
     },
     body: JSON.stringify({ bet_amount: Number(payload?.bet_amount) })
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const code = body?.error?.code || `HTTP_${res.status}`;
-    const msg = body?.error?.message || "buy feature failed";
-    throw new Error(`${code}: ${msg}`);
+    throw platformError(body, res.status, "buy feature failed");
   }
   return {
     ...body,
@@ -5824,7 +6029,12 @@ async function spin(options = {}) {
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
+    if (_platform.enabled && regulatory.rules) {
+      if (!(await realityCheckGate())) return undefined; // the player left
+      if (Number(el.freeSpins.textContent || 0) === 0) await paceRound();
+    }
     embedEmit("roundStarted", {
+      trace_id: startRoundTrace(),
       bet,
       ante: Boolean(el.anteToggle.checked),
       free_spin: Number(el.freeSpins.textContent || 0) > 0,
@@ -5845,6 +6055,7 @@ async function spin(options = {}) {
         : undefined
     });
     rememberFeatureTerms(payload, bet, Boolean(el.anteToggle.checked));
+    if (!payload?.is_free_spin) roundAnswered();
     // Diagnostic: confirm each spin produces a unique id and a fresh first matrix.
     try {
       const firstMatrix = payload?.tumble_steps?.[0]?.matrix || payload?.matrix || [];
@@ -5880,6 +6091,17 @@ async function spin(options = {}) {
     return payload;
   } catch (err) {
     reelRenderer.setBoard(randomMatrix());
+    if (err.code === "REALITY_CHECK_REQUIRED") {
+      // The RGS's backstop (e.g. the client timer drifted): show it, no error.
+      regulatory.due = true;
+      await realityCheckPrompt(err.details);
+      return undefined;
+    }
+    if (err.code === "SPIN_TOO_FAST") {
+      roundAnswered();
+      pushGameMessage("Please wait a moment before the next round.", "info");
+      return undefined;
+    }
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Spin error: ${err.message}`, "error");
     embedError(err);
@@ -5939,7 +6161,8 @@ async function autoplayBonus() {
 }
 
 function setTurbo(on) {
-  state.turbo = Boolean(on);
+  // A jurisdiction without turbo: it stays off however it is asked for (button, hold).
+  state.turbo = Boolean(on) && regRule("turbo_enabled", true);
   window.Sound?.play("turbo_toggle", { on: state.turbo });
   if (el.turboBtn) {
     el.turboBtn.classList.toggle("is-active", state.turbo);
@@ -5968,6 +6191,10 @@ function updateAutoplayUi() {
 // (it runs the bonus autoplay, then returns and we continue).
 async function startAutoplay(count) {
   if (state.autoplayActive || state.bonusAutoplay || !state.sessionId || state.embedPaused) return;
+  if (!regRule("autoplay_enabled", true)) return;
+  const cap = regRule("max_autoplay_spins", null);
+  if (cap !== null) count = Math.min(count, cap);
+  if (!(count > 0)) return;
   // Dismiss the picker on any outcome, including the refusal below — leaving it
   // open after a choice was made reads as a dead control.
   el.autoplayPopover?.classList.add("hidden");
@@ -6022,6 +6249,7 @@ function bindFooterMirror() {
 
 async function buyFreeSpins() {
   if (!state.sessionId || state.bonusAutoplay || state.embedPaused) return;
+  if (!regRule("buy_feature_enabled", true)) return;
   if (el.anteToggle.checked) return;
   const bet = Number(el.betSelect.value || 1);
   const costMultiplier = Number(state.rules?.features?.buy_free_spins?.cost_multiplier || 100);
@@ -6037,9 +6265,14 @@ async function buyFreeSpins() {
   setControls(true);
   try {
     pulseBanner("Buying Free Spins...", "bonus", 900);
-    embedEmit("roundStarted", { bet, ante: false, free_spin: false, free_round: false, buy: true });
+    if (_platform.enabled && regulatory.rules) {
+      if (!(await realityCheckGate())) return;
+      await paceRound();
+    }
+    embedEmit("roundStarted", { trace_id: startRoundTrace(), bet, ante: false, free_spin: false, free_round: false, buy: true });
     const payload = await api("/api/v1/buy-free-spins", { session_id: state.sessionId, bet_amount: bet });
     rememberFeatureTerms(payload, bet, false);
+    roundAnswered();
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
     await animateRound(payload, bet, Number(payload.buy_cost || 0));
     embedRoundEnded(payload, bet);
@@ -6302,6 +6535,7 @@ async function initSession() {
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
   state.lastBalance = Number(payload.balance);
   if (_platform.enabled) {
+    applyRegulatory(_platform.sessionMeta?.regulatory);
     embedConnect(_platform.sessionMeta);
     window.EmbedBridge?.ready({
       game_code: state.gameId,

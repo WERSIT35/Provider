@@ -40,6 +40,8 @@ export interface PlayerTransaction {
   operatorTxRef: string;
   reversesTxRef: string | null;
   balanceAfter: number;
+  /** W3C trace id the provider sent with the webhook (traceparent), if any. */
+  traceId: string | null;
   createdAt: string;
 }
 
@@ -101,6 +103,8 @@ export interface MoneyMoveMeta {
   roundType?: string;
   campaignId?: string;
   featureRef?: string;
+  /** From the webhook's W3C traceparent header. */
+  traceId?: string;
 }
 
 interface MoneyMove extends MoneyMoveMeta {
@@ -119,7 +123,7 @@ interface TxRow {
   seq: number; id: string; provider_id: string; player_id: string; kind: TxType; tx_type: LedgerTxType;
   amount_minor: number; currency: string; round_ref: string; game_code: string | null; round_type: RoundType | null;
   campaign_id: string | null; feature_ref: string | null; idempotency_key: string; operator_tx_ref: string;
-  reverses_tx_ref: string | null; balance_after_minor: number; created_at: string;
+  reverses_tx_ref: string | null; balance_after_minor: number; trace_id: string | null; created_at: string;
 }
 
 const toPlayer = (r: PlayerRow): Player => ({
@@ -130,7 +134,7 @@ const toTx = (r: TxRow): PlayerTransaction => ({
   amount: toMajor(r.amount_minor), currency: r.currency, roundRef: r.round_ref, gameCode: r.game_code,
   roundType: r.round_type, campaignId: r.campaign_id, featureRef: r.feature_ref ?? null, idempotencyKey: r.idempotency_key,
   operatorTxRef: r.operator_tx_ref, reversesTxRef: r.reverses_tx_ref, balanceAfter: toMajor(r.balance_after_minor),
-  createdAt: r.created_at
+  traceId: r.trace_id ?? null, createdAt: r.created_at
 });
 
 export class PlayerStore {
@@ -260,6 +264,7 @@ export class PlayerStore {
     operatorPlayerId?: string;
     /** Ignored: a rollback always takes its amount and currency from the debit it reverses. */
     currency?: string;
+    traceId?: string;
   }): AppliedResult & { voided?: boolean } {
     const providerId = args.providerId ?? DEFAULT_PROVIDER;
     return inTransaction(this.db, () => {
@@ -300,7 +305,8 @@ export class PlayerStore {
         providerId, playerId: original.player_id, kind: "rollback", txType: "ROLLBACK",
         amountMinor: original.amount_minor, currency: original.currency, roundRef: args.roundRef,
         gameCode: original.game_code, roundType: original.round_type, campaignId: original.campaign_id,
-        featureRef: original.feature_ref ?? null, idempotencyKey: args.idempotencyKey, reversesTxRef: original.operator_tx_ref, balanceAfterMinor: balanceAfter
+        featureRef: original.feature_ref ?? null, idempotencyKey: args.idempotencyKey, reversesTxRef: original.operator_tx_ref, balanceAfterMinor: balanceAfter,
+        traceId: args.traceId ?? null
       });
     });
   }
@@ -326,7 +332,7 @@ export class PlayerStore {
         roundType: args.roundType && ROUND_TYPES.has(args.roundType) ? (args.roundType as RoundType) : null,
         campaignId: args.campaignId ?? null, featureRef: args.featureRef ?? null,
         idempotencyKey: args.idempotencyKey, reversesTxRef: null,
-        balanceAfterMinor: balanceAfter
+        balanceAfterMinor: balanceAfter, traceId: args.traceId ?? null
       });
     });
   }
@@ -354,16 +360,17 @@ export class PlayerStore {
     providerId: string; playerId: string; kind: TxType; txType: LedgerTxType; amountMinor: number; currency: string;
     roundRef: string; gameCode: string | null; roundType: RoundType | null; campaignId: string | null;
     featureRef: string | null; idempotencyKey: string; reversesTxRef: string | null; balanceAfterMinor: number;
+    traceId?: string | null;
   }): AppliedResult {
     const operatorTxRef = `dop_${randomUUID()}`;
     this.db.prepare(`
       INSERT INTO wallet_transactions
         (id, provider_id, player_id, kind, tx_type, amount_minor, currency, round_ref, game_code, round_type,
-         campaign_id, feature_ref, idempotency_key, operator_tx_ref, reverses_tx_ref, balance_after_minor, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+         campaign_id, feature_ref, idempotency_key, operator_tx_ref, reverses_tx_ref, balance_after_minor, trace_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       randomUUID(), t.providerId, t.playerId, t.kind, t.txType, t.amountMinor, t.currency, t.roundRef, t.gameCode,
       t.roundType, t.campaignId, t.featureRef, t.idempotencyKey, operatorTxRef, t.reversesTxRef, t.balanceAfterMinor,
-      new Date().toISOString()
+      t.traceId ?? null, new Date().toISOString()
     );
     return { operatorTxRef, balanceAfter: toMajor(t.balanceAfterMinor) };
   }

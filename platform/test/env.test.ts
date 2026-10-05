@@ -7,6 +7,8 @@ const prodBase = {
   LAUNCH_TOKEN_SECRET: "prod-launch-secret-123",
   SESSION_TOKEN_SECRET: "prod-session-secret-123",
   ADMIN_TOKEN_SECRET: "prod-admin-secret-123",
+  // Presence is all loadEnv checks; the real key is a PEM supplied by the deployment.
+  EXPORT_SIGNING_KEY: "configured",
   BOOTSTRAP_ADMIN_PASSWORD: "prod-admin-password-123"
 };
 
@@ -40,6 +42,12 @@ describe("environment config", () => {
   it("requires durable persistence in production", () => {
     const { DATABASE_URL: _databaseUrl, ...withoutDb } = prodBase;
     expect(() => loadEnv(withoutDb)).toThrow(/DATABASE_URL/);
+  });
+
+  it("requires a persistent round-export signing key in production", () => {
+    const { EXPORT_SIGNING_KEY: _key, ...withoutKey } = prodBase;
+    expect(() => loadEnv(withoutKey)).toThrow(/EXPORT_SIGNING_KEY/);
+    expect(loadEnv({ NODE_ENV: "local" }).EXPORT_SIGNING_KEY).toBeUndefined();
   });
 
   it("keeps admin TOTP mandatory in production", () => {

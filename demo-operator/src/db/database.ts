@@ -110,6 +110,13 @@ const MIGRATIONS: string[] = [
   BEGIN SELECT RAISE(ABORT, 'voided_debits is append-only'); END;
   CREATE TRIGGER voided_debits_no_delete BEFORE DELETE ON voided_debits
   BEGIN SELECT RAISE(ABORT, 'voided_debits is append-only'); END;
+  `,
+  // 4 — W3C trace id of the provider request that made the move (the webhook's
+  // `traceparent`), so one player action can be followed from the game through the
+  // provider's ledger into ours. NULL on older rows and on calls sent without it.
+  `
+  ALTER TABLE wallet_transactions ADD COLUMN trace_id TEXT;
+  CREATE INDEX ix_tx_trace ON wallet_transactions (trace_id) WHERE trace_id IS NOT NULL;
   `
 ];
 

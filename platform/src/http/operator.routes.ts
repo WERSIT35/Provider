@@ -161,6 +161,29 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Signed round-history export for a dispute (src/modules/rounds/round-export.service.ts).
+  // Only the round's own operator gets it; anything else is indistinguishable from a
+  // missing round.
+  app.get("/operator/v1/rounds/:roundRef/export", { preHandler: auth }, async (req, reply) => {
+    const { roundRef } = req.params as { roundRef: string };
+    const out = app.container.roundExport.export(roundRef, req.operatorId as string);
+    if (!out) return reply.code(404).send(envelope("ROUND_NOT_FOUND", "no such round", req.id));
+    app.container.auditRepo.append({
+      operator_id: req.operatorId as string,
+      actor_type: "operator",
+      actor_id: req.apiKeyId as string,
+      action: "round.export",
+      target_type: "round",
+      target_id: roundRef
+    });
+    return out;
+  });
+
+  // Public keys that verify round exports (public by design; no auth).
+  app.get("/.well-known/round-export-keys", async () => ({
+    keys: [{ key_id: app.container.exportSigner.keyId, alg: "Ed25519", public_key_pem: app.container.exportSigner.publicKeyPem }]
+  }));
+
   // A player's open free rounds with this operator (active grants, soonest expiry first).
   app.get("/operator/v1/free-rounds/player/:operatorPlayerId", { preHandler: auth }, async (req) => {
     const { operatorPlayerId } = req.params as { operatorPlayerId: string };

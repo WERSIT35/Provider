@@ -8,14 +8,18 @@
 //
 // Game → casino
 //   ready           { game_code, currency, balance, resumed, in_feature, free_spins_left }
-//   roundStarted    { bet, ante, free_spin, free_round }
-//   roundEnded      { round_ref, bet, win, balance, free_spin, free_spins_left }
+//   roundStarted    { trace_id, bet, ante, free_spin, free_round }   (trace_id: the round's W3C trace)
+//   roundEnded      { round_ref, trace_id, bet, win, balance, free_spin, free_spins_left }
 //   balanceChanged  { balance, currency }
 //   featureState    { active, free_spins_left, bonus_win }
 //   paused          { paused }       (answer to pause / resume)
 //   muted           { muted }        (answer to setMuted, and when the player toggles sound)
 //   state           { paused, muted, in_round, in_feature, balance, currency }  (answer to getState)
 //   error           { code, message }
+//   realityCheck    { session_started_at, elapsed_ms, rounds, wagered, won, net }  (the
+//                   jurisdiction's reality check is on screen; play waits for the player)
+//   exitRequested   { reason }       (the player chose to leave, e.g. "reality_check":
+//                   close the game; it stays paused until then)
 //
 // Casino → game
 //   hello                   handshake; needed only when the game cannot see the parent's
