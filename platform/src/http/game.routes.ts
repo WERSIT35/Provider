@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { gameBearerAuth } from "./auth";
 import { envelope, sendDomainError } from "./errors";
 import { signToken } from "../lib/tokens";
+import type { Session } from "../modules/session/session.service";
 
 interface SpinBody {
   bet_amount?: number;
@@ -20,44 +21,104 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(401).send(envelope("UNAUTHORIZED", "launch token required", req.id));
     }
     try {
-      const session = app.container.sessions.initSession(auth.slice(7));
+      const { session, resumed } = app.container.sessions.initSessionDetailed(auth.slice(7));
       const sessionToken = signToken(
         app.container.config.sessionSecret,
         { session_id: session.id, operator_id: session.operator_id },
         3600
       );
-      const balance = await app.container.wallet.balance(
-        { operatorId: session.operator_id },
-        { operatorPlayerId: session.operator_player_id, currency: session.currency }
-      );
-      return {
-        session_token: sessionToken,
-        session_id: session.id,
-        currency: session.currency,
-        allowed_bets: session.allowed_bets,
-        balance,
-        free_spins_left: session.free_spins_left,
-        // Operator-granted free rounds waiting for this player (Campaign Manager).
-        free_rounds: app.container.campaigns
-          .available({
-            operator_id: session.operator_id,
-            operator_player_id: session.operator_player_id,
-            game_id: session.game_id,
-            currency: session.currency
-          })
-          .map(({ grant, campaign }) => ({
-            campaign_id: campaign.id,
-            name: campaign.name,
-            bet_amount: campaign.bet_amount,
-            spins_remaining: grant.spins_remaining,
-            valid_to: campaign.valid_to
-          })),
-        game: { code: session.game_code, math_config_id: session.math_config_id }
-      };
+      return { session_token: sessionToken, ...(await sessionState(session, resumed)) };
     } catch (err) {
       return sendDomainError(reply, err, req.id);
     }
   });
+
+  // Reload without a launch token: the client keeps its session token and asks for
+  // the session's current state (the launch token is a 60s handoff and is usually
+  // expired by the time a player refreshes). Opens nothing new.
+  app.get("/game/v1/session", { preHandler: bearer }, async (req, reply) => {
+    try {
+      const session = app.container.sessions.get(req.sessionId as string);
+      return await sessionState(session, true);
+    } catch (err) {
+      return sendDomainError(reply, err, req.id);
+    }
+  });
+
+  /**
+   * Everything the client needs to put the player back where they were: balance,
+   * free rounds, and `resume` — the bet + ante to show and any unfinished feature.
+   * Inside a feature the bet/ante are the LOCKED terms (the server plays them
+   * whatever the client sends). Otherwise they are the player's last cash round in
+   * this game and currency (any session; a free round's bet was the casino's, so it is skipped),
+   * when that bet is still allowed. null bet = nothing to restore.
+   */
+  async function sessionState(session: Session, resumed: boolean) {
+    const balance = await app.container.wallet.balance(
+      { operatorId: session.operator_id },
+      { operatorPlayerId: session.operator_player_id, currency: session.currency }
+    );
+    const inFeature = session.free_spins_left > 0;
+    let bet: number | null = null;
+    let ante = false;
+    if (inFeature && session.locked_bet != null) {
+      bet = session.locked_bet;
+      ante = Boolean(session.locked_ante);
+    } else {
+      // Same game AND currency: a 10.00 GEL bet is not a 10.00 EUR bet.
+      const last = app.container.reporting
+        .listRoundsByPlayer(session.operator_id, session.operator_player_id)
+        .find(
+          (r) =>
+            !r.is_free_spin &&
+            !r.campaign_id &&
+            (r.pre_state?.game_code ?? session.game_code) === session.game_code &&
+            app.container.sessions.tryGet(r.session_id)?.currency === session.currency
+        );
+      if (last && session.allowed_bets.includes(last.bet_amount)) {
+        bet = last.bet_amount;
+        ante = last.ante_enabled;
+      }
+    }
+    return {
+      session_id: session.id,
+      currency: session.currency,
+      allowed_bets: session.allowed_bets,
+      balance,
+      free_spins_left: session.free_spins_left,
+      resume: {
+        resumed,
+        bet_amount: bet,
+        ante_enabled: ante,
+        feature: inFeature
+          ? {
+              free_spins_left: session.free_spins_left,
+              locked_bet: session.locked_bet,
+              locked_ante: session.locked_ante,
+              feature_ref: session.locked_feature_ref ?? null,
+              multiplier_bank: session.free_spin_multiplier_carry,
+              bonus_round_win: session.bonus_round_win ?? 0
+            }
+          : null
+      },
+      // Operator-granted free rounds waiting for this player (Campaign Manager).
+      free_rounds: app.container.campaigns
+        .available({
+          operator_id: session.operator_id,
+          operator_player_id: session.operator_player_id,
+          game_id: session.game_id,
+          currency: session.currency
+        })
+        .map(({ grant, campaign }) => ({
+          campaign_id: campaign.id,
+          name: campaign.name,
+          bet_amount: campaign.bet_amount,
+          spins_remaining: grant.spins_remaining,
+          valid_to: campaign.valid_to
+        })),
+      game: { code: session.game_code, math_config_id: session.math_config_id }
+    };
+  }
 
   app.post("/game/v1/spin", { preHandler: bearer }, async (req, reply) => {
     const idem = req.headers["idempotency-key"];

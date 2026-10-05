@@ -4106,22 +4106,54 @@ function freeRoundsReadoutText() {
   return freeRounds.active && freeRounds.queue.length ? String(freeRounds.remaining) : null;
 }
 
+// The session token of THIS launch, kept per tab so a page reload resumes the same
+// RGS session: the launch token in the URL is a 60s handoff and is usually expired
+// by the time a player refreshes. Keyed by the launch token, so a fresh launch from
+// the casino starts clean (the RGS still resumes an unfinished feature for it).
+const platformTokenKey = () => `vx.platformSession:${_platform.launchToken}`;
+function platformSavedToken() {
+  try { return sessionStorage.getItem(platformTokenKey()); } catch { return null; }
+}
+function platformSaveToken(token) {
+  try {
+    if (token) sessionStorage.setItem(platformTokenKey(), token);
+    else sessionStorage.removeItem(platformTokenKey());
+  } catch { /* storage unavailable: a reload falls back to the launch token */ }
+}
+
 async function platformInitSession() {
-  const res = await fetch("/game/v1/session/init", {
-    method: "POST",
-    headers: { authorization: `Bearer ${_platform.launchToken}` }
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const code = body?.error?.code || `HTTP_${res.status}`;
-    const msg = body?.error?.message || "session init failed";
-    throw new Error(`${code}: ${msg}`);
+  let body = null;
+  const saved = platformSavedToken();
+  if (saved) {
+    // Reload: read the existing session's state; opens nothing new.
+    try {
+      const res = await fetch("/game/v1/session", { headers: { authorization: `Bearer ${saved}` } });
+      if (res.ok) body = { ...(await res.json()), session_token: saved };
+      else platformSaveToken(null); // expired or closed: start over from the launch token
+    } catch { /* network: fall back to the launch token below */ }
+  }
+  if (!body) {
+    const res = await fetch("/game/v1/session/init", {
+      method: "POST",
+      headers: { authorization: `Bearer ${_platform.launchToken}` }
+    });
+    body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const code = body?.error?.code || `HTTP_${res.status}`;
+      const msg = body?.error?.message || "session init failed";
+      throw new Error(`${code}: ${msg}`);
+    }
   }
   _platform.sessionToken = body.session_token;
   _platform.sessionMeta = body;
+  platformSaveToken(body.session_token);
   freeRoundsLoad(body.free_rounds, body.free_spins_left);
   // Adapt the platform response to the shape the local engine returns so the
-  // rest of the client (initSession()) needs no changes.
+  // rest of the client (initSession()) needs no changes. `resume` is the RGS's
+  // record of where the player was: the bet + ante to show (the locked terms
+  // inside a feature) and any unfinished feature's bank and running win.
+  const resume = body.resume || {};
+  const feature = resume.feature || null;
   return {
     session_id: body.session_id,
     currency: body.currency,
@@ -4130,9 +4162,10 @@ async function platformInitSession() {
     balance: Number(body.balance?.amount ?? 0),
     allowed_bets: body.allowed_bets || [],
     free_spins_left: Number(body.free_spins_left || 0),
-    free_spin_multiplier_current: 0,
-    bonus_round_win: 0,
-    ante_enabled: false,
+    free_spin_multiplier_current: Number(feature?.multiplier_bank || 0),
+    bonus_round_win: Number(feature?.bonus_round_win || 0),
+    bet_amount: resume.bet_amount ?? null,
+    ante_enabled: Boolean(resume.ante_enabled),
     crazy_mode: false
   };
 }
@@ -6174,12 +6207,20 @@ async function initSession() {
     option.textContent = fmt(b);
     el.betSelect.appendChild(option);
   });
-  el.betSelect.value = "1";
-  el.betView.textContent = "1.00";
-  if (el.betDisplay) el.betDisplay.textContent = "1.00";
-  renderPaytable(1);
+  // Start on the bet the server says the player was on (the locked bet inside a
+  // feature, else their last bet in this game); 1.00 only when there is none.
+  const allowedBets = (payload.allowed_bets || []).map(Number);
+  const restoredBet = Number(payload.bet_amount);
+  const startBet = allowedBets.includes(restoredBet) ? restoredBet : (allowedBets.includes(1) || !allowedBets.length ? 1 : allowedBets[0]);
+  el.betSelect.value = String(startBet);
+  el.betView.textContent = fmt(startBet);
+  if (el.betDisplay) el.betDisplay.textContent = fmt(startBet);
+  renderPaytable(startBet);
   const pendingFreeSpins = Number(payload.free_spins_left || 0);
   if (pendingFreeSpins > 0) {
+    // Mid-feature: the bet and ante are the feature's locked terms. Lock the
+    // controls now, before the resume screen, not only once the autoplay starts.
+    setControls(true);
     el.freeSpins.textContent = String(pendingFreeSpins);
     state.bonusMultiplierCarry = Number.isFinite(Number(payload.free_spin_multiplier_current))
       ? Number(payload.free_spin_multiplier_current)

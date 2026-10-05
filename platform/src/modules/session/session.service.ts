@@ -108,10 +108,36 @@ export class SessionService {
 
   /** Client-side: exchange a launch token for a session. */
   initSession(launchToken: string): Session {
+    return this.initSessionDetailed(launchToken).session;
+  }
+
+  /**
+   * Exchange a launch token for a session, RESUMING an unfinished feature: if this
+   * player already has an active session for the same operator, game and currency
+   * with free spins left (a reload or relaunch mid-bonus), that session is returned
+   * unchanged — its free spins, feature lock (bet, ante, campaign, feature_ref),
+   * multiplier bank, bonus total and math config included — instead of opening a
+   * fresh one and stranding the bonus the player already paid for. Otherwise a new
+   * session is opened.
+   */
+  initSessionDetailed(launchToken: string): { session: Session; resumed: boolean } {
     const claims = verifyToken(this.launchSecret, launchToken) as unknown as LaunchRequest;
     this.mgmt.assertOperatorActive(claims.operator_id);
     const og = this.mgmt.findOperatorGame(claims.operator_id, claims.game_code, claims.currency);
     if (!og) throw new Error("GAME_NOT_ASSIGNED");
+
+    const unfinished = Array.from(this.sessions.values())
+      .filter(
+        (s) =>
+          s.status === "active" &&
+          s.free_spins_left > 0 &&
+          s.operator_id === claims.operator_id &&
+          s.operator_player_id === claims.operator_player_id &&
+          s.game_code === claims.game_code &&
+          s.currency === claims.currency
+      )
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (unfinished) return { session: { ...unfinished }, resumed: true };
 
     const session: Session = {
       id: randomUUID(),
@@ -131,7 +157,7 @@ export class SessionService {
     };
     this.sessions.set(session.id, session);
     this.persistence.save("player_sessions", session);
-    return { ...session };
+    return { session: { ...session }, resumed: false };
   }
 
   get(sessionId: string): Session {
