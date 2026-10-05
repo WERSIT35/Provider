@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Game | **Vault 20K** by Lumina Games (internal game code `bananax`) |
-| RTP profile | `bananax` — declared base **96.38%**, ante bet **96.59%**, buy feature **96.38%** |
+| RTP profile | `bananax` — declared base **96.38%**, ante bet **96.70%**, buy feature **96.38%** |
 | Engine | `client/engine/*.js`, `ENGINE_VERSION` **1.2.0** |
-| Rules payload | `client/math/game-rules-v2.json`, rules version **3.1.0** |
-| Rules hash | `0191487197d242dd89bf61516b89c4a89f1760d9a586d9f2860049d14ac69c22` (SHA-256, canonical JSON) |
+| Rules payload | `client/math/game-rules-v2.json`, rules version **3.2.0** |
+| Rules hash | `148fd6a8a2416ca64900509b6f49ea2b7dc02b89749b766258585eba172a95f6` (SHA-256, canonical JSON) |
 | Simulation tool | `tools/rtp-parity.js` (seeded, sharded Monte Carlo over the production engine files) |
 | Report date | 2026-10-05 |
 | Raw data | `qa/data/rtp-certification/*.json` (one file per run, includes the win distribution) |
@@ -16,16 +16,16 @@
 | Mode | Samples | Measured RTP | 95% CI | Declared | Δ (SE) | Verdict |
 |---|---|---|---|---|---|---|
 | Base game | 30,000,000 paid rounds | **96.535%** | 96.138 – 96.932 | 96.38 | +0.15 (0.76) | PASS |
-| Ante bet (1.25x) | 30,000,000 paid rounds | **96.935%** | 96.541 – 97.329 | 96.59 | +0.35 (1.72) | PASS |
+| Ante bet (1.25x) | 30,000,000 paid rounds | **96.935%** | 96.541 – 97.329 | 96.70 | +0.24 (1.17) | PASS |
 | Buy feature (100x) | 30,000,000 purchases | **96.407%** | 96.357 – 96.457 | 96.38 | +0.03 (1.04) | PASS |
 
 Independent confirmation on a second seed (`cert-independent`, 200M paid rounds each):
 base **96.333%** (95% CI 96.179 – 96.487), ante **96.665%** (95% CI 96.518 – 96.813).
 
-Pooled over both seeds: base **96.359% ± 0.073**, ante **96.698% ± 0.070**.
+Pooled over both seeds: base **96.359% ± 0.073**, ante **96.698% ± 0.070** (z = −0.03 vs the 96.70 declaration).
 
 All three modes meet their declared RTP under the acceptance rule (|Δ| ≤ 3 SE, SE ≤ 0.25%).
-The ante bet is declared at 96.59%; its pooled measurement is 0.11 points higher (see §7).
+The ante bet is declared at 96.70%, its pooled measurement rounded to two decimals (§7, O1).
 
 ## 2. Game configuration under test
 
@@ -48,7 +48,8 @@ Winning symbols are removed and the board tumbles (refills from above) until no 
 Paytable values are in multiples of the bet **before** the profile scaler. Scatter tiers are
 lower bounds: a count pays the highest tier it reaches, so 7 or more scatters pay the 6+ tier.
 Cluster and scatter wins are multiplied by `payout_scaler` **0.9807** on paid spins and by
-`free_spin_payout_scaler` **3.8058** on free spins.
+`free_spin_payout_scaler` **3.8058** on free spins. The in-game paytable shows these scaled
+pays (§7, O2); the per-profile reports for `bananax_94` / `bananax_92` list them in full.
 
 **Special cells (per cell, per drop).**
 
@@ -165,7 +166,10 @@ algorithm, bytes drawn, pre-spin state and outcome hash, all inside the hash-cha
 ledger. Verification replays the stored seed against the stored pre-state; a round resolved
 under a different engine version or rules payload is reported as *inconclusive* (not
 *tampered*), and a broken chain is always *tampered*. The math config registered on the
-platform for this build is version 3.1.0 with `config_hash` = `sha256:` + the rules hash above.
+platform for this build is version 3.2.0 with `config_hash` = `sha256:` + the rules hash above.
+Rules 3.2.0 changes only player-facing copy, the ante declaration and two unused fields
+(`markets`, `apex_wild_enabled`); pays, scalers and rates are unchanged from 3.1.0, and every
+30M / 200M run above reproduces bit-identically under it.
 
 ## 7. Findings
 
@@ -179,21 +183,26 @@ platform for this build is version 3.1.0 with `config_hash` = `sha256:` + the ru
   (pooled 96.285% → 96.359%).
 * **F3 — Rules version.** Bumped to 3.1.0; seed scripts register it with the real rules hash.
 
-**Open before lab submission**
+**Closed for lab submission (rules 3.2.0)**
 
-* **O1 — Ante declaration vs measurement.** Fixing F2 raised ante by ~0.11, so the pooled
-  measurement (96.698% ± 0.070) now sits above the 96.59% declaration. It passes (z = 1.5, and
-  the pooled 95% CI 96.56 – 96.84 contains 96.59), but declaring **96.70%** would match the
-  final math.
-* **O2 — Player-facing paytable shows unscaled pays.** The in-game paytable displays the raw
-  values above, while paid spins pay ×0.9807 and free spins ×3.8058. Labs require displayed
-  pays to equal actual pays; the paytable must show scaled values (and the free-spin values
-  separately) or the scalers must be folded into the paytable.
-* **O3 — Rules page copy is stale.** The player rules still describe "BANANA X", a 5 × 4 grid
-  and "Apex Wild", and list live markets (UK, Malta, Ontario …) that the game is not certified
-  in. These must be corrected before submission.
-* **O4 — Other profiles.** `bananax_94` and `bananax_92` need their own 30M reports and ante
-  declarations (their ante RTP is not yet measured to report precision).
+* **O1 — Ante declaration.** Ante is now declared at **96.70%** (rules payload and the player
+  Info page), the pooled measurement 96.698% ± 0.070 rounded to two decimals (z = −0.03).
+* **O2 — Paytable shows actual pays.** The player Info page now carries the paytable (it was
+  previously only in the admin view, and unscaled). It shows a Base game table (×0.9807) and a
+  Free Spins table (×3.8058) at the current bet, rounded exactly as the engine rounds, for the
+  session's active profile. `tools/probes/paytable-probe.js` compares all 1,254 displayed
+  cells per profile (11 bets × base + free spins) with the engine's own pay for that board,
+  for all three profiles; it fails if the scaler is dropped.
+* **O3 — Rules copy.** Rewritten for Vault 20K by Lumina Games on the 6 × 5 grid, describing
+  the tumble, the multiplier and Free Spins rules as the engine implements them, the 20,000x
+  round cap and the special bets. "BANANA X", "5 reels x 4 rows", "Apex Wild" and the market
+  list are gone; the unused `markets`, `markets_coming_soon` and `apex_wild_enabled` fields
+  were removed from the payload. RTP lines are generated from the active profile only, so a
+  94% or 92% session no longer sees another profile's RTP.
+* **O4 — Other profiles.** `qa/rtp-certification-report-94.md` and
+  `qa/rtp-certification-report-92.md`, generated by `tools/rtp-report.js` from 30M runs per
+  mode plus 200M independent base and ante runs; their ante declarations are measured the
+  same way.
 
 ## 8. Reproduction
 

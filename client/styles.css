@@ -1573,6 +1573,39 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   color: var(--text-muted);
 }
 .ps-modal__section li + li { margin-top: 4px; }
+/* Player paytable (renderPlayerPaytable in main.js): scaled pays, i.e. what
+   a win actually pays at the current bet. */
+.ps-paytable__note {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+.ps-paytable__table {
+  width: 100%;
+  margin: 0 0 14px;
+  border-collapse: collapse;
+  font: 500 0.82rem / 1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.ps-paytable__table caption {
+  padding: 0 0 6px;
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--win-gold);
+}
+.ps-paytable__table th,
+.ps-paytable__table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--steel-edge);
+  text-align: right;
+}
+.ps-paytable__table th:first-child,
+.ps-paytable__table td:first-child {
+  text-align: left;
+  color: var(--text-hud);
+}
 
 /* Spin is press-and-hold (turbo autoplay): stop touch browsers from turning a
    hold into a scroll, a text selection or a callout. */

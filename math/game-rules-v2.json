@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
+  "version": "3.2.0",
   "game_title": "Vault 20K",
   "provider": "Lumina Games",
   "release_date": "2026-04-14",
@@ -12,7 +12,7 @@
   },
   "rtp": {
     "theoretical_percent": 96.38,
-    "ante_bet_percent": 96.59,
+    "ante_bet_percent": 96.7,
     "buy_free_spins_percent": 96.38,
     "payout_scaler": 0.9807,
     "free_spin_payout_scaler": 3.8058,
@@ -26,7 +26,7 @@
       "game_id": "bananax",
       "slug": "banana_x_fantasma",
       "theoretical_percent": 96.38,
-      "ante_bet_percent": 96.59,
+      "ante_bet_percent": 96.7,
       "buy_free_spins_percent": 96.38,
       "payout_scaler": 0.9807,
       "free_spin_payout_scaler": 3.8058,
@@ -39,7 +39,7 @@
       "game_id": "bananax_94",
       "slug": "banana_x_94_fantasma",
       "theoretical_percent": 94.4,
-      "ante_bet_percent": 94.4,
+      "ante_bet_percent": 94.68,
       "buy_free_spins_percent": 94.4,
       "payout_scaler": 0.9605,
       "free_spin_payout_scaler": 3.7276,
@@ -52,7 +52,7 @@
       "game_id": "bananax_92",
       "slug": "banana_x92_fantasma",
       "theoretical_percent": 92.38,
-      "ante_bet_percent": 92.38,
+      "ante_bet_percent": 92.6,
       "buy_free_spins_percent": 92.38,
       "payout_scaler": 0.9399,
       "free_spin_payout_scaler": 3.6478,
@@ -67,21 +67,6 @@
     "max_total_bet": 500.0
   },
   "max_win_cap_multiplier": 20000,
-  "markets": [
-    "Brazil",
-    "Bulgaria",
-    "Denmark",
-    "Estonia",
-    "Latvia",
-    "Malta",
-    "Ontario",
-    "Portugal",
-    "Romania",
-    "Sweden",
-    "US (Connecticut)",
-    "United Kingdom"
-  ],
-  "markets_coming_soon": ["Greece", "Peru"],
   "simulation_acceptance": {
     "steps": 1000000,
     "casino_net_must_be_positive": true,
@@ -98,8 +83,7 @@
       "range_max": 1000,
       "allowed_values": [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100, 250, 500, 1000],
       "base_game_apply_mode": "sum_sequence_end",
-      "free_spins_apply_mode": "persistent_round_total",
-      "apex_wild_enabled": true
+      "free_spins_apply_mode": "persistent_round_total"
     },
     "free_spins": {
       "base_trigger_scatter_count": 4,
@@ -143,54 +127,59 @@
     "quick_spin": true,
     "turbo_spin": true,
     "settings_menu": true,
-    "rules_pages": 6
+    "rules_pages": 7
   },
   "rules_pages": [
     {
-      "title": "BANANA X",
+      "title": "VAULT 20K",
       "points": [
-        "Enter Banana X where a viral monkey ramps up chaos every spin.",
-        "Grid layout is 5 reels x 4 rows.",
-        "Symbols pay anywhere on screen with minimum 8 matching symbols."
+        "Vault 20K by Lumina Games is played on a grid of 6 reels and 5 rows.",
+        "Symbols pay anywhere: 8 or more matching symbols anywhere on the grid win. The pay depends on the number of matching symbols, as shown in the Paytable.",
+        "Wins of different symbols are added together. All pays are multiplied by the bet."
       ]
     },
     {
-      "title": "CORE FEATURES",
+      "title": "TUMBLE",
       "points": [
-        "Wild multipliers can appear in base spins and tumbles.",
-        "Apex Wild behavior increases upside during feature flow.",
-        "Tumble continues while new wins appear."
+        "After every win the winning symbols are removed, the remaining symbols fall down and new symbols fill the empty positions.",
+        "Tumbling continues until no new win appears. All wins of a tumble sequence are added together."
+      ]
+    },
+    {
+      "title": "MULTIPLIERS",
+      "points": [
+        "Multiplier symbols with values from 2x to 1000x can land on any spin or tumble.",
+        "Base game: when a tumble sequence ends with a win, the values of all multiplier symbols that landed in that sequence are added together, and the win of the sequence is multiplied by that sum.",
+        "Free Spins: the values of multiplier symbols that land in a winning tumble sequence are added to a total multiplier, which then multiplies the win of that sequence. A winning sequence on which no multiplier symbol lands is paid without the total multiplier. Multipliers in a sequence without a win are not added."
       ]
     },
     {
       "title": "FREE SPINS",
       "points": [
-        "4+ Scatter symbols trigger 15 Free Spins.",
-        "3+ Scatters during Free Spins retrigger +5 spins.",
-        "Free Spin multipliers can persist and stack through the round."
+        "4 or more Scatter symbols anywhere on the grid award 15 Free Spins. Scatters also pay as shown in the Paytable.",
+        "During Free Spins, 3 or more Scatter symbols award 5 additional Free Spins.",
+        "During Free Spins, symbol and Scatter pays are as shown in the Free Spins paytable."
       ]
     },
     {
-      "title": "RTP MODES",
+      "title": "ANTE BET AND BUY FREE SPINS",
       "points": [
-        "bananax / banana_x_fantasma: 96.38% RTP (Ante Bet 96.59%, Buy Free Spins 96.38%).",
-        "bananax_94 / banana_x_94_fantasma: 94.40% RTP.",
-        "bananax_92 / banana_x92_fantasma: 92.38% RTP."
+        "Ante Bet raises the cost of each spin to 1.25x the bet and increases the chance of triggering Free Spins naturally. Buy Free Spins is not available while Ante Bet is active.",
+        "Buy Free Spins: for 100x the bet, a spin is played that is guaranteed to land at least 4 Scatter symbols and award 15 Free Spins."
+      ]
+    },
+    {
+      "title": "MAXIMUM WIN",
+      "points": [
+        "The maximum win is 20000x the bet.",
+        "In a Free Spins round, the total win of the round, including the spin that triggered it, is capped at 20000x the bet. When the cap is reached, the round ends immediately and any remaining Free Spins are forfeited."
       ]
     },
     {
       "title": "GAME PARAMETERS",
       "points": [
         "Volatility: High.",
-        "Max win cap: 20000x bet.",
-        "Minimum bet: 0.20. Maximum bet: 500.00."
-      ]
-    },
-    {
-      "title": "MARKETS",
-      "points": [
-        "Live markets: Brazil, Bulgaria, Denmark, Estonia, Latvia, Malta, Ontario, Portugal, Romania, Sweden, US (Connecticut), United Kingdom.",
-        "Coming soon: Greece, Peru.",
+        "Minimum bet: 0.20. Maximum bet: 500.00.",
         "Malfunction voids all pays and plays."
       ]
     }
