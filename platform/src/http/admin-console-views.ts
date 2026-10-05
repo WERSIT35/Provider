@@ -452,6 +452,8 @@ async function loadReports() {
   } catch (e) { setHTML('repRecon', '<span class="err">'+e.message+'</span>'); }
   try { const f = await api('/admin/v1/transactions/failed'+qs); setHTML('repFailed', tableHtml(f.failed_settlements || [], ['round_ref','type','amount','currency','status','error_code'])); }
   catch (e) { setHTML('repFailed', '<span class="err">'+e.message+'</span>'); }
+  try { const pr = await api('/admin/v1/transactions/pending-reversals'+qs); setHTML('repReversals', tableHtml(pr.pending_reversals || [], ['round_ref','type','amount','currency','created_at'])); }
+  catch (e) { setHTML('repReversals', '<span class="err">'+e.message+'</span>'); }
 }
 `;
 

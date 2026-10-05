@@ -116,7 +116,10 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
           spins_remaining: grant.spins_remaining,
           valid_to: campaign.valid_to
         })),
-      game: { code: session.game_code, math_config_id: session.math_config_id }
+      game: { code: session.game_code, math_config_id: session.math_config_id },
+      // The casino hosts the client may talk to over postMessage (the same list
+      // /play's frame-ancestors allows); see client/embed-bridge.js.
+      embed: { allowed_hosts: app.container.mgmt.embedHosts(session.operator_id) }
     };
   }
 

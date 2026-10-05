@@ -271,7 +271,13 @@ export class ReportingService {
     // so they reconcile exactly like DEBIT / CREDIT against the round ledger.
     const tx_debits = sum(BET_TX_TYPES, "confirmed");
     const tx_credits_gross = sum(WIN_TX_TYPES, "confirmed");
-    const tx_rollbacks = sum("ROLLBACK", "rolled_back");
+    // Only rollbacks of CONFIRMED debits net against tx_debits. The reversal of a debit
+    // whose outcome was never known (DebitReconciler) pairs with a debit that is not
+    // counted either, so both sides leave it out.
+    const confirmedBetRounds = new Set(txs.filter((t) => BET_TX_TYPES.has(t.type) && t.status === "confirmed").map((t) => t.round_ref));
+    const tx_rollbacks = round2(
+      txs.filter((t) => t.type === "ROLLBACK" && t.status === "rolled_back" && confirmedBetRounds.has(t.round_ref)).reduce((s, t) => s + t.amount, 0)
+    );
     // Void clawbacks are compensating debits that reverse a previously-paid win.
     const tx_clawbacks = sum("ADJUSTMENT", "confirmed");
     const tx_credits = round2(tx_credits_gross - tx_clawbacks);

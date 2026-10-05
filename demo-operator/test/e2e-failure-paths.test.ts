@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { startStack, newPlayer, gameCall, type Stack } from "./support/stack";
 
 /**
@@ -55,23 +55,17 @@ describe("idempotency and retries", () => {
   beforeAll(async () => { s = await startStack({ startingBalance: 10_000 }); });
   afterAll(async () => { await s.close(); });
 
-  it("a WAGER whose response is lost is not debited twice when the spin is retried", async () => {
+  it("a WAGER whose response is lost once is retried by the RGS: the round plays, debited once", async () => {
     const p = await newPlayer(s, "flaky-debit@example.com");
     let lost = 0;
     s.faults.loseResponse = (action) => action === "debit" && lost++ === 0;
 
-    const first = await gameCall(s, p.sessionToken, "spin", "retry-debit", { bet_amount: 5 });
-    expect(first.statusCode).toBe(502); // the RGS cannot know whether the debit landed
-    // ...but it did: the casino holds exactly one WAGER for it.
-    expect(ledgerFor(s, p.playerId).filter((t) => t.txType === "WAGER")).toHaveLength(1);
-    expect(balanceOf(s, p.playerId)).toBe(10_000 - 5);
-
-    // The client retries with the SAME idempotency key: the casino replays the original
-    // debit (same operatorTxRef, no second row) and the round completes normally.
+    const res = await gameCall(s, p.sessionToken, "spin", "retry-debit", { bet_amount: 5 });
     s.faults.loseResponse = undefined;
-    const retry = await gameCall(s, p.sessionToken, "spin", "retry-debit", { bet_amount: 5 });
-    expect(retry.statusCode).toBe(200);
-    const out = retry.json() as { round_ref: string; total_win: number; settlement: string };
+    // The RGS re-sent the debit under the SAME key; the casino replayed its original
+    // answer (same operatorTxRef, no second row) and the round went ahead.
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { round_ref: string; total_win: number; settlement: string };
     expect(out.settlement).toBe("settled");
 
     const rows = ledgerFor(s, p.playerId);
@@ -180,6 +174,82 @@ describe("rollbacks", () => {
     ).rejects.toMatchObject({ code: "ORIGINAL_DEBIT_NOT_FOUND" });
     expect(ledgerFor(s, p.playerId)).toHaveLength(0);
     expect(balanceOf(s, p.playerId)).toBe(1_000);
+  });
+});
+
+describe("lost debits: void + reversal by idempotency key", () => {
+  let s: Stack;
+  beforeAll(async () => { s = await startStack({ startingBalance: 1_000 }); });
+  afterAll(async () => { await s.close(); });
+  afterEach(() => { s.faults.loseResponse = undefined; s.faults.unreachable = undefined; });
+  const playerOf = (t: { session_id: string }) => s.container.sessions.tryGet(t.session_id)?.operator_player_id;
+
+  it("every debit answer lost: the RGS voids the round and the casino refunds the WAGER it holds", async () => {
+    const p = await newPlayer(s, "lost-debit@example.com");
+    s.faults.loseResponse = (action) => action === "debit";
+    const res = await gameCall(s, p.sessionToken, "spin", "lost-1", { bet_amount: 10 });
+    s.faults.loseResponse = undefined;
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error.code).toBe("DEBIT_UNCONFIRMED");
+
+    // The casino took the stake once (three deliveries, one key) and gave it back once.
+    const rows = ledgerFor(s, p.playerId);
+    expect(rows.map((t) => t.txType)).toEqual(["WAGER", "ROLLBACK"]);
+    const [wager, rollback] = rows;
+    expect(rollback.reversesTxRef).toBe(wager.operatorTxRef);
+    expect(rollback.amount).toBe(wager.amount);
+    expect(balanceOf(s, p.playerId)).toBe(1_000);
+    expect(s.container.ledger.getRound("r_lost-1")).toBeNull();
+    expect(s.container.transactions.listPendingReversals()).toHaveLength(0);
+
+    // The game retrying that round is refused, and moves nothing.
+    const retry = await gameCall(s, p.sessionToken, "spin", "lost-1", { bet_amount: 10 });
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe("ROUND_VOIDED");
+    expect(ledgerFor(s, p.playerId)).toHaveLength(2);
+    expect(balanceOf(s, p.playerId)).toBe(1_000);
+  });
+
+  it("debit never delivered: the casino records the key as voided and refuses the debit when it arrives late", async () => {
+    const p = await newPlayer(s, "never-delivered@example.com");
+    s.faults.unreachable = (action) => action === "debit";
+    const res = await gameCall(s, p.sessionToken, "spin", "ghost-1", { bet_amount: 5 });
+    s.faults.unreachable = undefined;
+    expect(res.statusCode).toBe(502);
+    expect(ledgerFor(s, p.playerId)).toHaveLength(0); // no money row: nothing moved
+    const voided = s.db.prepare("SELECT idempotency_key, player_id, round_ref FROM voided_debits WHERE idempotency_key = ?").get("ghost-1:debit");
+    expect(voided).toMatchObject({ idempotency_key: "ghost-1:debit", player_id: p.playerId, round_ref: "r_ghost-1" });
+
+    // The delayed original finally lands: 409 TRANSACTION_VOIDED, balance untouched.
+    const ctx = { operatorId: s.container.mgmt.listOperators()[0].id };
+    await expect(
+      s.container.wallet.debit(ctx, { idempotencyKey: "ghost-1:debit", roundRef: "r_ghost-1", operatorPlayerId: p.playerId, amount: 5, currency: "GEL", gameCode: "bananax", roundType: "paid" })
+    ).rejects.toMatchObject({ code: "TRANSACTION_VOIDED" });
+    expect(ledgerFor(s, p.playerId)).toHaveLength(0);
+    expect(balanceOf(s, p.playerId)).toBe(1_000);
+    // The void record is append-only, like the money ledger.
+    expect(() => s.db.prepare("DELETE FROM voided_debits").run()).toThrow(/append-only/);
+  });
+
+  it("casino down for the reversal too: queued, then the sweep refunds exactly once when it is back", async () => {
+    const p = await newPlayer(s, "down-twice@example.com");
+    s.faults.loseResponse = (action) => action === "debit";
+    s.faults.unreachable = (action) => action === "rollback";
+    expect((await gameCall(s, p.sessionToken, "spin", "down-1", { bet_amount: 5 })).statusCode).toBe(502);
+    s.faults.loseResponse = undefined;
+    expect(balanceOf(s, p.playerId)).toBe(995); // the casino still holds the stake
+    expect(s.container.transactions.listPendingReversals().map((t) => t.round_ref)).toEqual(["r_down-1"]);
+
+    // Sweep while still down: nothing changes.
+    await s.container.debits.sweep(playerOf);
+    expect(balanceOf(s, p.playerId)).toBe(995);
+
+    s.faults.unreachable = undefined;
+    expect(await s.container.debits.sweep(playerOf)).toEqual({ reversed: 1, pending: 0 });
+    expect(balanceOf(s, p.playerId)).toBe(1_000);
+    expect(ledgerFor(s, p.playerId).map((t) => t.txType)).toEqual(["WAGER", "ROLLBACK"]);
+    await s.container.debits.sweep(playerOf);
+    expect(ledgerFor(s, p.playerId)).toHaveLength(2);
   });
 });
 

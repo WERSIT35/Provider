@@ -25,7 +25,23 @@ export class SandboxWallet implements WalletAdapter {
   private readonly debitByRef = new Map<string, { balanceKey: string; amount: number }>();
   private persistence: Persistence = NullPersistence;
 
-  constructor(private readonly opts: { failCreditFor?: (args: CreditArgs) => boolean } = {}) {}
+  constructor(
+    private readonly opts: {
+      failCreditFor?: (args: CreditArgs) => boolean;
+      /**
+       * Network faults on a debit: "lost" applies it and then loses the response
+       * (a timeout after delivery); "unreachable" never delivers it. null = normal.
+       */
+      debitFault?: (args: DebitArgs) => "lost" | "unreachable" | null;
+      /** True = the rollback never reaches the wallet (casino down). */
+      rollbackUnreachable?: (args: RollbackArgs) => boolean;
+    } = {}
+  ) {}
+
+  /** Tombstone key: a debit voided before it was ever applied (kept in `applied`, so it persists). */
+  private voidKey(debitKey: string): string {
+    return `void:${debitKey}`;
+  }
 
   /** Attach a persistence port (write-through). Called by the container when PG is on. */
   usePersistence(p: Persistence): void {
@@ -62,8 +78,18 @@ export class SandboxWallet implements WalletAdapter {
   }
 
   async debit(_ctx: WalletContext, args: DebitArgs): Promise<WalletTxResult> {
+    const fault = this.opts.debitFault?.(args) ?? null;
+    if (fault === "unreachable") throw new Error("WEBHOOK_CALL_FAILED");
+    const result = await this.applyDebit(args);
+    if (fault === "lost") throw new Error("WEBHOOK_CALL_FAILED");
+    return result;
+  }
+
+  private async applyDebit(args: DebitArgs): Promise<WalletTxResult> {
     const cached = this.applied.get(args.idempotencyKey);
     if (cached) return cached as WalletTxResult;
+    // Rolled back before it arrived: refuse, never apply.
+    if (this.applied.has(this.voidKey(args.idempotencyKey))) throw new WalletDeclinedError("TRANSACTION_VOIDED");
 
     assertFreeRoundArgs(args);
     const k = this.key(args.operatorPlayerId, args.currency);
@@ -110,11 +136,24 @@ export class SandboxWallet implements WalletAdapter {
   }
 
   async rollback(_ctx: WalletContext, args: RollbackArgs): Promise<WalletRollbackResult> {
+    if (this.opts.rollbackUnreachable?.(args)) throw new Error("WEBHOOK_CALL_FAILED");
     const cached = this.applied.get(args.idempotencyKey);
     if (cached) return cached as WalletRollbackResult;
 
-    // Reverse the original debit by its operator tx ref (restores the player balance).
-    const debit = this.debitByRef.get(args.originalOperatorTxRef);
+    // Find the debit by its operator tx ref, else by the debit's own idempotency key.
+    const ref =
+      args.originalOperatorTxRef ??
+      (args.originalIdempotencyKey ? (this.applied.get(args.originalIdempotencyKey) as WalletTxResult | undefined)?.operatorTxRef : undefined);
+    const debit = ref ? this.debitByRef.get(ref) : undefined;
+    if (!debit && args.originalIdempotencyKey && !args.originalOperatorTxRef) {
+      // Never applied: void the key so a late debit under it is refused.
+      const tomb: WalletRollbackResult = { operatorTxRef: `otx_${randomUUID()}`, status: "rolled_back" };
+      this.applied.set(this.voidKey(args.originalIdempotencyKey), tomb);
+      this.persistence.save("wallet_applied", { idempotency_key: this.voidKey(args.originalIdempotencyKey), result: tomb });
+    }
+    // A debit is refunded at most once, whatever key the rollback comes under.
+    const prior = ref ? this.applied.get(`reversed:${ref}`) : undefined;
+    if (debit && prior) return prior as WalletRollbackResult;
     if (debit) {
       const current = this.balances.get(debit.balanceKey) ?? 0;
       this.balances.set(debit.balanceKey, Number((current + debit.amount).toFixed(2)));
@@ -123,6 +162,10 @@ export class SandboxWallet implements WalletAdapter {
     const result: WalletRollbackResult = { operatorTxRef: `otx_${randomUUID()}`, status: "rolled_back" };
     this.applied.set(args.idempotencyKey, result);
     this.persistence.save("wallet_applied", { idempotency_key: args.idempotencyKey, result });
+    if (debit && ref) {
+      this.applied.set(`reversed:${ref}`, result);
+      this.persistence.save("wallet_applied", { idempotency_key: `reversed:${ref}`, result });
+    }
     return result;
   }
 }

@@ -108,6 +108,13 @@ const PAGE = (cfg: DemoOperatorConfig): string => `<!doctype html>
         <span class="muted" id="playHint">Launched via the platform's signed /operator/v1/launch API.</span>
       </div>
       <p class="err" id="playErr"></p>
+      <div class="row" id="gameBar" hidden style="margin-bottom:10px;">
+        <span class="muted" id="gameStatus">waiting for the game…</span>
+        <span class="muted" id="gameFeature"></span>
+        <span style="flex:1"></span>
+        <button class="ghost" id="gamePauseBtn" disabled>Pause</button>
+        <button class="ghost" id="gameMuteBtn" disabled>Mute</button>
+      </div>
       <iframe id="gameFrame" hidden></iframe>
     </div>
   </section>
@@ -210,15 +217,58 @@ async function loadLobby() {
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+// ── Game iframe ↔ casino (protocol "vault20k.embed" v1, see platform GUIDE) ──
+// Lifecycle signals only: the wallet is moved by the provider's signed webhooks,
+// so a balance in a message is a hint to re-read OUR wallet, never a value to show.
+const EMBED = 'vault20k.embed';
+const game = { origin: null, paused: false, muted: false, refreshTimer: null };
+
+function gameCmd(type, data) {
+  const frame = $('gameFrame');
+  if (!game.origin || !frame.contentWindow) return;
+  frame.contentWindow.postMessage({ protocol: EMBED, v: 1, type, data: data || {} }, game.origin);
+}
+function refreshBalanceSoon() {
+  clearTimeout(game.refreshTimer);
+  game.refreshTimer = setTimeout(refreshBalance, 250);
+}
+window.addEventListener('message', (e) => {
+  const frame = $('gameFrame');
+  if (!game.origin || e.origin !== game.origin || e.source !== frame.contentWindow) return;
+  const m = e.data;
+  if (!m || m.protocol !== EMBED || m.v !== 1 || typeof m.type !== 'string') return;
+  const d = m.data || {};
+  switch (m.type) {
+    case 'ready':
+      $('gameStatus').textContent = d.resumed && d.in_feature ? 'game ready — resuming your bonus' : 'game ready';
+      $('gamePauseBtn').disabled = false; $('gameMuteBtn').disabled = false;
+      refreshBalanceSoon();
+      break;
+    case 'roundStarted': $('gameStatus').textContent = 'round in play'; break;
+    case 'roundEnded': $('gameStatus').textContent = 'round ' + (d.round_ref || '') + ' settled'; refreshBalanceSoon(); break;
+    case 'balanceChanged': refreshBalanceSoon(); break;
+    case 'featureState': $('gameFeature').textContent = d.active ? '· bonus in progress' : ''; break;
+    case 'paused': game.paused = Boolean(d.paused); $('gamePauseBtn').textContent = game.paused ? 'Resume' : 'Pause'; $('gameStatus').textContent = game.paused ? 'paused by the casino' : 'game ready'; break;
+    case 'muted': game.muted = Boolean(d.muted); $('gameMuteBtn').textContent = game.muted ? 'Unmute' : 'Mute'; break;
+    case 'error': $('playErr').textContent = d.code === 'INSUFFICIENT_FUNDS' ? 'Not enough balance for that bet. Top up from My account.' : 'Game error: ' + (d.code || 'unknown'); break;
+  }
+});
+$('gamePauseBtn').addEventListener('click', () => gameCmd(game.paused ? 'resume' : 'pause'));
+$('gameMuteBtn').addEventListener('click', () => gameCmd('setMuted', { muted: !game.muted }));
+
 async function play(providerId, gameCode) {
   show('play');
   $('playErr').textContent = ''; const frame = $('gameFrame'); frame.hidden = true;
+  game.origin = null; game.paused = false;
+  $('gameBar').hidden = true; $('gameStatus').textContent = 'waiting for the game…'; $('gameFeature').textContent = '';
+  $('gamePauseBtn').disabled = true; $('gamePauseBtn').textContent = 'Pause'; $('gameMuteBtn').disabled = true;
   try {
     const d = await api('/api/play/' + encodeURIComponent(providerId) + '/' + encodeURIComponent(gameCode), { method: 'POST' });
-    frame.src = d.launch_url; frame.hidden = false;
+    game.origin = new URL(d.launch_url).origin;
+    frame.src = d.launch_url; frame.hidden = false; $('gameBar').hidden = false;
   } catch (e) { $('playErr').textContent = e.message; }
 }
-function backToLobby() { $('gameFrame').src = 'about:blank'; show('lobby'); refreshBalance(); }
+function backToLobby() { game.origin = null; $('gameFrame').src = 'about:blank'; show('lobby'); refreshBalance(); }
 
 async function refreshBalance() {
   try { const d = await api('/api/me'); state.player = d.player; renderHeader(); } catch {}

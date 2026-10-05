@@ -255,7 +255,8 @@ describe("free rounds — failures and lifecycle", () => {
     c.campaigns.grantPlayers(id, ["p1"]);
     const session = openSession("p1");
     flaky.failDebit = (a) => a.txType === "FREE_ROUND_BET";
-    await expect(spin(session.id)).rejects.toThrow("WEBHOOK_CALL_FAILED");
+    // A transport failure is retried, then the round is voided (DebitReconciler).
+    await expect(spin(session.id)).rejects.toThrow("DEBIT_UNCONFIRMED");
     expect(c.campaigns.listGrants(id)[0]).toMatchObject({ spins_remaining: 2, status: "active" });
   });
 

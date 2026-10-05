@@ -7,6 +7,7 @@ import type { RoundLedgerService } from "../ledger/round-ledger.service";
 import type { InMemoryTransactionStore } from "../wallet/transaction-store";
 import { type WalletAdapter, type Money, WalletDeclinedError } from "../wallet/wallet.types";
 import type { InMemoryCampaignRepository, ConsumedSpin } from "../campaigns/campaign.repository";
+import { DebitReconciler } from "../wallet/debit-reconciler";
 
 export interface ResolverPort {
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound;
@@ -71,6 +72,7 @@ const ENGINE_BALANCE_SENTINEL = Number.MAX_SAFE_INTEGER / 1000;
 export class RoundOrchestrator {
   private readonly idem = new Map<string, SpinOutcome>();
   private readonly inflight = new Set<string>();
+  private readonly debits: DebitReconciler;
 
   constructor(
     private readonly engine: EngineService,
@@ -81,8 +83,12 @@ export class RoundOrchestrator {
     private readonly ledger: RoundLedgerService,
     private readonly transactions: InMemoryTransactionStore,
     /** Optional so callers without free rounds (tests, tools) need not wire it. */
-    private readonly campaigns?: InMemoryCampaignRepository
-  ) {}
+    private readonly campaigns?: InMemoryCampaignRepository,
+    /** Lost-debit handling (in-line retry, then void + reversal); a default one if omitted. */
+    debits?: DebitReconciler
+  ) {
+    this.debits = debits ?? new DebitReconciler(wallet, transactions);
+  }
 
   async spin(sessionId: string, req: SpinRequest): Promise<SpinOutcome> {
     // App-level idempotency: a repeated key returns the stored outcome verbatim.
@@ -148,16 +154,27 @@ export class RoundOrchestrator {
     if (charge > 0 || freeRound) {
       let debit;
       try {
-        debit = await this.wallet.debit(ctx, {
-          idempotencyKey: debitKey,
-          roundRef,
-          operatorPlayerId: session.operator_player_id,
-          amount: charge,
-          currency: session.currency,
-          gameCode: session.game_code,
-          roundType: freeRound ? "free_round" : "paid",
-          ...(freeRound ? { txType: "FREE_ROUND_BET" as const, campaignId: freeRound.campaign.id } : {})
-        });
+        // A lost response is retried in line; one that stays unknown voids the round
+        // and reverses the debit (DEBIT_UNCONFIRMED). See DebitReconciler.
+        debit = await this.debits.debit(
+          ctx,
+          {
+            idempotencyKey: debitKey,
+            roundRef,
+            operatorPlayerId: session.operator_player_id,
+            amount: charge,
+            currency: session.currency,
+            gameCode: session.game_code,
+            roundType: freeRound ? "free_round" : "paid",
+            ...(freeRound ? { txType: "FREE_ROUND_BET" as const, campaignId: freeRound.campaign.id } : {})
+          },
+          {
+            operator_id: session.operator_id,
+            session_id: session.id,
+            type: freeRound ? "FREE_ROUND_BET" : "DEBIT",
+            ...(freeRound ? { campaign_id: freeRound.campaign.id } : {})
+          }
+        );
       } catch (err) {
         restoreFreeRound();
         throw err;
@@ -189,7 +206,11 @@ export class RoundOrchestrator {
         await this.wallet.rollback(ctx, {
           idempotencyKey: `${req.idempotency_key}:rollback`,
           originalOperatorTxRef: debitTxRef,
-          roundRef
+          originalIdempotencyKey: debitKey,
+          roundRef,
+          operatorPlayerId: session.operator_player_id,
+          amount: charge,
+          currency: session.currency
         });
         this.transactions.record({
           operator_id: session.operator_id,
@@ -246,16 +267,22 @@ export class RoundOrchestrator {
     const charge = Number((req.bet_amount * this.engine.buyCostMultiplier()).toFixed(2));
     const roundRef = `r_${req.idempotency_key}`;
 
-    // 1) DEBIT the buy cost. Decline aborts the buy entirely.
-    const debit = await this.wallet.debit(ctx, {
-      idempotencyKey: `${req.idempotency_key}:debit`,
-      roundRef,
-      operatorPlayerId: session.operator_player_id,
-      amount: charge,
-      currency: session.currency,
-      gameCode: session.game_code,
-      roundType: "buy"
-    });
+    // 1) DEBIT the buy cost. Decline aborts the buy entirely; an outcome that stays
+    // unknown voids it and reverses the debit (DebitReconciler).
+    const debitKey = `${req.idempotency_key}:debit`;
+    const debit = await this.debits.debit(
+      ctx,
+      {
+        idempotencyKey: debitKey,
+        roundRef,
+        operatorPlayerId: session.operator_player_id,
+        amount: charge,
+        currency: session.currency,
+        gameCode: session.game_code,
+        roundType: "buy"
+      },
+      { operator_id: session.operator_id, session_id: session.id, type: "DEBIT" }
+    );
     const debitTxRef = debit.operatorTxRef;
     this.transactions.record({
       operator_id: session.operator_id,
@@ -264,7 +291,7 @@ export class RoundOrchestrator {
       type: "DEBIT",
       amount: charge,
       currency: session.currency,
-      idempotency_key: `${req.idempotency_key}:debit`,
+      idempotency_key: debitKey,
       operator_tx_ref: debitTxRef,
       status: "confirmed"
     });
@@ -277,7 +304,11 @@ export class RoundOrchestrator {
       await this.wallet.rollback(ctx, {
         idempotencyKey: `${req.idempotency_key}:rollback`,
         originalOperatorTxRef: debitTxRef,
-        roundRef
+        originalIdempotencyKey: debitKey,
+        roundRef,
+        operatorPlayerId: session.operator_player_id,
+        amount: charge,
+        currency: session.currency
       });
       this.transactions.record({
         operator_id: session.operator_id,

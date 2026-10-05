@@ -18,6 +18,8 @@ export type WebhookAction = "balance" | "debit" | "credit" | "rollback";
  */
 export interface Faults {
   loseResponse?: (action: WebhookAction, body: Record<string, unknown>) => boolean;
+  /** The casino is unreachable for this call: the request never arrives. */
+  unreachable?: (action: WebhookAction, body: Record<string, unknown>) => boolean;
 }
 
 export interface Stack {
@@ -41,16 +43,17 @@ export interface Stack {
 export async function startStack(opts: { startingBalance: number; allowedBets?: number[] }): Promise<Stack> {
   const faults: Faults = {};
   const faultyFetch: typeof fetch = async (input, init) => {
-    const res = await fetch(input, init);
     const action = new URL(String(input)).pathname.split("/").pop() as WebhookAction;
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    if (faults.unreachable?.(action, body)) throw new Error("connect ECONNREFUSED (casino down)");
+    const res = await fetch(input, init);
     if (faults.loseResponse?.(action, body)) throw new Error("socket hang up (response lost)");
     return res;
   };
 
   const container = buildContainer(
     { launchSecret: "e2e-launch", sessionSecret: "e2e-session", adminSecret: "e2e-admin", hmacSkewSeconds: 30, rateLimitPerMin: 100_000 },
-    { walletFactory: (mgmt) => new WebhookWallet(mgmt, { fetchImpl: faultyFetch }) }
+    { walletFactory: (mgmt) => new WebhookWallet(mgmt, { fetchImpl: faultyFetch }), debitRetryDelaysMs: [10, 10] }
   );
   const op = container.mgmt.createOperator({ name: "E2E Casino", slug: "e2e-casino" });
   container.mgmt.addDomain(op.id, "demo-operator.local", "prod");
@@ -69,7 +72,7 @@ export async function startStack(opts: { startingBalance: number; allowedBets?: 
   const issued = container.mgmt.issueCredential(op.id, "prod");
   const adminToken = container.adminAuth.mintToken({ admin_id: "e2e-admin", scope: "operator", operator_id: op.id, role: "operator_admin" });
 
-  const platform = buildPlatformApp({ logger: createLogger({ level: "silent", pretty: false, env: "test" }), container });
+  const platform = buildPlatformApp({ logger: createLogger({ level: "silent", pretty: false, env: "test" }), container, debitReconcileIntervalMs: 0 });
   await platform.listen({ host: "127.0.0.1", port: 0 });
   const pAddr = platform.server.address();
   if (!pAddr || typeof pAddr === "string") throw new Error("platform not listening");

@@ -18,7 +18,16 @@ export function signToken(secret: string, claims: Record<string, unknown>, ttlSe
   return `${body}.${sig}`;
 }
 
-export function verifyToken<T extends TokenClaims = TokenClaims>(secret: string, token: string): T {
+/**
+ * `ignoreExpiry` checks the signature only: for a caller that needs to know who
+ * issued a token, not whether it may still be redeemed (the /play page's framing
+ * policy on a reload long after the 60s launch handoff).
+ */
+export function verifyToken<T extends TokenClaims = TokenClaims>(
+  secret: string,
+  token: string,
+  opts: { ignoreExpiry?: boolean } = {}
+): T {
   const dot = token.indexOf(".");
   if (dot < 0) throw new Error("TOKEN_INVALID");
   const body = token.slice(0, dot);
@@ -28,7 +37,7 @@ export function verifyToken<T extends TokenClaims = TokenClaims>(secret: string,
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("TOKEN_INVALID");
   const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T;
-  if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
+  if (!opts.ignoreExpiry && typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
     throw new Error("TOKEN_EXPIRED");
   }
   return payload;

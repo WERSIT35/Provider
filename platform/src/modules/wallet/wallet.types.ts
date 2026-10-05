@@ -61,10 +61,24 @@ export function assertFreeRoundArgs(args: DebitArgs | CreditArgs): void {
   if (args.txType === "FREE_ROUND_BET" && args.amount !== 0) throw new Error("FREE_ROUND_BET_MUST_BE_ZERO");
 }
 
+/**
+ * Reverse a debit. The debit is named by the casino's `originalOperatorTxRef` when
+ * the RGS received it, and ALWAYS by `originalIdempotencyKey` (the debit's own key),
+ * which is the only handle when the debit's response was lost. Casino semantics for
+ * a rollback by key:
+ *   • the debit exists → refund it (at most once);
+ *   • it does not → record the key as VOIDED and answer rolled_back: a debit that
+ *     arrives later under that key must be refused (TRANSACTION_VOIDED), never applied.
+ * `operatorPlayerId` / `amount` / `currency` describe the debit as the RGS sent it.
+ */
 export interface RollbackArgs {
   idempotencyKey: string;
-  originalOperatorTxRef: string;
+  originalOperatorTxRef?: string;
+  originalIdempotencyKey?: string;
   roundRef: string;
+  operatorPlayerId?: string;
+  amount?: number;
+  currency?: string;
 }
 
 export interface WalletTxResult {
@@ -83,6 +97,22 @@ export interface WalletAdapter {
   debit(ctx: WalletContext, args: DebitArgs): Promise<WalletTxResult>;
   credit(ctx: WalletContext, args: CreditArgs): Promise<WalletTxResult>;
   rollback(ctx: WalletContext, args: RollbackArgs): Promise<WalletRollbackResult>;
+}
+
+/**
+ * Errors raised before any request left the RGS: the casino cannot have applied
+ * anything, so they are not "outcome unknown".
+ */
+const NOT_SENT = new Set(["WEBHOOK_NOT_CONFIGURED", "FREE_ROUND_CAMPAIGN_REQUIRED", "FREE_ROUND_BET_MUST_BE_ZERO"]);
+
+/**
+ * True when a failed wallet call may still have been applied by the casino (timeout,
+ * dropped connection, a 5xx without a decline code). A WalletDeclinedError is a
+ * definite answer: nothing was applied.
+ */
+export function isOutcomeUnknown(err: unknown): boolean {
+  if (err instanceof WalletDeclinedError) return false;
+  return !(err instanceof Error && NOT_SENT.has(err.message));
 }
 
 /** Thrown when the operator wallet declines a debit (insufficient funds, etc.). */

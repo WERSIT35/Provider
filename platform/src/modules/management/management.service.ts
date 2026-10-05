@@ -16,6 +16,29 @@ import type {
 const now = (): string => new Date().toISOString();
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
+const LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+const HOST_RE = new RegExp(`^${LABEL}(?:\\.${LABEL})*(?::([1-9][0-9]{0,4}))?$`);
+
+/**
+ * "Casino.Example.com", "https://casino.example.com/", "localhost:4000" → the bare
+ * lower-case host[:port]. Anything else (a path, credentials, a query, spaces, CSP
+ * punctuation, a wildcard, a port over 65535) → null.
+ */
+export function normalizeDomain(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  let s = input.trim().toLowerCase();
+  const scheme = /^https?:\/\//.exec(s);
+  if (scheme) {
+    s = s.slice(scheme[0].length);
+    if (s.endsWith("/")) s = s.slice(0, -1);
+  }
+  if (s.length > 253) return null;
+  const m = HOST_RE.exec(s);
+  if (!m) return null;
+  if (m[1] && Number(m[1]) > 65535) return null;
+  return s;
+}
+
 /** Returned only at creation/rotation — the raw secret is never stored or re-shown. */
 export interface IssuedCredential {
   credential: ApiCredential;
@@ -155,13 +178,19 @@ export class ManagementService {
     if (op.status === "suspended") throw new Error("OPERATOR_SUSPENDED");
   }
 
-  // ── Domains (launch origin allowlist) ─────────────────────────────────────────
+  // ── Domains (launch origin allowlist + who may frame /play) ───────────────────
+  // A domain is a bare host with an optional port ("casino.example.com",
+  // "localhost:4000"): the exact token /play emits as a CSP frame-ancestors source,
+  // so it must never carry a path, a space or a ';'. A pasted origin
+  // ("https://casino.example.com/") is stored as its host.
   addDomain(operatorId: string, domain: string, environment: Environment): OperatorDomain {
     this.getOperator(operatorId);
+    const host = normalizeDomain(domain);
+    if (!host) throw new Error("INVALID_DOMAIN");
     const rec: OperatorDomain = {
       id: randomUUID(),
       operator_id: operatorId,
-      domain: domain.toLowerCase(),
+      domain: host,
       environment,
       status: "active",
       created_at: now()
@@ -173,18 +202,36 @@ export class ManagementService {
   }
 
   isDomainAllowed(operatorId: string, domain: string, environment: Environment): boolean {
-    const d = domain.toLowerCase();
+    const d = normalizeDomain(domain);
+    if (!d) return false;
     for (const rec of this.domains.values()) {
       if (
         rec.operator_id === operatorId &&
         rec.environment === environment &&
         rec.status === "active" &&
-        rec.domain === d
+        normalizeDomain(rec.domain) === d // rows stored before validation existed
       ) {
         return true;
       }
     }
     return false;
+  }
+
+  /**
+   * Hosts allowed to embed this operator's games: every active domain, prod and
+   * sandbox (the same set the launch check accepts). Empty for an unknown or
+   * suspended operator, which makes /play unframeable.
+   */
+  embedHosts(operatorId: string): string[] {
+    const op = this.operators.get(operatorId);
+    if (!op || op.status === "suspended") return [];
+    const hosts = new Set<string>();
+    for (const rec of this.domains.values()) {
+      if (rec.operator_id !== operatorId || rec.status !== "active") continue;
+      const host = normalizeDomain(rec.domain);
+      if (host) hosts.add(host);
+    }
+    return [...hosts].sort();
   }
 
   // ── API credentials ───────────────────────────────────────────────────────────

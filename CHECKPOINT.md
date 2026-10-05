@@ -132,13 +132,14 @@ User decisions for this phase: SQLite for demo-operator; no signed round APIs fo
 
 5. No operator-side (HMAC) cancel for free-round campaigns; cancel exists in the Admin API and
    the Campaign Manager UI.
-6. Demo Casino blueprint items not built: iframe `postMessage` contract + `frame-ancestors`
-   on `/play` (any site can still embed it). Signed round APIs were deliberately skipped.
-   (`featureRef` bonus grouping and the failure-path e2e are done on `feat/sandbox-pass`.)
-13. A debit whose response is lost leaves the stake at the casino with no round until the
-    client retries the same idempotency key (then it completes, debited once). There is no
-    automatic reversal: the rollback webhook reverses by `originalOperatorTxRef`, which the
-    RGS never received. Needs a rollback-by-idempotency-key contract or a reconciliation job.
+6. ~~iframe `postMessage` contract + `frame-ancestors` on `/play`~~ — done on
+   `feat/iframe-security-and-reconciliation` (GUIDE §4a; `client/embed-bridge.js`;
+   `npm run check:embed`, `demo-operator: npm run check:casino-embed`). Signed round APIs
+   were deliberately skipped.
+13. ~~Lost-debit reversal~~ — done on the same branch (GUIDE §4b; `DebitReconciler`, job
+    `src/jobs/debit-reconciliation.ts`, casino `voided_debits`). A lost debit answer is retried
+    in line under its key; one that stays unknown voids the round and rolls back by
+    `originalIdempotencyKey` (refund, or tombstone so a late debit is refused).
 7. `platform/scripts/e2e-operator.ts` does not exercise free rounds.
 8. Landscape-phone hit areas for autoplay/turbo.
 9. Round ID strip sits above the board in `/play` mode only.
@@ -156,8 +157,9 @@ The functional epic is done. Remaining work, in the order it unblocks launch:
 2. **First provider sandbox pass** with the demo casino (backlog 8.3), then regression
    automation in CI (backlog 9.2): platform + demo-operator tests, `test:client`, the two
    headless-Chrome checks, and a reduced seeded parity run.
-3. **Hardening follow-ups** — `frame-ancestors` on `/play` from registered operator domains,
-   the iframe `postMessage` contract, operator-side HMAC cancel, lost-debit reversal (§5 item 13).
+3. **Hardening follow-ups** — framing + postMessage and lost-debit reversal are done (§5 items
+   6, 13). Left: operator-side HMAC campaign cancel (+ free rounds in `e2e-operator.ts`), and
+   the platform RNG certification notes (`qa/rng-certification-notes.md` + stream dump).
 
 ## 7. How to resume
 
@@ -168,7 +170,13 @@ cd platform && npx vitest run && npm run dev:seed     # platform tests; consoles
 cd demo-operator && npm run dev                       # demo casino on :4000; back-office at /back-office
 cd platform && npm run check:campaigns                # Campaign Manager in real Chrome
 cd demo-operator && npm run check:back-office         # casino back-office in real Chrome
+cd platform && npm run check:embed                    # framing + postMessage bridge in real Chrome
+cd demo-operator && npm run check:casino-embed        # the casino page driving the game in real Chrome
 ```
+
+After pulling this branch, re-run `npm run dev:seed:demo-operator`: the demo casino's launch
+origin is now its real host (`localhost:4000`, plus `127.0.0.1:4000`), since only registered
+hosts may frame `/play`.
 
 Read first: `CLAUDE.md` (invariants), `qa/rtp-certification-report.md` (math and open items),
 `docs/16-demo-casino-blueprint.md` (demo casino design).

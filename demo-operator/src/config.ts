@@ -67,7 +67,9 @@ export function loadConfig(): DemoOperatorConfig {
     apiSecret: required("PLATFORM_API_SECRET"),
     webhookSecret: required("PLATFORM_WEBHOOK_SECRET"),
     adminToken: required("PLATFORM_ADMIN_TOKEN"),
-    origin: process.env.PLATFORM_ORIGIN ?? "demo-operator.local",
+    // Launch origin: must be one of the operator's registered domains, which are
+    // also the only hosts allowed to frame the game (CSP frame-ancestors on /play).
+    origin: process.env.PLATFORM_ORIGIN ?? `localhost:${process.env.PORT ?? 4000}`,
     gameCode: process.env.GAME_CODE ?? "bananax",
     currency: process.env.CURRENCY ?? "GEL",
     sessionSecret: process.env.SESSION_TOKEN_SECRET ?? "dev-demo-operator-session-secret",

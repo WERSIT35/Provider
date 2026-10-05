@@ -28,7 +28,11 @@ const PORT = Number(process.env.PORT ?? 8080);
 const DEMO_OPERATOR_PORT = Number(process.env.DEMO_OPERATOR_PORT ?? 4000);
 const CURRENCY = "GEL";
 const GAME_CODE = "bananax";
-const ORIGIN = "demo-operator.local";
+// The casino's own address: the launch origin AND who may frame /play (CSP
+// frame-ancestors). Both spellings of localhost, since a browser treats them as
+// different hosts.
+const ORIGIN = `localhost:${DEMO_OPERATOR_PORT}`;
+const EMBED_HOSTS = [ORIGIN, `127.0.0.1:${DEMO_OPERATOR_PORT}`];
 const DEMO_TTL_SECONDS = Number(process.env.DEMO_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30); // a month — this token only guards a local dev instance.
 
 const cfg = {
@@ -47,7 +51,7 @@ async function main(): Promise<void> {
   const c = buildContainer(cfg, { walletFactory: (mgmt) => new WebhookWallet(mgmt) });
 
   const op = c.mgmt.createOperator({ name: "Demo Operator Site", slug: "demo-operator-site", default_currency: CURRENCY });
-  c.mgmt.addDomain(op.id, ORIGIN, "prod");
+  for (const host of EMBED_HOSTS) c.mgmt.addDomain(op.id, host, "prod");
 
   const game = c.mgmt.registerGame({ code: GAME_CODE, title: "Banana X" });
   let mc = c.mgmt.createMathConfig({
