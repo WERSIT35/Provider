@@ -128,6 +128,9 @@ const state = {
   // The embedding casino paused the game (embed-bridge "pause"): no new round may
   // start; a bonus waits before its next free spin. Cleared by "resume".
   embedPaused: false,
+  // True while initSession applies the restored bet/ante, so that is not mistaken
+  // for a player choice (see saveBetPref).
+  restoringBet: false,
   // performance.now() when the last round (or autoplay run) fully settled.
   roundSettledAt: -Infinity,
   autoplayLeft: 0,
@@ -5955,6 +5958,7 @@ async function spin(options = {}) {
         ? Number(state.forcedMultiplierLock)
         : undefined
     });
+    rememberFeatureTerms(payload, bet, Boolean(el.anteToggle.checked));
     // Diagnostic: confirm each spin produces a unique id and a fresh first matrix.
     try {
       const firstMatrix = payload?.tumble_steps?.[0]?.matrix || payload?.matrix || [];
@@ -6016,6 +6020,9 @@ async function autoplayBonus() {
   state.bonusAutoplay = true;
   setControls(true);
   let total = 0;
+  // The terms this bonus plays at, for a reload mid-bonus (see restoredBetAndAnte).
+  // A resumed bonus is already showing its terms, so re-saving them is harmless.
+  saveBetPref({ featureBet: Number(el.betSelect.value), featureAnte: Boolean(el.anteToggle.checked) });
   embedEmit("featureState", { active: true, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: 0 });
   try {
     pushGameMessage("Bonus autoplay started.", "bonus");
@@ -6146,6 +6153,7 @@ async function buyFreeSpins() {
     pulseBanner("Buying Free Spins...", "bonus", 900);
     embedEmit("roundStarted", { bet, ante: false, free_spin: false, free_round: false, buy: true });
     const payload = await api("/api/v1/buy-free-spins", { session_id: state.sessionId, bet_amount: bet });
+    rememberFeatureTerms(payload, bet, false);
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
     await animateRound(payload, bet, Number(payload.buy_cost || 0));
     embedRoundEnded(payload, bet);
@@ -6295,7 +6303,64 @@ async function loadRules() {
   }
 }
 
+// ─── Bet / ante that survive a reload ───────────────────────────────────────
+// The RGS only knows bets that were PLAYED, and the standalone engine knows none,
+// so the player's own choice is also kept per device: localStorage, per boot
+// mode + game + currency (a 10.00 GEL bet is not a 10.00 EUR bet). Always
+// re-validated against the session's allowed bets.
+//   bet / ante              the player's last choice in the base game
+//   featureBet / featureAnte  the terms a bonus started on: the standalone engine has
+//                           no feature lock, so a reload mid-bonus must not replay the
+//                           remaining free spins at a different bet
+const betPrefKey = () => `vx.betPref:${_platform.enabled ? "rgs" : "local"}:${state.gameId}:${state.currency || "GEL"}`;
+function loadBetPref() {
+  try {
+    const v = JSON.parse(localStorage.getItem(betPrefKey()) || "null");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveBetPref(patch) {
+  try { localStorage.setItem(betPrefKey(), JSON.stringify({ ...loadBetPref(), ...patch })); } catch { /* storage off: server record only */ }
+}
+/**
+ * A round that awarded a bonus fixes the bonus's terms. Saved the moment the result
+ * is in, so a reload during the award screen or the animation already resumes at them.
+ */
+function rememberFeatureTerms(payload, bet, ante) {
+  if (!payload?.is_free_spin && Number(payload?.free_spins_left || 0) > 0) {
+    saveBetPref({ featureBet: Number(bet), featureAnte: Boolean(ante) });
+  }
+}
+
+/** A bet/ante change the player made (not the boot restore, a campaign lock or a feature). */
+function isPlayerBetChoice() {
+  return !state.restoringBet && !freeRounds.active && Number(el.freeSpins?.textContent || 0) === 0;
+}
+
+/**
+ * Which bet + ante a (re)booted session starts on. Inside a feature the server's
+ * locked terms win (platform), else the terms the feature started on (standalone).
+ * In the base game the player's last choice on this device wins (it may be newer
+ * than anything played), else the server's last played bet.
+ */
+function restoredBetAndAnte(payload, allowedBets, inFeature) {
+  const pref = loadBetPref();
+  const serverBet = payload.bet_amount == null ? null : Number(payload.bet_amount);
+  // In a feature with no record of its terms (storage cleared), the player's last
+  // chosen bet is the best remaining guess, and still beats 1.00.
+  const candidates = inFeature ? [serverBet, pref.featureBet, pref.bet] : [pref.bet, serverBet];
+  const bet = candidates.map((b) => (b == null ? NaN : Number(b))).find((b) => allowedBets.includes(b)) ?? null;
+  const serverAnte = Boolean(payload.ante_enabled);
+  let ante;
+  if (inFeature) ante = payload.bet_amount != null ? serverAnte : typeof pref.featureAnte === "boolean" ? pref.featureAnte : serverAnte;
+  else ante = typeof pref.ante === "boolean" ? pref.ante : serverAnte;
+  return { bet, ante };
+}
+
 async function initSession() {
+  state.restoringBet = true;
   if (new URLSearchParams(window.location.search).has("reset")) {
     try { window.SlotEngine?.SessionStore?.clearSession?.(); } catch {}
   }
@@ -6315,16 +6380,17 @@ async function initSession() {
     option.textContent = fmt(b);
     el.betSelect.appendChild(option);
   });
-  // Start on the bet the server says the player was on (the locked bet inside a
-  // feature, else their last bet in this game); 1.00 only when there is none.
+  // Restore the bet and ante (see restoredBetAndAnte): a feature's locked terms,
+  // else the player's own last choice on this device, else the server's record of
+  // their last played bet; 1.00 only when there is none of those.
   const allowedBets = (payload.allowed_bets || []).map(Number);
-  const restoredBet = Number(payload.bet_amount);
-  const startBet = allowedBets.includes(restoredBet) ? restoredBet : (allowedBets.includes(1) || !allowedBets.length ? 1 : allowedBets[0]);
+  const pendingFreeSpins = Number(payload.free_spins_left || 0);
+  const restored = restoredBetAndAnte(payload, allowedBets, pendingFreeSpins > 0);
+  const startBet = restored.bet ?? (allowedBets.includes(1) || !allowedBets.length ? 1 : allowedBets[0]);
   el.betSelect.value = String(startBet);
   el.betView.textContent = fmt(startBet);
   if (el.betDisplay) el.betDisplay.textContent = fmt(startBet);
   renderPaytable(startBet);
-  const pendingFreeSpins = Number(payload.free_spins_left || 0);
   if (pendingFreeSpins > 0) {
     // Mid-feature: the bet and ante are the feature's locked terms. Lock the
     // controls now, before the resume screen, not only once the autoplay starts.
@@ -6340,10 +6406,12 @@ async function initSession() {
     multiplier: state.bonusMultiplierCarry,
     bonusTotal: Number(payload.bonus_round_win || 0)
   });
-  if (el.anteToggle && payload.ante_enabled) {
-    el.anteToggle.checked = true;
+  // Set ante both ways: a player who switched it off must not get it back on.
+  if (el.anteToggle && el.anteToggle.checked !== restored.ante) {
+    el.anteToggle.checked = restored.ante;
     el.anteToggle.dispatchEvent(new Event("change"));
   }
+  state.restoringBet = false; // from here on, bet / ante changes are the player's
   setCrazyMode(Boolean(payload.crazy_mode), { silent: true });
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
   state.lastBalance = Number(payload.balance);
@@ -6395,6 +6463,7 @@ el.betSelect.addEventListener("change", () => {
   el.betView.textContent = fmt(el.betSelect.value);
   if (el.betDisplay) el.betDisplay.textContent = fmt(el.betSelect.value);
   renderPaytable(Number(el.betSelect.value || 1));
+  if (isPlayerBetChoice()) saveBetPref({ bet: Number(el.betSelect.value) });
 });
 
 function stepBet(direction) {
@@ -6417,6 +6486,11 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
+    if (isPlayerBetChoice()) saveBetPref({ ante: el.anteToggle.checked });
+    // The standalone engine keeps its own ante flag (it refuses a buy while it is on)
+    // and only updates it on a spin; keep it in step with the toggle, including a
+    // restored "off". The RGS takes ante from each request, so platform mode needs nothing.
+    if (!_platform.enabled) getEngine().then((engine) => engine.setAnteEnabled(el.anteToggle.checked)).catch(() => {});
   });
 }
 el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
