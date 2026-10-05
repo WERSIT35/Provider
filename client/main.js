@@ -171,7 +171,6 @@ const symbolAssets = {
   YELLOW_HEX: "assets/symbols/YellowGem.webp",
   GREEN_TRIANGLE: "assets/symbols/GreenGem.webp",
   BLUE_DIAMOND: "assets/symbols/BlueGem.webp",
-  REEL: "assets/symbols/REEL.webp",
   // Multiplier art is now ONE token per rarity tier (numbers are drawn in code
   // onto the blank center plate — see the MULTI draw block below). The generic
   // MULTI key falls back to the Common token if a tier image fails to load.
@@ -416,8 +415,8 @@ function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
 const MOTION = {
   stretch: 0,         // rigid bodies: no stretch while falling
   squash: 1,          // gain on each reel group's contact squash (REEL_INERTIA)
-  breathBase: 0.08,   // winning symbols' resting swell during the hold
-  breathDepth: 0.07,  // extra swell at the top of each breath
+  breathBase: 0.03,   // winning symbols' resting swell during the hold (scale-up ≈ 3%)
+  breathDepth: 0.02,  // extra swell at the top of each breath: peak 1.05, a micro-lift, not a bounce
   breathMs: 1100,     // one breath (in + out)
   breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
   spotlight: 0.5      // how far non-winning symbols step back during the hold
@@ -532,7 +531,25 @@ const THEME = (() => {
       spinFlash: c.tungsten,                // + burst alpha
       vignette:  alpha(c.vaultDoor, 0.85),
       cellWell:  alpha(c.gunmetal, 0.72),
-      cellEdge:  alpha(c.steelSheen, 0.10)
+      cellEdge:  alpha(c.steelSheen, 0.10),
+      gridDot:   alpha(c.steelSheen, 0.22),   // frameless board: where four cells meet
+      gridTick:  alpha(c.steelSheen, 0.08)    // the faint cross arms around each dot
+    },
+
+    // Win aura behind a winning symbol, by symbol (getGlowSprite #rrggbb). Scatter
+    // keeps the laser, multipliers the bright gold; anything unlisted: win gold.
+    aura: {
+      TOP_CROWN:       tok("--aura-crown",     "#ffc94a"),
+      HOURGLASS:       tok("--aura-hourglass", "#3fe0b5"),
+      RING:            tok("--aura-ring",      "#ffb86b"),
+      CHALICE:         tok("--aura-chalice",   "#e070ff"),
+      RED_GEM:         tok("--aura-red",       "#ff4d5e"),
+      PURPLE_TRIANGLE: tok("--aura-purple",    "#a66bff"),
+      YELLOW_HEX:      tok("--aura-yellow",    "#ffd23f"),
+      GREEN_TRIANGLE:  tok("--aura-green",     "#3fe07a"),
+      BLUE_DIAMOND:    tok("--aura-blue",      "#4fd8ff"),
+      SCATTER:         c.laser,
+      MULTI:           c.goldBright
     },
 
     // Glow-sprite colours (getGlowSprite takes #rrggbb and adds its own alpha).
@@ -1003,8 +1020,8 @@ class ReelCanvasRenderer {
     // Per-frame perf caches (built lazily, invalidated on resize):
     //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
     //    the hot particle loop blits instead of building a gradient every frame.
-    //  • stageCacheBack/Front: the fully-static stage (background + table frame +
-    //    lanes) baked to offscreen canvases and blitted once per frame.
+    //  • stageCacheBack/Front: the static stage (frameless: only the cell-corner
+    //    marks) baked to offscreen canvases and blitted once per frame.
     //  • symbolSprites: each symbol bitmap pre-scaled to ~2x its on-screen cell
     //    size, so the 30 per-frame cell blits are near-1:1 instead of resampling
     //    the full-resolution source art every time.
@@ -1303,11 +1320,6 @@ class ReelCanvasRenderer {
     return sprite;
   }
 
-  isReelBackReady() {
-    const r = this.images.get("REEL");
-    return Boolean(r?.complete && r?.naturalWidth);
-  }
-
   /** Table/inner-panel geometry derived from the current layout. Shared by the
    *  stage cache builder and the live render (which re-clips to the inner panel). */
   getTableRect() {
@@ -1326,142 +1338,43 @@ class ReelCanvasRenderer {
   }
 
   /**
-   * Bake the fully-static stage into two offscreen canvases (blitted once per
-   * frame instead of rebuilding ~25 gradients every frame):
-   *   • stageCacheBack  — the flat background gradient.
-   *   • stageCacheFront — vignette, table frame/core, inner grid + ember noise,
-   *     and the per-column reel backs + lane glow/spine/cap (transparent bg).
-   * The time-animated fog/mesh, the spin-burst flash, and the drop streaks stay
-   * live in draw(). Rebuilt on resize, or once the REEL image finishes loading.
+   * Bake the static stage into offscreen canvases (blitted once per frame).
+   *
+   * Frameless glass (v10): the board has no painted bezel, table, reel strips or grid
+   * lines any more. The glass surface itself is CSS on .reels-stage (a dark,
+   * backdrop-blurred panel), so the canvas stays TRANSPARENT and the symbols float
+   * on the glass. All that is baked here is a delicate mark where four cells meet:
+   * a dot with faint cross arms, so the 6x5 grid stays readable without boxes.
+   *   • stageCacheBack  — empty (kept so callers and the rebuild logic stay simple).
+   *   • stageCacheFront — the cell-corner marks.
+   * Rebuilt on resize.
    */
   buildStageCache() {
-    const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
-    const { tableX, tableY, tableW, tableH, frameR, inX, inY, inW, inH, inR } = this.getTableRect();
+    const { width, height, padX, top, laneW, rowStep } = this.getLayout();
+    this.stageCacheBack = this.makeOffscreen(width, height);
 
-    // Back layer — flat gradient. The drowned sun-temple scene lives on the page
-    // behind the whole game (see .altar in styles.css); the reel table is opaque
-    // and sits on top, so the scene is visible around/above/below it, not here.
-    const back = this.makeOffscreen(width, height);
-    const bg = back.ctx.createLinearGradient(0, 0, 0, height);
-    bg.addColorStop(0, "#111728");
-    bg.addColorStop(0.35, "#0b101d");
-    bg.addColorStop(1, "#060a14");
-    back.ctx.fillStyle = bg;
-    back.ctx.fillRect(0, 0, width, height);
-    this.stageCacheBack = back;
-
-    // Front layer — transparent; everything static above the animated fog.
     const front = this.makeOffscreen(width, height);
     const fctx = front.ctx;
-
-    const vignette = fctx.createRadialGradient(width * 0.5, height * 0.5, height * 0.12, width * 0.5, height * 0.5, height * 0.95);
-    vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,0.52)");
-    fctx.fillStyle = vignette;
-    fctx.fillRect(0, 0, width, height);
-
-    const tableShadow = fctx.createRadialGradient(width * 0.5, tableY + tableH * 0.45, tableW * 0.1, width * 0.5, tableY + tableH * 0.45, tableW * 0.7);
-    tableShadow.addColorStop(0, "rgba(0,0,0,0.16)");
-    tableShadow.addColorStop(1, "rgba(0,0,0,0)");
-    fctx.fillStyle = tableShadow;
-    this.roundedRectPath(fctx, tableX - 14, tableY - 14, tableW + 28, tableH + 28, frameR + 10);
-    fctx.fill();
-
-    const frame = fctx.createLinearGradient(tableX, tableY, tableX, tableY + tableH);
-    frame.addColorStop(0, "#2f4c8f");
-    frame.addColorStop(0.26, "#5888ff");
-    frame.addColorStop(0.52, "#2d4e98");
-    frame.addColorStop(0.78, "#1b2b5d");
-    frame.addColorStop(1, "#111b39");
-    fctx.fillStyle = frame;
-    this.roundedRectPath(fctx, tableX, tableY, tableW, tableH, frameR);
-    fctx.fill();
-
-    const tableCore = fctx.createLinearGradient(inX, inY, inX, inY + inH);
-    tableCore.addColorStop(0, "rgba(15, 24, 42, 0.98)");
-    tableCore.addColorStop(0.4, "rgba(11, 18, 34, 0.99)");
-    tableCore.addColorStop(1, "rgba(8, 12, 24, 1)");
-    fctx.fillStyle = tableCore;
-    this.roundedRectPath(fctx, inX, inY, inW, inH, inR);
-    fctx.fill();
-
-    fctx.strokeStyle = "rgba(185, 219, 255, 0.32)";
-    fctx.lineWidth = 1.2;
-    this.roundedRectPath(fctx, inX + 0.6, inY + 0.6, inW - 1.2, inH - 1.2, inR - 1);
-    fctx.stroke();
-
-    fctx.save();
-    this.roundedRectPath(fctx, inX + 2, inY + 2, inW - 4, inH - 4, inR - 2);
-    fctx.clip();
-
-    const gridStep = Math.max(24, Math.min(44, laneW * 0.42));
-    fctx.strokeStyle = "rgba(184, 220, 255, 0.05)";
-    fctx.lineWidth = 1;
-    for (let y = inY + 8; y < inY + inH; y += gridStep) {
-      fctx.beginPath();
-      fctx.moveTo(inX, y);
-      fctx.lineTo(inX + inW, y);
-      fctx.stroke();
-    }
-
-    const emberNoise = 48;
-    for (let i = 0; i < emberNoise; i += 1) {
-      const nx = inX + ((i * 97) % 1000) / 1000 * inW;
-      const ny = inY + ((i * 67 + 137) % 1000) / 1000 * inH;
-      const a = 0.008 + (((i * 23) % 10) / 10) * 0.02;
-      fctx.fillStyle = `rgba(255, 191, 133, ${a.toFixed(3)})`;
-      fctx.fillRect(nx, ny, 1, 1);
-    }
-
-    const reelBack = this.images.get("REEL");
-    const reelBackReady = this.isReelBackReady();
-    this._stageCacheMissingReel = !reelBackReady;
-    for (let c = 0; c < this.cols; c += 1) {
-      const x = padX + laneW * (c + 0.5);
-      const spineTop = top * 0.5;
-      const spineBottom = top + rowStep * (this.rows - 0.1);
-
-      if (reelBackReady) {
-        const reelW = laneW * 0.96;
-        const reelH = rowStep * this.rows + Math.min(28, rowStep * 0.3);
-        const reelX = padX + laneW * c + (laneW - reelW) / 2;
-        const reelY = top - Math.min(14, rowStep * 0.15);
-        fctx.save();
-        fctx.globalAlpha = 0.55;
-        fctx.drawImage(reelBack, reelX, reelY, reelW, reelH);
-        fctx.restore();
+    const dotR = Math.max(1, Math.min(laneW, rowStep) * 0.012);
+    const arm = Math.max(3, Math.min(laneW, rowStep) * 0.06);
+    for (let r = 1; r < this.rows; r += 1) {
+      for (let c = 1; c < this.cols; c += 1) {
+        const x = Math.round(padX + laneW * c) + 0.5;
+        const y = Math.round(top + rowStep * r) + 0.5;
+        fctx.strokeStyle = THEME.stage.gridTick;
+        fctx.lineWidth = 1;
+        fctx.beginPath();
+        fctx.moveTo(x - arm, y);
+        fctx.lineTo(x + arm, y);
+        fctx.moveTo(x, y - arm);
+        fctx.lineTo(x, y + arm);
+        fctx.stroke();
+        fctx.fillStyle = THEME.stage.gridDot;
+        fctx.beginPath();
+        fctx.arc(x, y, dotR, 0, Math.PI * 2);
+        fctx.fill();
       }
-
-      const laneGlow = fctx.createLinearGradient(x, top * 0.22, x, height);
-      laneGlow.addColorStop(0, "rgba(172, 214, 255, 0.05)");
-      laneGlow.addColorStop(0.45, "rgba(172, 214, 255, 0.02)");
-      laneGlow.addColorStop(1, "rgba(172, 214, 255, 0)");
-      fctx.fillStyle = laneGlow;
-      fctx.fillRect(x - laneW * 0.42, top * 0.2, laneW * 0.84, height - top * 0.2);
-
-      const spine = fctx.createLinearGradient(x, spineTop, x, spineBottom);
-      spine.addColorStop(0, "rgba(206, 230, 255, 0.52)");
-      spine.addColorStop(0.3, "rgba(115, 155, 255, 0.3)");
-      spine.addColorStop(1, "rgba(42, 64, 130, 0.24)");
-      fctx.strokeStyle = spine;
-      fctx.lineWidth = Math.max(3, laneW * 0.05);
-      fctx.beginPath();
-      fctx.moveTo(x, spineTop);
-      fctx.lineTo(x, spineBottom);
-      fctx.stroke();
-
-      const cap = fctx.createRadialGradient(x, top * 0.26, radius * 0.06, x, top * 0.26, radius * 0.54);
-      cap.addColorStop(0, "rgba(210, 233, 255, 0.42)");
-      cap.addColorStop(1, "rgba(210, 233, 255, 0.04)");
-      fctx.fillStyle = cap;
-      fctx.beginPath();
-      fctx.arc(x, top * 0.26, radius * 0.44, 0, Math.PI * 2);
-      fctx.fill();
-      fctx.strokeStyle = "rgba(200, 227, 255, 0.3)";
-      fctx.lineWidth = 1;
-      fctx.stroke();
     }
-    fctx.restore();
     this.stageCacheFront = front;
   }
 
@@ -3092,55 +3005,13 @@ class ReelCanvasRenderer {
     const { width, height, padX, top, laneW, rowStep, radius } = this.getLayout();
     ctx.clearRect(0, 0, width, height);
 
-    // The two ambient gradients below are pure functions of these four waves, and
-    // they used to be rebuilt from scratch on EVERY frame — two gradient objects
-    // plus two toFixed() string allocations, forever, even on a fully idle board.
-    // Quantizing the waves to 1/12 steps makes the inputs repeat for ~20 frames
-    // at a time so the gradient objects can be memoized below. The motion is a
-    // very slow drift across a huge soft glow; the steps are invisible.
-    const q12 = (v) => Math.round(v * 12) / 12;
-    const driftA = q12(Math.sin(this.time * 0.00017));
-    const driftB = q12(Math.cos(this.time * 0.00013));
-    const idleWave = q12(Math.sin(this.time * 0.0012));
-    const idleWave2 = q12(Math.cos(this.time * 0.00092));
-    const glowX = width * (0.5 + driftA * 0.08);
-    const glowY = height * (0.2 + driftB * 0.04);
-
-    // Static stage is baked once (rebuilt on resize, or when REEL finishes
-    // loading). The flat background is the back layer; vignette/table/lanes are
-    // the front layer blitted after the animated fog below.
-    if (!this.stageCacheBack || !this.stageCacheFront || (this._stageCacheMissingReel && this.isReelBackReady())) {
+    // Static stage (the cell-corner marks) is baked once, rebuilt on resize.
+    if (!this.stageCacheBack || !this.stageCacheFront) {
       this.buildStageCache();
     }
-    ctx.drawImage(this.stageCacheBack.cvs, 0, 0, width, height);
-
-    const fogKey = `${driftA}|${driftB}|${width}|${height}`;
-    if (this._fogKey !== fogKey) {
-      const amberFog = ctx.createRadialGradient(glowX, glowY, 24, glowX, glowY, height * 0.84);
-      amberFog.addColorStop(0, THEME.stage.fogCore);
-      amberFog.addColorStop(0.5, THEME.stage.fogMid);
-      amberFog.addColorStop(1, THEME.stage.fogEdge);
-      this._fogGrad = amberFog;
-      this._fogKey = fogKey;
-    }
-    ctx.fillStyle = this._fogGrad;
-    ctx.fillRect(0, 0, width, height);
-
-    const meshKey = `${idleWave}|${idleWave2}|${width}|${height}`;
-    if (this._meshKey !== meshKey) {
-      const meshGlow = ctx.createLinearGradient(0, 0, width, height);
-      meshGlow.addColorStop(0, THEME.alpha(THEME.stage.meshA, (0.06 + (idleWave + 1) * 0.015).toFixed(3)));
-      meshGlow.addColorStop(0.5, THEME.stage.meshMid);
-      meshGlow.addColorStop(1, THEME.alpha(THEME.stage.meshB, (0.05 + (idleWave2 + 1) * 0.012).toFixed(3)));
-      this._meshGrad = meshGlow;
-      this._meshKey = meshKey;
-    }
-    ctx.fillStyle = this._meshGrad;
-    ctx.fillRect(0, 0, width, height);
-
-    // Static vignette + table frame/core + inner grid/ember + lane structure
-    // (all baked into the front cache). Geometry shared with the live clip below.
-    const { inX, inY, inW, inH, inR } = this.getTableRect();
+    // Frameless glass: the canvas is transparent over the CSS glass (.reels-stage),
+    // so there is no back layer or ambient fog to paint, only the baked cell-corner
+    // marks.
     ctx.drawImage(this.stageCacheFront.cvs, 0, 0, width, height);
 
     if (this.fx.spinBurst) {
@@ -3150,11 +3021,12 @@ class ReelCanvasRenderer {
       ctx.fillRect(0, 0, width, height);
     }
 
-    // Re-establish the inner clip for the live (animated) content. The static
-    // grid/ember/lane art already lives in the cached front layer above.
+    // Live (animated) content. With no painted frame the glass edge IS the board
+    // edge, and CSS already clips the canvas to it (.reels-stage: overflow hidden,
+    // rounded), so there is no inner table clip any more: the old one cut the art of
+    // the outer columns and boxed the spotlight dim inside the glass. In-flight
+    // symbols are still masked to the grid per cell (REEL_MASK).
     ctx.save();
-    this.roundedRectPath(ctx, inX + 2, inY + 2, inW - 4, inH - 4, inR - 2);
-    ctx.clip();
 
     // Falling-symbol streaks down each column — only while a drop is in flight.
     if (this.fx.drop) {
@@ -3603,14 +3475,16 @@ class ReelCanvasRenderer {
           ctx.fill();
         }
 
+        // Winner aura colour: the symbol's own (THEME.aura), so a cluster of blue
+        // diamonds glows cyan and a cluster of crowns glows gold.
+        const auraColor = isWinner ? (THEME.aura[symbol] || THEME.glow.win) : null;
         if (isWinner) {
           // Halo breathes with the celebration pulse so the held cluster reads
           // as actively celebrating, not statically lit. A floor keeps it
-          // clearly marked even at the shimmer's low point.
-          // Blitted from the cached glow sprite (vault gold) instead of
-          // allocating a radial gradient per winner per frame.
+          // clearly marked even at the shimmer's low point. Blitted from the
+          // cached glow sprite (one per colour) instead of a gradient per frame.
           const haloPulse = 0.55 + 0.45 * pulseGlow;
-          const glow = this.getGlowSprite(THEME.glow.win);
+          const glow = this.getGlowSprite(auraColor);
           const haloR = ringR * 1.55;
           ctx.globalAlpha = 0.85 * blastFade * haloPulse;
           ctx.drawImage(glow.cvs, x - haloR, yFloat - haloR, haloR * 2, haloR * 2);
@@ -3673,6 +3547,18 @@ class ReelCanvasRenderer {
             ctx.globalAlpha = a;
           }
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          if (isWinner && !isFalling) {
+            // Inner glow: the aura added back OVER the art (additive), small and
+            // breathing with the pulse, so the winning symbol itself lights up
+            // instead of sitting in a box. One cached-sprite blit per winner.
+            const inner = this.getGlowSprite(auraColor);
+            const innerR = Math.min(drawW, drawH) * 0.42;
+            ctx.save();
+            ctx.globalCompositeOperation = "lighter";
+            ctx.globalAlpha = (0.16 + 0.22 * pulseGlow) * blastFade * spotDim;
+            ctx.drawImage(inner.cvs, x - innerR, iconCy - innerR, innerR * 2, innerR * 2);
+            ctx.restore();
+          }
         } else {
           ctx.fillStyle = THEME.text.label;
           ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
