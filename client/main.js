@@ -247,11 +247,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Turbo (#48) compresses EVERY animated duration and hold to TURBO_SCALE: the
 // spin-out, the drops (gravity scales with it, so the motion keeps its shape),
 // explosions, tumbles, the celebration hold, multiplier catches and flashes all
-// speed up together. It is set so turbo stays readable: about 1.3x the pace,
-// not a blur (every landing and every win can still be followed). Applied
+// speed up together. 0.45 = about 2.2x the pace (the product call: turbo players
+// want a real jump; the shapes and the order of events stay the same). Applied
 // centrally inside the renderer animation methods + animationSleep. Fast-stop
 // still wins and collapses to near-instant.
-const TURBO_SCALE = 0.77;
+const TURBO_SCALE = 0.45;
 const turboScale = () => (state.turbo ? TURBO_SCALE : 1);
 // Fast-stop / skip: the in-flight drop is re-timed to finish on the next frame
 // (no easing, no bounce — straight to the step's resolved board), and the

@@ -293,8 +293,8 @@ async function evaluate(cdp, expression) {
   check("the refill starts falling as soon as the burst's symbols are gone (no empty-board wait)",
     N.gaps.length >= 2 && N.gaps.every((g) => g <= maxGap), N.gaps.map((g) => g.toFixed(0) + "ms").join(", ") + ` (≤ ${maxGap.toFixed(0)})`);
   const ratio = (T.holds[0] || 0) / (N.holds[0] || 1);
-  check("turbo is about 1.3x the pace: faster, still readable (holds scale by TURBO_SCALE)",
-    pace.turbo >= 0.75 && pace.turbo < 0.8 && Math.abs(ratio - pace.turbo) < 0.12, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
+  check("turbo is 2.0-2.5x the pace (holds scale by TURBO_SCALE, once)",
+    pace.turbo >= 0.4 && pace.turbo <= 0.5 && Math.abs(ratio - pace.turbo) < 0.1, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
 
   console.log("\nwin focus + idle breathing (#55)");
   await waitIdle();
@@ -470,7 +470,9 @@ async function evaluate(cdp, expression) {
       snd: __snd.map((s) => ({ n: s.n, i: s.i, t: s.t - t0 })) };
   })()`);
   // Only the zip's own sounds: later tumbles in the same round thud too.
-  const zipThuds = zip.snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t < 200);
+  // Each reel's lock thud (a multiplier's BANG plays its own reel_stop too).
+  const zipSeen = new Set();
+  const zipThuds = zip.snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t < 200 && !zipSeen.has(s.i) && zipSeen.add(s.i));
   const zipClicks = zip.snd.filter((s) => s.n === "click" && s.t < 250);
   const lockedBy = zip.done; // the drop is released only once every reel has locked
   check("the press zips the reels instead of teleporting them", zip.had && zip.frames.length > 2, `${zip.frames.length} zip frames`);
