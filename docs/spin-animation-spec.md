@@ -36,7 +36,7 @@ language and constants are described in [animation-guide.md](./animation-guide.m
   lock with a double click; later steps of that round resolve instantly.
 - During the big-win overlay a press skips the count-up, the next press dismisses it.
 
-## Timing profile (base, before turbo ×0.77)
+## Timing profile (base, before turbo ×0.45)
 
 | Step | Budget |
 |------|--------|
