@@ -213,6 +213,46 @@ async function evaluate(cdp, expression) {
   check("dust radiates from the cluster, pooled under its cap", blast.maxDust > 0 && blast.maxDust <= 256, `${blast.maxDust} puffs`);
   check("no shake: the board never moved during the blast", blast.moved === 0);
 
+  console.log("\nexplosion handoff: exploded symbols never come back (#50)");
+  await waitIdle();
+  const handoff = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const results = [];
+    const others = ["RED_RUBY", "PURPLE_GEM", "GREEN_GEM", "GOLD_RING", "HOURGLASS"];
+    for (const size of [8, 15, 25]) {
+      const m = []; const cells = [];
+      for (let r = 0; r < R.rows; r++) { m.push([]); for (let c = 0; c < R.cols; c++) m[r].push(others[(r * 7 + c * 3) % others.length]); }
+      for (let k = 0; k < size; k++) { const r = R.rows - 1 - (k % R.rows), c = Math.floor(k / R.rows); m[r][c] = "BLUE_DIAMOND"; cells.push({ row: r, col: c }); }
+      const next = m.map((row) => row.map((s) => (s === "BLUE_DIAMOND" ? "GOLD_RING" : s)));
+      R.setBoard(m, {});
+      const realDraw = R.draw.bind(R); let phase = "hold"; const leaks = []; let blastFrames = 0, afterFrames = 0, burstPeakDrawn = 0;
+      const clearedKeys = new Set(cells.map((p) => p.row + "-" + p.col));
+      R.draw = (...x) => {
+        R._traceCells = new Set(); const out = realDraw(...x);
+        if (phase === "after") {
+          afterFrames++;
+          for (const k of clearedKeys) if (R._traceCells.has(k) && !(Number(R.fx.drop?.map?.[k] || 0) > 0)) leaks.push(k);
+        }
+        if (phase === "burst" && R.fx.blast) blastFrames++;
+        R._traceCells = null; return out; };
+      await R.highlight(m, { winning: cells }, 200);
+      phase = "burst";
+      await R.explode(cells, 380, "blast-medium");
+      phase = "after";
+      await R.vacuum(cells);
+      await new Promise((r) => setTimeout(r, 40)); // the await gap the round loop has before the refill
+      const dropMap = buildDropMap(m, cells);
+      await R.drop(next, [], dropMap, 360, { tempo: 1 });
+      R.draw = realDraw;
+      results.push({ size, leaks: leaks.length, afterFrames, blastFrames, clearedOnNew: R.board.cleared.size });
+    }
+    return results;
+  })()`);
+  for (const h of handoff) {
+    check(`${h.size}-symbol cluster: gone after its burst, never redrawn before the refill`, h.leaks === 0 && h.afterFrames > 3 && h.blastFrames > 3 && h.clearedOnNew === 0,
+      `${h.afterFrames} frames between the burst and the settled refill, ${h.leaks} leaked`);
+  }
+  check("a burst's own symbol is gone by BLAST_GONE of it (no see-through ghost)", await evaluate(cdp, `BLAST_GONE <= 0.5`));
+
   console.log("\nwin focus + idle breathing (#55)");
   await waitIdle();
   const focus = await evaluate(cdp, `(async () => {
