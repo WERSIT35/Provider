@@ -109,7 +109,6 @@ const state = {
   rules: null,
   bonusAutoplay: false,
   simulationAbort: null,
-  featureResolver: null,
   spinLog: [],
   activityLog: [],
   spinSeq: 0,
@@ -4181,6 +4180,8 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
   // battery and heat on frames nobody can see. installVisibilityGuards() knows
   // not to wake it while the overlay is up.
   reelRenderer.pauseRendering();
+  const tracked = VxNotify.get("bigwin");
+  tracked?.open();
   try {
     return await bigWin.play({
       amount,
@@ -4191,6 +4192,7 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
       autoDismissMs
     });
   } finally {
+    tracked?.close("done");
     if (!document.hidden) reelRenderer.resumeRendering();
   }
 }
@@ -4494,7 +4496,6 @@ function realityCheckPrompt(stats) {
         figures = (await res.json()).stats || {};
       } catch { figures = {}; }
     }
-    const modal = document.getElementById("realityCheck");
     const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
     set("realityElapsed", fmtDuration(Number(figures.elapsed_ms || 0)));
     set("realityRounds", String(figures.rounds ?? 0));
@@ -4503,16 +4504,8 @@ function realityCheckPrompt(stats) {
     set("realityNet", fmt(Number(figures.net || 0)));
     if (state.autoplayActive) stopAutoplay();
     embedEmit("realityCheck", { ...figures });
-    modal.hidden = false;
-    document.getElementById("realityContinue")?.focus();
-    const choice = await new Promise((resolve) => {
-      const cont = document.getElementById("realityContinue");
-      const leave = document.getElementById("realityLeave");
-      const done = (v) => { cont.onclick = null; leave.onclick = null; resolve(v); };
-      cont.onclick = () => done(true);
-      leave.onclick = () => done(false);
-    });
-    modal.hidden = true;
+    // A VxNotify modal with no way out but its two buttons.
+    const choice = (await VxNotify.open("reality")) === "continue";
     if (!choice) {
       state.embedPaused = true;
       pushGameMessage("Session paused after the reality check.", "info");
@@ -5481,11 +5474,15 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
 }
 
 function playWinCombineSequence(rawWin, multiplier, totalWin) {
-  return new Promise((resolve) => {
-    if (!el.reels?.parentElement) { resolve(); return; }
-    const stage = el.reels.parentElement;
-    const overlay = document.createElement("div");
-    overlay.className = "win-combine-overlay";
+  if (!el.reels?.parentElement) return Promise.resolve();
+  const stage = el.reels.parentElement;
+  // Phase timings (ms)
+  const ENTER = 480;
+  const HOLD  = 320;
+  const SLAM  = 360;
+  const REVEAL = 1500;
+  // A VxNotify celebration: built here, removed when its time is up.
+  return VxNotify.celebrate("winCombine", stage, (overlay) => {
 
     const amount = document.createElement("div");
     amount.className = "combine-chip combine-amount";
@@ -5506,13 +5503,6 @@ function playWinCombineSequence(rawWin, multiplier, totalWin) {
     total.innerHTML = `<span class="combine-kicker">Total Win</span><span class="combine-value">${fmt(totalWin)}</span>`;
 
     overlay.append(amount, multi, flash, total);
-    stage.appendChild(overlay);
-
-    // Phase timings (ms)
-    const ENTER = 480;
-    const HOLD  = 320;
-    const SLAM  = 360;
-    const REVEAL = 1500;
 
     // Enter from sides.
     requestAnimationFrame(() => {
@@ -5534,11 +5524,7 @@ function playWinCombineSequence(rawWin, multiplier, totalWin) {
     setTimeout(() => {
       overlay.classList.add("is-fading");
     }, ENTER + HOLD + SLAM + REVEAL - 320);
-    setTimeout(() => {
-      overlay.remove();
-      resolve();
-    }, ENTER + HOLD + SLAM + REVEAL);
-  });
+  }, { ms: ENTER + HOLD + SLAM + REVEAL, className: "win-combine-overlay" });
 }
 
 function confirmBuy({ cost, currency, costMultiplier }) {
@@ -5558,34 +5544,7 @@ function confirmBuy({ cost, currency, costMultiplier }) {
     currencyEl.textContent = currency;
     if (metaEl) metaEl.textContent = `${costMultiplier}× your current bet`;
 
-    let resolved = false;
-    const cleanup = (result) => {
-      if (resolved) return;
-      resolved = true;
-      modal.classList.add("hidden");
-      modal.setAttribute("aria-hidden", "true");
-      confirmBtn.removeEventListener("click", onConfirm);
-      cancelBtn.removeEventListener("click", onCancel);
-      modal.removeEventListener("click", onBackdrop);
-      document.removeEventListener("keydown", onKey);
-      resolve(result);
-    };
-    const onConfirm = () => { window.Sound?.play("buy_feature"); cleanup(true); };
-    const onCancel = () => cleanup(false);
-    const onBackdrop = (e) => { if (e.target === modal) cleanup(false); };
-    const onKey = (e) => {
-      if (e.key === "Escape") cleanup(false);
-      else if (e.key === "Enter") cleanup(true);
-    };
-
-    confirmBtn.addEventListener("click", onConfirm);
-    cancelBtn.addEventListener("click", onCancel);
-    modal.addEventListener("click", onBackdrop);
-    document.addEventListener("keydown", onKey);
-
-    modal.classList.remove("hidden");
-    modal.setAttribute("aria-hidden", "false");
-    setTimeout(() => confirmBtn.focus(), 30);
+    VxNotify.open("buyConfirm").then((reason) => resolve(reason === "confirm"));
   });
 }
 
@@ -5593,7 +5552,7 @@ function confirmBuy({ cost, currency, costMultiplier }) {
  *  ticker, the game's single message line: shown for `duration`, then the
  *  ticker's current line (tips, spin line or held WIN) comes back. */
 function pulseBanner(text, tone = "info", duration = 860) {
-  ticker.flash(text, tone, duration);
+  VxNotify.banner(text, tone, duration);
 }
 
 function renderExamples() {
@@ -6750,23 +6709,14 @@ async function buyFreeSpins() {
   }
 }
 
+/** The feature screen (a VxNotify "feature"): resolves when it is dismissed
+ *  (a tap anywhere on it, or dismissFeature()). */
 function showFeature(title, copy) {
-  if (state.featureResolver) state.featureResolver();
-  el.featureScreenKicker.textContent = "Feature";
-  el.featureScreenTitle.textContent = title;
-  el.featureScreenCopy.textContent = copy;
-  el.featureScreen.classList.remove("hidden");
-  return new Promise((resolve) => {
-    state.featureResolver = () => {
-      el.featureScreen.classList.add("hidden");
-      state.featureResolver = null;
-      resolve();
-    };
-  });
+  return VxNotify.open("feature", { kicker: "Feature", title, body: copy });
 }
 
 function dismissFeature() {
-  if (state.featureResolver) state.featureResolver();
+  VxNotify.close("feature", "dismissed");
 }
 
 async function streamSse(url, onEvent, signal) {
@@ -7119,7 +7069,6 @@ if (el.testExplodeBtn) el.testExplodeBtn.addEventListener("click", () => runVisu
 if (el.testCelebrateBtn) el.testCelebrateBtn.addEventListener("click", () => runVisualTest("celebrate"));
 if (el.testCatchBtn) el.testCatchBtn.addEventListener("click", () => runVisualTest("catch"));
 if (el.crazyToggleBtn) el.crazyToggleBtn.addEventListener("click", () => setCrazyMode(!state.crazyMode));
-el.featureScreen.addEventListener("click", dismissFeature);
 // ═══ PLAYER SHELL INTERACTION ═══════════════════════════════════════════════
 // The info/settings modal, the HUD ticker and the spin input (tap vs hold).
 // Pure UI: every action goes through the existing spin() / startAutoplay() /
@@ -7166,6 +7115,37 @@ function renderInfoRules() {
   renderPlayerPaytable();
 }
 
+// ── Notifications (#49) ──
+// Every popup goes through one skeleton (client/notify.js, VxNotify): the
+// same lifecycle, keyboard/focus rules, close reasons, audio hooks and skin
+// API for each. docs/notification-skeleton.md.
+VxNotify.register("feature", el.featureScreen, {
+  kind: "feature",
+  visibility: "class",
+  dismiss: { anywhere: "tap" },
+  fill: (slots, d) => {
+    if (slots.kicker) slots.kicker.textContent = d.kicker ?? "Feature";
+    if (slots.title) slots.title.textContent = d.title ?? "";
+    if (slots.body) slots.body.textContent = d.body ?? "";
+  }
+});
+VxNotify.register("buyConfirm", document.getElementById("buyConfirmModal"), {
+  kind: "modal",
+  visibility: "class",
+  dismiss: { backdrop: "cancel", escape: "cancel", enter: "confirm" },
+  audio: { confirm: "buy_feature" }
+});
+// The reality check has no way out but its two buttons (continue / leave).
+VxNotify.register("reality", document.getElementById("realityCheck"), { kind: "modal", visibility: "attr" });
+VxNotify.register("freeRounds", el.frModal, {
+  kind: "modal",
+  visibility: "attr",
+  dismiss: { backdrop: "play", escape: "play", enter: "play", space: true },
+  audio: { open: "click" }
+});
+VxNotify.register("bigwin", document.getElementById("bigWinOverlay"), { kind: "bigwin", external: true });
+VxNotify.setBanner((text, tone, ms) => ticker.flash(text, tone, ms));
+
 const psModal = (() => {
   const root = el.psInfoModal;
   if (!root) return { open() {}, close() {}, isOpen: () => false };
@@ -7175,7 +7155,6 @@ const psModal = (() => {
   const body = root.querySelector(".ps-modal__body");
   const ids = tabs.map((t) => t.dataset.psSection);
   let current = ids[0];
-  let opener = null;
 
   function show(id) {
     current = ids.includes(id) ? id : ids[0];
@@ -7191,59 +7170,32 @@ const psModal = (() => {
   function step(delta) {
     show(ids[(ids.indexOf(current) + delta + ids.length) % ids.length]);
   }
-  function focusables() {
-    return [...root.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")]
-      .filter((n) => !n.disabled && n.getClientRects().length > 0);
-  }
-  // Capture phase: while the modal is open it owns the keyboard (Esc, paging,
-  // and Tab, which must not escape to the game behind it).
-  function onKey(e) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-      return;
-    }
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+  // The skeleton owns Esc, Tab (trapped) and the focus; paging is ours.
+  const shell = VxNotify.register("info", root, {
+    kind: "modal",
+    visibility: "attr",
+    dismiss: { backdrop: "closed", escape: "closed" },
+    audio: { open: "click" },
+    onKey(e) {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return false;
       e.preventDefault();
       step(e.key === "ArrowRight" ? 1 : -1);
       root.querySelector(".ps-modal__tab[aria-current='page']")?.focus();
-      return;
+      return true;
     }
-    if (e.key !== "Tab") return;
-    const f = focusables();
-    if (!f.length) return;
-    const first = f[0];
-    const last = f[f.length - 1];
-    const inside = root.contains(document.activeElement);
-    if (e.shiftKey && (!inside || document.activeElement === first)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
+  });
   function open(id, trigger) {
-    opener = trigger || document.activeElement;
     show(id);
-    root.hidden = false;
-    document.addEventListener("keydown", onKey, true);
+    trigger?.focus?.(); // the skeleton returns the focus to what had it on open
+    shell.open();
     // Keyboard users land on the section they asked for.
-    (root.querySelector(".ps-modal__tab[aria-current='page']") || root).focus();
-    window.Sound?.play("click");
+    setTimeout(() => root.querySelector(".ps-modal__tab[aria-current='page']")?.focus(), 0);
   }
   function close() {
-    if (root.hidden) return;
-    root.hidden = true;
-    document.removeEventListener("keydown", onKey, true);
-    if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
-    opener = null;
+    shell.close("closed");
   }
   root.addEventListener("click", (e) => {
-    if (e.target === root || e.target.closest("[data-ps-close]")) {
-      close();
-      return;
-    }
+    if (e.target === root || e.target.closest("[data-ps-close]")) return; // the skeleton closes it
     const tab = e.target.closest("[data-ps-section]");
     if (tab) {
       show(tab.dataset.psSection);
@@ -7252,7 +7204,7 @@ const psModal = (() => {
     const dot = e.target.closest("[data-ps-dot]");
     if (dot) show(dot.dataset.psDot);
   });
-  return { open, close, isOpen: () => !root.hidden };
+  return { open, close, isOpen: () => shell.isOpen };
 })();
 
 el.psMenuBtn?.addEventListener("click", () => psModal.open("settings", el.psMenuBtn));
@@ -7471,36 +7423,8 @@ const freeRoundsUi = (() => {
         ? `Bet per round · valid until ${until.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
         : "Bet per round";
     }
-    return new Promise((resolve) => {
-      const opener = document.activeElement;
-      const close = () => {
-        modal.hidden = true;
-        document.removeEventListener("keydown", onKey, true);
-        modal.removeEventListener("click", onClick);
-        if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
-        resolve();
-      };
-      // Capture phase: while open, the modal owns the keyboard (Space must not spin
-      // behind it; Tab stays on its single button).
-      const onKey = (e) => {
-        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          e.stopPropagation();
-          close();
-        } else if (e.key === "Tab") {
-          e.preventDefault();
-          el.frPlayBtn?.focus();
-        }
-      };
-      const onClick = (e) => {
-        if (e.target === modal || e.target.closest("[data-fr-close]")) close();
-      };
-      modal.addEventListener("click", onClick);
-      document.addEventListener("keydown", onKey, true);
-      modal.hidden = false;
-      el.frPlayBtn?.focus();
-      window.Sound?.play("click");
-    });
+    // A VxNotify modal: Play, Esc, Enter, Space or the backdrop close it.
+    return VxNotify.open("freeRounds").then(() => {});
   }
 
   /** On load: lock the UI, then tell the player. */
@@ -7706,7 +7630,7 @@ el.spinBtn.addEventListener("click", (e) => {
 });
 
 window.addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || psModal.isOpen() || (el.frModal && !el.frModal.hidden)) return;
+  if (e.code !== "Space" || VxNotify.anyModalOpen()) return;
   const t = e.target;
   const typing = t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t?.tagName || "");
   if (typing && t !== el.spinBtn) return;
