@@ -177,6 +177,14 @@ body::after {
   display: none !important;
 }
 
+/* ── Notification skeleton (#49, client/notify.js) ──
+   Every popup root carries .vx-n .vx-n--<kind> and data-vx-state. Each kind
+   keeps its own position and look (all outside the document flow); these are
+   the shared rules: a closed popup never takes a click, and a skin's art
+   (VxNotify.skin: assets.art → --vx-n-art) shows in [data-vx-slot="art"]. */
+.vx-n[data-vx-state="closed"] { pointer-events: none; }
+.vx-n [data-vx-slot="art"] { background: var(--vx-n-art, none) center / contain no-repeat; }
+
 .sanctum {
   width: min(1540px, 100%);
   margin: 0 auto;

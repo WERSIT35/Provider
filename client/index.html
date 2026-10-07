@@ -29,7 +29,7 @@
     <link rel="preload" as="image" href="assets/symbols/FREESPINS_INFO-removebg-preview.webp" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin-wght-normal.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-latin-wght-normal.woff2" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=20261008-4" />
+    <link rel="stylesheet" href="styles.css?v=20261008-5" />
   </head>
   <body>
     <div id="bootLoader" class="boot-loader" role="progressbar" aria-label="Loading game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -137,9 +137,9 @@
                 </div>
                 <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
                   <div class="feature-screen-panel">
-                    <p class="feature-screen-kicker" id="featureScreenKicker">Feature</p>
-                    <h2 id="featureScreenTitle">You won 15 Free Spins</h2>
-                    <p class="feature-screen-copy" id="featureScreenCopy">Press anywhere to continue.</p>
+                    <p class="feature-screen-kicker" id="featureScreenKicker" data-vx-slot="kicker">Feature</p>
+                    <h2 id="featureScreenTitle" data-vx-slot="title">You won 15 Free Spins</h2>
+                    <p class="feature-screen-copy" id="featureScreenCopy" data-vx-slot="body">Press anywhere to continue.</p>
                   </div>
                 </section>
               </div>
@@ -366,8 +366,8 @@
           <div><dt>Net</dt><dd class="u-num" id="realityNet">0.00</dd></div>
         </dl>
         <div class="vx-reality__actions">
-          <button type="button" class="vx-reality__leave" id="realityLeave">Leave game</button>
-          <button type="button" class="vx-reality__continue" id="realityContinue">Continue playing</button>
+          <button type="button" class="vx-reality__leave" id="realityLeave" data-vx-close="leave">Leave game</button>
+          <button type="button" class="vx-reality__continue" id="realityContinue" data-vx-close="continue" data-vx-autofocus>Continue playing</button>
         </div>
       </div>
     </div>
@@ -379,7 +379,7 @@
       <div class="ps-modal__panel">
         <header class="ps-modal__head">
           <h2 class="ps-modal__title" id="psInfoTitle">Game Info</h2>
-          <button type="button" class="ps-icon-btn ps-modal__close" data-ps-close aria-label="Close">
+          <button type="button" class="ps-icon-btn ps-modal__close" data-ps-close data-vx-close="closed" aria-label="Close">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </header>
@@ -450,8 +450,8 @@
         </div>
         <p class="confirm-meta" id="buyCostMeta">100× your current bet</p>
         <div class="confirm-actions">
-          <button type="button" id="buyCancelBtn" class="confirm-btn confirm-btn-cancel">Cancel</button>
-          <button type="button" id="buyConfirmBtn" class="confirm-btn confirm-btn-confirm">Buy</button>
+          <button type="button" id="buyCancelBtn" class="confirm-btn confirm-btn-cancel" data-vx-close="cancel">Cancel</button>
+          <button type="button" id="buyConfirmBtn" class="confirm-btn confirm-btn-confirm" data-vx-close="confirm" data-vx-autofocus>Buy</button>
         </div>
       </div>
     </section>
@@ -467,7 +467,7 @@
           <span class="confirm-cost-currency" id="frCurrency">GEL</span>
         </div>
         <p class="confirm-meta" id="frMeta">Bet per round</p>
-        <button type="button" class="confirm-btn confirm-btn-confirm fr-play" id="frPlayBtn" data-fr-close>Play</button>
+        <button type="button" class="confirm-btn confirm-btn-confirm fr-play" id="frPlayBtn" data-vx-close="play" data-vx-autofocus>Play</button>
       </div>
     </div>
 
@@ -485,8 +485,9 @@
     <script src="engine/spin-lock.js?v=20260523-1"></script>
     <script src="engine/audio.js?v=20260803-1"></script>
     <script src="engine/ambiance.js?v=20260803-1"></script>
+    <script src="notify.js?v=20261008-1"></script>
     <script src="big-win.js?v=20261001-1"></script>
     <script src="embed-bridge.js?v=20261005-1"></script>
-    <script src="main.js?v=20261008-4"></script>
+    <script src="main.js?v=20261008-5"></script>
   </body>
 </html>

@@ -599,6 +599,101 @@ async function evaluate(cdp, expression) {
   check("win stat is 1.5x the old size (1.2 × --ui), still one line in the same box",
     Math.abs(hud.win.winPx - 1.2 * hud.win.ui) < 0.6 && hud.win.fits && hud.win.boxMoved === 0, `${hud.win.winPx.toFixed(1)}px (spin line ${hud.win.spinPx.toFixed(1)}px), --ui ${hud.win.ui}, fits ${hud.win.fits}, box moved ${hud.win.boxMoved}`);
 
+  console.log("\nnotification skeleton: every popup through one lifecycle (#49)");
+  await waitIdle();
+  // Real key presses: Enter and Space carry their text, so a focused button
+  // gets its native click, exactly as for a player.
+  const press = async (key, code, vk, mods = 0) => {
+    const text = key === "Enter" ? "\r" : key === " " ? " " : undefined;
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: vk, modifiers: mods, ...(text ? { text } : {}) });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk, modifiers: mods });
+    await sleep(60);
+  };
+  const ESC = ["Escape", "Escape", 27], ENTER = ["Enter", "Enter", 13], TAB = ["Tab", "Tab", 9], SPACE = [" ", "Space", 32];
+  await evaluate(cdp, `(() => { window.__nlog = []; VxNotify.on("open", (d) => __nlog.push("open:" + d.name)); VxNotify.on("close", (d) => __nlog.push("close:" + d.name + ":" + (d.reason || "")));
+    window.__board0 = document.querySelector(".vault-window").getBoundingClientRect().toJSON(); window.__moved = 0;
+    const watch = () => { const b = document.querySelector(".vault-window").getBoundingClientRect(); __moved = Math.max(__moved, Math.abs(b.x - __board0.x), Math.abs(b.y - __board0.y), Math.abs(b.width - __board0.width), Math.abs(b.height - __board0.height)); requestAnimationFrame(watch); }; requestAnimationFrame(watch);
+    return true; })()`);
+  const NS = {};
+  // Feature screen: slots filled, a tap anywhere closes it.
+  await evaluate(cdp, `(window.__f = showFeature("You won 15 Free Spins", "Press anywhere to continue."), true)`);
+  NS.feature = await evaluate(cdp, `(() => { const r = el.featureScreen; return { shown: !r.classList.contains("hidden"), kind: r.classList.contains("vx-n--feature"), title: r.querySelector("[data-vx-slot=title]").textContent, state: r.dataset.vxState }; })()`);
+  await evaluate(cdp, `(el.featureScreen.click(), true)`);
+  NS.featureReason = await evaluate(cdp, `Promise.race([__f, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  NS.featureHidden = await evaluate(cdp, `el.featureScreen.classList.contains("hidden")`);
+  // Buy confirm: autofocus on Buy, Tab trapped, Esc cancels, Enter on Cancel cancels, Enter confirms, Space never spins behind it.
+  const buy = () => evaluate(cdp, `(window.__b = confirmBuy({ cost: 100, currency: "GEL", costMultiplier: 100 }), true)`);
+  await buy(); await sleep(80);
+  NS.buyFocus = await evaluate(cdp, `document.activeElement?.id`);
+  await press(...TAB); await press(...TAB); await press(...TAB);
+  NS.buyTabInside = await evaluate(cdp, `document.getElementById("buyConfirmModal").contains(document.activeElement)`);
+  const spinsBefore = await evaluate(cdp, `stats.spins`);
+  await evaluate(cdp, `(document.activeElement?.blur(), true)`); // Space off any button: must not spin
+  await press(...SPACE);
+  NS.spaceSpun = (await evaluate(cdp, `stats.spins`)) !== spinsBefore || (await evaluate(cdp, `isRoundInFlight()`));
+  await press(...ESC);
+  NS.buyEsc = await evaluate(cdp, `Promise.race([__b, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  await buy(); await sleep(80);
+  await evaluate(cdp, `(document.getElementById("buyCancelBtn").focus(), true)`); await press(...ENTER);
+  NS.buyEnterOnCancel = await evaluate(cdp, `Promise.race([__b, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  await buy(); await sleep(80); await press(...ENTER);
+  NS.buyEnter = await evaluate(cdp, `Promise.race([__b, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  NS.buyHidden = await evaluate(cdp, `document.getElementById("buyConfirmModal").classList.contains("hidden")`);
+  // Info modal: focus on the asked section, arrows page, Esc closes, focus returns to the opener.
+  await evaluate(cdp, `(el.psInfoBtn.focus(), el.psInfoBtn.click(), true)`); await sleep(80);
+  NS.infoFocus = await evaluate(cdp, `document.activeElement?.dataset?.psSection || document.activeElement?.className`);
+  await press("ArrowRight", "ArrowRight", 39);
+  NS.infoPaged = await evaluate(cdp, `document.activeElement?.dataset?.psSection`);
+  await press(...ESC);
+  NS.infoClosed = await evaluate(cdp, `el.psInfoModal.hidden && !VxNotify.isOpen("info")`);
+  NS.infoFocusBack = await evaluate(cdp, `document.activeElement === el.psInfoBtn`);
+  // Free-rounds notice: Space closes it (and never spins).
+  await evaluate(cdp, `(window.__fr = VxNotify.open("freeRounds"), true)`); await sleep(60);
+  await press(...SPACE);
+  NS.fr = await evaluate(cdp, `Promise.race([__fr, new Promise((r) => setTimeout(() => r("still open"), 300))])`);
+  // Reality check: Esc does NOT close it; only its buttons do.
+  await evaluate(cdp, `(window.__rc = VxNotify.open("reality"), true)`); await sleep(60);
+  await press(...ESC);
+  NS.realityAfterEsc = await evaluate(cdp, `VxNotify.isOpen("reality") && !document.getElementById("realityCheck").hidden`);
+  await evaluate(cdp, `(document.getElementById("realityContinue").click(), true)`);
+  NS.reality = await evaluate(cdp, `Promise.race([__rc, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  // Big win: tracked while BigWinController plays it.
+  await evaluate(cdp, `(window.__bw = celebrateBigWin(Number(el.betSelect.value || 1) * 30, Number(el.betSelect.value || 1)), true)`); await sleep(300);
+  NS.bigwinOpen = await evaluate(cdp, `VxNotify.openNames().includes("bigwin")`);
+  await evaluate(cdp, `(bigWin.advance(), true)`); await sleep(600); await evaluate(cdp, `(bigWin.advance(), true)`);
+  await evaluate(cdp, `Promise.race([__bw, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`); await sleep(100);
+  NS.bigwinClosed = await evaluate(cdp, `!VxNotify.isOpen("bigwin")`);
+  // Win combine: a celebration built on demand and removed when done.
+  await evaluate(cdp, `(window.__wc = playWinCombineSequence(1, 50, 50), true)`); await sleep(300);
+  NS.combine = await evaluate(cdp, `(() => { const o = document.querySelector(".win-combine-overlay"); return Boolean(o && o.classList.contains("vx-n--celebration") && VxNotify.isOpen("winCombine")); })()`);
+  await evaluate(cdp, `Promise.race([__wc, new Promise((r) => setTimeout(() => r("TIMEOUT"), 6000))])`);
+  NS.combineGone = await evaluate(cdp, `!document.querySelector(".win-combine-overlay") && !VxNotify.isOpen("winCombine")`);
+  // Banner: the ticker's transient line.
+  await evaluate(cdp, `(VxNotify.banner("Skeleton notice", "info", 900), true)`);
+  NS.banner = await evaluate(cdp, `el.psTickerText.textContent`);
+  // Skin: swap the art and the open sound without touching the DOM.
+  NS.skin = await evaluate(cdp, `(async () => { const played = []; const real = window.Sound.play; window.Sound.play = (n, o) => { played.push(n); return real(n, o); };
+    VxNotify.skin("feature", { className: "skin-test", assets: { art: "assets/symbols/Ring.webp" }, audio: { open: "click" } });
+    const p = showFeature("Skinned", "x"); const r = el.featureScreen; const out = { cls: r.classList.contains("skin-test"), art: r.style.getPropertyValue("--vx-n-art"), sound: played.includes("click") };
+    dismissFeature(); await p; window.Sound.play = real; VxNotify.skin("feature", { className: "" }); return out; })()`);
+  NS.log = await evaluate(cdp, `__nlog`);
+  NS.moved = await evaluate(cdp, `__moved`);
+  check("feature screen: slots filled, a tap anywhere closes it", NS.feature.shown && NS.feature.kind && NS.feature.state === "open" && NS.feature.title === "You won 15 Free Spins" && NS.featureReason === "tap" && NS.featureHidden);
+  check("buy confirm: autofocus on Buy, Tab stays inside, Space never spins behind it", NS.buyFocus === "buyConfirmBtn" && NS.buyTabInside && !NS.spaceSpun);
+  check("buy confirm: Esc cancels, Enter on Cancel cancels, Enter confirms", NS.buyEsc === false && NS.buyEnterOnCancel === false && NS.buyEnter === true && NS.buyHidden,
+    `${NS.buyEsc} / ${NS.buyEnterOnCancel} / ${NS.buyEnter}`);
+  check("info modal: opens on its section, arrows page, Esc closes, focus returns to the opener", NS.infoFocus === "rules" && NS.infoPaged && NS.infoPaged !== "rules" && NS.infoClosed && NS.infoFocusBack,
+    `${NS.infoFocus} → ${NS.infoPaged}`);
+  check("free-rounds notice: Space closes it", NS.fr === "play");
+  check("reality check: Esc cannot dismiss it, only its buttons", NS.realityAfterEsc && NS.reality === "continue");
+  check("big-win overlay is tracked by the skeleton while it plays", NS.bigwinOpen && NS.bigwinClosed);
+  check("win combine: built on demand as a celebration, removed when done", NS.combine && NS.combineGone);
+  check("banner: the ticker's transient line goes through the skeleton", NS.banner === "Skeleton notice", NS.banner);
+  check("skins swap the class, the art and the sounds without touching the DOM", NS.skin.cls && /Ring\.webp/.test(NS.skin.art) && NS.skin.sound);
+  const expect = ["open:feature", "close:feature:tap", "open:buyConfirm", "close:buyConfirm:cancel", "open:info", "close:info:closed", "open:freeRounds", "close:freeRounds:play", "open:reality", "close:reality:continue", "open:bigwin", "close:bigwin:done", "open:winCombine", "close:winCombine:timeout", "open:banner"];
+  check("one event stream for every popup (open / close with its reason)", expect.every((e) => NS.log.includes(e)), NS.log.length + " events");
+  check("zero layout thrash: the board never moved while any popup was up", NS.moved === 0);
+
   const relevant = logs.filter((l) => !/AudioContext|autoplay/i.test(l));
   console.log("\nconsole/network problems:", relevant.length ? relevant : "none");
   if (relevant.length) failed = true;
