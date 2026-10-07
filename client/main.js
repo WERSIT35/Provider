@@ -466,9 +466,39 @@ const MOTION = {
   breathDepth: 0.02,  // extra swell at the top of each breath: peak 1.05, a micro-lift, not a bounce
   breathMs: 1100,     // one breath (in + out)
   breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
-  spotlight: 0.5      // how far non-winning symbols step back during the hold
+  idleFloat: 1.5      // idle breathing lift, px (IDLE_BREATH)
 };
-const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathDepth: 0, breathRipple: 0 });
+const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathDepth: 0, breathRipple: 0, idleFloat: 0 });
+
+// Win focus (#55). From the moment a cluster is caught until the board moves
+// again, every symbol outside it is drawn at 1 − `dim` opacity and the board's
+// backdrop darkens by `backdrop`, so the winners and their aura are the
+// brightest thing on screen. Fades in over inMs, out over outMs (both
+// easeInOutCubic, turbo-scaled) from wherever it is. One fillRect plus each
+// symbol's own globalAlpha: no extra layers, no filters.
+const FOCUS = { dim: 0.4, backdrop: 0.32, inMs: 250, outMs: 260 };
+
+// Idle breathing (#55). While the board is idle each symbol floats up to
+// MOTION.idleFloat px ABOVE its slot and back, one breath per periodMs, on
+// its own random phase. Up-only from the slot, so stopping is a settle DOWN:
+// when a spin starts the float eases out over outMs (never a lift before the
+// drop), and it eases back in over inMs once the board is idle again.
+const IDLE_BREATH = { periodMs: 3000, inMs: 700, outMs: 90 };
+
+// A time-based 0..1 envelope ({ from, to, t0, ms }) that can be retargeted at
+// any moment and always continues from where it is (no jumps).
+const makeEnvelope = () => ({ from: 0, to: 0, t0: 0, ms: 0 });
+function envelopeLevel(e, now) {
+  const u = e.ms > 0 ? clamp((now - e.t0) / e.ms, 0, 1) : 1;
+  return lerp(e.from, e.to, easeInOutCubic(u));
+}
+function envelopeTo(e, to, ms, now) {
+  if (e.to === to) return;
+  e.from = envelopeLevel(e, now);
+  e.to = to;
+  e.t0 = now;
+  e.ms = ms;
+}
 
 // Symbol sprite cache band (see getSymbolSprite): reuse a bake while the wanted
 // size is within [min, max] of it; new bakes are made at headroom × wanted.
@@ -1086,6 +1116,11 @@ class ReelCanvasRenderer {
     this.multiplierDecoyById = new Map();
     this.particles = [];
     this.shards = new ShardEmitter(480);
+    // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
+    this.focus = { ...makeEnvelope(), set: null };
+    // Idle breathing (IDLE_BREATH): the envelope and each cell's own phase.
+    this._idleEnv = makeEnvelope();
+    this._breathPhase = Float32Array.from({ length: rowsCount * colsCount }, () => Math.random() * Math.PI * 2);
     // Per-frame perf caches (built lazily, invalidated on resize):
     //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
     //    the hot particle loop blits instead of building a gradient every frame.
@@ -1747,6 +1782,7 @@ class ReelCanvasRenderer {
       for (let c = 0; c < this.cols; c += 1) dropMap[`${r}-${c}`] = this.rows + 1;
     }
     this.cancelColumnStops();
+    this.focusOff(); // a new spin releases any win focus still held
     this.fx.drop = {
       start: performance.now(),
       duration,
@@ -1920,6 +1956,7 @@ class ReelCanvasRenderer {
       ? this.board.matrix.map((row) => (Array.isArray(row) ? row.slice() : []))
       : [];
     this.setBoard(matrix, { multipliers });
+    this.focusOff(); // the refill brings the board back up as it falls
     this.fx.drop = {
       start: performance.now(),
       duration: dropDuration,
@@ -2211,14 +2248,52 @@ class ReelCanvasRenderer {
     if (!winning.length) return;
     const start = performance.now();
     this.fx.pulse = { start, duration, phase: this.breathPhases(winning) };
-    // Cluster spotlight: everything that did not win steps back for the hold.
-    // Owned by this call, so a multiplier-catch spotlight that replaced it in
-    // the meantime is left alone.
-    const spot = { start, duration, set: new Set(this.board.winningSet), intensity: MOTION.spotlight, cluster: true };
-    this.fx.spotlight = spot;
+    // Win focus: everything that did not win steps back, and stays back
+    // through the blast until the board moves again (focusOff).
+    this.focusOn(this.board.winningSet);
     await animationSleep(duration);
     this.fx.pulse = null;
-    if (this.fx.spotlight === spot) this.fx.spotlight = null;
+  }
+
+  /** Win focus (FOCUS) on `keys`: the rest of the board fades back. */
+  focusOn(keys) {
+    const now = performance.now();
+    this.focus.set = new Set(keys);
+    envelopeTo(this.focus, 1, Math.round(FOCUS.inMs * turboScale()), now);
+  }
+
+  /** Release the win focus: the whole board fades back up together. */
+  focusOff() {
+    const f = this.focus;
+    if (f.to === 0) return;
+    f.set = null; // the old winners are gone: brighten everything as one
+    envelopeTo(f, 0, state.fastStopRequested ? 1 : Math.round(FOCUS.outMs * turboScale()), performance.now());
+  }
+
+  /** Idle breath of a cell (px ABOVE its slot, 0..MOTION.idleFloat): one
+   *  breath per IDLE_BREATH.periodMs on the cell's own phase, scaled by the
+   *  idle envelope. */
+  breathOffset(row, col, now = performance.now(), level = this.idleLevel(now), m = this.motion()) {
+    if (!(level > 0) || !m.idleFloat) return 0;
+    // Settling out, the breath freezes where the spin caught it and only
+    // shrinks with the envelope: straight down, never a last rise.
+    const e = this._idleEnv;
+    const at = e.to === 0 ? Math.min(now, e.t0) : now;
+    const w = (at / IDLE_BREATH.periodMs) * Math.PI * 2 + this._breathPhase[row * this.cols + col];
+    return level * m.idleFloat * (0.5 - 0.5 * Math.cos(w));
+  }
+
+  /** Idle-breath envelope now: retargeted from isIdle() on every read, so a
+   *  spin starts settling the breath on the very next query. */
+  idleLevel(now = performance.now()) {
+    const idle = this.isIdle();
+    envelopeTo(this._idleEnv, idle ? 1 : 0, idle ? IDLE_BREATH.inMs : IDLE_BREATH.outMs, now);
+    return envelopeLevel(this._idleEnv, now);
+  }
+
+  /** Board idle: shown, nothing dropping, no round in flight. */
+  isIdle() {
+    return !this.board.hidden && !this.fx.drop && !isRoundInFlight();
   }
 
   async multiplierCatch(multipliers = [], duration = 620) {
@@ -3492,6 +3567,20 @@ class ReelCanvasRenderer {
     // 5b: anticipation lanes, behind the symbols.
     if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
 
+    // Win focus (FOCUS, #55): one backdrop darkening behind the symbols; the
+    // symbols outside the focus set step back through their own alpha below.
+    const frameNow = performance.now();
+    const focusLevel = envelopeLevel(this.focus, frameNow);
+    const focusSet = this.focus.set;
+    if (focusLevel > 0.001) {
+      ctx.fillStyle = `rgba(2, 5, 12, ${(FOCUS.backdrop * focusLevel).toFixed(3)})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+    // Idle breathing (IDLE_BREATH, #55): in when the board rests, out the
+    // moment a spin starts.
+    const mo = this.motion();
+    const idleLevel = this.idleLevel(frameNow);
+
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
         if (this.board.hidden) continue;
@@ -3555,9 +3644,8 @@ class ReelCanvasRenderer {
           chargeGlow = easeOutCubic(chargeT);
         }
         const isSpotlit = Boolean(this.fx.spotlight?.set?.has(key));
-        const floatOffset = Math.sin(this.time * 0.0016 + r * 0.5 + c * 0.7) * radius * 0.05;
-        const yFloat = y + floatOffset;
-        const idlePulse = 1 + Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
+        const yFloat = y - this.breathOffset(r, c, frameNow, idleLevel, mo);
+        const idlePulse = 1 + idleLevel * Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
         // Winners breathe during the hold: a resting swell plus a slow in-out,
         // phase-lagged from the cluster centre (breathPhases) so it ripples.
         let pulseScale = 1;
@@ -3616,14 +3704,12 @@ class ReelCanvasRenderer {
         // A squashed symbol stays planted on its floor instead of shrinking
         // toward its centre; a stretched one stays centred on its fall path.
         const iconCy = yFloat + Math.max(0, iconBase - iconH) * 0.5;
-        // 4d: during the cluster spotlight, symbols outside the cluster step back.
-        const spotDim = spotlightAlpha > 0 && this.fx.spotlight?.cluster && !isSpotlit
-          ? 1 - spotlightAlpha * 0.75
-          : 1;
+        // Win focus (FOCUS): symbols outside the focus set step back.
+        const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
 
         // Spotlight halo: brighten cells on the spotlight set during big
         // events, working with the dim overlay to draw the eye in.
-        if (isSpotlit && spotlightAlpha > 0.05 && !this.fx.spotlight.cluster) {
+        if (isSpotlit && spotlightAlpha > 0.05) {
           const sp = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 2.4);
           sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
           sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
@@ -6069,6 +6155,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   reelRenderer.fx.pulse = null;
   reelRenderer.fx.multiCatch = null;
   reelRenderer.fx.spotlight = null;
+  reelRenderer.focusOff();
   reelRenderer.fx.heavyReveals = new Map();
   if (options.preparedTransition) {
     await options.preparedTransition;
