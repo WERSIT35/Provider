@@ -245,6 +245,55 @@ async function evaluate(cdp, expression) {
   check("dust radiates from the cluster, pooled under its cap", blast.maxDust > 0 && blast.maxDust <= 256, `${blast.maxDust} puffs`);
   check("no shake: the board never moved during the blast", blast.moved === 0);
 
+  console.log("\nwin focus + idle breathing (#55)");
+  await waitIdle();
+  const focus = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const m = R.board.matrix.map((r) => r.slice());
+    const cells = []; for (let r = 1; r < 5; r++) for (let c = 1; c < 3; c++) { m[r][c] = "BLUE_DIAMOND"; cells.push({ row: r, col: c }); }
+    const lvl = () => envelopeLevel(R.focus, performance.now());
+    const t0 = performance.now(); const h = R.highlight(m, { winning: cells }, 600); const s = [];
+    while (performance.now() - t0 < 600) { s.push({ t: performance.now() - t0, l: lvl() }); await new Promise((r) => requestAnimationFrame(r)); }
+    await h; const afterHold = lvl();
+    await R.explode(cells, 380, "blast-small"); const afterBlast = lvl();
+    const inSet = R.focus.set.has("1-1"), outSet = R.focus.set.has("0-0");
+    const d0 = performance.now(); const dp = R.drop(m, [], { "1-1": 1 }, 380, { tempo: 1 }); const out = [];
+    while (performance.now() - d0 < 400) { out.push({ t: performance.now() - d0, l: lvl() }); await new Promise((r) => requestAnimationFrame(r)); }
+    await dp;
+    const at = (arr, ms) => (arr.find((x) => x.t >= ms) || arr[arr.length - 1]).l;
+    return { early: at(s, 60), mid: at(s, 125), full: at(s, 300), afterHold, afterBlast, inSet, outSet,
+      outMid: at(out, 120), outEnd: at(out, 320), dim: FOCUS.dim };
+  })()`);
+  check("the rest of the board fades back over ~250ms when a cluster is caught", focus.early > 0 && focus.early < focus.mid && focus.mid < 1 && focus.full === 1 && focus.inSet && !focus.outSet,
+    `level ${focus.early.toFixed(2)} @60ms, ${focus.mid.toFixed(2)} @125ms, ${focus.full} @300ms`);
+  check(`non-winners at ${(1 - focus.dim) * 100}% opacity, held through the hold and the blast`, focus.dim === 0.4 && focus.afterHold === 1 && focus.afterBlast === 1);
+  check("the refill brings the board back up smoothly (~260ms)", focus.outMid > 0 && focus.outMid < 1 && focus.outEnd === 0,
+    `level ${focus.outMid.toFixed(2)} @120ms, ${focus.outEnd} @320ms`);
+
+  await waitIdle(); await sleep(900);
+  const breath = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const idle = R.isIdle(); const per = [];
+    const t0 = performance.now(); let maxB = 0, minB = 1e9;
+    for (let k = 0; k < 6; k++) per.push([]);
+    while (performance.now() - t0 < 3100) {
+      const now = performance.now();
+      for (let c = 0; c < 6; c++) { const b = R.breathOffset(2, c, now); per[c].push(b); maxB = Math.max(maxB, b); minB = Math.min(minB, b); }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const peakAt = per.map((a) => a.indexOf(Math.max(...a)));
+    // A spin starts: the float settles DOWN to the slot, quickly, never up.
+    const before = R.breathOffset(2, 0, performance.now()); el.spinBtn.click(); const s = [];
+    const c0 = performance.now();
+    while (performance.now() - c0 < 160) { s.push(R.breathOffset(2, 0, performance.now())); await new Promise((r) => requestAnimationFrame(r)); }
+    let rose = 0; for (let i = 1; i < s.length; i++) if (s[i] > s[i - 1] + 1e-6) rose++;
+    while (isRoundInFlight()) await new Promise((r) => setTimeout(r, 50));
+    return { idle, maxB, minB, peaks: new Set(peakAt).size, before, settled: s[s.length - 1], rose, idleAfterSpinStart: s.length };
+  })()`);
+  check("idle symbols breathe 0-1.5px above their slot over a 3s sine", breath.idle && breath.maxB > 1.3 && breath.maxB <= 1.5 + 1e-9 && breath.minB < 0.2 && breath.minB >= 0,
+    `range ${breath.minB.toFixed(2)}-${breath.maxB.toFixed(2)}px`);
+  check("each symbol breathes on its own phase (staggered)", breath.peaks >= 4, `${breath.peaks}/6 distinct peak times`);
+  check("a spin stops the breath at once, settling down (never lifting)", breath.settled === 0 && breath.rose === 0,
+    `${breath.before.toFixed(2)}px → 0 in under 160ms`);
+
   console.log("\nper-symbol rat-a-tat (opening drop)");
   await waitIdle();
   const sync = await evaluate(cdp, `(async () => {
