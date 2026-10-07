@@ -327,6 +327,16 @@ button:disabled {
   animation: bonusBadgePulse 2.2s ease-in-out infinite;
 }
 
+/* No multiplier caught yet in this bonus (#46): no "1x". The badge stays laid
+   out (so the first soul can fly to it) but invisible; the first catch fades
+   it in. Opacity + transform only: composited, never moves anything else. */
+.bonus-multi-badge {
+  transition: opacity 0.22s ease-out, transform 0.22s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+.bonus-multi-badge.is-empty {
+  opacity: 0;
+  transform: translateX(-50%) scale(0.85);
+}
 .bonus-multi-badge-label {
   font: 800 clamp(0.42rem, 1.3vmin, 0.6rem)/1 "SF Pro Display", "Segoe UI", sans-serif;
   letter-spacing: 0.2em;
@@ -1178,11 +1188,14 @@ body.public-mode .ps-deck-status {
   vertical-align: middle;
 }
 .ps-ticker[data-state="spin"] { color: var(--text-hud); }
+/* The win stat (#46): 1.5x the old 0.8 size so a win commands the deck. It is
+   still one line in the same fixed box, so nothing moves; on the narrowest
+   phones the vw cap keeps a six-figure win ("WIN: 123,456.78") unclipped. */
 .ps-ticker[data-state="win"] {
   color: var(--win-gold);
   font-weight: 800;
-  font-size: calc(0.8 * var(--ui, 14px));
-  letter-spacing: 0.14em;
+  font-size: min(calc(1.2 * var(--ui, 14px)), 4.2vw);
+  letter-spacing: 0.08em;
   text-shadow: 0 0 12px rgba(242, 193, 78, 0.45), 0 0 2px var(--accent-laser-hot);
 }
 .ps-ticker[data-state="flash-info"] { color: var(--text-hud); }

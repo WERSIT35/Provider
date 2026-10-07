@@ -544,6 +544,61 @@ async function evaluate(cdp, expression) {
     `${soul.maxLive} particles at peak; ≤ ${soul.maxNodes} nodes in the soul layer`);
   check("trail drains and its loop stops; the value lands on the HUD, which never moves", soul.live === 0 && soul.raf === 0 && soul.shown === "5x" && soul.hudMoved === 0);
 
+  console.log("\nHUD: free-spin countdown, empty multiplier badge, win stat (#46)");
+  await waitIdle();
+  const hud = await evaluate(cdp, `(async () => {
+    const out = {};
+    // Countdown: on spin k of n the line shows n − k ("Remaining: 14" on the first of 15 … 0 on the last).
+    out.counts = [5, 8, 10, 15, 20].map((n) => { const shown = []; for (let left = n; left >= 1; left--) shown.push(freeSpinsRemainingAfter(left)); return { n, first: shown[0], last: shown[shown.length - 1], steps: shown.every((v, i) => i === 0 || v === shown[i - 1] - 1) }; });
+    // A retrigger mid-bonus: 7 left + 10 awarded → the next spin shows 16.
+    out.retrigger = freeSpinsRemainingAfter(17);
+    // The real ticker line.
+    const saved = { auto: state.bonusAutoplay, fs: el.freeSpins.textContent };
+    state.bonusAutoplay = true; el.freeSpins.textContent = "15"; ticker.roundStart();
+    out.line = el.psTickerText.textContent;
+    state.bonusAutoplay = saved.auto; el.freeSpins.textContent = saved.fs; ticker.idle();
+    // Badge: entering the bonus with no multiplier yet → laid out but empty (no "1x").
+    const B = el.bonusMultiBadge, V = el.bonusMultiBadgeValue;
+    updateBonusHud({ freeSpinsLeft: 15, multiplier: 0, bonusTotal: 0 });
+    await new Promise((r) => setTimeout(r, 300));
+    out.empty = { hidden: B.classList.contains("hidden"), isEmpty: B.classList.contains("is-empty"), text: V.textContent, opacity: getComputedStyle(B).opacity, w: B.getBoundingClientRect().width };
+    // A soul flies in during the bonus: carry 3 + a caught 5 → the badge shows 8x at once.
+    state.bonusMultiplierCarry = 3; el.activeMultiplier.textContent = "3x"; state.spinMultDisplay = 3; state.spinFlownSouls = new Set();
+    const vaultBox = document.querySelector(".vault-window").getBoundingClientRect();
+    await flyMultiplierSouls([{ row: 2, col: 3, value: 5, id: "hud-probe" }]);
+    await new Promise((r) => setTimeout(r, 300));
+    out.caught = { isEmpty: B.classList.contains("is-empty"), text: V.textContent, opacity: getComputedStyle(B).opacity };
+    const vaultAfter = document.querySelector(".vault-window").getBoundingClientRect();
+    out.boardMoved = Math.abs(vaultAfter.y - vaultBox.y) + Math.abs(vaultAfter.height - vaultBox.height);
+    // Bonus over: the badge goes away and resets.
+    updateBonusHud({ freeSpinsLeft: 0, multiplier: 0, bonusTotal: 0 });
+    state.bonusMultiplierCarry = 0; el.activeMultiplier.textContent = "1x"; state.spinMultDisplay = 1;
+    out.after = { hidden: B.classList.contains("hidden"), isEmpty: B.classList.contains("is-empty"), text: V.textContent };
+    // Win stat: the ticker's win line, 1.5x the old 0.8 size, still one unclipped line.
+    const box = el.psTicker, node = el.psTickerText;
+    const before = box.getBoundingClientRect();
+    box.dataset.state = "spin"; node.textContent = "Good luck!";
+    const spinPx = parseFloat(getComputedStyle(node).fontSize);
+    box.dataset.state = "win"; node.textContent = "WIN: 12,345.67";
+    const winPx = parseFloat(getComputedStyle(node).fontSize);
+    const ui = spinPx / 0.6; // the spin line is 0.6 × --ui (a calc(), so read it back through a size)
+    out.win = { winPx, spinPx, ui, fits: node.scrollWidth <= node.clientWidth + 1 && node.getBoundingClientRect().height <= box.getBoundingClientRect().height + 1,
+      boxMoved: Math.abs(box.getBoundingClientRect().height - before.height) };
+    ticker.idle();
+    return out;
+  })()`);
+  check("free-spin countdown shows the spins left after this one: n−1 on the first, 0 on the last (5/8/10/15/20)",
+    hud.counts.every((c) => c.first === c.n - 1 && c.last === 0 && c.steps) && hud.retrigger === 16,
+    hud.counts.map((c) => `${c.n}: ${c.first}…${c.last}`).join(", "));
+  check("the ticker line reads \"Remaining: 14\" on the first of 15", /Remaining: 14$/.test(hud.line), hud.line);
+  check("entering the bonus: the multiplier badge is laid out but empty and invisible (no \"1x\")",
+    !hud.empty.hidden && hud.empty.isEmpty && hud.empty.text === "" && Number(hud.empty.opacity) === 0 && hud.empty.w > 0);
+  check("the first soul lights it with the running total at once (carry 3 + 5 = 8x), board never moves",
+    !hud.caught.isEmpty && hud.caught.text === "8x" && Number(hud.caught.opacity) === 1 && hud.boardMoved === 0, `badge "${hud.caught.text}"`);
+  check("after the bonus the badge is gone and cleared", hud.after.hidden && hud.after.isEmpty && hud.after.text === "");
+  check("win stat is 1.5x the old size (1.2 × --ui), still one line in the same box",
+    Math.abs(hud.win.winPx - 1.2 * hud.win.ui) < 0.6 && hud.win.fits && hud.win.boxMoved === 0, `${hud.win.winPx.toFixed(1)}px (spin line ${hud.win.spinPx.toFixed(1)}px), --ui ${hud.win.ui}, fits ${hud.win.fits}, box moved ${hud.win.boxMoved}`);
+
   const relevant = logs.filter((l) => !/AudioContext|autoplay/i.test(l));
   console.log("\nconsole/network problems:", relevant.length ? relevant : "none");
   if (relevant.length) failed = true;

@@ -4741,7 +4741,7 @@ async function api(path, payload) {
 
 function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
   const spins = Number(freeSpinsLeft || 0);
-  const mult = Number(multiplier || 1);
+  const mult = Number(multiplier) || 0; // the bonus total multiplier; 0 = none caught yet
   const total = Number(bonusTotal || 0);
   const inBonus = spins > 0 || total > 0;
   if (el.bonusTotal) el.bonusTotal.textContent = fmt(total);
@@ -4754,23 +4754,36 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
   // each increase.
   if (el.bonusMultiBadge) {
     el.bonusMultiBadge.classList.toggle("hidden", !inBonus);
-    if (inBonus) {
-      if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = mfmt(mult);
-      el.bonusMultiBadge.dataset.tier = mult >= 100 ? "mythic"
-        : mult >= 50 ? "legendary"
-        : mult >= 20 ? "epic"
-        : mult >= 10 ? "rare"
-        : "common";
-      const prev = Number(el.bonusMultiBadge.dataset.value || 0);
-      el.bonusMultiBadge.dataset.value = String(mult);
-      if (mult > prev) {
-        el.bonusMultiBadge.classList.remove("badge-bump");
-        void el.bonusMultiBadge.offsetWidth;
-        el.bonusMultiBadge.classList.add("badge-bump");
-      }
-    } else {
-      el.bonusMultiBadge.dataset.value = "0";
-    }
+    setBadgeMultiplier(inBonus ? mult : 0);
+  }
+}
+
+/** The bonus Total Multiplier badge (#46). With no multiplier caught yet it
+ *  is EMPTY: invisible (no "1x"), but still laid out, so the first soul has
+ *  somewhere to fly to. Each increase shows the new running total at once,
+ *  steps its glow tier and pops. */
+function setBadgeMultiplier(mult) {
+  const badge = el.bonusMultiBadge;
+  if (!badge) return;
+  const m = Number(mult) || 0;
+  badge.classList.toggle("is-empty", m <= 0);
+  if (m <= 0) {
+    badge.dataset.value = "0";
+    if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = "";
+    return;
+  }
+  if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = mfmt(m);
+  badge.dataset.tier = m >= 100 ? "mythic"
+    : m >= 50 ? "legendary"
+    : m >= 20 ? "epic"
+    : m >= 10 ? "rare"
+    : "common";
+  const prev = Number(badge.dataset.value || 0);
+  badge.dataset.value = String(m);
+  if (m > prev) {
+    badge.classList.remove("badge-bump");
+    void badge.offsetWidth;
+    badge.classList.add("badge-bump");
   }
 }
 
@@ -5445,6 +5458,9 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
   const next = current <= 1 ? Number(value) : current + Number(value);
   state.spinMultDisplay = next;
   if (target) target.textContent = mfmt(next);
+  // In the bonus the badge compounds as each multiplier lands (#46): this
+  // spin's catches on top of the carried total (the engine adds them to it).
+  if (meterNode === el.bonusMultiBadge) setBadgeMultiplier(next);
   window.Sound?.play("multiplier_combine", { value: next });
 
   meterNode.style.setProperty("--soul-glow", tier.glow);
@@ -7254,6 +7270,8 @@ el.psInfoBtn?.addEventListener("click", () => psModal.open("rules", el.psInfoBtn
 // flash(text) is a transient notice (multiplier locked, feature bought…):
 // shown for its duration, then the current state's line comes back.
 const TICKER = { rotateMs: 4500, flashMinMs: 900 };
+/** Free spins left once the one starting now is played (#46): n − 1, never below 0. */
+const freeSpinsRemainingAfter = (left) => Math.max(0, (Number(left) || 0) - 1);
 const ticker = (() => {
   const box = el.psTicker;
   const node = el.psTickerText;
@@ -7308,7 +7326,11 @@ const ticker = (() => {
     rotateTimer = setInterval(rotate, TICKER.rotateMs);
   }
   function spinLine() {
-    if (state.bonusAutoplay) return `Free spin · ${el.freeSpins?.textContent || 0} left`;
+    // el.freeSpins still counts the spin that is starting (the engine consumes
+    // it), so the line shows what is left AFTER it: "Remaining: 14" on the
+    // first of 15, down to "Remaining: 0" on the last. A retrigger lands in
+    // free_spins_left, so the next line includes it.
+    if (state.bonusAutoplay) return `Free spins · Remaining: ${freeSpinsRemainingAfter(el.freeSpins?.textContent)}`;
     // This spin uses one free round (the server consumes it), so show what's left after it.
     if (freeRounds.active && freeRounds.queue.length) return `Free round · ${Math.max(0, freeRounds.remaining - 1)} left`;
     if (state.autoplayActive) {
