@@ -1,4 +1,44 @@
-# CHECKPOINT — 2026-10-06
+# CHECKPOINT — 2026-10-08
+
+Where the work stands, the decisions behind it, and what comes next. Everything below is
+merged to `main` and live on production (Vercel, `provider-flame.vercel.app`, `c7dee65`).
+
+## 00. Latest (2026-10-07/08): client visual overhaul, closed
+
+**Epic #51** (closed). The first pass (#52–#55, PRs #56–#59) was live but too subtle to see.
+Frame-by-frame recordings then showed the real problems: an empty board for ~450ms on every
+spin, symbols trickling in, a 1.1s static win hold, ghosting motion blur, and exploded
+symbols flashing back. These were rebuilt as #46–#50:
+
+| PR | Issue | What |
+|---|---|---|
+| #60 | #47 | One `GRAVITY` for every drop (closed form, s = ½gt², fall time ∝ √distance). Reels fall as stacks (`WATERFALL`: 75ms per reel on a spin, 22ms on a tumble). One real bounce (restitution 0.18 = 3.2% of the fall). The spin-out has its own layer (`fx.exit`), so the new board follows right behind the old one (no dead air). Ghost trails removed. |
+| #61 | #50 | Exploded cells leave the board (`board.cleared`) when the burst starts; the art is gone by `BLAST_GONE` (45%). No flash-back, no ghosting. |
+| #62 | #48 | Win hold 300ms (220ms chained). The refill falls under the shards. `holdReal()` fixes a turbo double-scaling bug (holds had run at 16%). |
+| #63 | #46 | Free spins "Remaining: N−1". The Total Multiplier badge starts empty (no "1x") and compounds live. Win stat is 1.5×. |
+| #64 | #49 | `VxNotify` (`client/notify.js`): one skeleton for every popup (feature, buy, reality check, info, free rounds, big win, win combine, banner), with skins for assets and audio. `docs/notification-skeleton.md`. |
+| #65 | — | Turbo `TURBO_SCALE` 0.45 (~2.2× the pace). |
+
+**Decisions (user, 2026-10-08):** turbo 2.0–2.5×. Restitution stays at 3.2%. No screen shake
+and no pre-drop lift, for accessibility and layout stability.
+
+**Tooling:** `tools/probes/motion-record.js` records a real round with a controllable page
+clock (exact 60fps). Output: animated WebP (real speed + 4× slow), `--sheet` contact sheets,
+`--strip` per-reel frames, `--ref <git ref>` for before/after. `tools/probes/motion-probe.js`
+asserts all of the above (gravity, bounce, stacks, no dead air, the #50 handoff for 8/15/25
+clusters, pacing, HUD, the popup skeleton).
+
+**Next epic: Production Observability & Regulatory Hardening.** Build on what exists:
+- Tracing: W3C `traceparent` client → RGS logs → `wallet_transactions.trace_id` → webhooks
+  (§0 #45).
+- Signing: Ed25519 signed round export, and the hash-chained round ledger.
+- Likely gaps, to confirm against the code: the trace does not reach the round ledger or audit
+  rows; there is no OpenTelemetry exporter; individual audit entries are not signed (no
+  per-jurisdiction keys or key rotation).
+
+---
+
+# CHECKPOINT — 2026-10-06 (previous)
 
 Where the work stands, the decisions behind it, and what comes next. Everything below is
 merged to `main`.
