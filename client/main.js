@@ -292,6 +292,7 @@ async function animateWinMeter(from, to, duration = 260) {
   el.lastWin.textContent = fmt(end);
 }
 const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
+const easeInCubic = (t) => t * t * t;
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeOutQuint = (t) => 1 - (1 - t) ** 5;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -385,6 +386,8 @@ const SHATTER = {
 //   dust: `dust[strength]` soft puffs (before fxCount) radiate from the
 //         centre at `dustSpeed` cells/ms, brake hard (drag) and grow as they
 //         thin out. Pooled on the ShardEmitter, at most `maxDust` alive.
+// The share of a symbol's burst after which its art is gone (#50).
+const BLAST_GONE = 0.45;
 const CLUSTER_BLAST = {
   minCells: 8, pop: 0.14, waveMs: 520, reach: 1.6, band: 0.45, glow: 0.42,
   dust: { small: 10, medium: 16, great: 26 }, dustSpeed: [0.003, 0.007], maxDust: 256
@@ -1024,6 +1027,9 @@ class ReelCanvasRenderer {
       matrix: Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => "BLUE_DIAMOND")),
       winningSet: new Set(),
       multiMap: new Map(),
+      // Cells whose symbols exploded (#50): gone from the board the moment the
+      // burst starts, until the refill commits a new matrix (setBoard).
+      cleared: new Set(),
       hidden: false
     };
     this.fx = {
@@ -1436,6 +1442,7 @@ class ReelCanvasRenderer {
     this.board.multiMap = new Map(
       (multipliers || []).map((m) => [`${m.row}-${m.col}`, Number(m.value || 1)])
     );
+    this.board.cleared = new Set(); // a new matrix: nothing on it has exploded
     this.board.hidden = false;
     this.dirty = true;
     if (typeof window !== "undefined") {
@@ -2234,6 +2241,10 @@ class ReelCanvasRenderer {
       set: new Set(keys),
       delays
     };
+    // The exploded symbols leave the board NOW (#50): from here on only the
+    // burst draws them, and once it ends nothing does, so the vacuum and the
+    // gap before the refill commits can never show them again.
+    this.board.cleared = new Set(keys);
     this.spawnExplosionParticles(winning, strength, delays);
     this.spawnClusterBlast(winning, strength);
     await animationSleep(duration + maxDelay + 40);
@@ -3597,10 +3608,18 @@ class ReelCanvasRenderer {
           const cellDur = this.fx.blast.cellDuration || this.fx.blast.duration;
           cellBlast = clamp((performance.now() - this.fx.blast.start - cellDelay) / cellDur, 0, 1);
         }
-        const blastFade = isBlast ? 1 - cellBlast : 1;
-        // Blast pop (CLUSTER_BLAST.pop): the symbol swells as it fades, so it
-        // bursts outward instead of dissolving in place. Uniform: no squash.
-        const blastPop = isBlast && !this._reducedMotion ? 1 + CLUSTER_BLAST.pop * easeOutCubic(cellBlast) : 1;
+        // A cleared cell (#50) whose burst is over draws nothing: its symbol is gone.
+        if (!isBlast && !isFalling && this.board.cleared.has(key)) {
+          if (inFlight) ctx.restore(); // reel mask
+          continue;
+        }
+        if (this._traceCells) this._traceCells.add(key); // probes: cells drawn this frame
+        // Blast (#50): the symbol pops (swells CLUSTER_BLAST.pop) and is gone by
+        // BLAST_GONE of its burst: no lingering see-through ghost. The shards,
+        // flare and shockwave carry the rest of the burst.
+        const goneT = clamp(cellBlast / BLAST_GONE, 0, 1);
+        const blastFade = isBlast ? 1 - easeInCubic(goneT) : 1;
+        const blastPop = isBlast && !this._reducedMotion ? 1 + CLUSTER_BLAST.pop * easeOutCubic(goneT) : 1;
         // Charge: anticipation phase before pop. Cell shrinks slightly and
         // brightens — the visual "inhale" before the burst.
         const isCharging = Boolean(this.fx.charge?.set?.has(key));
