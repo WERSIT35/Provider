@@ -202,13 +202,12 @@ const ANIMATION_TIMING = {
   // AAA pacing pass (Vault 20K). Every value is a real-time ms budget before
   // turbo (x0.4); fast-stop collapses all of them.
   spinBurst: 420,
-  // Old board leaves: one mechanical tick up, then a fast pull out.
-  oldBoardDropOff: 480,
-  // New board drops in, column by column (WATERFALL), and slams.
-  introDrop: 520,
-  // Tumble refills fall FASTER than the opening drop: momentum builds through
-  // a cascade instead of each step re-starting at base-game speed.
-  tumbleDrop: 380,
+  // GRAVITY (#47): every drop falls under the same gravity, so these three
+  // are equal: the time a full-reel fall (5 rows) takes. Old board out, new
+  // board in, tumble refills. Cascade momentum still quickens a chain.
+  oldBoardDropOff: 360,
+  introDrop: 360,
+  tumbleDrop: 360,
   // Deliberate win beat (no overlap): the caught cluster is held + glowing for
   // a short, readable moment, THEN explodes, and only once the explosion
   // finishes do the refills drop. The opening catch gets the longer hold;
@@ -222,17 +221,14 @@ const ANIMATION_TIMING = {
   explode: 380
 };
 
-// Per-symbol waterfall. Reels release left to right, colMs apart (ranked
-// among the reels that actually drop, so a tumble never waits on reels that
-// stay put). Inside a reel the BOTTOM symbol goes first and each one above it
-// follows rowMs later, so the symbols land one by one, bottom-up: a rapid
-// rat-a-tat (4 gaps × rowMs = 72ms per reel, inside colMs, so reels never
-// interleave). The spin-out runs the same order at exitScale. Turbo-scaled.
-const WATERFALL = { colMs: 80, rowMs: 18, exitScale: 0.5 };
-// A symbol's own fall time scales with how far it falls, like gravity
-// (t ∝ √distance): a refill dropping one row is quicker than one dropping
-// five. Floored so a one-row drop still reads as a fall.
-const FALL_SCALE_MIN = 0.55;
+// Reel release (#47). A reel's symbols are all released at the same moment and
+// fall under one gravity (GRAVITY), so the reel falls as a stack: symbols that
+// fall the same distance travel and land together, and on a tumble the lower
+// ones (shorter falls) land first. Reels release left to right, ranked among
+// the reels that actually drop: `spinColMs` apart on a spin (each old reel
+// falls out and its new reel follows straight behind it) and `tumbleColMs`
+// apart on a tumble refill. Turbo-scaled; cascade momentum tightens tumbles.
+const WATERFALL = { spinColMs: 75, tumbleColMs: 22 };
 // The reel mask. A symbol IN FLIGHT is clipped to the grid: entering from
 // above, it is only visible below row 0's top edge; leaving on the spin-out,
 // only above the last row's bottom edge. Symbol art is drawn larger than its
@@ -317,64 +313,30 @@ const easeOutBounce = (t) => {
 };
 
 // ── Reel-drop physics (#22) ────────────────────────────────────────────────
-// Gravity model for the symbol drop-in / drop-out. Everything is normalised: for
-// a fall of unit duration τ∈[0,1], gravityFallFraction returns the fraction of the
-// travel completed, s∈[0,1], under constant gravitational acceleration from an
-// initial velocity v0. Callers scale s by the real pixel distance.
-//
-// Uncapped, displacement is s = v0·τ + ½·a·τ², with a picked so the symbol lands
-// exactly at τ=1 → a = 2·(1 − v0). So v0=0 gives pure t² (start from rest, classic
-// gravity) and a small v0 gives a little initial push, then acceleration.
-//
-// `vMax` is an optional terminal velocity (in travel-fractions per unit τ). If the
-// uncapped fall would never exceed it (the default for normal drops) it does
-// nothing. If it would, the symbol accelerates under gravity until it reaches vMax,
-// then coasts at vMax — and gravity is re-solved so it STILL lands exactly at τ=1
-// (continuous with the uncapped case at the boundary vMax = 2 − v0).
-// "Heavy metal" rigid-body drops: gold bars and vault steel, not rubber.
-// Reel inertia (kinetic pass). The six reels are three mechanical groups:
-//   heavy   (reels 1-2): full-length fall, the loosest spring: the deepest
-//                        overshoot (≤ 6% of a row) and the slowest settle.
-//   tension (reels 3-4): 10% quicker, a stiffer spring (≤ 4% of a row).
-//   snap    (reels 5-6): 18% quicker, stiff and well damped: a gear detent
-//                        (≤ 1.5% of a row).
-// Each dropping symbol is a small rigid body (#53), solved in closed form so
-// the motion is a pure function of time (frame-rate independent, and every
-// probe can sample it exactly):
-//   fall  t < contact: from rest under constant acceleration, s = (t/contact)²,
-//         so it is still accelerating when it hits its slot, at v = 2·D/contact.
-//   lock  t ≥ contact: the slot absorbs `friction` of that speed; the rest
-//         drives an underdamped spring about the slot, in lock time u ∈ [0, 1]:
-//           y(u) = A·e^(−ζΩu)·sin(Ω_d·u)·(1 − u³),  Ω_d = Ω·√(1 − ζ²),  A = v′/Ω_d
-//         Ω (`tension`) and ζ (`damping`) are per lock window, so the spring has
-//         the same shape under turbo. (1 − u³) tapers the tail to exactly 0 at
-//         u = 1 without touching the impact velocity. A is capped so the peak
-//         overshoot never exceeds `maxOver` rows: a few pixels, not a bounce.
-// contact: the moment a symbol first reaches its slot; thuds, glints, the
-//          squash and scatter pings are timed to it. These values are the
-//          old easeOutBack model's, so the landing beat did not move.
-// squash:  the contact compression (fraction of the symbol's height).
-// exitV0:  launch speed when the spin latch releases (heavy reels start slower).
-function inertiaProfile(name, durScale, contact, squash, exitV0, spring) {
-  const { friction, tension, damping, maxOver } = spring;
-  const zw = damping * tension;
-  const wd = tension * Math.sqrt(1 - damping * damping);
-  const up = Math.atan2(wd, zw) / wd;               // time of the first peak (A = 1)
-  return Object.freeze({
-    name, durScale, contact, squash, exitV0, friction, tension, damping, maxOver,
-    zw, wd, peak: Math.exp(-zw * up) * Math.sin(wd * up)
-  });
-}
-const REEL_INERTIA = Object.freeze([
-  inertiaProfile("heavy", 1, 0.7785, 0.02, 0.45, { friction: 0.55, tension: 9, damping: 0.45, maxOver: 0.06 }),
-  inertiaProfile("tension", 0.9, 0.7984, 0.015, 0.75, { friction: 0.6, tension: 11, damping: 0.5, maxOver: 0.04 }),
-  inertiaProfile("snap", 0.82, 0.8233, 0.01, 1.05, { friction: 0.7, tension: 14, damping: 0.6, maxOver: 0.015 })
-]);
+// Gravity (#47). One constant gravity for every drop, solved in closed form
+// (frame-rate independent; probes can sample it exactly). A drop's `duration`
+// is the time a full-reel fall (`rows` rows) takes, so g = 2·rows / duration²
+// and a fall of d rows takes duration·√(d / rows): s = ½·g·t² from rest.
+// Landing is a real collision: the symbol hits its slot at v = g·t and
+// rebounds at e·v (e = `restitution`), rising e²·d above the slot and falling
+// back in 2e·t under the same gravity. One bounce, then it rests (the next
+// would rise e⁴·d: under a pixel). So the moment of impact, as a fraction of
+// a symbol's whole motion, is the same for every fall: contact = 1/(1 + 2e).
+// squash: compression on impact for a full-reel fall, scaled by impact speed.
+const GRAVITY = { restitution: 0.18, squash: 0.035 };
+const REEL_PROFILE = Object.freeze({
+  name: "gravity",
+  contact: 1 / (1 + 2 * GRAVITY.restitution),
+  bounce: GRAVITY.restitution * GRAVITY.restitution, // bounce height, as a fraction of the fall
+  squash: GRAVITY.squash
+});
+// Reduced motion: the same fall, no bounce, no squash.
+const REEL_PROFILE_RIGID = Object.freeze({ name: "rigid", contact: 1, bounce: 0, squash: 0 });
 /** Fraction of its fall a dropping symbol has covered at t ∈ [0, 1] of its
- *  fall time: past 1 while it overshoots, exactly 1 at t = 1. `rows` is the
- *  fall in rows (the spring's impact speed and its cap are in rows); 0 locks
- *  hard on contact (reduced motion). */
-function dropTravel(t, prof, rows) {
+ *  motion: (t / contact)² while it falls, then 1 − bounce·4u(1 − u) through
+ *  the rebound (u ∈ [0, 1] over the bounce: a parabola, i.e. the same
+ *  gravity), exactly 1 from t = 1. */
+function dropTravel(t, prof) {
   if (t <= 0) return 0;
   if (t >= 1) return 1;
   const c = prof.contact;
@@ -382,11 +344,8 @@ function dropTravel(t, prof, rows) {
     const u = t / c;
     return u * u;
   }
-  if (!(rows > 0)) return 1;
   const u = (t - c) / (1 - c);
-  const v = (1 - prof.friction) * 2 * rows * (1 - c) / c; // rows per lock window, after impact
-  const amp = Math.min(v / prof.wd, prof.maxOver / prof.peak);
-  return 1 + (amp / rows) * Math.exp(-prof.zw * u) * Math.sin(prof.wd * u) * (1 - u * u * u);
+  return 1 - prof.bounce * 4 * u * (1 - u);
 }
 
 // Tumble vacuum: before a refill falls, the symbols around the blast lean INTO
@@ -402,14 +361,9 @@ const tumbleTempo = (step) => Math.max(TUMBLE_MOMENTUM.floor, TUMBLE_MOMENTUM.pe
 // Fast-stop zip: every reel still moving zips from where it is into its slot,
 // left to right, the k-th moving reel locking at firstMs + k·colMs (≤ 110ms
 // for six), then a double latch-click (clickGapMs apart) seals the board.
-// Its motion blur is the general one below (MOTION_BLUR).
 const FAST_ZIP = { firstMs: 30, colMs: 16, clickGapMs: 50 };
-// Velocity motion blur (#53): a symbol moving faster than `minPx` per 16ms
-// frame draws `ghosts` fading copies back along its path. Their spacing is the
-// distance it travels in a frame, capped at `maxFrac` of the symbol so it
-// smears instead of strobing; their opacity ramps up to `alpha` over the next
-// `rampPx`. Slow symbols (and every locked one) are drawn sharp.
-const MOTION_BLUR = { minPx: 6, rampPx: 14, maxFrac: 0.35, ghosts: 2, alpha: 0.35 };
+// A fast-stop during the spin-out runs the old board's fall this much faster.
+const EXIT_FAST = 6;
 
 // Symbol shatter (win explosions). Counts are per cell, before the quality
 // tier's fxCount scaling; up is the upward kick and flash the cell flare size,
@@ -460,15 +414,15 @@ function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
 // Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
 // Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
 const MOTION = {
-  stretch: 0.02,      // peak vertical stretch while falling (at impact speed); within the 2% "no jelly" cap
-  squash: 1,          // gain on each reel group's contact squash (REEL_INERTIA)
+  squashRelax: 0.45,  // an impact squash springs back over this much of the bounce (GRAVITY)
+  squash: 1,          // gain on the impact squash (GRAVITY.squash)
   breathBase: 0.03,   // winning symbols' resting swell during the hold (scale-up ≈ 3%)
   breathDepth: 0.02,  // extra swell at the top of each breath: peak 1.05, a micro-lift, not a bounce
   breathMs: 1100,     // one breath (in + out)
   breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
   idleFloat: 1.5      // idle breathing lift, px (IDLE_BREATH)
 };
-const MOTION_REDUCED = Object.freeze({ ...MOTION, stretch: 0, squash: 0, breathDepth: 0, breathRipple: 0, idleFloat: 0 });
+const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0, idleFloat: 0 });
 
 // Win focus (#55). From the moment a cluster is caught until the board moves
 // again, every symbol outside it is drawn at 1 − `dim` opacity and the board's
@@ -505,21 +459,6 @@ function envelopeTo(e, to, ms, now) {
 // max 1.6 covers the 20% landing squash (bake 1.2x / wanted 0.8x = 1.5x) with
 // room to spare; at 1.5 every landing symbol sat on the edge and rebaked.
 const SPRITE_BAND = { min: 0.75, max: 1.6, headroom: 1.2 };
-
-function gravityFallFraction(tau, v0 = 0, vMax = Infinity) {
-  tau = clamp(tau, 0, 1);
-  const peakV = 2 - v0;                       // uncapped velocity at τ=1
-  if (!(vMax < peakV)) {                       // no cap needed (covers Infinity)
-    const a = 2 * (1 - v0);
-    return v0 * tau + 0.5 * a * tau * tau;
-  }
-  const cap = Math.max(vMax, 1.001);           // vMax ≤ 1 could never reach the slot
-  const t1 = 2 * (cap - 1) / (cap - v0);       // time terminal velocity is reached
-  const g = (cap - v0) / t1;                   // gravity during the accel phase
-  if (tau <= t1) return v0 * tau + 0.5 * g * tau * tau;
-  const s1 = v0 * t1 + 0.5 * g * t1 * t1;      // distance covered by terminal onset
-  return s1 + cap * (tau - t1);                // constant-velocity coast to 1
-}
 
 function setSigned(target, value) {
   target.classList.remove("positive", "negative");
@@ -1095,6 +1034,7 @@ class ReelCanvasRenderer {
       spinBurst: null,
       multiCatch: null,
       shockwaves: [],
+      exit: null,     // the old board falling out on a spin (dropOff, drawExitBoard)
       waves: [],      // cluster-blast shockwaves that light the symbols they pass (#54)
       reelSlam: null,
       jackpotFlash: null,
@@ -1532,20 +1472,19 @@ class ReelCanvasRenderer {
     // A board dropping in zips into place (FAST_ZIP). Its positions are
     // snapshotted on the drop's live timing, so this runs before anything
     // below changes that timing (anticipation, acceleration).
-    const zip = Boolean(drop && !drop.exit && !this._reducedMotion);
+    const zip = Boolean(drop && !this._reducedMotion);
+    // The old board still falling out (fx.exit) clears at EXIT_FAST× speed.
+    if (this.fx.exit && !this.fx.exit.fastAt) this.fx.exit.fastAt = performance.now();
     if (zip) {
       this._startZip(drop);
-    } else if (drop?.exit) {
-      // The old board is leaving: pull it straight out.
-      this.cancelColumnStops();
     } else if (this._columnStops?.size) {
       // Reduced motion: everything lands at once, so one thud.
       this.cancelColumnStops();
       this._queueColumnStop(0, 0, null);
     }
-    // No board in the air yet (or only the old one leaving): the next drop
-    // is born zipping (see drop()).
-    this._zipPending = !drop || Boolean(drop.exit);
+    // No board in the air yet (only the old one leaving): the next drop is
+    // born zipping (see drop()).
+    this._zipPending = !drop;
     // Scatters still in the air land now (zipping: as their reel locks);
     // anticipation ends with the skip.
     if (!zip) this.flushScatterLandings();
@@ -1771,36 +1710,100 @@ class ReelCanvasRenderer {
     this.fx.spinBurst = null;
   }
 
-  async dropOff(duration = ANIMATION_TIMING.oldBoardDropOff) {
-    duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
-    const hasBoard = Array.isArray(this.board.matrix) && this.board.matrix.length > 0;
-    if (!hasBoard) return;
+  /** Spin-out (#47). The old board falls out of the bottom, reel by reel
+   *  (WATERFALL.spinColMs apart), each reel as one stack under GRAVITY from
+   *  rest: no wind-up, gravity from the press. It runs on its own layer
+   *  (fx.exit, drawn by drawExitBoard), so the new board drops in straight
+   *  behind it the moment the round's result is in: reel k of the new board
+   *  is released spinColMs·k after the result, which is reel k's exit beat
+   *  when the result is immediate, and the two stacks fall together like one
+   *  continuous strip. Resolves at once. */
+  dropOff(duration = ANIMATION_TIMING.oldBoardDropOff) {
+    const hasBoard = Array.isArray(this.board.matrix) && this.board.matrix.length > 0 && !this.board.hidden;
+    if (!hasBoard) return Promise.resolve();
     this.board.winningSet = new Set();
     this.fx.heavyReveals = new Map();
-    const dropMap = {};
-    for (let r = 0; r < this.rows; r += 1) {
-      for (let c = 0; c < this.cols; c += 1) dropMap[`${r}-${c}`] = this.rows + 1;
-    }
     this.cancelColumnStops();
     this.focusOff(); // a new spin releases any win focus still held
-    this.fx.drop = {
+    this.fx.exit = {
+      matrix: this.board.matrix.map((row) => row.slice()),
+      multi: new Map(this.board.multiMap),
       start: performance.now(),
-      duration,
-      map: dropMap,
-      heavy: new Map(),
-      exit: true,
-      order: this._dropOrder(dropMap)
+      duration: Math.round(duration * turboScale()),
+      colMs: Math.round(WATERFALL.spinColMs * turboScale()),
+      fastAt: 0
     };
-    const maxDelay = Object.entries(dropMap).reduce((acc, [key, count]) => {
-      const [row, col] = key.split("-").map((n) => Number(n));
-      return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
-    }, 0);
-    // `duration` and `maxDelay` are already turbo-adjusted, so wait the REAL time
-    // (not animationSleep, which re-scales and would hide the board while symbols
-    // are still exiting — the "half-way out then vanish" bug).
-    await this._dropSettle(duration + maxDelay + 40);
-    this.fx.drop = null;
     this.board.hidden = true;
+    return Promise.resolve();
+  }
+
+  /** The spin-out's clock (ms since it started); after a fast-stop it runs
+   *  EXIT_FAST× quicker, so the old board clears at once but still falls. */
+  exitClock(exit, now) {
+    if (!exit.fastAt || now <= exit.fastAt) return now - exit.start;
+    return exit.fastAt - exit.start + (now - exit.fastAt) * EXIT_FAST;
+  }
+
+  /** How far (rows) reel `col` of the old board has fallen: ½·g·t² from rest. */
+  exitOffsetRows(exit, col, now) {
+    const t = this.exitClock(exit, now) - col * exit.colMs;
+    if (t <= 0) return 0;
+    const u = t / exit.duration;
+    return this.rows * u * u;
+  }
+
+  /** Draws the old board falling out (fx.exit), clipped to the reels, and
+   *  drops the layer once its last reel is below the board. */
+  drawExitBoard(ctx, { width, top, padX, laneW, rowStep, radius }) {
+    const exit = this.fx.exit;
+    const now = performance.now();
+    if (this.exitOffsetRows(exit, this.cols - 1, now) > this.rows + 1) {
+      this.fx.exit = null;
+      return;
+    }
+    const over = Math.max(0, (Math.min(laneW, rowStep) * 1.24 - rowStep) / 2);
+    const gridBottom = top + rowStep * this.rows;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, top - over, width, gridBottom + over - (top - over));
+    ctx.clip();
+    for (let c = 0; c < this.cols; c += 1) {
+      const off = this.exitOffsetRows(exit, c, now) * rowStep;
+      for (let r = 0; r < this.rows; r += 1) {
+        const y = top + rowStep * (r + 0.5) + off;
+        if (y - rowStep * 0.62 > gridBottom + over) continue;
+        const symbol = exit.matrix[r]?.[c];
+        if (!symbol) continue;
+        const x = padX + laneW * (c + 0.5);
+        const multi = symbol === "MULTI" ? Number(exit.multi.get(`${r}-${c}`) || 1) : null;
+        const tier = multi !== null ? getMultiplierTier(multi) : null;
+        const key = tier ? tier.image : symbol;
+        const img = (tier && this.images.get(tier.image)) || this.images.get(symbol);
+        if (!img?.complete || !img.naturalWidth) continue;
+        const boost = (symbol === "SCATTER" ? 1.22 : 1) * (multi !== null ? multiplierIconScale(multi) : 1);
+        const size = Math.min(radius * 2.5 * boost, Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.24 : 1.12));
+        let w = size;
+        let h = size;
+        if (symbol === "SCATTER") {
+          const ar = img.naturalWidth / img.naturalHeight;
+          if (ar > 1) h = size / ar;
+          else w = size * ar;
+        }
+        ctx.drawImage(this.getSymbolSprite(key, img, w, h), x - w / 2, y - h / 2, w, h);
+        if (multi !== null) {
+          const coreR = radius * 1.05;
+          ctx.fillStyle = tier.accent;
+          ctx.font = THEME.canvasFont(700, Math.max(18, coreR * 0.62));
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
+          ctx.lineWidth = Math.max(2.4, coreR * 0.1);
+          ctx.strokeText(`${multi}x`, x, y + coreR * 0.02);
+          ctx.fillText(`${multi}x`, x, y + coreR * 0.02);
+        }
+      }
+    }
+    ctx.restore();
   }
 
   async intro(matrix, multipliers = [], options = {}) {
@@ -1808,7 +1811,7 @@ class ReelCanvasRenderer {
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) introMap[`${r}-${c}`] = this.rows;
     }
-    return this.drop(matrix, multipliers, introMap, ANIMATION_TIMING.introDrop, options);
+    return this.drop(matrix, multipliers, introMap, ANIMATION_TIMING.introDrop, { ...options, spin: true });
   }
 
   resetHeavyBangs() {
@@ -1965,6 +1968,7 @@ class ReelCanvasRenderer {
       antic: this.makeAnticipation(options.anticipation),
       need: Number(options.scatterTarget) || 0,
       order: this._dropOrder(dropMap),
+      spin: Boolean(options.spin), // a spin's board (WATERFALL.spinColMs), not a tumble refill
       tempo,
       // A tumble vacuum's dip (rows) is carried into the fall: continuous.
       lean: this.fx.vacuum ? VACUUM.pull : 0
@@ -2411,6 +2415,7 @@ class ReelCanvasRenderer {
       this.fx.heavyReveals.size ||
       this.fx.shockwaves.length ||
       this.fx.waves.length ||
+      Boolean(this.fx.exit) ||
       this.fx.lightning.length ||
       this.fx.impacts.length ||
       this.fx.bangs.length ||
@@ -2524,28 +2529,19 @@ class ReelCanvasRenderer {
     const count = Number(drop.map?.[key] || 0);
     if (count <= 0) return 0;
     if (drop.zip) return this.zipOffset(drop.zip, key, col, rowStep, now);
-    const prof = this.reelProfile(col);
     const elapsed = now - drop.start - this.dropDelay(row, col, count);
-    if (drop.exit) {
-      // Spin-out: gravity takes over the moment the spin is pressed. Purely
-      // downward, no wind-up: each symbol, bottom first, simply falls out at
-      // its reel group's launch speed. A little extra travel (1.15) makes
-      // sure it fully clears the board.
-      if (elapsed < 0) return 0;
-      const q = clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1);
-      return count * rowStep * 1.15 * gravityFallFraction(q, prof.exitV0);
-    }
-    // Drop-in: a refilling symbol STARTS exactly where it was last seen (one
-    // cell per `count` above its slot, plus any vacuum dip it is carrying)
-    // and eases into its slot on its OWN clock: its own release (dropDelay),
-    // its own fall time (cellFallMs) on its reel group's curve. A NEW symbol
-    // (it comes from above the board) starts REEL_MASK.spawnPad higher, fully
-    // above the reel mask, so no part of it shows before it enters the grid.
+    // A dropping symbol STARTS exactly where it was last seen (one cell per
+    // `count` above its slot, plus any vacuum dip it is carrying) and falls
+    // under GRAVITY from its reel's release (dropDelay). A NEW symbol (from
+    // above the board) starts REEL_MASK.spawnPad higher, fully above the reel
+    // mask, so no part of it shows before it enters the grid. Its fall time
+    // is set by `count` alone, so it lands together with the old symbols that
+    // fall as far: the reel lands as one stack.
     const fresh = row - count < 0 ? REEL_MASK.spawnPad * rowStep : 0;
     const start = (drop.lean || 0) * rowStep - count * rowStep - fresh;
     if (elapsed < 0) return start;
     const t = clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1);
-    return lerp(start, 0, dropTravel(t, prof, this._reducedMotion ? 0 : -start / rowStep));
+    return lerp(start, 0, dropTravel(t, this.reelProfile(col)));
   }
 
   /** px a dropping cell moved over the last 16ms frame (signed, + = down;
@@ -2555,17 +2551,18 @@ class ReelCanvasRenderer {
     return this.cellOffset(row, col, rowStep, now) - this.cellOffset(row, col, rowStep, now - 16);
   }
 
-  /** The reel group (REEL_INERTIA) a column belongs to: thirds of the board. */
-  reelProfile(col) {
-    return REEL_INERTIA[Math.min(REEL_INERTIA.length - 1, Math.floor((col * REEL_INERTIA.length) / this.cols))];
+  /** The landing profile of a reel (GRAVITY). Every reel falls under the same
+   *  gravity; reduced motion lands without the bounce. */
+  reelProfile(col) { // eslint-disable-line no-unused-vars
+    return this._reducedMotion ? REEL_PROFILE_RIGID : REEL_PROFILE;
   }
 
-  /** When a dropping cell lands, in ms from the drop's start: its zip lock on
-   *  a fast-stop, otherwise the end of its fall. */
+  /** When a dropping cell hits its slot, in ms from the drop's start: its zip
+   *  lock on a fast-stop, otherwise the moment of impact (before the bounce). */
   cellLandMs(row, col, count) {
     const zip = this.fx.drop?.zip;
     if (zip) return zip.ends[col] || 0;
-    return this.dropDelay(row, col, count) + this.cellFallMs(col, count);
+    return this.dropDelay(row, col, count) + this.cellFallMs(col, count) * this.reelProfile(col).contact;
   }
 
   // ── Tumble vacuum (VACUUM) ──
@@ -2685,59 +2682,36 @@ class ReelCanvasRenderer {
     return y0 * rowStep * (1 - u * Math.sqrt(u));
   }
 
-  /** Motion-blur ghosts for a cell this frame, or null when it is drawn
-   *  sharp: `step` = signed px from the symbol to its farthest ghost (one
-   *  frame of travel, capped at MOTION_BLUR.maxFrac of the symbol), `alpha`
-   *  = the ghosts' opacity, ramping with speed. Reuses one object. */
-  motionBlur(row, col, rowStep, drawH) {
-    const v = this.cellVelocity(row, col, rowStep);
-    const speed = Math.abs(v);
-    if (speed < MOTION_BLUR.minPx) return null;
-    const out = this._blur || (this._blur = { step: 0, alpha: 0 });
-    out.step = Math.sign(v) * Math.min(speed, drawH * MOTION_BLUR.maxFrac);
-    out.alpha = MOTION_BLUR.alpha * clamp((speed - MOTION_BLUR.minPx) / MOTION_BLUR.rampPx, 0, 1);
-    return out.alpha > 0.01 ? out : null;
-  }
-
   /** Reduced-motion aware amplitudes for this frame (read once per draw). */
   motion() {
     return this._reducedMotion ? MOTION_REDUCED : MOTION;
   }
 
-  /** Contact micro-squash for a dropping symbol, on the same clock as
-   *  cellOffset(): at the frame it first reaches its slot it is compressed by
-   *  its reel group's squash (1-2%), then relaxes monotonically through the
-   *  lock: a hard corner, so it reads as metal meeting metal, and it never
-   *  rebounds past 1, so it cannot wobble. Widens by half as much as it
-   *  flattens. Writes into a reused object: this runs for every cell, every frame. */
+  /** Impact squash for a dropping symbol, on the same clock as cellOffset():
+   *  the frame it hits its slot it flattens by the reel's squash, scaled by
+   *  how hard it hit (impact speed grows with √distance: a full-reel fall gets
+   *  all of it, a one-row refill ~45%), widening by half as much, and springs
+   *  back to its shape over the first part of its bounce. Rigid in flight.
+   *  Writes into a reused object: this runs for every cell, every frame. */
   dropDeform(row, col) {
     const out = this._deform || (this._deform = { sx: 1, sy: 1 });
     out.sx = 1;
     out.sy = 1;
     const m = this.motion();
-    if (!m.stretch && !m.squash) return out;
+    if (!m.squash) return out;
     const drop = this.fx.drop;
-    if (!drop || drop.exit || drop.zip) return out;
+    if (!drop || drop.zip) return out;
     const count = Number(drop.map?.[`${row}-${col}`] || 0);
     if (count <= 0) return out;
     const prof = this.reelProfile(col);
     const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / this.cellFallMs(col, count, drop);
-    if (progress <= 0 || progress >= 1) return out;
-    // Deformation follows speed (#54). Falls take √distance (cellFallMs), so
-    // the impact speed grows with √rows: a full-board fall gets the full
-    // amount, a one-row refill ~45% of it.
-    const hit = Math.min(1, Math.sqrt(count / this.rows));
-    if (progress < prof.contact) {
-      // Under constant acceleration speed grows linearly with time, and so
-      // does the stretch: volume-preserving, peaking the frame before contact.
-      out.sy = 1 + m.stretch * hit * (progress / prof.contact);
-      out.sx = 1 / out.sy;
-    } else {
-      const k = 1 - (progress - prof.contact) / (1 - prof.contact);
-      const squash = m.squash * prof.squash * hit * k * k;
-      out.sy = 1 - squash;
-      out.sx = 1 + squash * 0.5;
-    }
+    if (progress < prof.contact || progress >= 1) return out;
+    const u = (progress - prof.contact) / (1 - prof.contact); // 0..1 through the bounce
+    if (u >= MOTION.squashRelax) return out;
+    const k = 1 - u / MOTION.squashRelax;
+    const squash = m.squash * prof.squash * Math.min(1, Math.sqrt(count / this.rows)) * k * k;
+    out.sy = 1 - squash;
+    out.sx = 1 + squash * 0.5;
     return out;
   }
 
@@ -2794,17 +2768,23 @@ class ReelCanvasRenderer {
       this._queueColumnStop(0, last, null);
       return;
     }
-    // Each symbol lands on its own (glint + tick, symbolLanded); the reel's
-    // thud accents its LAST symbol, closing that reel's rat-a-tat.
-    for (const s of landings) this._queueTimer(s.t, () => this.symbolLanded(s.row, s.col));
+    // Symbols of a reel that land together (a stack) land as one: one glint
+    // pass over their floors and one tick. The reel's thud accents its last.
+    const groups = new Map(); // "col|ms" → rows
+    for (const s of landings) {
+      const k = `${s.col}|${Math.round(s.t)}`;
+      if (!groups.has(k)) groups.set(k, { col: s.col, t: s.t, rows: [] });
+      groups.get(k).rows.push(s.row);
+    }
+    for (const g of groups.values()) this._queueTimer(g.t, () => this.symbolsLanded(g.rows, g.col));
     for (const [col, t] of landAt) this._queueColumnStop(col, t, null);
   }
 
-  /** One symbol just hit its slot: its floor glint, and a landing tick
-   *  (onSymbolLand, wired to landingTicks) for the rat-a-tat. */
-  symbolLanded(row, col) {
-    this.landingGlints(col, [row]);
-    this.onSymbolLand?.(row, col);
+  /** Symbols of reel `col` just hit their slots together: their floor
+   *  glints and one landing tick (onSymbolLand, wired to landingTicks). */
+  symbolsLanded(rows, col) {
+    this.landingGlints(col, rows);
+    this.onSymbolLand?.(Math.max(...rows), col);
   }
 
   /** A landing, felt where it happens: along the floor seam of each symbol
@@ -3016,36 +2996,24 @@ class ReelCanvasRenderer {
   dropDelay(row, col, count) {
     // Fast-stop collapses the waterfall (a zip snapshot reads the live one).
     if (state.fastStopRequested && !this._liveTiming) return 0;
-    // Per-symbol release (WATERFALL): the reel's rank among the reels that
-    // drop, then bottom-up inside the reel, counted from the reel's lowest
-    // dropping symbol. Cascade momentum (drop.tempo) tightens both; the
-    // spin-out runs at exitScale. Scaled by turbo.
+    // Reel release (WATERFALL): the whole reel goes at once (it falls as a
+    // stack), reels left to right by their rank among the reels that drop.
+    // A spin uses spinColMs, a tumble refill tumbleColMs; cascade momentum
+    // (drop.tempo) tightens it. Scaled by turbo.
     const drop = this.fx.drop;
     const o = drop?.order;
     const rank = o ? o.rank[col] : col;
-    const fromBottom = Math.max(0, (o ? o.bottom[col] : this.rows - 1) - row);
-    let raw = (rank * WATERFALL.colMs + fromBottom * WATERFALL.rowMs) * (drop?.tempo || 1);
-    if (drop?.exit) raw *= WATERFALL.exitScale;
+    const colMs = drop?.spin ? WATERFALL.spinColMs : WATERFALL.tumbleColMs;
+    const raw = rank * colMs * (drop?.tempo || 1);
     // Anticipated columns (5b) wait an extra beat each, stacking left to right.
     const a = drop?.antic;
     const hold = a && col >= a.fromCol ? a.holdMs * (col - a.fromCol + 1) : 0;
-    return Math.max(0, Math.round(raw * turboScale()) + hold + this.inertiaLag(col, count));
+    return Math.max(0, Math.round(raw * turboScale()) + hold);
   }
 
-  /** Reel inertia keeps the landing beat even: a lighter reel (shorter fall,
-   *  earlier contact) is released later by exactly the difference, so it
-   *  lands on the same waterfall beat as a heavy reel would. Its tension shows
-   *  in a later, harder release, not in a ragged rhythm. Drop-ins only. */
-  inertiaLag(col, count, drop = this.fx.drop) {
-    if (!drop || drop.exit) return 0;
-    const p = this.reelProfile(col);
-    const h = REEL_INERTIA[0];
-    return (this.cellFallMs(col, count, drop) / p.durScale) * (h.durScale * h.contact - p.durScale * p.contact);
-  }
-
-  /** Per-drop release order: each reel's rank among the reels that drop, and
-   *  its lowest dropping row (where its bottom-up stagger starts). Computed
-   *  once per drop; dropDelay falls back to plain column order without it. */
+  /** Per-drop release order: each reel's rank among the reels that drop (and
+   *  its lowest dropping row). Computed once per drop; dropDelay falls back to
+   *  plain column order without it. */
   _dropOrder(map) {
     const bottom = new Int8Array(this.cols).fill(-1);
     for (const key of Object.keys(map || {})) {
@@ -3059,22 +3027,21 @@ class ReelCanvasRenderer {
     return { bottom, rank };
   }
 
-  /** One symbol's own fall time: its reel's fall (colDropMs) scaled by how
-   *  far it falls, like gravity (√distance), floored at FALL_SCALE_MIN. */
+  /** One symbol's whole motion, in ms: its fall under GRAVITY (a full-reel
+   *  fall takes colDropMs, a fall of `count` rows √(count / rows) of that)
+   *  plus its bounce, so impact comes at `contact` of it. */
   cellFallMs(col, count, drop = this.fx.drop) {
-    const full = this.colDropMs(col, drop);
-    if (!drop || drop.exit) return full;
-    return full * clamp(Math.sqrt(count / this.rows), FALL_SCALE_MIN, 1);
+    const fall = this.colDropMs(col, drop) * Math.sqrt(clamp(count / this.rows, 0, 4));
+    return fall / this.reelProfile(col).contact;
   }
 
-  /** Fall duration of one column of the current drop. Anticipated columns
-   *  fall slower. Every drop timing (landing, sound, reveals, dust, settle)
-   *  goes through this, so they cannot disagree. */
+  /** Full-reel fall time of one column of the current drop (its gravity).
+   *  Anticipated columns fall slower. Every drop timing (landing, sound,
+   *  reveals, dust, settle) goes through this, so they cannot disagree. */
   colDropMs(col, drop = this.fx.drop) {
     if (!drop) return 0;
     const a = drop.antic;
-    const d = drop.duration * this.reelProfile(col).durScale;
-    return a && col >= a.fromCol ? d * a.slow : d;
+    return a && col >= a.fromCol ? drop.duration * a.slow : drop.duration;
   }
 
   /** When the last cell of the current drop has fully landed, ms from start. */
@@ -3581,6 +3548,9 @@ class ReelCanvasRenderer {
     const mo = this.motion();
     const idleLevel = this.idleLevel(frameNow);
 
+    // Spin-out (#47): the old board falling out, behind the new one.
+    if (this.fx.exit) this.drawExitBoard(ctx, { width, top, padX, laneW, rowStep, radius });
+
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
         if (this.board.hidden) continue;
@@ -3611,9 +3581,8 @@ class ReelCanvasRenderer {
         if (inFlight) {
           const over = Math.max(0, (Math.min(laneW, rowStep) * 1.24 - rowStep) / 2);
           const edge = over * clamp(1 - Math.abs(offY) / (rowStep * REEL_MASK.settleRows), 0, 1);
-          const leaving = Boolean(this.fx.drop?.exit);
-          const y0 = top - (leaving ? over : edge);
-          const y1 = top + rowStep * this.rows + (leaving ? edge : over);
+          const y0 = top - edge;
+          const y1 = top + rowStep * this.rows + over;
           ctx.save();
           ctx.beginPath();
           ctx.rect(0, y0, width, y1 - y0);
@@ -3702,7 +3671,7 @@ class ReelCanvasRenderer {
         const iconW = iconBase * squashX;
         const iconH = iconBase * squashY;
         // A squashed symbol stays planted on its floor instead of shrinking
-        // toward its centre; a stretched one stays centred on its fall path.
+        // toward its centre.
         const iconCy = yFloat + Math.max(0, iconBase - iconH) * 0.5;
         // Win focus (FOCUS): symbols outside the focus set step back.
         const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
@@ -3791,20 +3760,6 @@ class ReelCanvasRenderer {
           // every cell, every frame. Keyed by the image key actually resolved
           // above (a multiplier tier image, or the symbol itself).
           const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
-          // Motion blur (MOTION_BLUR, #53): fading ghosts back along the path,
-          // denser the faster the symbol moves (spin-out, drop-in and the
-          // fast-stop zip alike). A slow or locked symbol is drawn sharp, so
-          // the art resolves crisp the frame it settles.
-          const blur = inFlight && !this._reducedMotion ? this.motionBlur(r, c, rowStep, drawH) : null;
-          if (blur) {
-            const a = ctx.globalAlpha;
-            const ghosts = this.tier === "low" ? 1 : MOTION_BLUR.ghosts;
-            for (let g = ghosts; g >= 1; g -= 1) {
-              ctx.globalAlpha = (a * blur.alpha) / g;
-              ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2 - (blur.step * g) / ghosts, drawW, drawH);
-            }
-            ctx.globalAlpha = a;
-          }
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
           if (this.fx.waves.length && !isBlast) {
             // Shockwave light (#54): the front lights each symbol it passes.
