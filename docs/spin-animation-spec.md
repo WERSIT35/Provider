@@ -40,9 +40,9 @@ language and constants are described in [animation-guide.md](./animation-guide.m
 
 | Step | Budget |
 |------|--------|
-| Reel stagger / symbol stagger | 80ms / 18ms |
-| Drop-in fall (heavy reel) | 520ms (tension ×0.9, snap ×0.82; shorter falls scale by √distance) |
-| Tumble refill fall | 380ms × 0.85^(step−1), floored at 50% |
+| Reel release (whole reel at once) | 75ms apart on a spin, 22ms on a tumble refill |
+| Spin-out / drop-in / tumble fall (full 5-row fall, one gravity) | 360ms; a fall of d rows takes 360·√(d/5)ms; tumbles × 0.85^(step−1), floored at 50% |
+| Landing bounce | restitution 0.18: rises 3.2% of the fall, lasts 0.36 × the fall time |
 | Vacuum lean | 30ms in, 110ms side-lean return |
 | Explode | 380ms |
 | Win hold | 1100ms first catch, 700ms chained |

@@ -1,0 +1,234 @@
+// Records a real spin (with a tumble chain) in headless Chrome and writes it
+// as animated WebP: real speed and 4x slow motion, plus the raw frames.
+//
+// Usage: node tools/probes/motion-record.js [--ref <git-ref>] [--out <dir>]
+//          [--name <label>] [--tumbles <n>] [--turbo] [--size 1280x800]
+//   --ref   record an older commit (checked out into a temp worktree)
+//   --tumbles  keep re-rolling the spin until it has at least n tumble steps
+// Needs Chrome and sharp (root devDependency).
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { spawn, execFileSync } = require("child_process");
+const sharp = require("sharp");
+
+const args = process.argv.slice(2);
+const opt = (name, def) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : def; };
+const flag = (name) => args.includes(`--${name}`);
+const REPO = path.join(__dirname, "..", "..");
+const REF = opt("ref", "");
+const NAME = opt("name", REF || "working-tree");
+const OUT = path.resolve(opt("out", fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-"))));
+const TUMBLES = Number(opt("tumbles", 2));
+const [W, H] = opt("size", "1280x800").split("x").map(Number);
+const PORT = 3100 + Math.floor(Math.random() * 400);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
+  ".webp": "image/webp", ".png": "image/png", ".woff2": "font/woff2", ".wav": "audio/wav", ".mp3": "audio/mpeg" };
+
+// Root to serve: the working tree, or a temp worktree of --ref.
+let worktree = null;
+let ROOT = path.join(REPO, "client");
+if (REF) {
+  worktree = fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-wt-"));
+  execFileSync("git", ["-C", REPO, "worktree", "add", "--detach", worktree, REF], { stdio: "ignore" });
+  ROOT = path.join(worktree, "client");
+}
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-prof-"));
+function cleanup() {
+  if (worktree) { try { execFileSync("git", ["-C", REPO, "worktree", "remove", "--force", worktree], { stdio: "ignore" }); } catch { /* best effort */ } }
+  try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* in use */ }
+}
+process.on("exit", cleanup);
+
+const server = http.createServer((req, res) => {
+  const url = (req.url || "/").split("?")[0];
+  const rel = url === "/" ? "index.html" : decodeURIComponent(url).replace(/^\/+/, "");
+  const file = path.join(ROOT, rel);
+  if (!file.startsWith(ROOT)) return res.writeHead(403).end();
+  fs.readFile(file, (err, buf) => {
+    if (err) return res.writeHead(404).end();
+    res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
+    res.end(buf);
+  });
+});
+
+function connect(wsUrl) {
+  const ws = new WebSocket(wsUrl);
+  let id = 1; const pending = new Map(); const listeners = [];
+  ws.addEventListener("message", (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.method) listeners.forEach((l) => l(m));
+    const p = pending.get(m.id); if (!p) return; pending.delete(m.id);
+    m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result);
+  });
+  return {
+    ready: new Promise((r, j) => { ws.addEventListener("open", r, { once: true }); ws.addEventListener("error", j, { once: true }); }),
+    send: (method, params = {}) => { const i = id++; ws.send(JSON.stringify({ id: i, method, params })); return new Promise((resolve, reject) => pending.set(i, { resolve, reject })); },
+    on: (fn) => listeners.push(fn),
+    close: () => ws.close()
+  };
+}
+async function evaluate(cdp, expression) {
+  const r = await cdp.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || "eval failed");
+  return r.result.value;
+}
+
+// A controllable page clock, installed before any page script runs. Real
+// time until manual() is called; then performance.now, Date.now, setTimeout,
+// setInterval and requestAnimationFrame only move when advance(ms) is called
+// (timers fire in order, each followed by a real macrotask so promise chains
+// settle; rAF callbacks run once per advance, at its end).
+const VCLOCK = `(() => {
+  const realNow = performance.now.bind(performance), realDate = Date.now;
+  const realST = window.setTimeout.bind(window), realCT = window.clearTimeout.bind(window);
+  const realSI = window.setInterval.bind(window), realCI = window.clearInterval.bind(window);
+  const realRaf = window.requestAnimationFrame.bind(window), realCaf = window.cancelAnimationFrame.bind(window);
+  let manual = false, vnow = 0, seq = 1e9, dateAt = 0;
+  const timers = new Map(), rafs = new Map();
+  const yieldReal = () => new Promise((r) => realST(r, 0));
+  performance.now = () => (manual ? vnow : realNow());
+  Date.now = () => (manual ? dateAt + vnow : realDate());
+  window.setTimeout = (fn, ms, ...a) => { if (!manual) return realST(fn, ms, ...a); const id = ++seq; timers.set(id, { at: vnow + Math.max(0, Number(ms) || 0), fn, a }); return id; };
+  window.setInterval = (fn, ms, ...a) => { if (!manual) return realSI(fn, ms, ...a); const id = ++seq; const every = Math.max(1, Number(ms) || 0); timers.set(id, { at: vnow + every, fn, a, every }); return id; };
+  window.clearTimeout = (id) => (id > 1e9 ? timers.delete(id) : realCT(id));
+  window.clearInterval = (id) => (id > 1e9 ? timers.delete(id) : realCI(id));
+  window.requestAnimationFrame = (fn) => { if (!manual) return realRaf(fn); const id = ++seq; rafs.set(id, fn); return id; };
+  window.cancelAnimationFrame = (id) => (id > 1e9 ? rafs.delete(id) : realCaf(id));
+  window.__vclock = {
+    manual() { vnow = realNow(); dateAt = realDate() - vnow; manual = true; },
+    async advance(ms) {
+      const end = vnow + ms;
+      for (let guard = 0; guard < 10000; guard++) {
+        let next = null;
+        for (const [id, t] of timers) if (t.at <= end && (!next || t.at < next[1].at)) next = [id, t];
+        if (!next) break;
+        const [id, t] = next;
+        vnow = Math.max(vnow, t.at);
+        if (t.every) t.at += t.every; else timers.delete(id);
+        try { typeof t.fn === "function" ? t.fn(...t.a) : null; } catch (e) { console.error(e); }
+        await yieldReal();
+      }
+      vnow = end;
+      const due = [...rafs.entries()]; rafs.clear();
+      for (const [, fn] of due) { try { fn(vnow); } catch (e) { console.error(e); } }
+      await yieldReal();
+      return vnow;
+    }
+  };
+})();`;
+
+/** Evenly spaced frames → animated WebP at `speed` (1 = real time). Every
+ *  `step`-th frame is kept so each frame shows for ≥ 20ms (browsers stretch
+ *  shorter ones), with one constant delay, so playback time is exact. */
+async function writeWebp(frames, file, speed, width) {
+  const dt = frames.length > 1 ? (frames[frames.length - 1].t - frames[0].t) / (frames.length - 1) : 1000 / 60;
+  const step = Math.max(1, Math.ceil((20 * speed) / dt));
+  const kept = frames.filter((_, i) => i % step === 0);
+  const scaled = await Promise.all(kept.map((f) => sharp(f.buf).resize({ width }).png().toBuffer()));
+  const delay = Math.round((dt * step) / speed);
+  await sharp(scaled, { join: { animated: true } })
+    .webp({ quality: 70, loop: 0, delay: kept.map(() => delay), effort: 2, minSize: false, mixed: false })
+    .toFile(file);
+}
+
+(async () => {
+  await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
+  const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
+    "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  const base = await new Promise((resolve) => {
+    let buf = "";
+    chrome.stderr.on("data", (d) => { buf += d; const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//); if (m) resolve(`http://127.0.0.1:${m[1]}`); });
+  });
+  const target = await (await fetch(`${base}/json/new?about:blank`, { method: "PUT" })).json();
+  const cdp = connect(target.webSocketDebuggerUrl);
+  await cdp.ready;
+  await cdp.send("Runtime.enable"); await cdp.send("Page.enable");
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: VCLOCK });
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: W < 900 });
+  await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/index.html` });
+  for (let i = 0; i < 150; i++) { await sleep(100); if (await evaluate(cdp, `document.body && document.body.classList.contains("app-ready") && typeof state !== "undefined" && !!state.sessionId`)) break; }
+  await sleep(1200);
+  if (flag("turbo")) await evaluate(cdp, `(() => { if (!state.turbo) document.getElementById("turboBtn")?.click(); state.turbo = true; return true; })()`);
+  // Re-roll the round until it has a tumble chain (standalone engine, no money involved).
+  await evaluate(cdp, `(() => { const real = window.__realApi || api; window.__realApi = real; api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
+    for (let i = 0; i < 400; i++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded) return r; }
+    return real(p, payload); }; return true; })()`);
+
+  // Deterministic capture: the page's clock (performance.now, timers, rAF;
+  // VCLOCK below) is switched to manual and advanced exactly one 60fps frame
+  // at a time, each frame screenshotted, so every frame is there and evenly
+  // spaced however slow the capture itself is. The spin is pressed 300ms in.
+  const frames = [];
+  const FRAME = 1000 / 60;
+  const advance = (ms) => evaluate(cdp, `__vclock.advance(${ms})`);
+  const maxMs = Number(opt("ms", 6000));
+  await evaluate(cdp, `(__vclock.manual(), true)`);
+  let pressed = false;
+  let idleSince = null;
+  for (let t = 0; t <= maxMs; t += FRAME) {
+    if (!pressed && t >= 300) {
+      await evaluate(cdp, `(document.getElementById("spinBtn") || el.spinBtn).click(), true`);
+      pressed = true;
+    }
+    await advance(FRAME);
+    const shot = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 85 });
+    frames.push({ t, buf: Buffer.from(shot.data, "base64") });
+    if (pressed && t > 800 && Math.round(t / FRAME) % 6 === 0) {
+      const busy = await evaluate(cdp, `isRoundInFlight()`);
+      if (!busy && idleSince === null) idleSince = t;
+      if (busy) idleSince = null;
+      if (idleSince !== null && t - idleSince > 600) break;
+    }
+  }
+  cdp.close(); chrome.kill(); server.close();
+
+  fs.mkdirSync(OUT, { recursive: true });
+  const span = frames.length ? frames[frames.length - 1].t : 0;
+  const fps = frames.length / Math.max(0.001, span / 1000);
+  const width = Math.min(W, 960);
+  // --strip <col>:<fromMs>-<toMs>: one reel (column `col`), every frame, side
+  // by side at full size: to judge a landing frame by frame.
+  const strip = opt("strip", "");
+  if (strip) {
+    const [, col, a, b] = /^(\d+):(\d+)-(\d+)$/.exec(strip).map(Number);
+    const laneW = (710 - 2 * 15) / 6;
+    const crop = { left: Math.round(290 + 15 + laneW * col - 8), top: 8, width: Math.round(laneW + 16), height: 600 };
+    const picked = frames.filter((f) => f.t >= a && f.t <= b);
+    const tiles = await Promise.all(picked.map(async (f) => {
+      const img = await sharp(f.buf).extract(crop).toBuffer();
+      const label = Buffer.from(`<svg width="${crop.width}" height="20"><rect width="${crop.width}" height="20" fill="black"/><text x="4" y="15" fill="white" font-size="13" font-family="monospace">${Math.round(f.t)}</text></svg>`);
+      return sharp(img).composite([{ input: label, top: 0, left: 0 }]).toBuffer();
+    }));
+    await sharp({ create: { width: crop.width * tiles.length, height: crop.height, channels: 3, background: "#000" } })
+      .composite(tiles.map((input, i) => ({ input, left: i * crop.width, top: 0 })))
+      .jpeg({ quality: 85 }).toFile(path.join(OUT, `${NAME}-strip.jpg`));
+  }
+  // --sheet <fromMs>-<toMs>/<stepMs>: a contact sheet of the board, one tile per step.
+  const sheet = opt("sheet", "");
+  if (sheet) {
+    const [, a, b, step] = /^(\d+)-(\d+)\/(\d+)$/.exec(sheet).map(Number);
+    const crop = { left: 290, top: 8, width: 710, height: 600 }; // the board at 1280x800
+    const tiles = [];
+    for (let t = a; t <= b; t += step) {
+      const f = frames.reduce((best, x) => (Math.abs(x.t - t) < Math.abs(best.t - t) ? x : best), frames[0]);
+      const img = await sharp(f.buf).extract(crop).resize({ width: 284 }).toBuffer();
+      const label = Buffer.from(`<svg width="284" height="22"><rect width="284" height="22" fill="black"/><text x="6" y="16" fill="white" font-size="14" font-family="monospace">${Math.round(f.t)}ms</text></svg>`);
+      tiles.push(await sharp(img).composite([{ input: label, top: 0, left: 0 }]).toBuffer());
+    }
+    const meta = await sharp(tiles[0]).metadata();
+    const cols = 6;
+    const rows = Math.ceil(tiles.length / cols);
+    await sharp({ create: { width: cols * meta.width, height: rows * meta.height, channels: 3, background: "#000" } })
+      .composite(tiles.map((input, i) => ({ input, left: (i % cols) * meta.width, top: Math.floor(i / cols) * meta.height })))
+      .jpeg({ quality: 80 }).toFile(path.join(OUT, `${NAME}-sheet.jpg`));
+  }
+  await writeWebp(frames, path.join(OUT, `${NAME}.webp`), 1, width);
+  await writeWebp(frames, path.join(OUT, `${NAME}-slow4x.webp`), 0.25, width);
+  console.log(`${NAME}: ${frames.length} frames over ${(span / 1000).toFixed(1)}s (${fps.toFixed(0)} fps) -> ${OUT}`);
+  process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });

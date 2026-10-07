@@ -109,112 +109,80 @@ async function evaluate(cdp, expression) {
   // Warm the audio graph: the first Sound.play builds the AudioContext
   // synchronously (~30ms headless), which would skew the next timestamps.
   await evaluate(cdp, `(window.Sound.play("click"), true)`); await sleep(100);
-  console.log("\nspin-out: no wind-up, gravity from the press");
+  console.log("\nspin-out: the old board falls out as reel stacks, no wind-up (#47)");
   const out = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer, rs = R.getLayout().rowStep;
-    const t0 = performance.now(); const p = R.dropOff(); const samples = []; let minAll = 0;
-    while (R.fx.drop && R.fx.drop.exit) {
-      const t = performance.now() - t0; const o = {};
-      for (let r = 0; r < R.rows; r++) for (let c = 0; c < R.cols; c++) { const y = R.cellOffset(r, c, rs) / rs; minAll = Math.min(minAll, y); o[r + "-" + c] = y; }
-      samples.push({ t, o });
+    const R = __reelRenderer;
+    R.dropOff(); const ex = R.fx.exit; const samples = []; let minAll = 0, hidden = R.board.hidden;
+    while (R.fx.exit === ex) {
+      const now = performance.now(); const o = [];
+      for (let c = 0; c < R.cols; c++) { const y = R.exitOffsetRows(ex, c, now); minAll = Math.min(minAll, y); o.push(y); }
+      samples.push({ t: now - ex.start, o });
       await new Promise((r) => requestAnimationFrame(r));
     }
-    await p;
-    const firstMove = (k) => (samples.find((s) => s.o[k] > 0) || { t: Infinity }).t;
-    return { minAll, frames: samples.length, bottom0: firstMove("4-0"), top0: firstMove("0-0"), bottom5: firstMove("4-5") };
+    const first = (c) => (samples.find((s) => s.o[c] > 0) || { t: Infinity }).t;
+    const done = samples.length ? samples[samples.length - 1].t : 0;
+    R.setBoard(R.board.matrix || [], {}); // show the board again for the next checks
+    return { minAll, hidden, frames: samples.length, first0: first(0), first5: first(5), colMs: ex.colMs, dur: ex.duration, done };
   })()`);
-  check("no symbol ever moves up during the spin-out", out.minAll >= 0, `lowest offset ${out.minAll} rows over ${out.frames} frames`);
-  check("gravity takes over at once: reel 1's bottom symbol is falling on the first frames", out.bottom0 < 40, `${out.bottom0.toFixed(0)}ms`);
-  check("bottom symbols leave before the ones above them", out.bottom0 < out.top0, `bottom ${out.bottom0.toFixed(0)}ms, top ${out.top0.toFixed(0)}ms`);
+  check("no reel ever moves up during the spin-out", out.minAll >= 0, `${out.frames} frames`);
+  check("gravity takes over at once: reel 1 is falling on the first frames", out.first0 < 40, `${out.first0.toFixed(0)}ms`);
+  check("reels leave left to right, spinColMs apart", out.first5 > out.first0 && Math.abs(out.first5 - out.first0 - 5 * out.colMs) < 40,
+    `reel 6 starts ${(out.first5 - out.first0).toFixed(0)}ms after reel 1 (${out.colMs}ms × 5)`);
+  check("the old board is its own layer and is gone once it has fallen out", out.hidden && out.done < out.dur * 1.2 + 5 * out.colMs + 80,
+    `cleared at ${out.done.toFixed(0)}ms`);
 
-  console.log("\ntiered reel inertia + stop/lock");
-  const prof = await evaluate(cdp, `(() => {
+  console.log("\ngravity + one real bounce (#47)");
+  const grav = await evaluate(cdp, `(() => {
     const R = __reelRenderer, rs = R.getLayout().rowStep, saved = R.fx.drop, out = {};
-    for (const col of [0, 2, 4]) {
-      const p = R.reelProfile(col); const curve = []; const sq = [];
-      const mk = (t) => ({ start: performance.now() - t, duration: 1000, map: { ["0-" + col]: 5 }, heavy: new Map() });
-      R.fx.drop = mk(0); const delay = R.dropDelay(0, col, 5), dur = R.colDropMs(col);
-      for (let t = delay; t <= dur + delay; t += 1) {
-        R.fx.drop = mk(t);
-        curve.push(R.cellOffset(0, col, rs) / (rs * 5));
-        const d = R.dropDeform(0, col); sq.push(d.sy);
-      }
-      out[col] = { name: p.name, dur, contact: p.contact, squash: p.squash, curve, sq };
+    const p = R.reelProfile(0);
+    for (const n of [1, 2, 5]) {
+      const row = 5 - n, key = row + "-0";
+      const mk = (t) => ({ start: performance.now() - t, duration: 360, map: { [key]: n }, heavy: new Map() });
+      R.fx.drop = mk(0); const total = R.cellFallMs(0, n), impact = total * p.contact;
+      const ys = []; for (let t = 0; t <= Math.ceil(total) + 2; t += 1) { R.fx.drop = mk(t); ys.push(R.cellOffset(row, 0, rs) / rs); }
+      const start = ys[0];
+      const hit = ys.findIndex((y, i) => i > 0 && ys[i - 1] < y && ys[i + 1] !== undefined && ys[i + 1] < y); // the turn-around
+      const firstZero = Math.round(impact);
+      const after = ys.slice(firstZero);
+      const peak = -Math.min(...after);           // bounce height above the slot, rows
+      const fallen = (t) => (ys[t] - start);        // rows covered at t
+      out[n] = { total, impact, firstZero, hit, start, peak, end: ys[ys.length - 1],
+        quarter: fallen(Math.round(impact / 4)), half: fallen(Math.round(impact / 2)) };
     }
-    R.fx.drop = saved; return out;
+    R.fx.drop = saved; return { out, contact: p.contact, e: GRAVITY.restitution };
   })()`);
-  for (const col of ["0", "2", "4"]) {
-    const p = prof[col], o = p.curve;
-    const over = Math.max(...o);
-    const first = o.findIndex((y) => y >= 0) / p.dur;
-    const v0 = o[1] - o[0], vPeak = Math.max(...o.slice(1).map((y, i) => y - o[i]));
-    const minSq = Math.min(...p.sq), maxAfter = Math.max(...p.sq.slice(Math.ceil(p.contact * p.dur)));
-    // Heavy and tension reels gather speed from rest; the snap reels launch
-    // hard by design (low warp): their first ms is still well under peak.
-    const launch = v0 / vPeak;
-    check(`reel ${+col + 1} (${p.name}): ${p.dur}ms, launch ${(launch * 100).toFixed(1)}% of peak speed, lock ${(over * 100).toFixed(2)}% at contact ${first.toFixed(3)}, settles`,
-      launch < (p.name === "snap" ? 0.2 : 0.05) && Math.abs(first - p.contact) < 0.004 && over < 0.02 && Math.abs(o[o.length - 1]) < 1e-9);
-    check(`reel ${+col + 1}: ${(p.squash * 100).toFixed(1)}% micro-squash on contact, never rebounds past 1`,
-      Math.abs(1 - minSq - p.squash) < 0.0015 && maxAfter <= 1 + 1e-9, `min sy ${minSq.toFixed(4)}`);
-  }
-  check("reels speed up across the groups (heavy > tension > snap)", prof[0].dur > prof[2].dur && prof[2].dur > prof[4].dur, `${prof[0].dur}/${prof[2].dur}/${prof[4].dur}ms`);
-  const lockRank = [0, 2, 4].map((c) => Math.max(...prof[c].curve));
-  check("lock overshoot tightens from heavy to snap (gear detent last)", lockRank[0] > lockRank[1] && lockRank[1] > lockRank[2] && lockRank[2] < 0.004,
-    lockRank.map((v) => (v * 100).toFixed(2) + "%").join(" / "));
+  const G = grav.out;
+  check("one gravity: fall time grows with √distance (2 rows vs 1: ×√2)", Math.abs(G[2].impact / G[1].impact - Math.SQRT2) < 0.01 && Math.abs(G[5].impact / G[1].impact - Math.sqrt(5)) < 0.01,
+    `impact at ${G[1].impact.toFixed(0)} / ${G[2].impact.toFixed(0)} / ${G[5].impact.toFixed(0)}ms for 1 / 2 / 5 rows`);
+  check("falls from rest under constant acceleration (s ∝ t²: a quarter of the time, a sixteenth of the way)",
+    [1, 2, 5].every((n) => Math.abs(G[n].half / G[n].quarter - 4) < 0.35), [1, 2, 5].map((n) => (G[n].half / G[n].quarter).toFixed(2)).join(" / "));
+  check("hits its slot exactly on its predicted impact (and turns round there)", [1, 2, 5].every((n) => Math.abs(G[n].hit - G[n].impact) <= 1.5),
+    [1, 2, 5].map((n) => `${G[n].hit}/${G[n].impact.toFixed(1)}ms`).join(", "));
+  check("one real bounce: rebound height = e² of the fall, then it rests exactly in its slot",
+    [1, 2, 5].every((n) => Math.abs(G[n].peak - grav.e * grav.e * -G[n].start) < 0.004 && G[n].end === 0),
+    [1, 2, 5].map((n) => `${n} row${n > 1 ? "s" : ""}: ${(G[n].peak * 100).toFixed(1)}% of a row`).join(", "));
 
-  console.log("\nspring lock + velocity blur (#53)");
-  const spring = await evaluate(cdp, `(() => {
-    const R = __reelRenderer, rs = R.getLayout().rowStep, saved = R.fx.drop, out = [];
-    for (const col of [0, 2, 4]) for (const rows of [1, 5]) {
-      const p = R.reelProfile(col), row = 5 - rows, key = row + "-" + col;
-      const mk = (t) => ({ start: performance.now() - t, duration: 1000, map: { [key]: rows }, heavy: new Map() });
-      R.fx.drop = mk(0); const delay = R.dropDelay(row, col, rows), dur = R.cellFallMs(col, rows);
-      let over = 0, under = 0, vImpact = 0, vMax = 0, blurFast = null;
-      for (let t = 0; t <= dur; t += 1) {
-        R.fx.drop = mk(t + delay);
-        const y = R.cellOffset(row, col, rs) / rs, v = Math.abs(R.cellVelocity(row, col, rs));
-        if (t / dur >= p.contact) { over = Math.max(over, y); if (over > 0) under = Math.min(under, y); } else vImpact = v;
-        if (v > vMax) { vMax = v; const b = R.motionBlur(row, col, rs, rs); blurFast = b && { ...b }; }
-      }
-      R.fx.drop = mk(dur + delay + 1);
-      out.push({ name: p.name, rows, maxOver: p.maxOver, over, under, vMax, vImpact, blurFast,
-        blurLocked: R.motionBlur(row, col, rs, rs), end: R.cellOffset(row, col, rs) });
-    }
-    R.fx.drop = saved; return out;
-  })()`);
-  for (const s of spring) {
-    check(`${s.name}, ${s.rows}-row fall: overshoots at most ${s.maxOver} rows, springs back, rests exactly in its slot`,
-      s.over > 0 && s.over <= s.maxOver + 1e-6 && s.under < 0 && Math.abs(s.under) < s.over * 0.5 && s.end === 0,
-      `over ${s.over.toFixed(4)}, back ${s.under.toFixed(4)} rows`);
-  }
-  const by = (name, rows) => spring.find((s) => s.name === name && s.rows === rows);
-  check("a longer fall hits harder: it overshoots further (up to the cap)", spring.filter((s) => s.rows === 1).every((s) => by(s.name, 5).over > s.over));
-  check("still accelerating at impact: the fastest frame is the last one before contact", spring.every((s) => s.vImpact >= s.vMax - 1e-6),
-    spring.map((s) => s.vMax.toFixed(0)).join("/") + " px/frame");
-  check("motion blur at speed, scaled to it; none once locked", spring.every((s) => !s.blurLocked && (s.rows === 1 || (s.blurFast && s.blurFast.alpha > 0 && s.blurFast.step > 0))),
-    spring.filter((s) => s.blurFast).map((s) => `${s.name}/${s.rows}: alpha ${s.blurFast.alpha.toFixed(2)}, ${s.blurFast.step.toFixed(0)}px`).join("; "));
-
-  console.log("\nsquash & stretch follow speed, within the 2% cap (#54)");
+  console.log("\nimpact squash follows impact speed (#47)");
   const deform = await evaluate(cdp, `(() => {
     const R = __reelRenderer, saved = R.fx.drop, out = {};
-    for (const rows of [1, 5]) {
-      const row = 5 - rows, key = row + "-0";
-      const mk = (t) => ({ start: performance.now() - t, duration: 1000, map: { [key]: rows }, heavy: new Map() });
-      R.fx.drop = mk(0); const delay = R.dropDelay(row, 0, rows), dur = R.cellFallMs(0, rows);
-      let maxSy = 1, minSy = 1, prev = 1, monotonic = true; const contact = R.reelProfile(0).contact;
-      for (let t = 0; t <= dur; t += 1) {
-        R.fx.drop = mk(t + delay); const d = R.dropDeform(row, 0);
-        maxSy = Math.max(maxSy, d.sy); minSy = Math.min(minSy, d.sy);
-        if (t / dur < contact && d.sy < prev - 1e-9) monotonic = false; prev = d.sy;
+    for (const n of [1, 5]) {
+      const row = 5 - n, key = row + "-0";
+      const mk = (t) => ({ start: performance.now() - t, duration: 360, map: { [key]: n }, heavy: new Map() });
+      R.fx.drop = mk(0); const total = R.cellFallMs(0, n), impact = total * R.reelProfile(0).contact;
+      let minSy = 1, inFlight = 1, after = 1;
+      for (let t = 0; t <= total + 2; t += 1) {
+        R.fx.drop = mk(t); const d = R.dropDeform(row, 0);
+        if (t < impact - 1) inFlight = Math.min(inFlight, d.sy, 2 - d.sx);
+        minSy = Math.min(minSy, d.sy); if (t > total) after = d.sy;
       }
-      out[rows] = { maxSy, minSy, monotonic };
+      out[n] = { minSy, inFlight, after };
     }
-    R.fx.drop = saved; return out;
+    R.fx.drop = saved; return { out, squash: GRAVITY.squash };
   })()`);
-  check("falling symbols stretch as they speed up, at most 2%", deform[5].maxSy > 1.015 && deform[5].maxSy <= 1.02 + 1e-9 && deform[5].monotonic,
-    `5-row peak ${((deform[5].maxSy - 1) * 100).toFixed(2)}%`);
-  check("a short (slower) fall deforms less than a long one, squash ≤ 2%", deform[1].maxSy < deform[5].maxSy && deform[1].minSy > deform[5].minSy && deform[5].minSy >= 0.98 - 1e-9,
-    `1-row stretch ${((deform[1].maxSy - 1) * 100).toFixed(2)}% / squash ${((1 - deform[1].minSy) * 100).toFixed(2)}%; 5-row squash ${((1 - deform[5].minSy) * 100).toFixed(2)}%`);
+  const D = deform.out;
+  check("rigid in flight, flattened on impact, back to shape before it rests", [1, 5].every((n) => D[n].inFlight === 1 && D[n].minSy < 1 && D[n].after === 1));
+  check("a full-reel fall squashes by GRAVITY.squash; a one-row refill much less", Math.abs(1 - D[5].minSy - deform.squash) < 0.002 && (1 - D[1].minSy) < (1 - D[5].minSy) * 0.6,
+    `5 rows ${((1 - D[5].minSy) * 100).toFixed(1)}%, 1 row ${((1 - D[1].minSy) * 100).toFixed(1)}%`);
 
   console.log("\ncluster blast: pop, shockwave light, dust (#54)");
   await waitIdle();
@@ -294,53 +262,62 @@ async function evaluate(cdp, expression) {
   check("a spin stops the breath at once, settling down (never lifting)", breath.settled === 0 && breath.rose === 0,
     `${breath.before.toFixed(2)}px → 0 in under 160ms`);
 
-  console.log("\nper-symbol rat-a-tat (opening drop)");
+  console.log("\nreels land as stacks, no dead air between spins (#47)");
   await waitIdle();
   const sync = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer; __snd.length = 0; const lands = []; const realS = R.symbolLanded.bind(R);
-    R.symbolLanded = (r, c) => { lands.push({ r, c, t: performance.now(), n: R.shards.live }); realS(r, c); lands[lands.length - 1].added = R.shards.live - lands[lands.length - 1].n; };
+    const R = __reelRenderer; __snd.length = 0; const lands = []; const realS = R.symbolsLanded.bind(R);
+    R.symbolsLanded = (rows, c) => { lands.push({ rows: rows.slice(), c, t: performance.now(), n: R.shards.live }); realS(rows, c); lands[lands.length - 1].added = R.shards.live - lands[lands.length - 1].n; };
     let ticks = 0; const realTick = R.onSymbolLand; R.onSymbolLand = (r, c) => { ticks++; realTick?.(r, c); };
     const realDrop = R.drop.bind(R); let pred = null, start = 0;
-    R.drop = async (...a) => { const p = realDrop(...a); if (!pred && R.fx.drop && !R.fx.drop.exit) { start = R.fx.drop.start; pred = {};
+    const realAntic = R.makeAnticipation; R.makeAnticipation = () => null; // judge the plain landing beat
+    const press = performance.now(); let firstMove = 0, emptyFrames = 0, watching = true;
+    const watch = () => { if (!watching) return;
+      // A frame with neither the old board (fx.exit) nor the new one showing is dead air.
+      if (!R.fx.exit && (R.board.hidden || !R.fx.drop) && performance.now() - press < 600 && !firstMove) emptyFrames++;
+      if (!firstMove && R.fx.exit && R.exitOffsetRows(R.fx.exit, 0, performance.now()) > 0) firstMove = performance.now() - press;
+      requestAnimationFrame(watch); };
+    R.drop = async (...a) => { const p = realDrop(...a); if (!pred && R.fx.drop) { start = R.fx.drop.start; pred = {};
       for (const k of Object.keys(R.fx.drop.map)) { const [r, c] = k.split("-").map(Number); const n = R.fx.drop.map[k];
         pred[k] = R.dropDelay(r, c, n) + R.cellFallMs(c, n) * R.reelProfile(c).contact; } } return p; };
-    el.spinBtn.click();
-    for (let i = 0; i < 200 && !pred; i++) await new Promise((r) => setTimeout(r, 10));
-    await new Promise((r) => setTimeout(r, 1700));
-    R.drop = realDrop; R.symbolLanded = realS; R.onSymbolLand = realTick;
+    el.spinBtn.click(); requestAnimationFrame(watch);
+    for (let i = 0; i < 200 && !pred; i++) await new Promise((r) => setTimeout(r, 5));
+    const resultAt = start - press;
+    await new Promise((r) => setTimeout(r, 1300));
+    watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic;
     const thuds = __snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t >= start).slice(0, 6).map((s) => ({ c: s.i, t: s.t - start }));
-    return { pred, ticks, thuds, lands: lands.filter((l) => l.t >= start).map((l) => ({ r: l.r, c: l.c, t: l.t - start, added: l.added })) };
+    return { pred, ticks, thuds, resultAt, firstMove, emptyFrames, colMs: WATERFALL.spinColMs,
+      lands: lands.filter((l) => l.t >= start).map((l) => ({ rows: l.rows, c: l.c, t: l.t - start, added: l.added })) };
   })()`);
-  const L = sync.lands.slice(0, 30);
-  const err = L.map((l) => Math.abs(l.t - sync.pred[l.r + "-" + l.c]));
-  check("all 30 symbols land one by one, each on its own predicted moment", L.length === 30 && Math.max(...err) < 20, `max error ${Math.max(...err).toFixed(0)}ms`);
-  const perCol = [0, 1, 2, 3, 4, 5].map((c) => L.filter((l) => l.c === c));
-  check("inside every reel the bottom symbol lands first, then each one above it", perCol.every((cl) => cl.map((l) => l.r).join() === "4,3,2,1,0"),
-    perCol.map((cl) => cl.map((l) => l.r).join("")).join(" "));
-  const gaps = perCol.flatMap((cl) => cl.slice(1).map((l, i) => l.t - cl[i].t));
-  const sched = [0, 1, 2, 3, 4, 5].flatMap((c) => [3, 2, 1, 0].map((r) => sync.pred[r + "-" + c] - sync.pred[(r + 1) + "-" + c]));
-  check("rat-a-tat: symbols in a reel are scheduled exactly 18ms apart", sched.every((g) => Math.abs(g - 18) < 1), `scheduled ${Math.min(...sched).toFixed(1)}-${Math.max(...sched).toFixed(1)}ms`);
-  check("…and are heard/seen apart, never together (timer jitter only)", gaps.every((g) => g >= 4), `observed ${Math.min(...gaps).toFixed(0)}-${Math.max(...gaps).toFixed(0)}ms`);
-  const order = L.map((l) => l.c).join("");
-  check("reels never interleave: reel k finishes before reel k+1 starts", order === "000001111122222333334444455555", order);
-  check("each landing gets its own glint and tick", L.every((l) => l.added === 2) && sync.ticks >= 30, `ticks ${sync.ticks}`);
-  check("each reel's thud accents its last (top) symbol", sync.thuds.length === 6 && sync.thuds.every((th) => Math.abs(th.t - perCol[th.c][4].t) < 8),
+  const L = sync.lands.slice(0, 6);
+  check("the new board starts falling in as soon as the result is in, behind the old one (no dead air)", sync.resultAt < 60 && sync.emptyFrames === 0 && sync.firstMove < 40,
+    `result at ${sync.resultAt.toFixed(0)}ms, old board moving at ${sync.firstMove.toFixed(0)}ms`);
+  check("each reel lands as one stack: all 5 symbols at once, one tick", L.length === 6 && L.every((l) => l.rows.length === 5) && sync.ticks === 6,
+    L.map((l) => `r${l.c + 1}:${l.rows.length}`).join(" ") + `; ${sync.ticks} ticks`);
+  const err = L.map((l) => Math.abs(l.t - sync.pred[`0-${l.c}`]));
+  check("…on its predicted moment, reels left to right spinColMs apart", Math.max(...err) < 20 && L.every((l, k) => k === 0 || Math.abs(l.t - L[k - 1].t - sync.colMs) < 20),
+    L.map((l) => `r${l.c + 1}@${l.t.toFixed(0)}`).join(" "));
+  check("each stack landing gets its floor glints (2 per symbol)", L.every((l) => l.added === 10));
+  check("each reel thuds as it lands", sync.thuds.length === 6 && sync.thuds.every((th) => Math.abs(th.t - L[th.c].t) < 8),
     sync.thuds.map((th) => `r${th.c + 1}@${th.t.toFixed(0)}`).join(" "));
 
-  console.log("\nper-symbol fall + refill order");
+  console.log("\ntumble refill: stacks fall together, the lower ones land first (#47)");
   const own = await evaluate(cdp, `(() => {
     const R = __reelRenderer, saved = R.fx.drop;
-    R.fx.drop = { start: performance.now(), duration: 380, map: { "4-4": 1, "3-4": 1, "0-4": 1 }, heavy: new Map() };
+    R.fx.drop = { start: performance.now(), duration: 360, map: { "4-4": 1, "3-4": 1, "2-4": 2, "1-4": 2, "0-4": 2, "4-1": 1 }, heavy: new Map() };
     R.fx.drop.order = R._dropOrder(R.fx.drop.map);
-    const short = R.cellFallMs(4, 1), long = R.cellFallMs(4, 5);
-    const firstDelay = R.dropDelay(4, 4, 1), nextDelay = R.dropDelay(3, 4, 1);
-    R.fx.drop = saved; return { short, long, firstDelay, nextDelay };
+    const land = (r, c, n) => R.dropDelay(r, c, n) + R.cellFallMs(c, n) * R.reelProfile(c).contact;
+    const out = { low: land(4, 4, 1), low2: land(3, 4, 1), high: land(2, 4, 2), high2: land(0, 4, 2),
+      rel4a: R.dropDelay(4, 4, 1), rel4b: R.dropDelay(0, 4, 2), rel1: R.dropDelay(4, 1, 1), rel4: R.dropDelay(4, 4, 1) };
+    R.fx.drop = saved; return out;
   })()`);
-  check("a symbol falling 1 row is quicker than one falling 5 (own velocity, √distance)", own.short < own.long * 0.6, `${own.short.toFixed(0)} vs ${own.long.toFixed(0)}ms`);
-  check("a refill on reel 5 alone starts at once (no wait for reels that stay put)", own.firstDelay < 30 && own.nextDelay > own.firstDelay,
-    `bottom symbol ${own.firstDelay}ms, next ${own.nextDelay}ms`);
+  check("a whole reel is released at once (it falls as a stack)", own.rel4a === own.rel4b);
+  check("symbols that fall as far land together; the shorter falls land first",
+    own.low === own.low2 && own.high === own.high2 && own.low < own.high, `1-row ${own.low.toFixed(0)}ms, 2-row ${own.high.toFixed(0)}ms`);
+  check("a refill releases reels left to right, tumbleColMs apart (no wait for reels that stay put)", own.rel1 === 0 && own.rel4 > own.rel1 && own.rel4 < 60,
+    `reel 2 at ${own.rel1}ms, reel 5 at ${own.rel4}ms`);
 
   console.log("\ntumble vacuum");
+  await waitIdle();
   const vac = await evaluate(cdp, `(async () => {
     const R = __reelRenderer, { rowStep: rs, laneW } = R.getLayout();
     const winning = [{ row: 4, col: 2 }, { row: 3, col: 2 }];
@@ -372,7 +349,7 @@ async function evaluate(cdp, expression) {
     for (;;) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= 4 && !r.free_spins_awarded && Number(r.total_win) / Number(payload.bet_amount || 1) < 10) return r; } }; return true; })()`);
   const mom = await evaluate(cdp, `(async () => {
     const R = __reelRenderer; const durs = []; const realDrop = R.drop.bind(R);
-    R.drop = (...a) => { const p = realDrop(...a); if (R.fx.drop && Object.keys(a[2] || {}).length && a[3] === ANIMATION_TIMING.tumbleDrop) durs.push({ d: R.fx.drop.duration, tempo: R.fx.drop.tempo }); return p; };
+    R.drop = (...a) => { const p = realDrop(...a); if (R.fx.drop && !R.fx.drop.spin && Object.keys(a[2] || {}).length) durs.push({ d: R.fx.drop.duration, tempo: R.fx.drop.tempo }); return p; };
     window.__moves = { max: 0, n: 0 }; const els = [".vault-window", ".reels-stage", ".ps-center"].map((s) => document.querySelector(s)); const base = els.map((e) => e.getBoundingClientRect());
     let watch = true; const tick = () => { els.forEach((e, k) => { const b = e.getBoundingClientRect(); __moves.max = Math.max(__moves.max, Math.abs(b.x - base[k].x), Math.abs(b.y - base[k].y)); }); __moves.n++; if (watch) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     el.spinBtn.click();
@@ -392,7 +369,7 @@ async function evaluate(cdp, expression) {
     const R = __reelRenderer; const rs = R.getLayout().rowStep;
     el.spinBtn.click();
     // wait until the opening board is in the air, ~150ms in
-    for (let i = 0; i < 400; i++) { if (R.fx.drop && !R.fx.drop.exit && performance.now() - R.fx.drop.start > 150) break; await new Promise((r) => setTimeout(r, 5)); }
+    for (let i = 0; i < 400; i++) { if (R.fx.drop && performance.now() - R.fx.drop.start > 150) break; await new Promise((r) => setTimeout(r, 5)); }
     __snd.length = 0;
     const t0 = performance.now(); el.spinBtn.click();
     const z = R.fx.drop?.zip; const frames = []; let maxBlur = 0; const prev = new Map(); let backwards = 0;
@@ -419,16 +396,22 @@ async function evaluate(cdp, expression) {
   check("zip only ever moves down (no bounce) and draws motion blur", zip.backwards === 0 && zip.maxBlur > 0.5, `peak travel ${zip.maxBlur.toFixed(0)}px/frame; ghosts capped at 0.35 symbol`);
   await waitIdle();
 
-  console.log("\nfast-stop during the spin-out: next board is born zipping");
+  console.log("\nfast-stop during the spin-out: the old board clears fast, the new one zips in");
   const born = await evaluate(cdp, `(async () => {
     const R = __reelRenderer; el.spinBtn.click();
-    for (let i = 0; i < 200; i++) { if (R.fx.drop?.exit) break; await new Promise((r) => setTimeout(r, 5)); }
-    const wasExit = Boolean(R.fx.drop?.exit); el.spinBtn.click();
-    let zipped = false; for (let i = 0; i < 400; i++) { if (R.fx.drop && !R.fx.drop.exit && R.fx.drop.zip) { zipped = true; break; } if (!isRoundInFlight()) break; await new Promise((r) => setTimeout(r, 2)); }
+    for (let i = 0; i < 200; i++) { if (R.fx.exit) break; await new Promise((r) => setTimeout(r, 2)); }
+    const ex = R.fx.exit; const wasExit = Boolean(ex); const t0 = performance.now(); el.spinBtn.click();
+    let zipped = false, clearedAt = 0;
+    for (let i = 0; i < 400; i++) {
+      if (R.fx.drop?.zip) zipped = true;
+      if (!clearedAt && R.fx.exit !== ex) clearedAt = performance.now() - t0;
+      if (zipped && clearedAt) break;
+      await new Promise((r) => setTimeout(r, 2)); }
     while (isRoundInFlight()) await new Promise((r) => setTimeout(r, 50));
-    return { wasExit, zipped, pending: R._zipPending };
+    return { wasExit, fast: Boolean(ex?.fastAt), zipped, clearedAt, pending: R._zipPending };
   })()`);
-  check("press during the exit → the opening board zips in", born.wasExit && born.zipped && born.pending === false);
+  check("press during the spin-out → the old board falls out fast and the new board zips in", born.wasExit && born.fast && born.zipped && born.clearedAt > 0 && born.clearedAt < 300 && born.pending === false,
+    `old board gone ${born.clearedAt.toFixed(0)}ms after the press`);
   await waitIdle();
   let live = -1;
   for (let i = 0; i < 40; i++) { live = await evaluate(cdp, `__reelRenderer.shards.live`); if (live === 0) break; await sleep(100); }

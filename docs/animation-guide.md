@@ -1,7 +1,7 @@
 # Animation Guide — Vault 20K (v9)
 
 The motion language of the Vault 20K client: rigid "heavy metal" bodies, light instead of
-camera movement, and every symbol moving on its own clock. All tunables are named constants near
+camera movement, and one gravity for every falling symbol. All tunables are named constants near
 the top of `client/main.js`; the renderer is `ReelCanvasRenderer` (canvas, not DOM).
 
 ## House rules (non-negotiable)
@@ -12,21 +12,20 @@ the top of `client/main.js`; the renderer is `ReelCanvasRenderer` (canvas, not D
 2. **No screen or board shake. Ever.** Weight is conveyed by local light (glints, blooms),
    particles and audio. Verified per frame by probes (board box must stay 0px still).
 3. **No upward wind-up.** When a spin starts, gravity takes over at once; nothing moves up first.
-4. **No jelly.** Deformation is at most a 1–2% contact squash that never rebounds past 1.
+4. **No jelly.** Symbols are rigid in flight; the only deformation is a short impact squash (≤ 3.5%, scaled by impact speed) that springs back during the landing bounce.
 5. **60fps without GC spikes.** Pooled particles (`ShardEmitter`, struct-of-arrays, time-based
    with ≤8ms sub-steps), cached symbol sprites (`SPRITE_BAND`), throttles just below vsync
    multiples (`TIER_PROFILES`).
-6. **Reduced motion** (`prefers-reduced-motion`) drops squash, breath, idle breathing, motion blur, the lock spring (symbols lock hard on contact) and punch-ins.
+6. **Reduced motion** (`prefers-reduced-motion`) drops the landing bounce and squash (symbols still fall, and stop dead), breath, idle breathing and punch-ins.
 
 ## The spin, symbol by symbol
 
 | Phase | What happens | Constants |
 |-------|--------------|-----------|
-| Spin-out | The old board falls out at once, purely downward: bottom symbol of each reel first, reels left to right at half the drop-in stagger. Each symbol launches at its reel group's speed. | `WATERFALL.exitScale`, `REEL_INERTIA[].exitV0` |
-| Drop-in | Reels release left → right 80ms apart; inside a reel the **bottom** symbol drops first and each one above follows 18ms later, so symbols land one by one (a "rat-a-tat"). Every symbol has its own release, its own fall time (√distance) and its own physics: it falls from rest under constant acceleration (s = (t/contact)²) and is still accelerating when it hits its slot. | `WATERFALL`, `FALL_SCALE_MIN`, `dropTravel` |
-| Reel groups | Reels 1–2 *heavy* (full fall, loosest spring, overshoot ≤ 6% of a row), 3–4 *tension* (10% quicker, stiffer, ≤ 4%), 5–6 *snap* (18% quicker, stiff and well damped: a ≤ 1.5% gear detent). Each group has its own `friction` (share of impact speed the slot absorbs), `tension` (Ω) and `damping` (ζ). `inertiaLag()` delays lighter reels so landings stay on an even beat. | `REEL_INERTIA` |
-| Landing | While falling a symbol stretches with its speed (up to 2% at impact, volume-preserving). On contact: a squash planted on the floor (up to 1–2%, scaled by impact speed: a one-row refill gets ~45%) and a damped-spring lock (y = A·e^(−ζΩu)·sin(Ω_d·u)·(1 − u³), A from the impact speed after friction, capped at `maxOver`): it passes its slot by a few pixels, springs back by a fraction of that, and rests exactly in its slot when the fall time ends; a steel hairline + a laser glint sweeping across the symbol's floor seam, and a short metallic tick whose pitch climbs up the reel. The reel's `reel_stop` thud accents its **last** symbol. | `REEL_INERTIA`, `dropTravel`, `landingGlints`, `landingTicks` |
-| Motion blur | Any symbol moving faster than 6px per frame (spin-out, drop-in, zip) draws two fading ghosts back along its path, one frame of travel apart (capped at 35% of the symbol), their opacity rising with speed. One ghost on the low tier. A slow or locked symbol is drawn sharp. | `MOTION_BLUR`, `cellVelocity`, `motionBlur` |
+| Spin-out | The old board falls out of the bottom on its own layer (`fx.exit`), reel by reel 75ms apart, each reel as one stack under gravity from rest: nothing moves up first. The round's result is requested at the press, and the new board's reel k is released 75ms·k after it arrives, straight behind the old reel k: the two fall together like one continuous strip, so the board is never empty between spins. A fast-stop runs the old board's fall 6× faster. | `dropOff`, `drawExitBoard`, `WATERFALL.spinColMs`, `EXIT_FAST` |
+| Drop-in | **One gravity** for every drop: a drop's duration is the time a full-reel (5-row) fall takes (360ms), g = 2·rows / duration², so a fall of d rows takes duration·√(d / rows) and covers s = ½·g·t² from rest. A reel's symbols are released together, so symbols that fall as far travel and land together: on a spin each reel lands as one stack; on a tumble the shorter falls (lower symbols) land first. Tumble refills release reels 22ms apart. | `GRAVITY`, `WATERFALL`, `dropTravel`, `cellFallMs` |
+| Landing bounce | A real collision: the symbol hits its slot at v = g·t and rebounds at e·v (restitution e = 0.18), rising e²·d (3.2% of its fall: ~17% of a row after a full-reel drop, ~3% after a one-row refill) and falling back in 2e·t under the same gravity, then it rests exactly in its slot. Impact comes at 1/(1 + 2e) of a symbol's motion for every fall, so thuds, glints and reveals are timed to it. | `GRAVITY.restitution`, `REEL_PROFILE` |
+| Landing | On impact: a squash planted on the floor (3.5% for a full-reel fall, scaled by impact speed ∝ √distance), springing back over the first 45% of the bounce; a steel hairline + a laser glint across the floor seams of the symbols that landed, and one metallic tick and the reel's `reel_stop` thud per stack. No motion blur or ghost trails. | `GRAVITY.squash`, `MOTION.squashRelax`, `landingGlints`, `landingTicks` |
 | Mask | Symbols in flight are clipped to the grid: they appear exactly as they cross into row 0 and vanish at the bottom edge. New symbols wait fully above the mask. | `REEL_MASK` |
 | Idle | While the board rests every symbol breathes 0–1.5px **above** its slot over a 3s sine, each on its own random phase. A spin settles it straight down in 90ms (never a lift before the drop); it eases back in over 700ms once idle. | `IDLE_BREATH`, `MOTION.idleFloat`, `breathOffset`, `isIdle` |
 | Win | The caught cluster holds and breathes. **Win focus:** over 250ms everything outside it steps back to 60% opacity and the backdrop darkens, and stays so through the blast until the refill (or the next spin) brings the board back up over 260ms. Then it **shatters**: each symbol swells 14% as it fades (a pop, never a squash), cell flare, gem/gold/steel fragments and sparks burst from the cluster centre. A cluster of 8+ also sends a shockwave from its centre: a thin ring whose front lights each symbol it passes (light only, nothing moves), plus pooled dust puffs radiating from the cluster's rim (≤ 256 alive). | `MOTION`, `FOCUS`, `SHATTER`, `CLUSTER_BLAST` |
@@ -34,12 +33,12 @@ the top of `client/main.js`; the renderer is `ReelCanvasRenderer` (canvas, not D
 | Multiplier BANG | A landing multiplier: thud, local bloom (~2 cells), spotlight flash. No board movement. | `spawnHeavyImpact` |
 | Multiplier flight | A caught multiplier detaches and flies to the HUD (bonus Total Multiplier badge, else the ticker) on a cubic Bézier: it rises off the board, then is drawn in from above. Position follows arc length with d = t² (from rest, ever faster: magnetism). A pooled glow trail (≤ 512 particles, one canvas, additive) is laid along the path per pixel travelled; sparks ring the HUD on arrival and the value pops (scale + glow) in the soul layer. The HUD only glows, never moves. | `SOUL_FLIGHT`, `soulPath`, `SoulTrails` |
 | Scatters | Each landing scatter pings (rising pitch) with a laser reticle; on a near trigger the remaining reels hold and fall slower with a drone and red lanes (anticipation). Every board is RNG-natural (the engine fabricates no near-misses), so anticipation always reflects a real chance. | `ANTICIPATION`, `findAnticipation` |
-| Fast-stop | A skip zips every airborne reel into place left to right by 110ms (with the same velocity motion blur), then a double click. Reels already landed never thud twice. | `FAST_ZIP` |
+| Fast-stop | A skip zips every airborne reel into place left to right by 110ms, then a double click. The old board, if still falling out, falls 6× faster. Reels already landed never thud twice. | `FAST_ZIP`, `EXIT_FAST` |
 | Big win | ≥10× opens the full-screen overlay (`client/big-win.js`): VAULT CRACKED (10×), LASER BREACH (25×), MOTHERLODE (50×), MAX WIN. Tap skips the count, tap again dismisses. | `WIN_TIERS` |
 
 ## Pacing
 
-- `ANIMATION_TIMING` holds the base budgets (drop-in 520ms, tumble drop 380ms, explode 380ms,
+- `ANIMATION_TIMING` holds the base budgets (spin-out, drop-in and tumble drop all 360ms: one gravity; explode 380ms,
   first catch hold 1100ms, chained 700ms). Turbo scales every animated duration to 40%.
 - Autoplay waits a fixed `AUTOPLAY_GAP_MS` (500ms, not turbo-scaled) between rounds.
 - A manual press within `SPIN_SETTLE_GUARD_MS` (250ms) of a round settling is treated as a late
