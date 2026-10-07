@@ -420,6 +420,21 @@ const SHATTER = {
   great:  { gems: 13, gold: 5, steel: 3, sparks: 9, up: 0.0026, flash: 1.8 },
   gravity: 0.000012
 };
+// Cluster blast (#54). A cluster of `minCells`+ symbols does not just fade:
+//   pop:  each blasting symbol scales up by `pop` (uniform, never squashed)
+//         as it fades, so it bursts outward instead of dissolving.
+//   wave: a shockwave leaves the cluster's centre and travels `reach` cells
+//         past its farthest symbol in `waveMs` (easeOutCubic, turbo-scaled).
+//         As the front passes a symbol it lights it (additive glow, peak
+//         `glow`, a Gaussian band `band` cells wide). Light only: nothing
+//         moves, the board never shakes.
+//   dust: `dust[strength]` soft puffs (before fxCount) radiate from the
+//         centre at `dustSpeed` cells/ms, brake hard (drag) and grow as they
+//         thin out. Pooled on the ShardEmitter, at most `maxDust` alive.
+const CLUSTER_BLAST = {
+  minCells: 8, pop: 0.14, waveMs: 520, reach: 1.6, band: 0.45, glow: 0.42,
+  dust: { small: 10, medium: 16, great: 26 }, dustSpeed: [0.003, 0.007], maxDust: 256
+};
 
 // Reel anticipation (Step 5b). When the columns that have already landed show
 // one scatter short of the trigger, every later column waits (holdMs each,
@@ -445,7 +460,7 @@ function findAnticipation(matrix, triggerCount, scatter = "SCATTER") {
 // Symbol motion feel (Step 4). Amplitudes are fractions of the symbol's size.
 // Reduced-motion zeroes the movement ones (see ReelCanvasRenderer.motion()).
 const MOTION = {
-  stretch: 0,         // rigid bodies: no stretch while falling
+  stretch: 0.02,      // peak vertical stretch while falling (at impact speed); within the 2% "no jelly" cap
   squash: 1,          // gain on each reel group's contact squash (REEL_INERTIA)
   breathBase: 0.03,   // winning symbols' resting swell during the hold (scale-up ≈ 3%)
   breathDepth: 0.02,  // extra swell at the top of each breath: peak 1.05, a micro-lift, not a bounce
@@ -790,13 +805,14 @@ function detectDeviceTier() {
 // elapsed TIME (px/ms), so a burst travels the same distance at 30fps on a
 // phone as at 120fps on a desktop.
 // Visual randomness only: Math.random(), never SlotEngine.RNG.
-const SHARD = { GEM: 0, GOLD: 1, STEEL: 2, SPARK: 3, FLASH: 4 };
+const SHARD = { GEM: 0, GOLD: 1, STEEL: 2, SPARK: 3, FLASH: 4, DUST: 5 };
 const SHARD_SPRITE_PX = 48;
 
 class ShardEmitter {
   constructor(capacity = 480) {
     this.cap = capacity;
     this.live = 0;
+    this.dust = 0; // live DUST puffs (capped at CLUSTER_BLAST.maxDust)
     const f32 = () => new Float32Array(capacity);
     this.x = f32(); this.y = f32(); this.vx = f32(); this.vy = f32();
     this.rot = f32(); this.vr = f32(); this.age = f32(); this.life = f32();
@@ -876,6 +892,19 @@ class ShardEmitter {
     });
   }
 
+  /** A soft dust puff tinted with `color`: a dim core feathering to nothing. */
+  dustSprite(color) {
+    return this._bake(`dust|${color}`, (g, s) => {
+      const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      grad.addColorStop(0, color);
+      grad.addColorStop(0.5, THEME.color.steelSheen);
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      g.globalAlpha = 0.85;
+      g.fillStyle = grad;
+      g.fillRect(0, 0, s, s);
+    });
+  }
+
   flashSprite(color) {
     return this._bake(`flash|${color}`, (g, s) => {
       const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
@@ -890,6 +919,10 @@ class ShardEmitter {
   /** Low-level add. Units: px, px/ms, px/ms², ms. Drops silently when full. */
   add(kind, x, y, vx, vy, size, life, look, opts = {}) {
     if (this.live >= this.cap) return;
+    if (kind === SHARD.DUST) {
+      if (this.dust >= CLUSTER_BLAST.maxDust) return;
+      this.dust += 1;
+    }
     const i = this.live++;
     this.kind[i] = kind;
     this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy;
@@ -904,6 +937,7 @@ class ShardEmitter {
   }
 
   _remove(i) {
+    if (this.kind[i] === SHARD.DUST) this.dust -= 1;
     const j = --this.live;
     if (i === j) return;
     this.kind[i] = this.kind[j];
@@ -947,8 +981,10 @@ class ShardEmitter {
       const kind = this.kind[k];
       if (kind === SHARD.SPARK || kind === SHARD.FLASH) continue;
       const t = this.age[k] / this.life[k];
-      ctx.globalAlpha = 1 - t * t * t;                 // easeInCubic fade: holds, then goes
-      const s = (1 - 0.3 * t) * dpr;
+      // Dust thins out as it spreads (grows 2.2x); solids hold, then go.
+      const dust = kind === SHARD.DUST;
+      ctx.globalAlpha = dust ? 0.7 * (1 - t) * (1 - t) : 1 - t * t * t;
+      const s = (dust ? 1 + 1.2 * t : 1 - 0.3 * t) * dpr;
       const c = Math.cos(this.rot[k]) * s;
       const n = Math.sin(this.rot[k]) * s;
       ctx.setTransform(c, n, -n, c, this.x[k] * dpr, this.y[k] * dpr);
@@ -1029,6 +1065,7 @@ class ReelCanvasRenderer {
       spinBurst: null,
       multiCatch: null,
       shockwaves: [],
+      waves: [],      // cluster-blast shockwaves that light the symbols they pass (#54)
       reelSlam: null,
       jackpotFlash: null,
       spotlight: null,
@@ -1597,6 +1634,68 @@ class ReelCanvasRenderer {
     }
   }
 
+  /** Cluster blast (CLUSTER_BLAST): for every symbol cluster of minCells+ in
+   *  `winning`, a shockwave leaves the cluster's centre (lighting the symbols
+   *  it passes, see waveLight) and dust radiates from it. */
+  spawnClusterBlast(winning, strength) {
+    const groups = new Map(); // symbol → its winning cells
+    for (const p of winning) {
+      const sym = this.board.matrix?.[p.row]?.[p.col];
+      if (!sym) continue;
+      if (!groups.has(sym)) groups.set(sym, []);
+      groups.get(sym).push(p);
+    }
+    const { laneW, rowStep } = this.getLayout();
+    const cs = Math.min(laneW, rowStep);
+    const now = performance.now();
+    const E = this.shards;
+    for (const [sym, cells] of groups) {
+      if (cells.length < CLUSTER_BLAST.minCells) continue;
+      const centre = this.computeCentroid(cells);
+      let far = 0;
+      for (const p of cells) {
+        const c = this.cellCenter(p.row, p.col);
+        far = Math.max(far, Math.hypot(c.x - centre.x, c.y - centre.y));
+      }
+      const tone = symbolTone[sym] || symbolTone.BLUE_DIAMOND;
+      this.fx.waves.push({
+        x: centre.x, y: centre.y, born: now,
+        life: Math.round(CLUSTER_BLAST.waveMs * turboScale()),
+        reach: far + CLUSTER_BLAST.reach * cs, band: CLUSTER_BLAST.band * cs,
+        color: tone[0], glow: this.getGlowSprite(tone[0])
+      });
+      const n = this.fxCount(CLUSTER_BLAST.dust[strength] || CLUSTER_BLAST.dust.medium);
+      const look = E.dustSprite(tone[0]);
+      const [v0, v1] = CLUSTER_BLAST.dustSpeed;
+      for (let i = 0; i < n; i += 1) {
+        // Evenly around the centre (jittered), launched from the cluster's rim.
+        const a = ((i + Math.random() * 0.8) / n) * Math.PI * 2;
+        const r = far * (0.6 + Math.random() * 0.4);
+        const v = cs * (v0 + Math.random() * (v1 - v0));
+        E.add(SHARD.DUST, centre.x + Math.cos(a) * r, centre.y + Math.sin(a) * r,
+          Math.cos(a) * v, Math.sin(a) * v, cs * (0.3 + Math.random() * 0.25), 520 + Math.random() * 260,
+          look, { drag: 0.93, vr: (Math.random() - 0.5) * 0.004 });
+      }
+    }
+  }
+
+  /** Shockwave light on a symbol at (x, y) this frame: 0 (untouched) to
+   *  CLUSTER_BLAST.glow as the wave's front passes it; also the wave to tint
+   *  it with. Reuses one object. */
+  waveLight(x, y, now) {
+    const out = this._waveLit || (this._waveLit = { a: 0, wave: null });
+    out.a = 0;
+    out.wave = null;
+    for (const w of this.fx.waves) {
+      const t = (now - w.born) / w.life;
+      if (t < 0 || t >= 1) continue;
+      const off = (Math.hypot(x - w.x, y - w.y) - w.reach * easeOutCubic(t)) / w.band;
+      const a = CLUSTER_BLAST.glow * Math.exp(-off * off) * (1 - t);
+      if (a > out.a) { out.a = a; out.wave = w; }
+    }
+    return out;
+  }
+
   spawnMultiplierCatchParticles(multipliers = []) {
     multipliers.forEach((m) => {
       if (!Number.isInteger(m?.row) || !Number.isInteger(m?.col)) return;
@@ -2095,6 +2194,7 @@ class ReelCanvasRenderer {
       delays
     };
     this.spawnExplosionParticles(winning, strength, delays);
+    this.spawnClusterBlast(winning, strength);
     await animationSleep(duration + maxDelay + 40);
     this.fx.blast = null;
     if (this.fx.spotlight) {
@@ -2235,6 +2335,7 @@ class ReelCanvasRenderer {
       timedFxActive ||
       this.fx.heavyReveals.size ||
       this.fx.shockwaves.length ||
+      this.fx.waves.length ||
       this.fx.lightning.length ||
       this.fx.impacts.length ||
       this.fx.bangs.length ||
@@ -2547,13 +2648,18 @@ class ReelCanvasRenderer {
     const prof = this.reelProfile(col);
     const progress = (performance.now() - drop.start - this.dropDelay(row, col, count)) / this.cellFallMs(col, count, drop);
     if (progress <= 0 || progress >= 1) return out;
+    // Deformation follows speed (#54). Falls take √distance (cellFallMs), so
+    // the impact speed grows with √rows: a full-board fall gets the full
+    // amount, a one-row refill ~45% of it.
+    const hit = Math.min(1, Math.sqrt(count / this.rows));
     if (progress < prof.contact) {
-      const t = progress / prof.contact;
-      out.sy = 1 + m.stretch * t * t;
+      // Under constant acceleration speed grows linearly with time, and so
+      // does the stretch: volume-preserving, peaking the frame before contact.
+      out.sy = 1 + m.stretch * hit * (progress / prof.contact);
       out.sx = 1 / out.sy;
     } else {
       const k = 1 - (progress - prof.contact) / (1 - prof.contact);
-      const squash = m.squash * prof.squash * k * k;
+      const squash = m.squash * prof.squash * hit * k * k;
       out.sy = 1 - squash;
       out.sx = 1 + squash * 0.5;
     }
@@ -3130,6 +3236,23 @@ class ReelCanvasRenderer {
       ? Math.sin(reelSlamProgress * Math.PI * 3.4) * (1 - reelSlamProgress) * this.fx.reelSlam.force
       : 0;
 
+    if (this.fx.waves.length) {
+      // Cluster-blast shockwave (#54): a thin ring riding the wave's front,
+      // fading as it spreads. The symbols it passes light up in the cell pass.
+      const now = performance.now();
+      this.fx.waves = this.fx.waves.filter((w) => now - w.born < w.life);
+      for (const w of this.fx.waves) {
+        const t = clamp((now - w.born) / w.life, 0, 1);
+        ctx.globalAlpha = 0.5 * (1 - t) * (1 - t);
+        ctx.strokeStyle = w.color;
+        ctx.lineWidth = Math.max(1.2, w.band * 0.22 * (1 - t));
+        ctx.beginPath();
+        ctx.arc(w.x, w.y, Math.max(1, w.reach * easeOutCubic(t)), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     if (this.fx.shockwaves.length) {
       const now = performance.now();
       this.fx.shockwaves = this.fx.shockwaves.filter((w) => now - w.born < w.life);
@@ -3417,6 +3540,9 @@ class ReelCanvasRenderer {
           cellBlast = clamp((performance.now() - this.fx.blast.start - cellDelay) / cellDur, 0, 1);
         }
         const blastFade = isBlast ? 1 - cellBlast : 1;
+        // Blast pop (CLUSTER_BLAST.pop): the symbol swells as it fades, so it
+        // bursts outward instead of dissolving in place. Uniform: no squash.
+        const blastPop = isBlast && !this._reducedMotion ? 1 + CLUSTER_BLAST.pop * easeOutCubic(cellBlast) : 1;
         // Charge: anticipation phase before pop. Cell shrinks slightly and
         // brightens — the visual "inhale" before the burst.
         const isCharging = Boolean(this.fx.charge?.set?.has(key));
@@ -3452,7 +3578,7 @@ class ReelCanvasRenderer {
         const deform = this.dropDeform(r, c);
         squashX *= deform.sx;
         squashY *= deform.sy;
-        const baseScale = pulseScale * catchScale * idlePulse * chargeShrink;
+        const baseScale = pulseScale * catchScale * idlePulse * chargeShrink * blastPop;
         // Heavy-drop concealment: while a high-tier multiplier is falling,
         // hide its symbol entirely so the player only sees the descending
         // beam and BANG impact. After landing, the symbol pops in.
@@ -3594,6 +3720,18 @@ class ReelCanvasRenderer {
             ctx.globalAlpha = a;
           }
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          if (this.fx.waves.length && !isBlast) {
+            // Shockwave light (#54): the front lights each symbol it passes.
+            const lit = this.waveLight(x, iconCy, performance.now());
+            if (lit.a > 0.01) {
+              const gr = Math.max(drawW, drawH) * 0.62;
+              ctx.save();
+              ctx.globalCompositeOperation = "lighter";
+              ctx.globalAlpha = lit.a * spotDim;
+              ctx.drawImage(lit.wave.glow.cvs, x - gr, iconCy - gr, gr * 2, gr * 2);
+              ctx.restore();
+            }
+          }
           if (isWinner && !isFalling) {
             // Inner glow: the aura added back OVER the art (additive), small and
             // breathing with the pulse, so the winning symbol itself lights up
