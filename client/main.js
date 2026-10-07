@@ -5176,6 +5176,224 @@ function flyMultiplierSouls(multipliers = []) {
   return Promise.all(promises);
 }
 
+// ── Multiplier magnetism (#52) ─────────────────────────────────────────────
+// A caught multiplier detaches from the board and flies to the HUD (the
+// bonus Total Multiplier badge, else the ticker) on a cubic Bézier:
+//   B(s) = (1−s)³·P0 + 3(1−s)²s·P1 + 3(1−s)s²·P2 + s³·P3
+//   P0 = the cell, P3 = the HUD target,
+//   P1 = P0 lifted `lift` (the detach: it rises off the board first),
+//   P2 = P3 approached from above, `lift`·approach higher, up to `sway` px
+//        sideways so several souls do not share one path.
+// lift = clamp(liftK·distance, liftMin, liftMax). The curve is sampled once
+// into an arc-length table (`samples` points), so position is driven by the
+// distance travelled, not by the Bézier parameter (which bunches up at the
+// bends). Distance follows d(t) = t² (constant acceleration from rest): it
+// eases off the board and is pulled in ever faster, like a magnet.
+// The trail is pooled light on one canvas (SoulTrails): particles are laid
+// along the path at `perPx` per pixel of travel (independent of frame rate,
+// scaled by the quality tier), each drifting a little, shrinking and fading
+// over its life, drawn additively. At most `max` alive; `burst` sparks ring
+// the HUD where a soul lands.
+const SOUL_FLIGHT = {
+  liftK: 0.32, liftMin: 110, liftMax: 220, approach: 0.55, sway: 60, samples: 48,
+  perPx: 0.32, life: [300, 460], size: [9, 16], drift: 0.02, max: 512, burst: 14
+};
+
+/** A cubic Bézier sampled into an arc-length table. at(d, out) writes the
+ *  point at fraction d ∈ [0, 1] of the curve's LENGTH into `out`. */
+function makeArcPath(p0, p1, p2, p3, samples = SOUL_FLIGHT.samples) {
+  const xs = new Float32Array(samples + 1);
+  const ys = new Float32Array(samples + 1);
+  const len = new Float32Array(samples + 1);
+  for (let i = 0; i <= samples; i += 1) {
+    const s = i / samples;
+    const u = 1 - s;
+    const a = u * u * u;
+    const b = 3 * u * u * s;
+    const c = 3 * u * s * s;
+    const d = s * s * s;
+    xs[i] = a * p0.x + b * p1.x + c * p2.x + d * p3.x;
+    ys[i] = a * p0.y + b * p1.y + c * p2.y + d * p3.y;
+    len[i] = i ? len[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]) : 0;
+  }
+  const total = len[samples];
+  return {
+    total,
+    at(d, out) {
+      const want = clamp(d, 0, 1) * total;
+      let lo = 0;
+      let hi = samples;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (len[mid] < want) lo = mid;
+        else hi = mid;
+      }
+      const seg = len[hi] - len[lo];
+      const f = seg > 0 ? (want - len[lo]) / seg : 0;
+      out.x = xs[lo] + (xs[hi] - xs[lo]) * f;
+      out.y = ys[lo] + (ys[hi] - ys[lo]) * f;
+      return out;
+    }
+  };
+}
+
+/** The flight path from (sx, sy) to (tx, ty): see SOUL_FLIGHT. */
+function soulPath(sx, sy, tx, ty) {
+  const F = SOUL_FLIGHT;
+  const lift = clamp(Math.hypot(tx - sx, ty - sy) * F.liftK, F.liftMin, F.liftMax);
+  const sway = (Math.random() - 0.5) * 2 * F.sway;
+  return makeArcPath(
+    { x: sx, y: sy },
+    { x: sx + sway * 0.3, y: sy - lift },
+    { x: tx + sway, y: ty - lift * F.approach },
+    { x: tx, y: ty }
+  );
+}
+
+/** Pooled, additive glow particles for the multiplier trails, on one fixed
+ *  canvas in the soul layer. Runs its own rAF loop only while particles are
+ *  alive and integrates on elapsed time. No allocation per particle. */
+class SoulTrails {
+  constructor(layer, max = SOUL_FLIGHT.max) {
+    this.layer = layer;
+    this.cap = max;
+    this.live = 0;
+    const f32 = () => new Float32Array(max);
+    this.x = f32(); this.y = f32(); this.vx = f32(); this.vy = f32();
+    this.age = f32(); this.life = f32(); this.size = f32();
+    this.look = new Array(max);
+    this._sprites = new Map();
+    this._raf = 0;
+    this._last = 0;
+    this._p = { x: 0, y: 0 };
+    this.canvas = document.createElement("canvas");
+    this.canvas.className = "soul-trails";
+    this.canvas.setAttribute("aria-hidden", "true");
+    layer.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext("2d");
+    this._w = 0;
+    this._h = 0;
+    this._dpr = 0;
+    this._frame = (now) => this._step(now);
+  }
+
+  /** Soft glow sprite for `color`, baked once. */
+  sprite(color) {
+    let c = this._sprites.get(color);
+    if (c) return c;
+    c = document.createElement("canvas");
+    c.width = c.height = 32;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+    grad.addColorStop(0.3, color);
+    grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 32, 32);
+    this._sprites.set(color, c);
+    return c;
+  }
+
+  /** Add one particle (px, px/ms, ms). Drops silently when full. */
+  add(x, y, vx, vy, size, life, look) {
+    if (this.live >= this.cap) return;
+    const i = this.live++;
+    this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy;
+    this.size[i] = size; this.life[i] = life; this.age[i] = 0;
+    this.look[i] = look;
+    if (!this._raf) {
+      this._last = performance.now();
+      this._raf = requestAnimationFrame(this._frame);
+    }
+  }
+
+  /** Lay trail particles along `path` from fraction d0 to d1 of its length. */
+  emitAlong(path, d0, d1, look, density = 1) {
+    const F = SOUL_FLIGHT;
+    const n = Math.floor((d1 - d0) * path.total * F.perPx * density + Math.random());
+    const p = this._p;
+    for (let k = 0; k < n; k += 1) {
+      path.at(d0 + (d1 - d0) * ((k + Math.random()) / n), p);
+      const a = Math.random() * Math.PI * 2;
+      this.add(p.x, p.y, Math.cos(a) * F.drift, Math.sin(a) * F.drift,
+        F.size[0] + Math.random() * (F.size[1] - F.size[0]),
+        F.life[0] + Math.random() * (F.life[1] - F.life[0]), look);
+    }
+  }
+
+  /** A ring of sparks where a soul lands. */
+  burst(x, y, look, count) {
+    for (let k = 0; k < count; k += 1) {
+      const a = (k / count) * Math.PI * 2 + Math.random() * 0.4;
+      const v = 0.12 + Math.random() * 0.12;
+      this.add(x, y, Math.cos(a) * v, Math.sin(a) * v, 8 + Math.random() * 8, 260 + Math.random() * 160, look);
+    }
+  }
+
+  _fit() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w === this._w && h === this._h && dpr === this._dpr) return;
+    this._w = w;
+    this._h = h;
+    this._dpr = dpr;
+    this.canvas.width = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
+  }
+
+  _step(now) {
+    const dt = Math.min(50, now - this._last);
+    this._last = now;
+    this._fit();
+    const ctx = this.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(this._dpr, 0, 0, this._dpr, 0, 0);
+    ctx.globalCompositeOperation = "lighter";
+    const drag = Math.pow(0.96, dt / 16.7);
+    let i = 0;
+    while (i < this.live) {
+      this.age[i] += dt;
+      if (this.age[i] >= this.life[i]) { this._remove(i); continue; }
+      this.vx[i] *= drag;
+      this.vy[i] *= drag;
+      this.x[i] += this.vx[i] * dt;
+      this.y[i] += this.vy[i] * dt;
+      const t = this.age[i] / this.life[i];
+      const s = this.size[i] * (1 - 0.6 * t);
+      ctx.globalAlpha = (1 - t) * (1 - t);
+      ctx.drawImage(this.look[i], this.x[i] - s / 2, this.y[i] - s / 2, s, s);
+      i += 1;
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    if (this.live > 0) {
+      this._raf = requestAnimationFrame(this._frame);
+    } else {
+      this._raf = 0;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+  }
+
+  _remove(i) {
+    const j = --this.live;
+    if (i !== j) {
+      this.x[i] = this.x[j]; this.y[i] = this.y[j]; this.vx[i] = this.vx[j]; this.vy[i] = this.vy[j];
+      this.age[i] = this.age[j]; this.life[i] = this.life[j]; this.size[i] = this.size[j];
+      this.look[i] = this.look[j];
+    }
+    this.look[j] = null;
+  }
+}
+
+let soulTrails = null;
+function getSoulTrails(layer) {
+  if (!soulTrails || soulTrails.layer !== layer) soulTrails = new SoulTrails(layer);
+  return soulTrails;
+}
+
 function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, meterNode, target }) {
   return new Promise((resolve) => {
     const orb = document.createElement("div");
@@ -5187,71 +5405,40 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
     orb.style.transform = `translate3d(${sx}px, ${sy}px, 0) scale(0.4)`;
     layer.appendChild(orb);
 
-    // Curved arc: control point biased upward and slightly toward target.
-    const midX = (sx + tx) / 2 + (Math.random() - 0.5) * 80;
-    const arcLift = Math.min(220, Math.max(120, Math.abs(tx - sx) * 0.35 + Math.abs(ty - sy) * 0.25));
-    const midY = Math.min(sy, ty) - arcLift;
-
-    const trails = [];
+    const path = soulPath(sx, sy, tx, ty);
+    const trails = getSoulTrails(layer);
+    const look = trails.sprite(tier.accent);
+    // Trail density follows the quality tier; reduced motion keeps a faint one.
+    const density = prefersReducedMotion() ? 0.25 : reelRenderer.fxScale;
+    const p = { x: sx, y: sy };
     const startTime = performance.now() + delay;
-    // Framerate-independent trail emission — see the budget check in tick().
-    const TRAIL_INTERVAL_MS = 55;
-    let lastTrailAt = 0;
+    let lastD = 0;
 
     function tick(now) {
       const elapsed = now - startTime;
       if (elapsed < 0) {
-        orb.style.opacity = "0";
         requestAnimationFrame(tick);
         return;
       }
-      const tRaw = clamp(elapsed / duration, 0, 1);
-      // Ease in then accelerate at end for "pulled-in" feel.
-      const t = tRaw < 0.6 ? easeOutCubic(tRaw / 0.6) * 0.7 : 0.7 + easeOutQuint((tRaw - 0.6) / 0.4) * 0.3;
-      const u = 1 - t;
-      const x = u * u * sx + 2 * u * t * midX + t * t * tx;
-      const y = u * u * sy + 2 * u * t * midY + t * t * ty;
-      const scale = lerp(0.85, 0.35, easeInOutCubic(tRaw));
-      const fadeIn = clamp(elapsed / 120, 0, 1);
-      const fadeOut = tRaw > 0.85 ? 1 - (tRaw - 0.85) / 0.15 : 1;
+      const t = clamp(elapsed / duration, 0, 1);
+      const d = t * t; // magnetism: from rest, ever faster into the HUD
+      path.at(d, p);
+      // Detach: it swells off the board, then shrinks as it is drawn in.
+      const scale = t < 0.15
+        ? lerp(0.4, 0.9, easeOutCubic(t / 0.15))
+        : lerp(0.9, 0.4, easeInOutCubic((t - 0.15) / 0.85));
+      const fadeIn = clamp(elapsed / 100, 0, 1);
+      const fadeOut = t > 0.9 ? 1 - (t - 0.9) / 0.1 : 1;
       orb.style.opacity = String(fadeIn * fadeOut);
-      orb.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale.toFixed(3)})`;
+      orb.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) scale(${scale.toFixed(3)})`;
+      if (d > lastD) trails.emitAlong(path, lastD, d, look, density);
+      lastD = d;
 
-      // Emit trail nodes on a time budget rather than a per-frame probability.
-      // At ~55% per frame this created and destroyed up to ~33 DOM nodes per
-      // second PER orb, and several orbs fly at once — a lot of style/layout
-      // churn for a decorative streak. One every ~55ms looks the same and is
-      // independent of framerate, so it no longer emits more on a fast device.
-      if (tRaw < 0.95 && now - lastTrailAt >= TRAIL_INTERVAL_MS) {
-        lastTrailAt = now;
-        const trail = document.createElement("div");
-        trail.className = "soul-trail";
-        trail.style.setProperty("--soul-color", tier.accent);
-        trail.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${(0.6 + Math.random() * 0.6).toFixed(2)})`;
-        layer.appendChild(trail);
-        const born = now;
-        const tlife = 360;
-        trails.push({ el: trail, born, life: tlife });
-      }
-
-      const stillAlive = [];
-      for (const tr of trails) {
-        const age = now - tr.born;
-        if (age >= tr.life) {
-          tr.el.remove();
-        } else {
-          tr.el.style.opacity = String(1 - age / tr.life);
-          stillAlive.push(tr);
-        }
-      }
-      trails.length = 0;
-      trails.push(...stillAlive);
-
-      if (tRaw < 1) {
+      if (t < 1) {
         requestAnimationFrame(tick);
       } else {
         orb.remove();
-        trails.forEach((tr) => tr.el.remove());
+        trails.burst(tx, ty, look, Math.max(4, Math.round(SOUL_FLIGHT.burst * density)));
         onSoulArrive({ tx, ty, value, tier, layer, meterNode, target });
         resolve();
       }

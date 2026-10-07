@@ -435,6 +435,47 @@ async function evaluate(cdp, expression) {
   check("shard pool drained (dust counter back to 0)", live === 0 && (await evaluate(cdp, `__reelRenderer.shards.dust`)) === 0);
   check("vacuum and zip state left clean", await evaluate(cdp, `__reelRenderer.fx.vacuum == null && !__reelRenderer.fx.drop`));
 
+  console.log("\nmultiplier magnetism: Bézier flight + pooled trail (#52)");
+  await waitIdle();
+  const soul = await evaluate(cdp, `(async () => {
+    // The path: exact ends, lifted above both, positions even along its length.
+    const P = soulPath(100, 400, 600, 300); const q = { x: 0, y: 0 };
+    const pts = [0, 0.25, 0.5, 0.75, 1].map((d) => { const o = P.at(d, q); return { x: o.x, y: o.y }; });
+    const fine = []; for (let i = 0; i <= 200; i++) { const o = P.at(i / 200, q); fine.push({ x: o.x, y: o.y }); }
+    let arc = 0; const marks = [0]; for (let i = 1; i <= 200; i++) { arc += Math.hypot(fine[i].x - fine[i - 1].x, fine[i].y - fine[i - 1].y); if (i % 50 === 0) marks.push(arc); }
+    const quarters = marks.slice(1).map((m, i) => m - marks[i]);
+    const top = Math.min(...fine.map((p) => p.y));
+    // A real flight to the HUD.
+    state.spinFlownSouls = new Set(); state.spinMultDisplay = 1;
+    const hud = el.psTicker; const hud0 = hud.getBoundingClientRect();
+    const t0 = performance.now(); const fly = flyMultiplierSouls([{ row: 2, col: 2, value: 5, id: "probe-soul" }]);
+    const frames = []; let maxLive = 0, maxNodes = 0, hudMoved = 0;
+    while (performance.now() - t0 < 1100) {
+      const orb = document.querySelector(".soul-orb");
+      if (orb) { const m = /translate3d\\(([-\\d.]+)px, ([-\\d.]+)px/.exec(orb.style.transform); if (m) frames.push({ t: performance.now() - t0, x: +m[1], y: +m[2] }); }
+      if (soulTrails) maxLive = Math.max(maxLive, soulTrails.live);
+      maxNodes = Math.max(maxNodes, document.getElementById("soulLayer")?.childElementCount || 0);
+      const r = hud.getBoundingClientRect(); hudMoved = Math.max(hudMoved, Math.abs(r.x - hud0.x), Math.abs(r.y - hud0.y), Math.abs(r.width - hud0.width));
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    await fly;
+    for (let i = 0; i < 40 && soulTrails.live; i++) await new Promise((r) => setTimeout(r, 50));
+    const steps = frames.slice(1).map((f, i) => Math.hypot(f.x - frames[i].x, f.y - frames[i].y) / Math.max(1, f.t - frames[i].t));
+    const half = Math.floor(steps.length / 2);
+    const avg = (a) => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
+    return { pts, quarters, top, early: avg(steps.slice(1, half)), late: avg(steps.slice(half)), maxLive, maxNodes, hudMoved,
+      live: soulTrails.live, raf: soulTrails._raf, cap: soulTrails.cap, shown: el.activeMultiplier.textContent };
+  })()`);
+  const qMean = soul.quarters.reduce((s, v) => s + v, 0) / 4;
+  check("the Bézier path starts on the cell, ends on the HUD and arcs above both", Math.hypot(soul.pts[0].x - 100, soul.pts[0].y - 400) < 0.01 && Math.hypot(soul.pts[4].x - 600, soul.pts[4].y - 300) < 0.01 && soul.top < 300 - 30,
+    `apex ${(300 - soul.top).toFixed(0)}px above the HUD`);
+  check("arc-length parameterised: equal steps of d cover equal distance", soul.quarters.every((v) => Math.abs(v - qMean) / qMean < 0.03),
+    soul.quarters.map((v) => v.toFixed(0)).join("/") + "px");
+  check("magnetism: the soul is pulled in faster as it nears the HUD", soul.late > soul.early * 2, `${soul.early.toFixed(2)} → ${soul.late.toFixed(2)} px/ms`);
+  check("glowing trail comes from the pool (≤ 512), no DOM node per particle", soul.maxLive > 10 && soul.maxLive <= soul.cap && soul.cap === 512 && soul.maxNodes <= 3,
+    `${soul.maxLive} particles at peak; ≤ ${soul.maxNodes} nodes in the soul layer`);
+  check("trail drains and its loop stops; the value lands on the HUD, which never moves", soul.live === 0 && soul.raf === 0 && soul.shown === "5x" && soul.hudMoved === 0);
+
   const relevant = logs.filter((l) => !/AudioContext|autoplay/i.test(l));
   console.log("\nconsole/network problems:", relevant.length ? relevant : "none");
   if (relevant.length) failed = true;
