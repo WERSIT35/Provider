@@ -272,9 +272,6 @@ const animationSleep = (ms) =>
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
-// easeOutBack with a tunable overshoot (c1): it passes 1 by a hair and settles
-// back. c1 = 0.6 overshoots by ~1.25%; the classic 1.70158 by ~10%.
-const easeOutBackK = (t, c1) => 1 + (c1 + 1) * (t - 1) ** 3 + c1 * (t - 1) ** 2;
 
 async function animateWinMeter(from, to, duration = 260) {
   const start = Number(from || 0);
@@ -336,31 +333,60 @@ const easeOutBounce = (t) => {
 // (continuous with the uncapped case at the boundary vMax = 2 − v0).
 // "Heavy metal" rigid-body drops: gold bars and vault steel, not rubber.
 // Reel inertia (kinetic pass). The six reels are three mechanical groups:
-//   heavy   (reels 1-2): full-length fall, high time warp, so the symbol is
-//                        still accelerating at impact; a ~1.5% lock.
-//   tension (reels 3-4): 10% quicker and tighter; a ~0.8% lock.
-//   snap    (reels 5-6): 18% quicker with a low warp, so the cubic tail of the
-//                        easing brakes it hard into a ~0.25% gear detent.
-// Every drop eases in from rest (the warp gives zero start velocity) and locks
-// with an easeOutBack whose overshoot is 4·back³ / (27·(1 + back)²) of the
-// fall: it passes its slot by a hair and settles back, never bounces.
+//   heavy   (reels 1-2): full-length fall, the loosest spring: the deepest
+//                        overshoot (≤ 6% of a row) and the slowest settle.
+//   tension (reels 3-4): 10% quicker, a stiffer spring (≤ 4% of a row).
+//   snap    (reels 5-6): 18% quicker, stiff and well damped: a gear detent
+//                        (≤ 1.5% of a row).
+// Each dropping symbol is a small rigid body (#53), solved in closed form so
+// the motion is a pure function of time (frame-rate independent, and every
+// probe can sample it exactly):
+//   fall  t < contact: from rest under constant acceleration, s = (t/contact)²,
+//         so it is still accelerating when it hits its slot, at v = 2·D/contact.
+//   lock  t ≥ contact: the slot absorbs `friction` of that speed; the rest
+//         drives an underdamped spring about the slot, in lock time u ∈ [0, 1]:
+//           y(u) = A·e^(−ζΩu)·sin(Ω_d·u)·(1 − u³),  Ω_d = Ω·√(1 − ζ²),  A = v′/Ω_d
+//         Ω (`tension`) and ζ (`damping`) are per lock window, so the spring has
+//         the same shape under turbo. (1 − u³) tapers the tail to exactly 0 at
+//         u = 1 without touching the impact velocity. A is capped so the peak
+//         overshoot never exceeds `maxOver` rows: a few pixels, not a bounce.
 // contact: the moment a symbol first reaches its slot; thuds, glints, the
-//          squash and scatter pings are timed to it.
+//          squash and scatter pings are timed to it. These values are the
+//          old easeOutBack model's, so the landing beat did not move.
 // squash:  the contact compression (fraction of the symbol's height).
 // exitV0:  launch speed when the spin latch releases (heavy reels start slower).
-function inertiaProfile(name, durScale, warp, back, squash, exitV0) {
+function inertiaProfile(name, durScale, contact, squash, exitV0, spring) {
+  const { friction, tension, damping, maxOver } = spring;
+  const zw = damping * tension;
+  const wd = tension * Math.sqrt(1 - damping * damping);
+  const up = Math.atan2(wd, zw) / wd;               // time of the first peak (A = 1)
   return Object.freeze({
-    name, durScale, warp, back, squash, exitV0,
-    contact: Math.pow(1 / (1 + back), 1 / warp)
+    name, durScale, contact, squash, exitV0, friction, tension, damping, maxOver,
+    zw, wd, peak: Math.exp(-zw * up) * Math.sin(wd * up)
   });
 }
 const REEL_INERTIA = Object.freeze([
-  inertiaProfile("heavy", 1, 2.0, 0.65, 0.02, 0.45),
-  inertiaProfile("tension", 0.9, 1.8, 0.5, 0.015, 0.75),
-  inertiaProfile("snap", 0.82, 1.35, 0.3, 0.01, 1.05)
+  inertiaProfile("heavy", 1, 0.7785, 0.02, 0.45, { friction: 0.55, tension: 9, damping: 0.45, maxOver: 0.06 }),
+  inertiaProfile("tension", 0.9, 0.7984, 0.015, 0.75, { friction: 0.6, tension: 11, damping: 0.5, maxOver: 0.04 }),
+  inertiaProfile("snap", 0.82, 0.8233, 0.01, 1.05, { friction: 0.7, tension: 14, damping: 0.6, maxOver: 0.015 })
 ]);
-function dropEase(t, prof) {
-  return easeOutBackK(Math.pow(t, prof.warp), prof.back);
+/** Fraction of its fall a dropping symbol has covered at t ∈ [0, 1] of its
+ *  fall time: past 1 while it overshoots, exactly 1 at t = 1. `rows` is the
+ *  fall in rows (the spring's impact speed and its cap are in rows); 0 locks
+ *  hard on contact (reduced motion). */
+function dropTravel(t, prof, rows) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const c = prof.contact;
+  if (t < c) {
+    const u = t / c;
+    return u * u;
+  }
+  if (!(rows > 0)) return 1;
+  const u = (t - c) / (1 - c);
+  const v = (1 - prof.friction) * 2 * rows * (1 - c) / c; // rows per lock window, after impact
+  const amp = Math.min(v / prof.wd, prof.maxOver / prof.peak);
+  return 1 + (amp / rows) * Math.exp(-prof.zw * u) * Math.sin(prof.wd * u) * (1 - u * u * u);
 }
 
 // Tumble vacuum: before a refill falls, the symbols around the blast lean INTO
@@ -376,8 +402,14 @@ const tumbleTempo = (step) => Math.max(TUMBLE_MOMENTUM.floor, TUMBLE_MOMENTUM.pe
 // Fast-stop zip: every reel still moving zips from where it is into its slot,
 // left to right, the k-th moving reel locking at firstMs + k·colMs (≤ 110ms
 // for six), then a double latch-click (clickGapMs apart) seals the board.
-// `trail` ghost copies give the zip its motion blur.
-const FAST_ZIP = { firstMs: 30, colMs: 16, clickGapMs: 50, trail: 2 };
+// Its motion blur is the general one below (MOTION_BLUR).
+const FAST_ZIP = { firstMs: 30, colMs: 16, clickGapMs: 50 };
+// Velocity motion blur (#53): a symbol moving faster than `minPx` per 16ms
+// frame draws `ghosts` fading copies back along its path. Their spacing is the
+// distance it travels in a frame, capped at `maxFrac` of the symbol so it
+// smears instead of strobing; their opacity ramps up to `alpha` over the next
+// `rampPx`. Slow symbols (and every locked one) are drawn sharp.
+const MOTION_BLUR = { minPx: 6, rampPx: 14, maxFrac: 0.35, ghosts: 2, alpha: 0.35 };
 
 // Symbol shatter (win explosions). Counts are per cell, before the quality
 // tier's fxCount scaling; up is the upward kick and flash the cell flare size,
@@ -2309,15 +2341,14 @@ class ReelCanvasRenderer {
     return { width, height, padX, top, bottom, laneW, rowStep, radius };
   }
 
-  cellOffset(row, col, rowStep) {
+  cellOffset(row, col, rowStep, now = performance.now()) {
     const drop = this.fx.drop;
     if (!drop) return this.fx.vacuum ? this.vacuumDip(row, col, rowStep) : 0;
     const key = `${row}-${col}`;
     const count = Number(drop.map?.[key] || 0);
     if (count <= 0) return 0;
-    if (drop.zip) return this.zipOffset(drop.zip, key, col, rowStep, performance.now());
+    if (drop.zip) return this.zipOffset(drop.zip, key, col, rowStep, now);
     const prof = this.reelProfile(col);
-    const now = performance.now();
     const elapsed = now - drop.start - this.dropDelay(row, col, count);
     if (drop.exit) {
       // Spin-out: gravity takes over the moment the spin is pressed. Purely
@@ -2337,7 +2368,15 @@ class ReelCanvasRenderer {
     const fresh = row - count < 0 ? REEL_MASK.spawnPad * rowStep : 0;
     const start = (drop.lean || 0) * rowStep - count * rowStep - fresh;
     if (elapsed < 0) return start;
-    return lerp(start, 0, dropEase(clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1), prof));
+    const t = clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1);
+    return lerp(start, 0, dropTravel(t, prof, this._reducedMotion ? 0 : -start / rowStep));
+  }
+
+  /** px a dropping cell moved over the last 16ms frame (signed, + = down;
+   *  0 at rest). Read off the analytic motion, so it is exact at any fps. */
+  cellVelocity(row, col, rowStep, now = performance.now()) {
+    if (!this.fx.drop) return 0;
+    return this.cellOffset(row, col, rowStep, now) - this.cellOffset(row, col, rowStep, now - 16);
   }
 
   /** The reel group (REEL_INERTIA) a column belongs to: thirds of the board. */
@@ -2470,12 +2509,18 @@ class ReelCanvasRenderer {
     return y0 * rowStep * (1 - u * Math.sqrt(u));
   }
 
-  /** px a zipping cell moved over the last ~frame (0 when not zipping). */
-  zipBlur(key, col, rowStep) {
-    const zip = this.fx.drop?.zip;
-    if (!zip || !zip.from.has(key)) return 0;
-    const now = performance.now();
-    return this.zipOffset(zip, key, col, rowStep, now) - this.zipOffset(zip, key, col, rowStep, now - 16);
+  /** Motion-blur ghosts for a cell this frame, or null when it is drawn
+   *  sharp: `step` = signed px from the symbol to its farthest ghost (one
+   *  frame of travel, capped at MOTION_BLUR.maxFrac of the symbol), `alpha`
+   *  = the ghosts' opacity, ramping with speed. Reuses one object. */
+  motionBlur(row, col, rowStep, drawH) {
+    const v = this.cellVelocity(row, col, rowStep);
+    const speed = Math.abs(v);
+    if (speed < MOTION_BLUR.minPx) return null;
+    const out = this._blur || (this._blur = { step: 0, alpha: 0 });
+    out.step = Math.sign(v) * Math.min(speed, drawH * MOTION_BLUR.maxFrac);
+    out.alpha = MOTION_BLUR.alpha * clamp((speed - MOTION_BLUR.minPx) / MOTION_BLUR.rampPx, 0, 1);
+    return out.alpha > 0.01 ? out : null;
   }
 
   /** Reduced-motion aware amplitudes for this frame (read once per draw). */
@@ -3534,15 +3579,17 @@ class ReelCanvasRenderer {
           // every cell, every frame. Keyed by the image key actually resolved
           // above (a multiplier tier image, or the symbol itself).
           const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
-          // Fast-stop zip: fading ghosts back along the path give the motion
-          // blur; they vanish the frame the reel locks. Spacing is capped at
-          // ~1/3 of the symbol so a long zip smears instead of strobing.
-          const blur = this.fx.drop?.zip ? Math.min(this.zipBlur(key, c, rowStep), drawH * 0.35) : 0;
-          if (blur > 0.5) {
+          // Motion blur (MOTION_BLUR, #53): fading ghosts back along the path,
+          // denser the faster the symbol moves (spin-out, drop-in and the
+          // fast-stop zip alike). A slow or locked symbol is drawn sharp, so
+          // the art resolves crisp the frame it settles.
+          const blur = inFlight && !this._reducedMotion ? this.motionBlur(r, c, rowStep, drawH) : null;
+          if (blur) {
             const a = ctx.globalAlpha;
-            for (let g = FAST_ZIP.trail; g >= 1; g -= 1) {
-              ctx.globalAlpha = (a * 0.35) / g;
-              ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2 - (blur * g) / FAST_ZIP.trail, drawW, drawH);
+            const ghosts = this.tier === "low" ? 1 : MOTION_BLUR.ghosts;
+            for (let g = ghosts; g >= 1; g -= 1) {
+              ctx.globalAlpha = (a * blur.alpha) / g;
+              ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2 - (blur.step * g) / ghosts, drawW, drawH);
             }
             ctx.globalAlpha = a;
           }
