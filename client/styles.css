@@ -3419,19 +3419,13 @@ body.admin-mode .sim-grid strong {
   animation: soulHalo 0.9s ease-in-out infinite;
 }
 
-.soul-trail {
+/* Pooled multiplier trails (SoulTrails): one viewport canvas, drawn additively. */
+.soul-trails {
   position: fixed;
-  left: 0;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  margin-left: -5px;
-  margin-top: -5px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--soul-color, #9dcfff), rgba(0, 0, 0, 0) 70%);
-  opacity: 0.85;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  will-change: transform, opacity;
 }
 
 @keyframes soulHalo {
@@ -3451,10 +3445,20 @@ body.admin-mode .sim-grid strong {
   z-index: 9999;
 }
 
+/* The landed value pops at the HUD (scale + glow flare), then rises away. It
+   lives in the soul layer, so the HUD itself only glows (soulGlow), never moves. */
 @keyframes soulPlusRise {
-  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
-  20%  { opacity: 1; transform: translate(-50%, -10px) scale(1.15); }
-  100% { opacity: 0; transform: translate(-50%, -42px) scale(1); }
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.6); filter: brightness(1); }
+  16%  { opacity: 1; transform: translate(-50%, -8px) scale(1.45); filter: brightness(1.8) drop-shadow(0 0 12px var(--soul-glow, rgba(255, 226, 138, 0.85))); }
+  34%  { transform: translate(-50%, -14px) scale(1.05); filter: brightness(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -42px) scale(1); filter: brightness(1); }
+}
+@keyframes soulPlusFade {
+  0%, 100% { opacity: 0; transform: translate(-50%, -8px); }
+  20%, 60% { opacity: 1; transform: translate(-50%, -8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .soul-plus { animation-name: soulPlusFade; }
 }
 
 .meter-node-multi {
