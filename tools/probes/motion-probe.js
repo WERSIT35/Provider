@@ -162,6 +162,38 @@ async function evaluate(cdp, expression) {
   check("lock overshoot tightens from heavy to snap (gear detent last)", lockRank[0] > lockRank[1] && lockRank[1] > lockRank[2] && lockRank[2] < 0.004,
     lockRank.map((v) => (v * 100).toFixed(2) + "%").join(" / "));
 
+  console.log("\nspring lock + velocity blur (#53)");
+  const spring = await evaluate(cdp, `(() => {
+    const R = __reelRenderer, rs = R.getLayout().rowStep, saved = R.fx.drop, out = [];
+    for (const col of [0, 2, 4]) for (const rows of [1, 5]) {
+      const p = R.reelProfile(col), row = 5 - rows, key = row + "-" + col;
+      const mk = (t) => ({ start: performance.now() - t, duration: 1000, map: { [key]: rows }, heavy: new Map() });
+      R.fx.drop = mk(0); const delay = R.dropDelay(row, col, rows), dur = R.cellFallMs(col, rows);
+      let over = 0, under = 0, vImpact = 0, vMax = 0, blurFast = null;
+      for (let t = 0; t <= dur; t += 1) {
+        R.fx.drop = mk(t + delay);
+        const y = R.cellOffset(row, col, rs) / rs, v = Math.abs(R.cellVelocity(row, col, rs));
+        if (t / dur >= p.contact) { over = Math.max(over, y); if (over > 0) under = Math.min(under, y); } else vImpact = v;
+        if (v > vMax) { vMax = v; const b = R.motionBlur(row, col, rs, rs); blurFast = b && { ...b }; }
+      }
+      R.fx.drop = mk(dur + delay + 1);
+      out.push({ name: p.name, rows, maxOver: p.maxOver, over, under, vMax, vImpact, blurFast,
+        blurLocked: R.motionBlur(row, col, rs, rs), end: R.cellOffset(row, col, rs) });
+    }
+    R.fx.drop = saved; return out;
+  })()`);
+  for (const s of spring) {
+    check(`${s.name}, ${s.rows}-row fall: overshoots at most ${s.maxOver} rows, springs back, rests exactly in its slot`,
+      s.over > 0 && s.over <= s.maxOver + 1e-6 && s.under < 0 && Math.abs(s.under) < s.over * 0.5 && s.end === 0,
+      `over ${s.over.toFixed(4)}, back ${s.under.toFixed(4)} rows`);
+  }
+  const by = (name, rows) => spring.find((s) => s.name === name && s.rows === rows);
+  check("a longer fall hits harder: it overshoots further (up to the cap)", spring.filter((s) => s.rows === 1).every((s) => by(s.name, 5).over > s.over));
+  check("still accelerating at impact: the fastest frame is the last one before contact", spring.every((s) => s.vImpact >= s.vMax - 1e-6),
+    spring.map((s) => s.vMax.toFixed(0)).join("/") + " px/frame");
+  check("motion blur at speed, scaled to it; none once locked", spring.every((s) => !s.blurLocked && (s.rows === 1 || (s.blurFast && s.blurFast.alpha > 0 && s.blurFast.step > 0))),
+    spring.filter((s) => s.blurFast).map((s) => `${s.name}/${s.rows}: alpha ${s.blurFast.alpha.toFixed(2)}, ${s.blurFast.step.toFixed(0)}px`).join("; "));
+
   console.log("\nper-symbol rat-a-tat (opening drop)");
   await waitIdle();
   const sync = await evaluate(cdp, `(async () => {
@@ -266,7 +298,7 @@ async function evaluate(cdp, expression) {
     const z = R.fx.drop?.zip; const frames = []; let maxBlur = 0; const prev = new Map(); let backwards = 0;
     while (R.fx.drop && R.fx.drop.zip && performance.now() - t0 < 400) {
       const now = performance.now() - t0; const offs = {};
-      for (const k of Object.keys(R.fx.drop.map)) { const [r, c] = k.split("-").map(Number); const y = R.cellOffset(r, c, rs); if (prev.has(k) && y < prev.get(k) - 1e-6) backwards++; prev.set(k, y); maxBlur = Math.max(maxBlur, R.zipBlur(k, c, rs)); offs[k] = y; }
+      for (const k of Object.keys(R.fx.drop.map)) { const [r, c] = k.split("-").map(Number); const y = R.cellOffset(r, c, rs); if (prev.has(k) && y < prev.get(k) - 1e-6) backwards++; prev.set(k, y); maxBlur = Math.max(maxBlur, R.cellVelocity(r, c, rs)); offs[k] = y; }
       frames.push({ now, maxAbs: Math.max(0, ...Object.values(offs).map(Math.abs)) });
       await new Promise((r) => requestAnimationFrame(r));
     }
