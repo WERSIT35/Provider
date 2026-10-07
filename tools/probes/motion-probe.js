@@ -194,6 +194,57 @@ async function evaluate(cdp, expression) {
   check("motion blur at speed, scaled to it; none once locked", spring.every((s) => !s.blurLocked && (s.rows === 1 || (s.blurFast && s.blurFast.alpha > 0 && s.blurFast.step > 0))),
     spring.filter((s) => s.blurFast).map((s) => `${s.name}/${s.rows}: alpha ${s.blurFast.alpha.toFixed(2)}, ${s.blurFast.step.toFixed(0)}px`).join("; "));
 
+  console.log("\nsquash & stretch follow speed, within the 2% cap (#54)");
+  const deform = await evaluate(cdp, `(() => {
+    const R = __reelRenderer, saved = R.fx.drop, out = {};
+    for (const rows of [1, 5]) {
+      const row = 5 - rows, key = row + "-0";
+      const mk = (t) => ({ start: performance.now() - t, duration: 1000, map: { [key]: rows }, heavy: new Map() });
+      R.fx.drop = mk(0); const delay = R.dropDelay(row, 0, rows), dur = R.cellFallMs(0, rows);
+      let maxSy = 1, minSy = 1, prev = 1, monotonic = true; const contact = R.reelProfile(0).contact;
+      for (let t = 0; t <= dur; t += 1) {
+        R.fx.drop = mk(t + delay); const d = R.dropDeform(row, 0);
+        maxSy = Math.max(maxSy, d.sy); minSy = Math.min(minSy, d.sy);
+        if (t / dur < contact && d.sy < prev - 1e-9) monotonic = false; prev = d.sy;
+      }
+      out[rows] = { maxSy, minSy, monotonic };
+    }
+    R.fx.drop = saved; return out;
+  })()`);
+  check("falling symbols stretch as they speed up, at most 2%", deform[5].maxSy > 1.015 && deform[5].maxSy <= 1.02 + 1e-9 && deform[5].monotonic,
+    `5-row peak ${((deform[5].maxSy - 1) * 100).toFixed(2)}%`);
+  check("a short (slower) fall deforms less than a long one, squash ≤ 2%", deform[1].maxSy < deform[5].maxSy && deform[1].minSy > deform[5].minSy && deform[5].minSy >= 0.98 - 1e-9,
+    `1-row stretch ${((deform[1].maxSy - 1) * 100).toFixed(2)}% / squash ${((1 - deform[1].minSy) * 100).toFixed(2)}%; 5-row squash ${((1 - deform[5].minSy) * 100).toFixed(2)}%`);
+
+  console.log("\ncluster blast: pop, shockwave light, dust (#54)");
+  await waitIdle();
+  const blast = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const m = R.board.matrix.map((r) => r.slice());
+    const cells = []; for (let r = 1; r < 5; r++) for (let c = 1; c < 3; c++) { m[r][c] = "BLUE_DIAMOND"; cells.push({ row: r, col: c }); }
+    R.setBoard(m, { multipliers: [] });
+    const els = [".vault-window", ".reels-stage"].map((s) => document.querySelector(s)); const base = els.map((e) => e.getBoundingClientRect());
+    let moved = 0, maxDust = 0, litFar = 0, litNear = 0, firstNear = 0, firstFar = 0;
+    const near = R.cellCenter(2, 3), far = R.cellCenter(2, 5); const t0 = performance.now();
+    const p = R.explode(cells, 380, "blast-medium");
+    const waves = () => R.fx.waves.length;
+    let hadWave = 0;
+    while (performance.now() - t0 < 900) {
+      hadWave = Math.max(hadWave, waves()); maxDust = Math.max(maxDust, R.shards.dust);
+      const now = performance.now(), a = R.waveLight(near.x, near.y, now).a, b = R.waveLight(far.x, far.y, now).a;
+      if (a > litNear) { litNear = a; firstNear = now - t0; } if (b > litFar) { litFar = b; firstFar = now - t0; }
+      els.forEach((e, k) => { const r = e.getBoundingClientRect(); moved = Math.max(moved, Math.abs(r.x - base[k].x), Math.abs(r.y - base[k].y)); });
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    await p;
+    return { hadWave, maxDust, litNear, litFar, firstNear, firstFar, moved, dustLeft: R.shards.dust, small: (() => {
+      R.fx.waves = []; R.spawnClusterBlast(cells.slice(0, 7), "medium"); const n = R.fx.waves.length; R.fx.waves = []; return n; })() };
+  })()`);
+  check("an 8-symbol cluster sends one shockwave; 7 symbols send none", blast.hadWave === 1 && blast.small === 0);
+  check("the front lights the symbols it passes, nearer ones first", blast.litNear > 0.2 && blast.litFar > 0 && blast.firstNear < blast.firstFar,
+    `near ${blast.litNear.toFixed(2)} @${blast.firstNear.toFixed(0)}ms, far ${blast.litFar.toFixed(2)} @${blast.firstFar.toFixed(0)}ms`);
+  check("dust radiates from the cluster, pooled under its cap", blast.maxDust > 0 && blast.maxDust <= 256, `${blast.maxDust} puffs`);
+  check("no shake: the board never moved during the blast", blast.moved === 0);
+
   console.log("\nper-symbol rat-a-tat (opening drop)");
   await waitIdle();
   const sync = await evaluate(cdp, `(async () => {
@@ -332,7 +383,7 @@ async function evaluate(cdp, expression) {
   await waitIdle();
   let live = -1;
   for (let i = 0; i < 40; i++) { live = await evaluate(cdp, `__reelRenderer.shards.live`); if (live === 0) break; await sleep(100); }
-  check("shard pool drained", live === 0);
+  check("shard pool drained (dust counter back to 0)", live === 0 && (await evaluate(cdp, `__reelRenderer.shards.dust`)) === 0);
   check("vacuum and zip state left clean", await evaluate(cdp, `__reelRenderer.fx.vacuum == null && !__reelRenderer.fx.drop`));
 
   const relevant = logs.filter((l) => !/AudioContext|autoplay/i.test(l));
