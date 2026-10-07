@@ -36,7 +36,7 @@ language and constants are described in [animation-guide.md](./animation-guide.m
   lock with a double click; later steps of that round resolve instantly.
 - During the big-win overlay a press skips the count-up, the next press dismisses it.
 
-## Timing profile (base, before turbo ×0.4)
+## Timing profile (base, before turbo ×0.77)
 
 | Step | Budget |
 |------|--------|
@@ -44,8 +44,9 @@ language and constants are described in [animation-guide.md](./animation-guide.m
 | Spin-out / drop-in / tumble fall (full 5-row fall, one gravity) | 360ms; a fall of d rows takes 360·√(d/5)ms; tumbles × 0.85^(step−1), floored at 50% |
 | Landing bounce | restitution 0.18: rises 3.2% of the fall, lasts 0.36 × the fall time |
 | Vacuum lean | 30ms in, 110ms side-lean return |
-| Explode | 380ms |
-| Win hold | 1100ms first catch, 700ms chained |
+| Burst lead-in (charge) | 0 / 80 / 150ms (small / medium / great) |
+| Explode | 380ms; the symbols' art is gone at 45% of it, and the refill starts then |
+| Win hold | 300ms first catch, 220ms chained |
 | Fast-stop zip | ≤110ms + double click 50ms apart |
 | Autoplay gap | 500ms (fixed) |
 

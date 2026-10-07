@@ -253,6 +253,49 @@ async function evaluate(cdp, expression) {
   }
   check("a burst's own symbol is gone by BLAST_GONE of it (no see-through ghost)", await evaluate(cdp, `BLAST_GONE <= 0.5`));
 
+  console.log("\npacing: short win hold, refill under the shards, readable turbo (#48)");
+  await waitIdle();
+  const pace = await evaluate(cdp, `(async () => {
+    const real = window.__realApi || api; window.__realApi = real;
+    api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
+      for (;;) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= 3 && !r.free_spins_awarded && Number(r.total_win) / Number(payload.bet_amount || 1) < 10) return r; } };
+    const R = __reelRenderer; const runs = {};
+    for (const turbo of [false, true]) {
+      state.turbo = turbo;
+      await new Promise((r) => setTimeout(r, 400)); // past SPIN_SETTLE_GUARD_MS, or the press is a late skip
+      const ev = []; const wrap = (n) => { const f = R[n].bind(R); R[n] = (...a) => { ev.push({ n, t: performance.now(), d: a[2] && typeof a[2] === "number" ? a[2] : null }); return f(...a); }; return f; };
+      const orig = { highlight: wrap("highlight"), explode: wrap("explode"), drop: wrap("drop") };
+      // A drop() that ends a burst: note when its symbols' art is gone (charge + BLAST_GONE).
+      el.spinBtn.click();
+      await new Promise((r) => setTimeout(r, 200));
+      while (isRoundInFlight()) await new Promise((r) => setTimeout(r, 30));
+      Object.assign(R, orig);
+      const holds = []; const gaps = [];
+      for (let k = 0; k < ev.length; k++) {
+        if (ev[k].n === "explode") {
+          const h = [...ev.slice(0, k)].reverse().find((e) => e.n === "highlight");
+          const d = ev.slice(k).find((e) => e.n === "drop");
+          if (h) holds.push(ev[k].t - h.t);
+          if (d) gaps.push(d.t - ev[k].t);
+        }
+      }
+      runs[turbo ? "turbo" : "normal"] = { holds, gaps };
+    }
+    state.turbo = false; api = real;
+    return { runs, first: ANIMATION_TIMING.celebrateHoldFirst, chain: ANIMATION_TIMING.celebrateHoldChain,
+      charge: PACING.charge, explode: ANIMATION_TIMING.explode, gone: BLAST_GONE, turbo: TURBO_SCALE };
+  })()`);
+  const N = pace.runs.normal, T = pace.runs.turbo;
+  check("the caught cluster is held 200-300ms, then it bursts (first catch longest, chains snappier)",
+    N.holds.length >= 2 && N.holds[0] >= 200 && N.holds[0] <= 340 && N.holds.slice(1).every((h) => h >= 190 && h <= 270),
+    N.holds.map((h) => h.toFixed(0) + "ms").join(" → "));
+  const maxGap = Math.max(...pace.charge ? Object.values(pace.charge) : [0]) + pace.explode * pace.gone + 30 + 60;
+  check("the refill starts falling as soon as the burst's symbols are gone (no empty-board wait)",
+    N.gaps.length >= 2 && N.gaps.every((g) => g <= maxGap), N.gaps.map((g) => g.toFixed(0) + "ms").join(", ") + ` (≤ ${maxGap.toFixed(0)})`);
+  const ratio = (T.holds[0] || 0) / (N.holds[0] || 1);
+  check("turbo is about 1.3x the pace: faster, still readable (holds scale by TURBO_SCALE)",
+    pace.turbo >= 0.75 && pace.turbo < 0.8 && Math.abs(ratio - pace.turbo) < 0.12, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
+
   console.log("\nwin focus + idle breathing (#55)");
   await waitIdle();
   const focus = await evaluate(cdp, `(async () => {
@@ -324,7 +367,9 @@ async function evaluate(cdp, expression) {
     const resultAt = start - press;
     await new Promise((r) => setTimeout(r, 1300));
     watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic;
-    const thuds = __snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t >= start).slice(0, 6).map((s) => ({ c: s.i, t: s.t - start }));
+    // Each reel's landing thud (a multiplier's BANG plays its own reel_stop too).
+    const seen = new Set();
+    const thuds = __snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t >= start && !seen.has(s.i) && seen.add(s.i)).map((s) => ({ c: s.i, t: s.t - start }));
     return { pred, ticks, thuds, resultAt, firstMove, emptyFrames, colMs: WATERFALL.spinColMs,
       lands: lands.filter((l) => l.t >= start).map((l) => ({ rows: l.rows, c: l.c, t: l.t - start, added: l.added })) };
   })()`);

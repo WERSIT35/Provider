@@ -199,8 +199,8 @@ const uiAssets = {
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const ANIMATION_TIMING = {
-  // AAA pacing pass (Vault 20K). Every value is a real-time ms budget before
-  // turbo (x0.4); fast-stop collapses all of them.
+  // Pacing (#48). Every value is a real-time ms budget before turbo
+  // (TURBO_SCALE); fast-stop collapses all of them.
   spinBurst: 420,
   // GRAVITY (#47): every drop falls under the same gravity, so these three
   // are equal: the time a full-reel fall (5 rows) takes. Old board out, new
@@ -208,18 +208,18 @@ const ANIMATION_TIMING = {
   oldBoardDropOff: 360,
   introDrop: 360,
   tumbleDrop: 360,
-  // Deliberate win beat (no overlap): the caught cluster is held + glowing for
-  // a short, readable moment, THEN explodes, and only once the explosion
-  // finishes do the refills drop. The opening catch gets the longer hold;
-  // chained catches are snappier so a cascade accelerates. Very large clusters
-  // get a little extra read-time (markPerExtraSymbol, capped).
-  celebrateHoldFirst: 1100,
-  celebrateHoldChain: 700,
-  markBigClusterThreshold: 8,
-  markPerExtraSymbol: 30,
-  markBigClusterCap: 300,
+  // The win beat: the caught cluster is held, glowing, with the rest of the
+  // board stepped back (win focus) for 200-300ms, then it bursts, and the
+  // refill falls in as soon as the burst's symbols are gone (BLAST_GONE),
+  // under the still-flying shards. The opening catch gets the longer hold;
+  // chained catches are snappier so a cascade accelerates.
+  celebrateHoldFirst: 300,
+  celebrateHoldChain: 220,
   explode: 380
 };
+// The burst's lead-in (#48): the winners "inhale" for charge[strength] ms
+// before they pop, and on a great win pop in a sweep, burstStaggerMs apart.
+const PACING = { charge: { small: 0, medium: 80, great: 150 }, burstStaggerMs: 6 };
 
 // Reel release (#47). A reel's symbols are all released at the same moment and
 // fall under one gravity (GRAVITY), so the reel falls as a stack: symbols that
@@ -245,13 +245,15 @@ const AUTOPLAY_GAP_MS = 500;
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Turbo uniformly compresses EVERY animated duration AND hold to ~40% — the old
-// board drop-off, the board drop-in, explosions, tumbles, the celebration hold,
-// multiplier catches and flashes all speed up together, so the whole spin is
-// fast (but still smoothly animated, not skipped). Applied centrally inside the
-// renderer animation methods + animationSleep. Fast-stop still wins and
-// collapses to near-instant.
-const turboScale = () => (state.turbo ? 0.4 : 1);
+// Turbo (#48) compresses EVERY animated duration and hold to TURBO_SCALE: the
+// spin-out, the drops (gravity scales with it, so the motion keeps its shape),
+// explosions, tumbles, the celebration hold, multiplier catches and flashes all
+// speed up together. It is set so turbo stays readable: about 1.3x the pace,
+// not a blur (every landing and every win can still be followed). Applied
+// centrally inside the renderer animation methods + animationSleep. Fast-stop
+// still wins and collapses to near-instant.
+const TURBO_SCALE = 0.77;
+const turboScale = () => (state.turbo ? TURBO_SCALE : 1);
 // Fast-stop / skip: the in-flight drop is re-timed to finish on the next frame
 // (no easing, no bounce — straight to the step's resolved board), and the
 // per-step drop awaits resolve immediately. Drops that START after a fast-stop
@@ -263,6 +265,10 @@ const FAST_STOP_SETTLE_MS = 0;
 // ignored. Autoplay is unaffected.
 const SPIN_SETTLE_GUARD_MS = 250;
 const FAST_STOP_DROP_MS = 1;
+// For a duration ALREADY turbo-scaled (a renderer method scales its own, so
+// its fx timing and its wait agree): waits it in real time; fast-stop
+// collapses it like animationSleep. animationSleep on it would scale twice.
+const holdReal = (ms) => sleep(state.fastStopRequested ? Math.min(50, ms) : ms);
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2009,8 +2015,7 @@ class ReelCanvasRenderer {
     const lightRevealLeadMs = 320;
     // Only allow the multiplier-reveal tail when this drop actually contains
     // multiplier cells; ordinary drops shouldn't pay that cost.
-    const hasRevealCells = heavyCells.size > 0 || lightOnlyCells.size > 0;
-    const revealLeadMaxMs = hasRevealCells ? Math.max(heavyRevealLeadMs, lightRevealLeadMs) : 0;
+    let revealEndMs = 0; // when the last multiplier reveal-pop finishes, ms from startTime
     heavyCells.forEach((info, key) => {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
@@ -2030,6 +2035,7 @@ class ReelCanvasRenderer {
         [prevSymbol, sourceSymbol, "MULTI", "SCATTER", ...blockedColSymbols],
         `${r}-${c}-${count}-heavy`
       );
+      revealEndMs = Math.max(revealEndMs, land + heavyRevealLeadMs + 320);
       this.fx.heavyReveals.set(key, {
         revealAt: startTime + land + heavyRevealLeadMs,
         revealDuration: 320,
@@ -2062,6 +2068,7 @@ class ReelCanvasRenderer {
       const blockedColSymbols = (previousBoard || [])
         .map((rowArr) => (Array.isArray(rowArr) ? rowArr[c] : null))
         .filter(Boolean);
+      revealEndMs = Math.max(revealEndMs, land + lightRevealLeadMs + revealDuration);
       this.fx.heavyReveals.set(key, {
         revealAt: startTime + land + lightRevealLeadMs,
         revealDuration,
@@ -2093,12 +2100,11 @@ class ReelCanvasRenderer {
       });
     }
 
-    // Tail buffer: 30ms when no reveal cells (just settles the landing
-    // frame), 90ms when reveals are running (lets the reveal-pop finish).
-    // dropDuration / maxDelay are already turbo-adjusted — wait the REAL time so
-    // the fall fully lands before the board commits (animationSleep would double-
-    // scale in turbo and commit mid-fall → symbols vanish half-way down).
-    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap)) + revealLeadMaxMs + (hasRevealCells ? 90 : 30));
+    // Settle once the last symbol has landed (bounce included) AND the last
+    // multiplier reveal-pop has finished, plus one frame. dropDuration /
+    // maxDelay are already turbo-adjusted: wait the REAL time so the fall fully
+    // lands before the board commits (animationSleep would scale again).
+    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap), revealEndMs) + 30);
     this.fx.drop = null;
     this.fx.heavyDrop = null;
     this.fx.vacuum = null;
@@ -2200,8 +2206,8 @@ class ReelCanvasRenderer {
     if (!winning.length) return;
     const strength = tier === "blast-great" ? "great" : tier === "blast-small" ? "small" : "medium";
     // Anticipation charge: cells brighten and "inhale" before they pop. Length
-    // scales with tier — small wins get none, big wins get a real beat.
-    const chargeMs = strength === "great" ? 260 : strength === "medium" ? 110 : 0;
+    // scales with tier (PACING.charge): small wins get none, big wins a beat.
+    const chargeMs = PACING.charge[strength] || 0;
     const keys = winning.map((p) => `${p.row}-${p.col}`);
     if (chargeMs > 0) {
       this.fx.charge = {
@@ -2229,7 +2235,7 @@ class ReelCanvasRenderer {
         .slice()
         .sort((a, b) => (a.col - b.col) * 1000 + (a.row - b.row));
       sorted.forEach((p, idx) => {
-        delays.set(`${p.row}-${p.col}`, idx * 14);
+        delays.set(`${p.row}-${p.col}`, Math.round(idx * PACING.burstStaggerMs * turboScale()));
       });
     }
     const maxDelay = Math.max(0, ...delays.values());
@@ -2247,14 +2253,22 @@ class ReelCanvasRenderer {
     this.board.cleared = new Set(keys);
     this.spawnExplosionParticles(winning, strength, delays);
     this.spawnClusterBlast(winning, strength);
-    await animationSleep(duration + maxDelay + 40);
-    this.fx.blast = null;
-    if (this.fx.spotlight) {
-      // Let it fade naturally; just clear the reference once expired.
-      const left = this.fx.spotlight.start + this.fx.spotlight.duration - performance.now();
-      if (left > 0) setTimeout(() => { this.fx.spotlight = null; }, left);
-      else this.fx.spotlight = null;
-    }
+    // The burst plays out on its own (shards, flare, shockwave); the round
+    // moves on as soon as the last symbol's art is gone (BLAST_GONE), so the
+    // refill falls in under the flying shards instead of after them (#48).
+    // `duration` is already turbo-scaled: wait real time (_dropSettle, which
+    // also resolves on a fast-stop), not animationSleep, which would scale again.
+    const blast = this.fx.blast;
+    setTimeout(() => {
+      if (this.fx.blast === blast) this.fx.blast = null;
+      if (this.fx.spotlight) {
+        // Let it fade naturally; just clear the reference once expired.
+        const left = this.fx.spotlight.start + this.fx.spotlight.duration - performance.now();
+        if (left > 0) setTimeout(() => { this.fx.spotlight = null; }, left);
+        else this.fx.spotlight = null;
+      }
+    }, duration + maxDelay + 40);
+    await this._dropSettle(Math.round(duration * BLAST_GONE) + maxDelay);
   }
 
   async highlight(matrix, { winning = [], multipliers = [] } = {}, duration = 560) {
@@ -2266,7 +2280,7 @@ class ReelCanvasRenderer {
     // Win focus: everything that did not win steps back, and stays back
     // through the blast until the board moves again (focusOff).
     this.focusOn(this.board.winningSet);
-    await animationSleep(duration);
+    await holdReal(duration);
     this.fx.pulse = null;
   }
 
@@ -2351,7 +2365,7 @@ class ReelCanvasRenderer {
       tier: peakTier
     };
     this.spawnMultiplierCatchParticles(multipliers);
-    await animationSleep(duration);
+    await holdReal(duration);
     this.fx.multiCatch = null;
     if (this.fx.spotlight) {
       const left = this.fx.spotlight.start + this.fx.spotlight.duration - performance.now();
@@ -2392,7 +2406,7 @@ class ReelCanvasRenderer {
     // but skip the full-screen flash, which is the harshest effect for
     // photosensitive players.
     if (prefersReducedMotion()) {
-      await animationSleep(Math.min(duration, 260));
+      await holdReal(Math.min(duration, 260));
       return;
     }
     this.fx.jackpotFlash = {
@@ -2401,7 +2415,7 @@ class ReelCanvasRenderer {
       colorA,
       colorB
     };
-    await animationSleep(duration);
+    await holdReal(duration);
     this.fx.jackpotFlash = null;
   }
 
@@ -3608,8 +3622,9 @@ class ReelCanvasRenderer {
           const cellDur = this.fx.blast.cellDuration || this.fx.blast.duration;
           cellBlast = clamp((performance.now() - this.fx.blast.start - cellDelay) / cellDur, 0, 1);
         }
-        // A cleared cell (#50) whose burst is over draws nothing: its symbol is gone.
-        if (!isBlast && !isFalling && this.board.cleared.has(key)) {
+        // A cleared cell (#50) draws nothing once its symbol's art is gone
+        // (BLAST_GONE into its burst, or after it): its symbol has left the board.
+        if (!isFalling && this.board.cleared.has(key) && (!isBlast || cellBlast >= BLAST_GONE)) {
           if (inFlight) ctx.restore(); // reel mask
           continue;
         }
@@ -6170,7 +6185,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // Near-win beat: if a multiplier just dropped in, hold briefly so the player
   // registers it before the win/tumble flow continues. animationSleep collapses
   // to ~0 on fast-stop, so impatient players aren't held up.
-  if ((steps[0].multipliers || []).length) await animationSleep(420);
+  if ((steps[0].multipliers || []).length) await animationSleep(120);
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
@@ -6179,7 +6194,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       const prevWinning = Array.isArray(prev?.winning_positions) ? prev.winning_positions : [];
       const prevWinTotal = Number(prev?.win_total || 0);
       if (prevWinning.length > 0 && prevWinTotal > 0) {
-        await animationSleep(140);
         const prevWinTier = stepWinTier(prev, bet);
         const prevTier = prevWinTier.blast;
         pushGameMessage(`Tumble ${i} triggered.`, "info");
@@ -6247,12 +6261,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       pulseDuration = i === 0
         ? ANIMATION_TIMING.celebrateHoldFirst
         : ANIMATION_TIMING.celebrateHoldChain;
-      if (markedCount >= ANIMATION_TIMING.markBigClusterThreshold) {
-        pulseDuration += Math.min(
-          ANIMATION_TIMING.markBigClusterCap,
-          (markedCount - ANIMATION_TIMING.markBigClusterThreshold) * ANIMATION_TIMING.markPerExtraSymbol
-        );
-      }
     }
     const stepMaxMultiplier = maxMultiplierInStep(step);
     const mTier = multiplierEventTier(stepMaxMultiplier);

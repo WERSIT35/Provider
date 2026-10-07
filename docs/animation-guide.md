@@ -39,7 +39,7 @@ the top of `client/main.js`; the renderer is `ReelCanvasRenderer` (canvas, not D
 ## Pacing
 
 - `ANIMATION_TIMING` holds the base budgets (spin-out, drop-in and tumble drop all 360ms: one gravity; explode 380ms,
-  first catch hold 1100ms, chained 700ms). Turbo scales every animated duration to 40%.
+  first catch hold 300ms, chained 220ms). The burst's lead-in is `PACING` (charge 0/80/150ms by strength, great-win sweep 6ms per symbol); the refill falls as soon as the burst's symbols are gone (`BLAST_GONE`), under the flying shards. A multiplier on the opening board gets a 120ms beat before its catch, and a drop settles on its last landing or last reveal-pop, whichever is later. Turbo (`TURBO_SCALE` 0.77) scales every animated duration and hold: about 1.3× the pace, still readable. A renderer method that turbo-scales its own duration waits it with `holdReal` (animationSleep would scale it twice).
 - Autoplay waits a fixed `AUTOPLAY_GAP_MS` (500ms, not turbo-scaled) between rounds.
 - A manual press within `SPIN_SETTLE_GUARD_MS` (250ms) of a round settling is treated as a late
   skip, not a new paid spin.
