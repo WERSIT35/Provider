@@ -15,7 +15,7 @@ The Chrome path is hard-coded to `C:/Program Files/Google/Chrome/Application/chr
 
 | Probe | What it proves |
 |-------|----------------|
-| `motion-probe.js` | Spin-out never moves a symbol up; bottom-first release; reel-group curves (ease from rest, lock overshoot, 1–2% squash, no rebound); all 30 symbols land one by one bottom-up on schedule (18ms apart); each landing gets its glint + tick; reel thud on the last symbol; √distance fall times; refill ordering; vacuum lean continuity; 15% tumble momentum; fast-stop zip (≤110ms, left to right, double click, motion blur, no bounce); board never moves; shard pool drains. |
+| `motion-probe.js` | Spin-out never moves a symbol up; bottom-first release; reel-group curves (ease from rest, lock overshoot, 1–2% squash, no rebound); all 30 symbols land one by one bottom-up on schedule (18ms apart); each landing gets its glint + tick; reel thud on the last symbol; √distance fall times; refill ordering; nothing moves between the pop and the refill (no lean or shake), refill released at BLAST_GONE; 15% tumble momentum; fast-stop zip (≤110ms, left to right, double click, motion blur, no bounce); board never moves; shard pool drains. |
 | `mask-probe.js` | Freezes time through an opening drop and diffs board-hidden vs board-shown frames: no symbol pixels above row 0 while waiting or entering (3 viewports). |
 | `ticker-probe.js` | Ticker state machine: idle → spin → gold WIN held after round end; tip rotation; flash returns to the current line; screenshots. |
 | `audio-probe.js` | One thud per reel left to right on the ~80ms stagger, timed to landings; refills thud only on reels that dropped; fast-stop zip thuds each reel exactly once; turbo stagger. |

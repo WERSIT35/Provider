@@ -5,6 +5,8 @@
 //          [--name <label>] [--tumbles <n>] [--turbo] [--size 1280x800]
 //   --ref   record an older commit (checked out into a temp worktree)
 //   --tumbles  keep re-rolling the spin until it has at least n tumble steps
+//   --mult     …and until it is a multiplied win (Total Multiplier + combine)
+//   --ms       how long to record (default 6000)
 // Needs Chrome and sharp (root devDependency).
 const http = require("http");
 const fs = require("fs");
@@ -21,6 +23,7 @@ const REF = opt("ref", "");
 const NAME = opt("name", REF || "working-tree");
 const OUT = path.resolve(opt("out", fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-"))));
 const TUMBLES = Number(opt("tumbles", 2));
+const MULT = flag("mult");
 const [W, H] = opt("size", "1280x800").split("x").map(Number);
 const PORT = 3100 + Math.floor(Math.random() * 400);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -156,7 +159,8 @@ async function writeWebp(frames, file, speed, width) {
   if (flag("turbo")) await evaluate(cdp, `(() => { if (!state.turbo) document.getElementById("turboBtn")?.click(); state.turbo = true; return true; })()`);
   // Re-roll the round until it has a tumble chain (standalone engine, no money involved).
   await evaluate(cdp, `(() => { const real = window.__realApi || api; window.__realApi = real; api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
-    for (let i = 0; i < 400; i++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded) return r; }
+    for (let i = 0; i < ${MULT ? 4000 : 400}; i++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded
+      && (!${MULT} || (Number(r.multiplier_applied) > 1 && Number(r.total_win) > 0 && !(r.events || []).length))) return r; }
     return real(p, payload); }; return true; })()`);
 
   // Deterministic capture: the page's clock (performance.now, timers, rAF;

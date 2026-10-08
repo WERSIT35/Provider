@@ -3211,7 +3211,10 @@ body.admin-mode .sim-grid strong {
   font-size: 1.02rem;
 }
 
-/* Win-combine finale: fly raw win + multiplier together → BANG → total. */
+/* Win-combine finale: fly raw win + multiplier together → BANG → total.
+   Played on every multiplied win. The chips launch from where their values live
+   (--from-x/--from-y: the WIN line, the Total Multiplier badge), and every
+   duration scales with turbo (--combine-t, set on the overlay). */
 .win-combine-overlay {
   position: absolute;
   inset: 0;
@@ -3221,7 +3224,7 @@ body.admin-mode .sim-grid strong {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  transition: opacity 0.32s ease;
+  transition: opacity calc(0.32s * var(--combine-t, 1)) ease;
 }
 
 .win-combine-overlay.is-fading {
@@ -3245,11 +3248,11 @@ body.admin-mode .sim-grid strong {
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   opacity: 0;
-  transform: translate(-50%, -50%) scale(0.6);
+  transform: translate(calc(-50% + var(--from-x, 0px)), calc(-50% + var(--from-y, 0px))) scale(0.6);
   transition:
-    transform 0.48s cubic-bezier(0.18, 0.84, 0.22, 1),
-    opacity 0.32s ease,
-    filter 0.32s ease;
+    transform calc(0.48s * var(--combine-t, 1)) cubic-bezier(0.18, 0.84, 0.22, 1),
+    opacity calc(0.32s * var(--combine-t, 1)) ease,
+    filter calc(0.32s * var(--combine-t, 1)) ease;
   white-space: nowrap;
 }
 
@@ -3272,14 +3275,15 @@ body.admin-mode .sim-grid strong {
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4)) drop-shadow(0 0 18px rgba(255, 200, 120, 0.45));
 }
 
-/* Amount chip — slides in from left. */
+/* Amount chip — rises from the WIN line (else slides in from the left). */
 .combine-amount {
   left: 25%;
   border-color: rgba(255, 209, 102, 0.5);
 }
 .combine-amount .combine-kicker { color: #ffd99d; }
 
-/* Multiplier chip — slides in from right, tier-colored. */
+/* Multiplier chip — flies down from the Total Multiplier badge (else slides in
+   from the right), tier-colored. */
 .combine-multi {
   left: 75%;
   border-color: var(--combine-color, rgba(255, 132, 184, 0.6));
@@ -3303,18 +3307,18 @@ body.admin-mode .sim-grid strong {
 }
 
 .combine-amount.is-slamming {
-  transition: transform 0.36s cubic-bezier(0.5, 0, 0.85, 1);
+  transition: transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
   transform: translate(calc(-50% + (50% - 25%) * 1px), -50%) scale(1.08);
   /* Move toward 50% — using left: 25% means we need to translate +25% of viewport. */
   left: 50%;
 }
 .combine-multi.is-slamming {
-  transition: transform 0.36s cubic-bezier(0.5, 0, 0.85, 1), left 0.36s cubic-bezier(0.5, 0, 0.85, 1);
+  transition: transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1), left calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
   left: 50%;
   transform: translate(-50%, -50%) scale(1.08);
 }
 .combine-amount.is-slamming {
-  transition: left 0.36s cubic-bezier(0.5, 0, 0.85, 1), transform 0.36s cubic-bezier(0.5, 0, 0.85, 1);
+  transition: left calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1), transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
 }
 
 .combine-amount.is-merged,
@@ -3322,7 +3326,7 @@ body.admin-mode .sim-grid strong {
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.4);
   filter: blur(6px) brightness(1.6);
-  transition: opacity 0.18s ease, transform 0.22s ease, filter 0.18s ease;
+  transition: opacity calc(0.18s * var(--combine-t, 1)) ease, transform calc(0.22s * var(--combine-t, 1)) ease, filter calc(0.18s * var(--combine-t, 1)) ease;
 }
 
 /* Collision flash — full-frame white-hot punch. */
@@ -3339,7 +3343,7 @@ body.admin-mode .sim-grid strong {
   pointer-events: none;
 }
 .combine-flash.is-live {
-  animation: combineFlash 0.6s cubic-bezier(0.16, 0.84, 0.22, 1) forwards;
+  animation: combineFlash calc(0.6s * var(--combine-t, 1)) cubic-bezier(0.16, 0.84, 0.22, 1) forwards;
 }
 @keyframes combineFlash {
   0%   { opacity: 0; transform: scale(0.4); }
@@ -3376,7 +3380,7 @@ body.admin-mode .sim-grid strong {
   filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 32px rgba(255, 180, 80, 0.8));
 }
 .combine-total.is-live {
-  animation: combineTotalIn 1.5s cubic-bezier(0.16, 1.1, 0.3, 1) forwards;
+  animation: combineTotalIn calc(1.5s * var(--combine-t, 1)) cubic-bezier(0.16, 1.1, 0.3, 1) forwards;
 }
 .combine-total.is-live::after {
   content: "";
@@ -3385,7 +3389,7 @@ body.admin-mode .sim-grid strong {
   border-radius: inherit;
   background: linear-gradient(110deg, transparent 32%, rgba(255, 255, 255, 0.32) 50%, transparent 68%);
   transform: translateX(-100%);
-  animation: combineTotalShine 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) 0.4s forwards;
+  animation: combineTotalShine calc(1.1s * var(--combine-t, 1)) cubic-bezier(0.2, 0.7, 0.3, 1) calc(0.4s * var(--combine-t, 1)) forwards;
   pointer-events: none;
 }
 @keyframes combineTotalIn {
