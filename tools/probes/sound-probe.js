@@ -2,8 +2,10 @@
 "use strict";
 
 // Sound engine probe (client/audio/audio.js) in real headless Chrome, with
-// autoplay allowed. Checks: every game event plays a decoded FILE (not the
-// synth fallback); variations rotate (never the same twice in a row); the mix
+// autoplay allowed. Checks: every file is decoded at page load, BEFORE any
+// gesture, and nothing plays or queues before it (so the first spin is fully
+// voiced); every game event plays a decoded FILE and no generated
+// (oscillator) voice exists at all; variations rotate (never the same twice in a row); the mix
 // graph (buses + limiter) and ONE AudioContext for the whole client; every
 // .m4a (Safari) decodes too; music moods crossfade base → freeSpins → bigWin
 // (temporary) → back; the music ducks under a win and recovers; mute persists
@@ -75,21 +77,25 @@ async function main() {
   await cdp.send("Runtime.enable");
   const ev = async (e) => { const r = await cdp.send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || "eval failed"); return r.result?.value; };
   // Count every AudioContext the page creates.
-  await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const C = window.AudioContext; if (!C) return; window.__ctxCount = 0; window.AudioContext = class extends C { constructor(...a) { super(...a); window.__ctxCount++; } }; })();` });
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const C = window.AudioContext; if (!C) return; window.__ctxCount = 0; window.AudioContext = class extends C { constructor(...a) { super(...a); window.__ctxCount++; } }; window.__osc = 0; const o = C.prototype.createOscillator; C.prototype.createOscillator = function (...a) { window.__osc++; return o.apply(this, a); }; })();` });
   try {
     await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/?reset` });
     for (let i = 0; i < 200; i++) { if (await ev("typeof state !== 'undefined' && !!state.sessionId && document.body.classList.contains('app-ready')").catch(() => false)) break; await sleep(100); }
 
-    console.log("\nloading");
+    console.log("\nloading (before any gesture)");
     const load = await ev(`(async () => {
-      Sound.setMuted(false); Sound.unlock(); await Sound.debug.ready();
+      await Sound.debug.ready();
       const m = Sound.debug.manifest(); if (!m) return { manifest: false };
       const all = Object.values(m.sounds).flat().concat(Object.values(m.music));
       const t0 = performance.now();
       while (Sound.debug.loaded().length < all.length && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
-      return { manifest: true, ext: Sound.debug.ext(), want: all.length, got: Sound.debug.loaded().length, ms: Math.round(performance.now() - t0) };
+      const n0 = Sound.debug.recent().length; Sound.play("spin_start"); Sound.play("reel_stop", { index: 0 });
+      return { manifest: true, ext: Sound.debug.ext(), want: all.length, got: Sound.debug.loaded().length, ms: Math.round(performance.now() - t0), unlocked: Sound.debug.unlocked(), queued: Sound.debug.recent().length - n0 };
     })()`);
-    check("the manifest loads and every file decodes", load.manifest && load.got === load.want, `${load.got}/${load.want} ${load.ext} in ${load.ms}ms`);
+    check("every file is fetched and decoded at page load, before any gesture", load.manifest && load.got === load.want && load.unlocked === false, `${load.got}/${load.want} ${load.ext}, ready ${load.ms}ms after load`);
+    check("nothing plays or queues before the first gesture (no late burst)", load.queued === 0);
+    const first = await ev(`(() => { Sound.setMuted(false); Sound.unlock(); Sound.play("spin_start"); const r = Sound.debug.recent(); const l = r[r.length - 1]; return { name: l && l.name, file: l && l.file }; })()`);
+    check("the very first sound after the gesture is a real file (the first spin is voiced)", first.name === "spin_start" && Boolean(first.file), String(first.file));
     const m4a = await ev(`(async () => {
       const m = Sound.debug.manifest(); const all = Object.values(m.sounds).flat().concat(Object.values(m.music)); const ctx = new OfflineAudioContext(1, 1, 48000); let bad = [];
       for (const p of all) { try { const b = await (await fetch("assets/audio/" + p + ".m4a")).arrayBuffer(); await ctx.decodeAudioData(b); } catch (e) { bad.push(p); } }
@@ -109,11 +115,12 @@ async function main() {
       const names = ["click", "bet_change", "turbo_toggle", "spin_start", "reel_stop", "tick", "tumble", "explode", "win_tick", "scatter_land", "win_small", "win_big", "win_mega", "max_win",
         "multiplier_strike", "multiplier_drop", "multiplier_catch", "multiplier_combine", "bonus_trigger", "fs_intro", "fs_outro", "buy_feature"];
       const out = [];
-      for (const n of names) { const before = Sound.debug.recent().length; Sound.play(n, opts[n] || {}); const r = Sound.debug.recent(); const last = r[r.length - 1]; out.push({ n, played: r.length > before || r.length === 64, file: last && last.name === n ? last.file : null, synth: last ? last.synth : true }); await new Promise((r) => setTimeout(r, 120)); }
+      for (const n of names) { Sound.play(n, opts[n] || {}); const r = Sound.debug.recent(); const last = r[r.length - 1]; out.push({ n, file: last && last.name === n ? last.file : null }); await new Promise((r) => setTimeout(r, 120)); }
+      Sound.drone.start(600); const rr = Sound.debug.recent(); const d = rr[rr.length - 1]; out.push({ n: "drone", file: d && d.name === "drone" ? d.file : null }); Sound.drone.stop();
       return out;
     })()`);
-    const synthed = events.filter((e) => !e.file || e.synth);
-    check("every game event plays a sound FILE (no synth fallback once loaded)", synthed.length === 0, synthed.length ? "synth: " + synthed.map((e) => e.n).join(", ") : `${events.length} events`);
+    const missing = events.filter((e) => !e.file);
+    check("every game event (and the anticipation riser) plays a recorded file", missing.length === 0, missing.length ? "no file: " + missing.map((e) => e.n).join(", ") : `${events.length} events`);
     const rot = await ev(`(async () => {
       const res = {};
       for (const [n, o, key] of [["reel_stop", { index: 0 }, "reel_stop"], ["tick", { row: 4, col: 0, rows: 5 }, "tick"], ["explode", {}, "explode"], ["win_tick", {}, "win_tick"]]) {
@@ -142,6 +149,9 @@ async function main() {
       return { before, low, after };
     })()`);
     check("the music ducks under a win and comes back", duck.before > 0.95 && duck.low < 0.5 && duck.after > 0.9, `${duck.before.toFixed(2)} → ${duck.low.toFixed(2)} → ${duck.after.toFixed(2)}`);
+
+    const osc = await ev("window.__osc");
+    check("no generated (oscillator) sound anywhere: only recordings", osc === 0, `${osc} oscillators`);
 
     console.log("\nprefs + lifecycle");
     const life = await ev(`(async () => {

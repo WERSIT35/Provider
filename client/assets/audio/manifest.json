@@ -47,6 +47,9 @@
       "sfx/explode_great_1",
       "sfx/explode_great_2"
     ],
+    "riser": [
+      "sfx/riser_1"
+    ],
     "win_tick": [
       "sfx/win_tick_1",
       "sfx/win_tick_2",

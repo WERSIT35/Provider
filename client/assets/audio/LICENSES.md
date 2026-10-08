@@ -31,7 +31,7 @@ Pack licence texts: `art-src/audio/kenney/<pack>/License.txt`.
 | Original | Work (author) | Source | Used in |
 |---|---|---|---|
 | item_gem_01.ogg, item_gem_03.ogg, item_gem_04.ogg, spell_01.ogg, spell_02.ogg | 80 CC0 RPG SFX (rubberduck) | https://opengameart.org/content/80-cc0-rpg-sfx | `scatter`, `catch`, `combine`, `bonus_trigger` |
-| sfx100v2_air_02.ogg, sfx100v2_air_03.ogg, sfx100v2_thunder_01.ogg | 100 CC0 SFX #2 (rubberduck) | https://opengameart.org/content/100-cc0-sfx-2 | `spin_start`, `strike`, `fs_intro` |
+| sfx100v2_air_01.ogg, sfx100v2_air_02.ogg, sfx100v2_air_03.ogg, sfx100v2_thunder_01.ogg | 100 CC0 SFX #2 (rubberduck) | https://opengameart.org/content/100-cc0-sfx-2 | `riser`, `spin_start`, `strike`, `fs_intro` |
 | swish-3.wav, swish-4.wav, swish-7.wav, swish-9.wav | Swishes Sound Pack | https://opengameart.org/content/swishes-sound-pack | `refill`, `spin_start` |
 | desert_mystic2.mp3 ("Desert Mystic2.mp3") | Desert_mystic, dynastic Egyptian theme (Polygondan) | https://opengameart.org/content/desertmystic-dynastic-egyptian-theme-cc0 | music `base` |
 | hidden_temple.ogg (from "hidden_temple.wav", re-encoded) | Hidden Temple | https://opengameart.org/content/hidden-temple | music `freeSpins` |
