@@ -46,11 +46,7 @@ const TARGETS = [
   { src: "YellowGem.png",   max: 256 },
   { src: "GreenGem.png",    max: 256 },
   { src: "BlueGem.png",     max: 256 },
-  { src: "Common.png",      max: 256 },
-  { src: "Rare.png",        max: 256 },
-  { src: "Epic.png",        max: 256 },
-  { src: "Legendary.png",   max: 256 },
-  { src: "Mythic.png",      max: 256 },
+  // Multipliers have no art: they are drawn in code (client/main.js MULTI_EMBLEM).
 
   // Scatter is a wide tile drawn contained inside a cell, so it needs a little
   // more than a square symbol to keep its detail.
