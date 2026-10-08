@@ -170,15 +170,7 @@ const symbolAssets = {
   YELLOW_HEX: "assets/symbols/YellowGem.webp",
   GREEN_TRIANGLE: "assets/symbols/GreenGem.webp",
   BLUE_DIAMOND: "assets/symbols/BlueGem.webp",
-  // Multiplier art is now ONE token per rarity tier (numbers are drawn in code
-  // onto the blank center plate — see the MULTI draw block below). The generic
-  // MULTI key falls back to the Common token if a tier image fails to load.
-  MULTI: "assets/symbols/Common.webp",
-  MULTI_COMMON: "assets/symbols/Common.webp",
-  MULTI_RARE: "assets/symbols/Rare.webp",
-  MULTI_EPIC: "assets/symbols/Epic.webp",
-  MULTI_LEGENDARY: "assets/symbols/Legendary.webp",
-  MULTI_MYTHIC: "assets/symbols/Mythic.webp",
+  // Multipliers have no art file: they are drawn in code (MULTI_EMBLEM).
   SCATTER: "assets/symbols/Scatter.webp"
 };
 
@@ -232,11 +224,11 @@ const WATERFALL = { spinColMs: 100, tumbleColMs: 40 };
 // The reel mask. A symbol IN FLIGHT is clipped to the grid: entering from
 // above, it is only visible below row 0's top edge; leaving on the spin-out,
 // only above the last row's bottom edge. Symbol art is drawn larger than its
-// cell (1.12×, MULTI 1.24×), so a RESTING symbol overhangs its cell a little;
+// cell (1.12×; a multiplier's emblem fits its cell), so a RESTING symbol overhangs its cell a little;
 // over a symbol's last `settleRows` of travel the mask edge eases out to that
 // overhang (and back in as it leaves), so the art is never cropped at rest
 // and no edge pops. A symbol entering from above waits `spawnPad` rows higher
-// than its slot (at least the largest overhang, (1.24 - 1) / 2), so not even
+// than its slot (at least the largest overhang, (1.12 - 1) / 2), so not even
 // its bottom edge is inside the grid before it is released.
 const REEL_MASK = { spawnPad: 0.14, settleRows: 0.5 };
 // Base autoplay: a fixed, NOT turbo-scaled gap between rounds, so the player can
@@ -665,11 +657,11 @@ const THEME = (() => {
 const symbolTone = THEME.symbolGlow;
 
 const MULTIPLIER_TIER_DEFS = [
-  { key: "common", label: "Common", image: "MULTI_COMMON", values: [2, 3, 4, 5, 6, 8], ...THEME.multiplier.common },
-  { key: "rare", label: "Rare", image: "MULTI_RARE", values: [10, 12, 15, 20, 25], ...THEME.multiplier.rare },
-  { key: "epic", label: "Epic", image: "MULTI_EPIC", values: [50], ...THEME.multiplier.epic },
-  { key: "legendary", label: "Legendary", image: "MULTI_LEGENDARY", values: [100, 250, 500], ...THEME.multiplier.legendary },
-  { key: "mythic", label: "Mythic", image: "MULTI_MYTHIC", values: [1000], ...THEME.multiplier.mythic }
+  { key: "common", label: "Common", values: [2, 3, 4, 5, 6, 8], ...THEME.multiplier.common },
+  { key: "rare", label: "Rare", values: [10, 12, 15, 20, 25], ...THEME.multiplier.rare },
+  { key: "epic", label: "Epic", values: [50], ...THEME.multiplier.epic },
+  { key: "legendary", label: "Legendary", values: [100, 250, 500], ...THEME.multiplier.legendary },
+  { key: "mythic", label: "Mythic", values: [1000], ...THEME.multiplier.mythic }
 ];
 
 const MULTIPLIER_TIER_BY_VALUE = new Map(
@@ -681,15 +673,210 @@ function getMultiplierTier(value) {
   return MULTIPLIER_TIER_BY_VALUE.get(Number(value)) || MULTIPLIER_TIER_DEFS[0];
 }
 
-function multiplierIconScale(value) {
-  const v = Number(value || 0);
-  if (v >= 1000) return 1.34;
-  if (v >= 500) return 1.28;
-  if (v >= 250) return 1.21;
-  if (v >= 100) return 1.14;
-  if (v >= 50) return 1.08;
-  if (v >= 20) return 1.04;
-  return 1;
+// The multiplier emblem (user, 2026-10-09): a WINGED SUN DISC, drawn as
+// vectors in code, not a coin. A silhouette no other symbol has (two spread
+// wings), sized to its cell (boxW × boxH of the lane/row; no per-value
+// scale), and the number is the hero: as large as fits over the disc (the
+// text box may cover the rim), with a smaller "x". Tiers share the shape
+// and differ in metal, feathers, rays and extras. One table, so a second
+// game re-skins it by values; baked per value + size (multiplierSprite), so
+// drawing one is a single drawImage. Static: the board is still at rest.
+const MULTI_EMBLEM = {
+  boxW: 0.98, boxH: 0.92,     // the emblem's box, fractions of the cell
+  discR: 0.31,                // disc radius, fraction of min(box w, h)
+  rays: { inner: 0.96, long: 1.26, short: 1.12 },
+  text: { w: 1.02, cap: 0.66, x: 0.6 }, // text box (× disc diameter), "x" size (× number)
+  outline: "#120a04",
+  tiers: {
+    common:    { metal: ["#ffd9b0", "#c07a43", "#5a2f12"], face: ["#fff0dc", "#d79a62", "#7a4219"], text: "#ffe3c4", feathers: 5, rays: 16 },
+    rare:      { metal: ["#f2fbff", "#8fb9d4", "#24435a"], face: ["#f6fcff", "#86cdf2", "#1b5a85"], text: "#d8f3ff", feathers: 6, rays: 18, glow: "#4fc3f7" },
+    epic:      { metal: ["#ffe6cc", "#ff8a3d", "#6e2405"], face: ["#fff2e2", "#ffa45e", "#8a3104"], text: "#ffe0c0", feathers: 7, rays: 20, glow: "#ff7a2b" },
+    legendary: { metal: ["#fff7cf", "#f2c14e", "#6f4a0b"], face: ["#fffbe8", "#f7d77a", "#8a6212"], text: "#fff2b8", feathers: 8, rays: 22, glow: "#f2c14e", flames: true },
+    mythic:    { metal: ["#ffe3f1", "#ff4d6d", "#4f0819"], face: ["#fff2f8", "#ff7aa8", "#6e0d33"], text: "#ffd6e6", feathers: 9, rays: 24, glow: "#ff2a3a", flames: true, prism: true }
+  }
+};
+
+/** Draw the winged sun disc for multiplier `value` into a W×H box on `ctx`
+ *  (CSS px, origin top-left). Pure: no renderer state. */
+function drawWingedSun(ctx, W, H, tierKey, value) {
+  const E = MULTI_EMBLEM;
+  const T = E.tiers[tierKey] || E.tiers.common;
+  const cx = W / 2;
+  const cy = H * 0.5;
+  const R = Math.min(W, H) * E.discR;
+  const edge = Math.max(0.8, R * 0.035);
+  const metal = (y0, y1) => {
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, T.metal[0]);
+    g.addColorStop(0.55, T.metal[1]);
+    g.addColorStop(1, T.metal[2]);
+    return g;
+  };
+  ctx.save();
+  ctx.lineJoin = "round";
+
+  // Wings: layered feathers each side, behind everything. The top feather
+  // reaches furthest and curls up; lower ones are shorter and droop.
+  const n = T.feathers;
+  const reach = W * 0.49 - R * 0.5; // horizontal room from the root to the box edge
+  for (const side of [-1, 1]) {
+    for (let i = n - 1; i >= 0; i -= 1) {
+      const k = n > 1 ? i / (n - 1) : 0; // 0 = top feather, 1 = bottom
+      const ang = (-18 + 52 * k) * Math.PI / 180;
+      const rootX = cx + side * R * 0.5;
+      const rootY = cy - R * 0.42 + R * 0.84 * k;
+      const len = reach * (1 - 0.45 * k);
+      const tipX = rootX + side * len;
+      const tipY = clamp(rootY + Math.tan(ang) * len - (1 - k) * R * 0.28, H * 0.05, H * 0.95);
+      const wRoot = R * (0.36 - 0.12 * k);
+      const mx = (rootX + tipX) / 2;
+      const my = (rootY + tipY) / 2;
+      ctx.beginPath();
+      ctx.moveTo(rootX, rootY - wRoot / 2);
+      ctx.quadraticCurveTo(mx, my - wRoot * 0.95, tipX, tipY);
+      ctx.quadraticCurveTo(mx + side * len * 0.05, my + wRoot * 0.55, rootX, rootY + wRoot / 2);
+      ctx.closePath();
+      ctx.fillStyle = metal(rootY - R * 0.6, rootY + R * 0.6);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(18, 10, 4, 0.6)";
+      ctx.lineWidth = edge;
+      ctx.stroke();
+      // The feather's vein: a thin highlight from the root toward the tip.
+      ctx.beginPath();
+      ctx.moveTo(rootX, rootY);
+      ctx.quadraticCurveTo(mx, my - wRoot * 0.25, rootX + (tipX - rootX) * 0.85, rootY + (tipY - rootY) * 0.85);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.lineWidth = Math.max(0.6, R * 0.02);
+      ctx.stroke();
+    }
+  }
+
+  // Sun rays around the disc: alternating long and short points. Top tiers
+  // turn the long rays into (static) flames.
+  for (let j = 0; j < T.rays; j += 1) {
+    const a = (j / T.rays) * Math.PI * 2 - Math.PI / 2;
+    const long = j % 2 === 0;
+    const out = R * (long ? E.rays.long : E.rays.short);
+    const half = (Math.PI / T.rays) * 0.85;
+    const bx1 = cx + Math.cos(a - half) * R * E.rays.inner;
+    const by1 = cy + Math.sin(a - half) * R * E.rays.inner;
+    const bx2 = cx + Math.cos(a + half) * R * E.rays.inner;
+    const by2 = cy + Math.sin(a + half) * R * E.rays.inner;
+    const tx = cx + Math.cos(a) * out;
+    const ty = cy + Math.sin(a) * out;
+    ctx.beginPath();
+    ctx.moveTo(bx1, by1);
+    if (T.flames && long) {
+      // A flame: the tip leans a little and the sides bow out.
+      const lean = Math.cos(a) * R * 0.06;
+      ctx.quadraticCurveTo(cx + Math.cos(a - half * 0.6) * out * 0.9 - lean, cy + Math.sin(a - half * 0.6) * out * 0.9, tx + lean, ty);
+      ctx.quadraticCurveTo(cx + Math.cos(a + half * 0.6) * out * 0.9 - lean, cy + Math.sin(a + half * 0.6) * out * 0.9, bx2, by2);
+      const g = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, out);
+      g.addColorStop(0, "#ff7a1a");
+      g.addColorStop(0.6, "#ffc23a");
+      g.addColorStop(1, "#fff4b0");
+      ctx.fillStyle = g;
+    } else {
+      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx2, by2);
+      ctx.fillStyle = metal(cy - out, cy + out);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(18, 10, 4, 0.45)";
+    ctx.lineWidth = edge * 0.8;
+    ctx.stroke();
+  }
+
+  // The disc: a metal rim (a prism ring on mythic), then the bevelled face.
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  if (T.prism && typeof ctx.createConicGradient === "function") {
+    const g = ctx.createConicGradient(0, cx, cy);
+    ["#ff5b8a", "#ffb84a", "#fff07a", "#7dffb0", "#6ad5ff", "#b98bff", "#ff5b8a"].forEach((col, i, arr) => g.addColorStop(i / (arr.length - 1), col));
+    ctx.fillStyle = g;
+  } else {
+    const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
+    g.addColorStop(0, T.metal[0]);
+    g.addColorStop(0.6, T.metal[1]);
+    g.addColorStop(1, T.metal[2]);
+    ctx.fillStyle = g;
+  }
+  ctx.fill();
+  ctx.strokeStyle = "rgba(18, 10, 4, 0.75)";
+  ctx.lineWidth = edge * 1.4;
+  ctx.stroke();
+  const faceR = R * 0.84;
+  ctx.beginPath();
+  ctx.arc(cx, cy, faceR, 0, Math.PI * 2);
+  const face = ctx.createRadialGradient(cx - faceR * 0.35, cy - faceR * 0.45, faceR * 0.05, cx, cy, faceR);
+  face.addColorStop(0, T.face[0]);
+  face.addColorStop(0.55, T.face[1]);
+  face.addColorStop(1, T.face[2]);
+  ctx.fillStyle = face;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(18, 10, 4, 0.5)";
+  ctx.lineWidth = edge;
+  ctx.stroke();
+  if (T.glow) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, faceR * 0.97, 0, Math.PI * 2);
+    ctx.strokeStyle = T.glow;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = Math.max(1, R * 0.06);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // Bevel highlight across the top-left of the face.
+  ctx.beginPath();
+  ctx.arc(cx, cy, faceR * 0.86, Math.PI * 1.05, Math.PI * 1.55);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+  ctx.lineWidth = Math.max(1, R * 0.05);
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // The number: as large as the text box allows (it may cover the rim),
+  // a smaller "x", a light gradient fill, a heavy dark outline.
+  const num = String(value);
+  const fit = (size) => {
+    ctx.font = THEME.canvasFont(700, size);
+    const m = ctx.measureText(num);
+    ctx.font = THEME.canvasFont(700, size * E.text.x);
+    const mx = ctx.measureText("x");
+    const cap = (m.actualBoundingBoxAscent || size * 0.72);
+    return { w: m.width + mx.width * 0.92, cap, numW: m.width };
+  };
+  const boxW = 2 * R * E.text.w;
+  const boxCap = 2 * R * E.text.cap;
+  let size = R * 2;
+  let mt = fit(size);
+  size *= Math.min(boxW / mt.w, boxCap / mt.cap);
+  mt = fit(size);
+  const left = cx - mt.w / 2;
+  const base = cy + mt.cap / 2;
+  const fill = ctx.createLinearGradient(0, base - mt.cap, 0, base);
+  fill.addColorStop(0, "#ffffff");
+  fill.addColorStop(1, T.text);
+  ctx.lineJoin = "round";
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+  ctx.shadowBlur = size * 0.12;
+  ctx.shadowOffsetY = size * 0.04;
+  ctx.strokeStyle = E.outline;
+  ctx.lineWidth = Math.max(2, size * 0.16);
+  ctx.font = THEME.canvasFont(700, size);
+  ctx.strokeText(num, left, base);
+  ctx.font = THEME.canvasFont(700, size * E.text.x);
+  ctx.strokeText("x", left + mt.numW + size * 0.02, base);
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = fill;
+  ctx.font = THEME.canvasFont(700, size);
+  ctx.fillText(num, left, base);
+  ctx.font = THEME.canvasFont(700, size * E.text.x);
+  ctx.fillText("x", left + mt.numW + size * 0.02, base);
+  ctx.restore();
+  return { capPx: mt.cap, size };
 }
 
 // True when the player has asked the OS to minimise motion. Re-read live so a
@@ -1090,6 +1277,7 @@ class ReelCanvasRenderer {
     //    the full-resolution source art every time.
     this.glowSprites = new Map();
     this.symbolSprites = new Map();
+    this.emblemSprites = new Map(); // multiplier emblems, per value + size (multiplierSprite)
     this.stageCacheBack = null;
     this.stageCacheFront = null;
     this.time = 0;
@@ -1255,6 +1443,7 @@ class ReelCanvasRenderer {
     this.stageCacheFront = null;
     this.glowSprites.clear();
     this.symbolSprites.clear();
+    this.emblemSprites.clear();
     this._fogKey = null;
     this._meshKey = null;
     this.publishBoardBox();
@@ -1302,6 +1491,20 @@ class ReelCanvasRenderer {
 
   /** A blank offscreen canvas of `w`×`h` CSS px backed at device resolution.
    *  The returned 2D context is pre-scaled by dpr so callers draw in CSS px. */
+  /** The baked winged-sun emblem for multiplier `value` at a w×h box (CSS
+   *  px), number included: one drawImage per multiplier cell. */
+  multiplierSprite(value, w, h) {
+    const key = `${value}|${Math.round(w)}x${Math.round(h)}`;
+    let cvs = this.emblemSprites.get(key);
+    if (!cvs) {
+      const off = this.makeOffscreen(w, h);
+      drawWingedSun(off.ctx, w, h, getMultiplierTier(value).key, value);
+      cvs = off.cvs;
+      this.emblemSprites.set(key, cvs);
+    }
+    return cvs;
+  }
+
   makeOffscreen(w, h) {
     const dpr = this.dpr || 1;
     const cvs = document.createElement("canvas");
@@ -1799,7 +2002,7 @@ class ReelCanvasRenderer {
       this.fx.exit = null;
       return;
     }
-    const over = Math.max(0, (Math.min(laneW, rowStep) * 1.24 - rowStep) / 2);
+    const over = Math.max(0, (Math.min(laneW, rowStep) * 1.12 - rowStep) / 2);
     const gridBottom = top + rowStep * this.rows;
     ctx.save();
     ctx.beginPath();
@@ -1813,13 +2016,18 @@ class ReelCanvasRenderer {
         const symbol = exit.matrix[r]?.[c];
         if (!symbol) continue;
         const x = padX + laneW * (c + 0.5);
-        const multi = symbol === "MULTI" ? Number(exit.multi.get(`${r}-${c}`) || 1) : null;
-        const tier = multi !== null ? getMultiplierTier(multi) : null;
-        const key = tier ? tier.image : symbol;
-        const img = (tier && this.images.get(tier.image)) || this.images.get(symbol);
+        if (symbol === "MULTI") {
+          // A multiplier: its winged-sun emblem, sized to the cell.
+          const ew = laneW * MULTI_EMBLEM.boxW;
+          const eh = rowStep * MULTI_EMBLEM.boxH;
+          const value = Number(exit.multi.get(`${r}-${c}`) || 1);
+          ctx.drawImage(this.multiplierSprite(value, ew, eh), x - ew / 2, y - eh / 2, ew, eh);
+          continue;
+        }
+        const img = this.images.get(symbol);
         if (!img?.complete || !img.naturalWidth) continue;
-        const boost = (symbol === "SCATTER" ? 1.22 : 1) * (multi !== null ? multiplierIconScale(multi) : 1);
-        const size = Math.min(radius * 2.5 * boost, Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.24 : 1.12));
+        const boost = symbol === "SCATTER" ? 1.22 : 1;
+        const size = Math.min(radius * 2.5 * boost, Math.min(laneW, rowStep) * 1.12);
         let w = size;
         let h = size;
         if (symbol === "SCATTER") {
@@ -1827,18 +2035,7 @@ class ReelCanvasRenderer {
           if (ar > 1) h = size / ar;
           else w = size * ar;
         }
-        ctx.drawImage(this.getSymbolSprite(key, img, w, h), x - w / 2, y - h / 2, w, h);
-        if (multi !== null) {
-          const coreR = radius * 1.05;
-          ctx.fillStyle = tier.accent;
-          ctx.font = THEME.canvasFont(700, Math.max(18, coreR * 0.62));
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
-          ctx.lineWidth = Math.max(2.4, coreR * 0.1);
-          ctx.strokeText(`${multi}x`, x, y + coreR * 0.02);
-          ctx.fillText(`${multi}x`, x, y + coreR * 0.02);
-        }
+        ctx.drawImage(this.getSymbolSprite(symbol, img, w, h), x - w / 2, y - h / 2, w, h);
       }
     }
     ctx.restore();
@@ -3598,12 +3795,12 @@ class ReelCanvasRenderer {
         // art and any glow on it) is clipped to the grid, so it appears exactly
         // as it crosses into row 0 and never over the frame above (or below,
         // leaving). Near its slot the edge eases out to the art's resting
-        // overhang (sized for the largest art, MULTI at 1.24×). Resting symbols
+        // overhang (sized for the largest art, 1.12×). Resting symbols
         // are never clipped; only moving cells pay for a cheap rect clip.
         const offY = y - yBase - slamOffset;
         const inFlight = isFalling && offY !== 0;
         if (inFlight) {
-          const over = Math.max(0, (Math.min(laneW, rowStep) * 1.24 - rowStep) / 2);
+          const over = Math.max(0, (Math.min(laneW, rowStep) * 1.12 - rowStep) / 2);
           const edge = over * clamp(1 - Math.abs(offY) / (rowStep * REEL_MASK.settleRows), 0, 1);
           const y0 = top - edge;
           const y1 = top + rowStep * this.rows + over;
@@ -3686,16 +3883,17 @@ class ReelCanvasRenderer {
         const ringR = radius * 1.05 * baseScale * revealScale;
         const coreR = radius * 1.05 * baseScale * revealScale;
         const scatterSizeBoost = symbol === "SCATTER" ? 1.22 : 1;
-        const multiScale = symbol === "MULTI" ? multiplierIconScale(this.board.multiMap.get(key)) : 1;
         // Fill the cell: symbols are drawn nearly edge-to-edge (Pragmatic-style)
         // instead of the old ~0.94-of-cell size that left big gaps.
-        const maxIconBase = Math.min(laneW, rowStep) * (symbol === "MULTI" ? 1.24 : 1.12);
+        const maxIconBase = Math.min(laneW, rowStep) * 1.12;
         const iconBase = Math.min(
-          radius * 2.5 * baseScale * scatterSizeBoost * revealScale * multiScale,
+          radius * 2.5 * baseScale * scatterSizeBoost * revealScale,
           maxIconBase * baseScale * revealScale
         );
-        const iconW = iconBase * squashX;
-        const iconH = iconBase * squashY;
+        // A multiplier's emblem has its own box: the cell (MULTI_EMBLEM).
+        const isMulti = symbol === "MULTI";
+        const iconW = isMulti ? laneW * MULTI_EMBLEM.boxW * baseScale * revealScale * squashX : iconBase * squashX;
+        const iconH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale * squashY : iconBase * squashY;
         // A squashed symbol stays planted on its floor instead of shrinking
         // toward its centre.
         const iconCy = y + Math.max(0, iconBase - iconH) * 0.5;
@@ -3755,13 +3953,12 @@ class ReelCanvasRenderer {
           ctx.globalAlpha = 1;
         }
 
-        const multiValueNum = symbol === "MULTI" ? Number(this.board.multiMap.get(key) || 1) : null;
-        // One token image per rarity tier; the numeric value is drawn in code
-        // onto the blank center plate further below.
-        const multiTier = symbol === "MULTI" ? getMultiplierTier(multiValueNum) : null;
-        const multiImageKey = multiTier ? multiTier.image : null;
-        const img = (multiImageKey && this.images.get(multiImageKey)) || this.images.get(symbol);
-        if (img?.complete && img.naturalWidth) {
+        const multiValueNum = isMulti ? Number(this.board.multiMap.get(key) || 1) : null;
+        // A multiplier is its winged-sun emblem, number baked in (one sprite
+        // per value and size); every other symbol is its art.
+        const emblem = isMulti ? this.multiplierSprite(multiValueNum, laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH) : null;
+        const img = emblem ? null : this.images.get(symbol);
+        if (emblem || (img?.complete && img.naturalWidth)) {
           ctx.globalAlpha = blastFade * spotDim;
           if (this._traceAlpha) this._traceAlpha.set(key, ctx.globalAlpha); // probes: the art's opacity
           // SCATTER art is a rectangular (wide) tile, not a square sprite. Draw
@@ -3775,9 +3972,8 @@ class ReelCanvasRenderer {
             else drawH = iconW / ar;
           }
           // Blit the pre-scaled sprite rather than resampling the source art on
-          // every cell, every frame. Keyed by the image key actually resolved
-          // above (a multiplier tier image, or the symbol itself).
-          const sprite = this.getSymbolSprite(multiImageKey || symbol, img, drawW, drawH);
+          // every cell, every frame (a multiplier: its baked emblem).
+          const sprite = emblem || this.getSymbolSprite(symbol, img, drawW, drawH);
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
           if (this.fx.waves.length && !isBlast) {
             // Shockwave light (#54): the front lights each symbol it passes.
@@ -3819,23 +4015,6 @@ class ReelCanvasRenderer {
           ctx.beginPath();
           ctx.arc(x, y - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
           ctx.fill();
-        }
-
-        if (symbol === "MULTI") {
-          // The tier token art carries the rarity; we only stamp the number onto
-          // its blank center plate. Drawn for EVERY value (no per-value images).
-          const tier = multiTier || getMultiplierTier(multiValueNum);
-          const value = `${multiValueNum}x`;
-          ctx.fillStyle = tier.accent;
-          // 700 is the display face's heaviest weight; asking for more makes
-          // some browsers synthesize a smeared faux-bold.
-          ctx.font = THEME.canvasFont(700, Math.max(18, coreR * 0.62));
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
-          ctx.lineWidth = Math.max(2.4, coreR * 0.1);
-          ctx.strokeText(value, x, y + coreR * 0.02);
-          ctx.fillText(value, x, y + coreR * 0.02);
         }
 
         if (symbol === "SCATTER") {
@@ -4062,6 +4241,7 @@ function installContextLossGuard(renderer) {
     contextGuard.restored += 1;
     renderer.glowSprites.clear();
     renderer.symbolSprites.clear();
+    renderer.emblemSprites.clear();
     renderer.stageCacheBack = null;
     renderer.stageCacheFront = null;
     renderer.resumeRendering();
@@ -7606,6 +7786,9 @@ const anticipationDrone = (() => {
 // Step 5 hooks: the renderer reports scatter counts and anticipation; the HUD
 // readout (pinned-height ticker line) and the drone react.
 reelRenderer.onSlamLanded = endFastStop;
+// Multiplier emblems bake their number in the display face: rebake once it
+// has loaded, so none keeps a fallback font.
+THEME.fontsReady?.then(() => { reelRenderer.emblemSprites.clear(); });
 reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
 reelRenderer.onSymbolLand = (row, col) => landingTicks.play(row, col, reelRenderer.rows);
 reelRenderer.onAnticipation = (phase, ms) => {

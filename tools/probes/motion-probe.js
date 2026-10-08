@@ -451,6 +451,25 @@ async function evaluate(cdp, expression) {
   })()`);
   check("the stand-in can never form or suggest a win (500 random boards)", fuzz.bad === 0, `worst ${fuzz.worst} copies shown (limit ${fuzz.minMatch - 2})`);
 
+  console.log("\nmultiplier emblem: winged sun disc, fits its cell, big numbers");
+  const emb = await evaluate(cdp, `(async () => {
+    await THEME.fontsReady; const R = __reelRenderer; const { laneW, rowStep } = R.getLayout();
+    const cs = Math.min(laneW, rowStep); const out = [];
+    for (const v of [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100, 250, 500, 1000]) {
+      const w = laneW * MULTI_EMBLEM.boxW, h = rowStep * MULTI_EMBLEM.boxH;
+      const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
+      const m = drawWingedSun(c.getContext("2d"), w, h, getMultiplierTier(v).key, v);
+      const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 8) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      out.push({ v, cap: m.capPx / cs, bw: (x1 - x0 + 1) / laneW, bh: (y1 - y0 + 1) / rowStep });
+    }
+    return out;
+  })()`);
+  check("every emblem fits inside its cell (no spill onto neighbours)", emb.every((e) => e.bw <= 1 && e.bh <= 1),
+    `max ${Math.max(...emb.map((e) => e.bw)).toFixed(2)} × ${Math.max(...emb.map((e) => e.bh)).toFixed(2)} of the cell`);
+  check("numbers are big: cap height ≥ 0.30 of the cell up to 2 digits, ≥ 0.20 for every value",
+    emb.every((e) => e.cap >= (e.v < 100 ? 0.30 : 0.20)), emb.map((e) => e.v + ":" + e.cap.toFixed(2)).join(" "));
+
   console.log("\nreels land as stacks, no dead air between spins (#47)");
   await waitIdle();
   const sync = await evaluate(cdp, `(async () => {
