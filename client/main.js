@@ -198,23 +198,24 @@ const uiAssets = {
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
 const ANIMATION_TIMING = {
-  // Pacing (#48). Every value is a real-time ms budget before turbo
-  // (TURBO_SCALE); fast-stop collapses all of them.
+  // Pacing (#48; calmer pace 2026-10-08: players could not keep up). Every
+  // value is a real-time ms budget before turbo (TURBO_SCALE); a Stop
+  // collapses the one it lands in.
   spinBurst: 420,
   // GRAVITY (#47): every drop falls under the same gravity, so these three
   // are equal: the time a full-reel fall (5 rows) takes. Old board out, new
   // board in, tumble refills. Cascade momentum still quickens a chain.
-  oldBoardDropOff: 360,
-  introDrop: 360,
-  tumbleDrop: 360,
+  oldBoardDropOff: 480,
+  introDrop: 480,
+  tumbleDrop: 480,
   // The win beat: the caught cluster is held, glowing, with the rest of the
-  // board stepped back (win focus) for 200-300ms, then it bursts, and the
+  // board stepped back (win focus) for 400-500ms, then it bursts, and the
   // refill falls in as soon as the burst's symbols are gone (BLAST_GONE),
   // under the still-flying shards. The opening catch gets the longer hold;
   // chained catches are snappier so a cascade accelerates.
-  celebrateHoldFirst: 300,
-  celebrateHoldChain: 220,
-  explode: 380
+  celebrateHoldFirst: 500,
+  celebrateHoldChain: 400,
+  explode: 460
 };
 // The burst's lead-in (#48): the winners "inhale" for charge[strength] ms
 // before they pop, and on a great win pop in a sweep, burstStaggerMs apart.
@@ -227,7 +228,7 @@ const PACING = { charge: { small: 0, medium: 80, great: 150 }, burstStaggerMs: 6
 // the reels that actually drop: `spinColMs` apart on a spin (each old reel
 // falls out and its new reel follows straight behind it) and `tumbleColMs`
 // apart on a tumble refill. Turbo-scaled; cascade momentum tightens tumbles.
-const WATERFALL = { spinColMs: 75, tumbleColMs: 22 };
+const WATERFALL = { spinColMs: 100, tumbleColMs: 40 };
 // The reel mask. A symbol IN FLIGHT is clipped to the grid: entering from
 // above, it is only visible below row 0's top edge; leaving on the spin-out,
 // only above the last row's bottom edge. Symbol art is drawn larger than its
@@ -247,16 +248,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Turbo (#48) compresses EVERY animated duration and hold to TURBO_SCALE: the
 // spin-out, the drops (gravity scales with it, so the motion keeps its shape),
 // explosions, tumbles, the celebration hold, multiplier catches and flashes all
-// speed up together. 0.45 = about 2.2x the pace (the product call: turbo players
-// want a real jump; the shapes and the order of events stay the same). Applied
-// centrally inside the renderer animation methods + animationSleep. Fast-stop
-// still wins and collapses to near-instant.
-const TURBO_SCALE = 0.45;
+// speed up together. 0.6 = about 1.7x the pace (2026-10-08: 0.45 was too fast
+// to follow; the shapes and the order of events stay the same). Applied
+// centrally inside the renderer animation methods + animationSleep. A Stop
+// still wins: it slams the board in the air (FAST_ZIP).
+const TURBO_SCALE = 0.6;
 const turboScale = () => (state.turbo ? TURBO_SCALE : 1);
-// Fast-stop / skip: the in-flight drop is re-timed to finish on the next frame
-// (no easing, no bounce — straight to the step's resolved board), and the
-// per-step drop awaits resolve immediately. Drops that START after a fast-stop
-// run for FAST_STOP_DROP_MS, i.e. they are drawn already landed.
+// Fast-stop / skip (Stop): the board in the air zips into place (FAST_ZIP);
+// a board that starts falling while a Stop is pending is born zipping. Only
+// under reduced motion does a drop run for FAST_STOP_DROP_MS (drawn landed).
 const FAST_STOP_SETTLE_MS = 0;
 // With skip now instant, a round can resolve ~200ms after the skip press, so a
 // player hammering spin would start fresh PAID spins with taps meant as skips.
@@ -265,9 +265,17 @@ const FAST_STOP_SETTLE_MS = 0;
 const SPIN_SETTLE_GUARD_MS = 250;
 const FAST_STOP_DROP_MS = 1;
 // For a duration ALREADY turbo-scaled (a renderer method scales its own, so
-// its fx timing and its wait agree): waits it in real time; fast-stop
-// collapses it like animationSleep. animationSleep on it would scale twice.
-const holdReal = (ms) => sleep(state.fastStopRequested ? Math.min(50, ms) : ms);
+// its fx timing and its wait agree): waits it in real time; a Stop pressed
+// before OR during it cuts it to ≤50ms. animationSleep on it would scale twice.
+const holdReal = (ms) => new Promise((resolve) => {
+  const t0 = performance.now();
+  const tick = () => {
+    const e = performance.now() - t0;
+    if (e >= ms || (state.fastStopRequested && e >= Math.min(50, ms))) return resolve();
+    setTimeout(tick, 16);
+  };
+  tick();
+});
 const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -296,7 +304,6 @@ async function animateWinMeter(from, to, duration = 260) {
   }
   el.lastWin.textContent = fmt(end);
 }
-const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
 const easeInCubic = (t) => t * t * t;
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeOutQuint = (t) => 1 - (1 - t) ** 5;
@@ -354,15 +361,9 @@ function dropTravel(t, prof) {
   return 1 - prof.bounce * 4 * u * (1 - u);
 }
 
-// Tumble vacuum: before a refill falls, the symbols around the blast lean INTO
-// the void for `ms`, as if the explosion left a pressure drop. Symbols above a
-// cleared cell dip `pull` rows and carry that dip into their fall; same-row
-// neighbours lean `side` lanes sideways and come back over returnMs with no
-// overshoot.
-const VACUUM = { ms: 30, pull: 0.05, side: 0.04, returnMs: 110 };
 // Cascade momentum: each tumble in a chain falls (and staggers) in `perStep`
 // of the previous one's time, floored so long chains stay readable.
-const TUMBLE_MOMENTUM = { perStep: 0.85, floor: 0.5 };
+const TUMBLE_MOMENTUM = { perStep: 0.92, floor: 0.6 };
 const tumbleTempo = (step) => Math.max(TUMBLE_MOMENTUM.floor, TUMBLE_MOMENTUM.perStep ** Math.max(0, step - 1));
 // Fast-stop zip: every reel still moving zips from where it is into its slot,
 // left to right, the k-th moving reel locking at firstMs + k·colMs (≤ 110ms
@@ -391,8 +392,11 @@ const SHATTER = {
 //   dust: `dust[strength]` soft puffs (before fxCount) radiate from the
 //         centre at `dustSpeed` cells/ms, brake hard (drag) and grow as they
 //         thin out. Pooled on the ShardEmitter, at most `maxDust` alive.
-// The share of a symbol's burst after which its art is gone (#50).
-const BLAST_GONE = 0.45;
+// The share of a symbol's burst after which its art is gone (#50). explode()
+// resolves right then, so a tumble refill falls ~115ms after the pop, under the
+// still-flying shards. Nothing on the board moves in between: no neighbour
+// lean or shake (user rule).
+const BLAST_GONE = 0.25;
 const CLUSTER_BLAST = {
   minCells: 8, pop: 0.14, waveMs: 520, reach: 1.6, band: 0.45, glow: 0.42,
   dust: { small: 10, medium: 16, great: 26 }, dustSpeed: [0.003, 0.007], maxDust: 256
@@ -1478,9 +1482,25 @@ class ReelCanvasRenderer {
     fx.start = now - p * newDur;
   }
 
+  /** Does a pending Stop act on `drop` (default: the one in the air)? Stop
+   *  slams only a SPIN board (or, under reduced motion, lands anything at
+   *  once). A tumble refill always falls under gravity: never zipped, never
+   *  pre-placed. */
+  _stopHits(drop = this.fx.drop) {
+    return state.fastStopRequested && (!drop || drop.spin || this._reducedMotion);
+  }
+
   requestFastStop() {
     const drop = this.fx.drop;
     if (drop?.zip) return; // already zipping: let it lock
+    if (drop && !drop.spin && !this._reducedMotion) {
+      // A tumble refill in the air keeps its fall; the Stop only ends the
+      // celebration bits and is spent when this refill lands.
+      this._zipPending = false;
+      this.fx.charge = null;
+      this.fx.spotlight = null;
+      return;
+    }
     // A board dropping in zips into place (FAST_ZIP). Its positions are
     // snapshotted on the drop's live timing, so this runs before anything
     // below changes that timing (anticipation, acceleration).
@@ -1518,13 +1538,13 @@ class ReelCanvasRenderer {
    *  the fall visually finishes, making symbols vanish mid-air). Resolves early on
    *  a fast-stop, but only ~FAST_STOP_SETTLE_MS after the request so the sped-up
    *  drop has time to visibly land first. */
-  _dropSettle(realMs) {
+  _dropSettle(realMs, { honorStop = true } = {}) {
     const start = performance.now();
     return new Promise((resolve) => {
-      let stopAt = state.fastStopRequested ? start : null;
+      let stopAt = honorStop && state.fastStopRequested ? start : null;
       const tick = () => {
         const now = performance.now();
-        if (stopAt === null && state.fastStopRequested) stopAt = now;
+        if (honorStop && stopAt === null && state.fastStopRequested) stopAt = now;
         if (stopAt !== null) {
           // A fast-stop zip (FAST_ZIP) is still the drop: let it lock first.
           if (now - stopAt >= FAST_STOP_SETTLE_MS && now >= (this._zipEnd || 0)) return resolve();
@@ -1957,7 +1977,15 @@ class ReelCanvasRenderer {
     });
     const heavyKeyMatchesDropMap = Array.from(heavyCells.keys()).some((k) => Object.prototype.hasOwnProperty.call(dropMap || {}, k));
     // Snappier drop slow-down — the previous values dragged the moment out.
-    const dropDuration = state.fastStopRequested
+    // A Stop pressed before this board falls slams it in with the visible zip
+    // (below), so it keeps its real timing; only reduced motion lands at once.
+    const isSpin = Boolean(options.spin);
+    const slam = state.fastStopRequested && !this._reducedMotion && isSpin;
+    // A tumble refill under a pending Stop falls at (at least) turbo pace:
+    // visibly, under the same gravity. Never zipped, never pre-placed.
+    const hurried = state.fastStopRequested && !this._reducedMotion && !isSpin;
+    if (hurried) duration = Math.min(duration, Math.round(ANIMATION_TIMING.tumbleDrop * TURBO_SCALE * tempo));
+    const dropDuration = state.fastStopRequested && this._reducedMotion
       ? FAST_STOP_DROP_MS
       : (peakTier && heavyKeyMatchesDropMap)
       ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
@@ -1981,13 +2009,12 @@ class ReelCanvasRenderer {
       need: Number(options.scatterTarget) || 0,
       order: this._dropOrder(dropMap),
       spin: Boolean(options.spin), // a spin's board (WATERFALL.spinColMs), not a tumble refill
-      tempo,
-      // A tumble vacuum's dip (rows) is carried into the fall: continuous.
-      lean: this.fx.vacuum ? VACUUM.pull : 0
+      tempo
     };
     this.scheduleColumnStops(dropMap, dropDuration);
-    // Fast-stop pressed before this board started falling: it zips in.
-    if (state.fastStopRequested && this._zipPending && !this._reducedMotion) {
+    // Stop pressed before this SPIN board started falling (during the
+    // spin-out): it is born zipping, so it visibly falls into place in ≤110ms.
+    if (slam) {
       this._zipPending = false;
       this._startZip(this.fx.drop);
     }
@@ -2103,10 +2130,13 @@ class ReelCanvasRenderer {
     // multiplier reveal-pop has finished, plus one frame. dropDuration /
     // maxDelay are already turbo-adjusted: wait the REAL time so the fall fully
     // lands before the board commits (animationSleep would scale again).
-    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap), revealEndMs) + 30);
+    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap), revealEndMs) + 30, { honorStop: !hurried && (isSpin || this._reducedMotion) });
     this.fx.drop = null;
     this.fx.heavyDrop = null;
-    this.fx.vacuum = null;
+    // A Stop slams ONE board: once the board it caught has landed, the rest of
+    // the round (holds, bursts, the next refills) plays at its normal pace.
+    // Press again to slam the next one.
+    if (state.fastStopRequested) this.onSlamLanded?.();
     if (window.__renderDebug) {
       const committed = (this.board.matrix?.[0] || []).slice(0, 3).join(",");
       console.log(`[drop:exit]  committed row0=${committed}`);
@@ -2247,8 +2277,8 @@ class ReelCanvasRenderer {
       delays
     };
     // The exploded symbols leave the board NOW (#50): from here on only the
-    // burst draws them, and once it ends nothing does, so the vacuum and the
-    // gap before the refill commits can never show them again.
+    // burst draws them, and once it ends nothing does, so the gap before the
+    // refill commits can never show them again.
     this.board.cleared = new Set(keys);
     this.spawnExplosionParticles(winning, strength, delays);
     this.spawnClusterBlast(winning, strength);
@@ -2548,21 +2578,21 @@ class ReelCanvasRenderer {
 
   cellOffset(row, col, rowStep, now = performance.now()) {
     const drop = this.fx.drop;
-    if (!drop) return this.fx.vacuum ? this.vacuumDip(row, col, rowStep) : 0;
+    if (!drop) return 0;
     const key = `${row}-${col}`;
     const count = Number(drop.map?.[key] || 0);
     if (count <= 0) return 0;
     if (drop.zip) return this.zipOffset(drop.zip, key, col, rowStep, now);
     const elapsed = now - drop.start - this.dropDelay(row, col, count);
     // A dropping symbol STARTS exactly where it was last seen (one cell per
-    // `count` above its slot, plus any vacuum dip it is carrying) and falls
+    // `count` above its slot) and falls
     // under GRAVITY from its reel's release (dropDelay). A NEW symbol (from
     // above the board) starts REEL_MASK.spawnPad higher, fully above the reel
     // mask, so no part of it shows before it enters the grid. Its fall time
     // is set by `count` alone, so it lands together with the old symbols that
     // fall as far: the reel lands as one stack.
     const fresh = row - count < 0 ? REEL_MASK.spawnPad * rowStep : 0;
-    const start = (drop.lean || 0) * rowStep - count * rowStep - fresh;
+    const start = -count * rowStep - fresh;
     if (elapsed < 0) return start;
     const t = clamp(elapsed / this.cellFallMs(col, count, drop), 0, 1);
     return lerp(start, 0, dropTravel(t, this.reelProfile(col)));
@@ -2587,61 +2617,6 @@ class ReelCanvasRenderer {
     const zip = this.fx.drop?.zip;
     if (zip) return zip.ends[col] || 0;
     return this.dropDelay(row, col, count) + this.cellFallMs(col, count) * this.reelProfile(col).contact;
-  }
-
-  // ── Tumble vacuum (VACUUM) ──
-
-  /** Before a refill falls, the symbols around the cleared cluster lean into
-   *  the void for VACUUM.ms. Reads only the cleared cells; resolves early on a
-   *  fast-stop. The dip is carried into the drop that follows (drop.lean), and
-   *  the side lean relaxes over VACUUM.returnMs (cellLeanX). */
-  async vacuum(winning) {
-    if (this._reducedMotion || state.fastStopRequested || !winning?.length) return;
-    const voids = new Set(winning.map((p) => `${p.row}-${p.col}`));
-    const dip = new Set();
-    const side = new Map();     // old-board key → -1 (lean left) | 1 (right)
-    const sidePost = new Map(); // the same symbols, keyed where they land
-    for (let c = 0; c < this.cols; c += 1) {
-      let below = 0; // cleared cells under the current row in this column
-      for (let r = this.rows - 1; r >= 0; r -= 1) {
-        const key = `${r}-${c}`;
-        if (voids.has(key)) { below += 1; continue; }
-        if (below > 0) dip.add(key);
-        const dir = (voids.has(`${r}-${c + 1}`) ? 1 : 0) - (voids.has(`${r}-${c - 1}`) ? 1 : 0);
-        if (dir) {
-          side.set(key, dir);
-          sidePost.set(`${r + below}-${c}`, dir);
-        }
-      }
-    }
-    const start = performance.now();
-    this.fx.vacuum = { start, end: start + VACUUM.ms, dip, side, sidePost };
-    await this._dropSettle(VACUUM.ms);
-  }
-
-  /** Vertical vacuum dip of a resting symbol above a void (before the drop). */
-  vacuumDip(row, col, rowStep) {
-    const v = this.fx.vacuum;
-    if (!v.dip.has(`${row}-${col}`)) return 0;
-    return VACUUM.pull * rowStep * easeOutQuad(clamp((performance.now() - v.start) / VACUUM.ms, 0, 1));
-  }
-
-  /** Horizontal vacuum lean of a cell (px). Leans in over VACUUM.ms, relaxes
-   *  over VACUUM.returnMs without overshoot, then clears the vacuum. */
-  cellLeanX(key, laneW) {
-    const v = this.fx.vacuum;
-    if (!v) return 0;
-    const now = performance.now();
-    if (now < v.end) {
-      const d = v.side.get(key);
-      return d ? d * VACUUM.side * laneW * easeOutQuad((now - v.start) / VACUUM.ms) : 0;
-    }
-    if (now >= v.end + VACUUM.returnMs) {
-      if (this.fx.drop) this.fx.vacuum = null; // keep the dip until the drop takes it over
-      return 0;
-    }
-    const d = (this.fx.drop ? v.sidePost : v.side).get(key);
-    return d ? d * VACUUM.side * laneW * (1 - easeOutCubic((now - v.end) / VACUUM.returnMs)) : 0;
   }
 
   // ── Fast-stop zip (FAST_ZIP) ──
@@ -2788,7 +2763,7 @@ class ReelCanvasRenderer {
       this._queueTimer(startMs, () => this.onAnticipation?.("start", last - startMs));
       this._queueTimer(last, () => this.onAnticipation?.("end"));
     }
-    if (state.fastStopRequested) {
+    if (this._stopHits()) {
       this._queueColumnStop(0, last, null);
       return;
     }
@@ -2857,7 +2832,7 @@ class ReelCanvasRenderer {
     this._pendingScatters = { need, resting, landed: 0, cells: lands.slice() };
     // Fast-stop: land them all now, unless this board is about to zip in
     // (_startZip re-times them to their reels' locks).
-    if (state.fastStopRequested && !this._zipPending) {
+    if (this._stopHits() && !this._zipPending) {
       this.flushScatterLandings();
       return;
     }
@@ -3018,8 +2993,9 @@ class ReelCanvasRenderer {
   }
 
   dropDelay(row, col, count) {
-    // Fast-stop collapses the waterfall (a zip snapshot reads the live one).
-    if (state.fastStopRequested && !this._liveTiming) return 0;
+    // A Stop collapses a spin board's waterfall (a zip snapshot reads the
+    // live one); a tumble refill keeps its waterfall.
+    if (this._stopHits() && !this._liveTiming) return 0;
     // Reel release (WATERFALL): the whole reel goes at once (it falls as a
     // stack), reels left to right by their rank among the reels that drop.
     // A spin uses spinColMs, a tumble refill tumbleColMs; cascade momentum
@@ -3580,7 +3556,7 @@ class ReelCanvasRenderer {
         if (this.board.hidden) continue;
         const symbol = this.board.matrix?.[r]?.[c] || "BLUE_DIAMOND";
         const key = `${r}-${c}`;
-        const x = padX + laneW * (c + 0.5) + this.cellLeanX(key, laneW);
+        const x = padX + laneW * (c + 0.5);
         const yBase = top + rowStep * (r + 0.5);
         const isSlamColumn = Boolean(this.fx.reelSlam?.columns?.has(c));
         const slamOffset = isSlamColumn ? reelSlamWave * radius * 0.46 : 0;
@@ -4837,11 +4813,13 @@ window.__spinLifecycle = {
 
 function requestFastStop() {
   // Fire during ANY in-flight phase (starting OR animating), not just once the
-  // reels are visibly animating. A 2nd press in the pre-animation window
-  // (dropOff + network) latches the flag so the whole spin plays out fast; the
-  // reset in spin() runs before the first await, so this latch survives into
-  // dropOff() and animateRound(). Drops created after the flag is set are born
-  // compressed; any in-flight drop is accelerated by the renderer call below.
+  // reels are visibly animating. A press SLAMS ONE BOARD: a board in the air
+  // zips into place now (renderer call below); with none in the air the flag
+  // latches, collapses the hold/burst it lands in, and the next board is born
+  // zipping (it visibly falls in ≤110ms, never pre-placed). Once that board has
+  // landed the latch is consumed (endFastStop) and the round goes on at its own
+  // pace. The reset in spin() runs before the first await, so a press in the
+  // pre-animation window (dropOff + network) survives into animateRound().
   // "In flight" means the lock is held OR a round is visibly animating. Both
   // halves matter: the lock covers the pre-animation window (dropOff + network),
   // while roundAnimating covers any path that animates a round without owning
@@ -4859,6 +4837,12 @@ function requestFastStop() {
   reelRenderer.requestFastStop?.(); // no-op if no drop exists yet (_accelerateDrop guards)
   pushGameMessage("Fast stop requested.", "info");
   return true;
+}
+
+/** The slammed board has landed: the Stop is spent. */
+function endFastStop() {
+  state.fastStopRequested = false;
+  el.spinBtn?.classList.remove("is-fast-stopping");
 }
 
 function pushGameMessage(text, tone = "info") {
@@ -5473,16 +5457,36 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
   setTimeout(() => plus.remove(), 950);
 }
 
-function playWinCombineSequence(rawWin, multiplier, totalWin) {
+/** Offset (px) from a chip's slot in `overlay` (at `leftFrac` of its width,
+ *  vertically centred) to the centre of `node`, so the chip can launch from
+ *  where its value lives. Null when either box isn't measurable. */
+function combineLaunchOffset(overlay, leftFrac, node) {
+  const o = overlay.getBoundingClientRect();
+  const r = node?.getBoundingClientRect?.();
+  if (!r || !r.width || !o.width) return null;
+  return {
+    x: r.left + r.width / 2 - (o.left + o.width * leftFrac),
+    y: r.top + r.height / 2 - (o.top + o.height / 2)
+  };
+}
+
+/** Win × Total Multiplier = Total Win, played on every multiplied win. The
+ *  Multiplier chip launches from the Total Multiplier badge and the Win chip
+ *  from the WIN line, so the player sees both values travel into the sum.
+ *  `emptyBadge` (base game): the badge empties as its chip leaves it; in the
+ *  bonus it keeps the persistent total. Turbo-scaled (--combine-t). */
+function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false } = {}) {
   if (!el.reels?.parentElement) return Promise.resolve();
   const stage = el.reels.parentElement;
-  // Phase timings (ms)
-  const ENTER = 480;
-  const HOLD  = 320;
-  const SLAM  = 360;
-  const REVEAL = 1500;
+  // Phase timings (ms), turbo-scaled; the CSS durations read --combine-t.
+  const t = turboScale();
+  const ENTER = Math.round(480 * t);
+  const HOLD  = Math.round(320 * t);
+  const SLAM  = Math.round(360 * t);
+  const REVEAL = Math.round(1500 * t);
   // A VxNotify celebration: built here, removed when its time is up.
   return VxNotify.celebrate("winCombine", stage, (overlay) => {
+    overlay.style.setProperty("--combine-t", String(t));
 
     const amount = document.createElement("div");
     amount.className = "combine-chip combine-amount";
@@ -5504,8 +5508,21 @@ function playWinCombineSequence(rawWin, multiplier, totalWin) {
 
     overlay.append(amount, multi, flash, total);
 
-    // Enter from sides.
+    // Launch: once the overlay is in the page, park each chip (unseen) on the
+    // value it carries (the Win chip on the WIN line, the Multiplier chip on
+    // the badge), then let it travel into its slot. Unmeasurable → the chip
+    // enters from its own side as before.
     requestAnimationFrame(() => {
+      [[amount, 0.25, el.psTicker], [multi, 0.75, el.bonusMultiBadge]].forEach(([chip, frac, from]) => {
+        const off = from && !from.classList.contains("hidden") ? combineLaunchOffset(overlay, frac, from) : null;
+        if (!off) return;
+        chip.style.transition = "none";
+        chip.style.setProperty("--from-x", `${off.x.toFixed(1)}px`);
+        chip.style.setProperty("--from-y", `${off.y.toFixed(1)}px`);
+        void chip.offsetWidth; // commit the parked position before the travel
+        chip.style.transition = "";
+      });
+      if (emptyBadge) setBadgeMultiplier(0); // base game: the badge becomes the chip
       amount.classList.add("is-entered");
       multi.classList.add("is-entered");
     });
@@ -6092,7 +6109,19 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
 
   state.spinFlownSouls = new Set();
   state.spinCelebratedMultis = new Set();
-  state.spinMultDisplay = parseFloat(el.activeMultiplier.textContent) || 1;
+  if (payload.is_free_spin) {
+    state.spinMultDisplay = parseFloat(el.activeMultiplier.textContent) || 1;
+  } else {
+    // Base game: this round's Total Multiplier starts from nothing (the
+    // multiplier text still holds the previous spin's). The badge is laid out
+    // but empty, so this round's souls fly to it; it fades in on the first
+    // catch. Absolute over the board: showing it never moves the layout.
+    state.spinMultDisplay = 1;
+    if (el.bonusMultiBadge) {
+      el.bonusMultiBadge.classList.remove("hidden");
+      setBadgeMultiplier(0);
+    }
+  }
   let liveRawWin = 0;
   // Derive the engine's effective payout scaler so chip amounts AND meter
   // updates reflect post-scaler values. Without this, a raw 1.6 cluster
@@ -6192,8 +6221,9 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         const dropMap = buildDropMap(prev.matrix, prevWinning);
         // Deliberate beat (no overlap):
         //   1) the caught cluster was just held + celebrated (the 2.5s mark),
-        //   2) it EXPLODES here and we wait for the burst to fully finish,
-        //   3) only THEN do the refill symbols drop in.
+        //   2) it EXPLODES here; explode() resolves once the burst's symbols
+        //      are gone (BLAST_GONE), with no lean or shake of the neighbours,
+        //   3) the refill drops straight away, under the still-flying shards.
         // The win chip + cluster celebration ride along with the burst. The
         // drop is awaited immediately after the explode resolves (no awaited
         // gap on the slower chip/celebrate promises in between) so the cleared
@@ -6204,8 +6234,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
           ANIMATION_TIMING.explode, // turbo scaling applied inside explode()
           prevTier
         );
-        // The void pulls its neighbours in, then the refill releases.
-        await reelRenderer.vacuum(prevWinning);
         window.Sound?.play("tumble", { step: i });
         // Multiplier drop sounds fire from the renderer at each BANG (synced to
         // the visual landing) — see spawnHeavyImpact.
@@ -6301,14 +6329,19 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   const appliedMult = Number(payload.multiplier_applied || 1);
   const totalWinAmt = Number(payload.total_win || 0);
   const totalWinX = bet > 0 ? totalWinAmt / bet : 0;
-  const meterBeforeFinal = Number(el.lastWin.textContent || 0);
-  if (totalWinAmt > meterBeforeFinal + 0.009) {
-    await animateWinMeter(meterBeforeFinal, totalWinAmt, appliedMult > 1 ? 360 : 240);
-  }
-
   // Detect a max-win-cap event (rare) — it owns the single message if present.
   const maxWinEvt = (Array.isArray(payload.events) ? payload.events : [])
     .find((e) => e?.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP" || e?.type === "MAX_WIN_CAP_REACHED");
+  // A multiplied win (base or bonus) shows WHY it paid: the meter first holds
+  // the win before multiplying, the combine takes it × the Total Multiplier,
+  // and only then does the meter count up to the total.
+  const isMultipliedWin = !maxWinEvt && appliedMult > 1 && totalWinAmt > 0;
+  const rawWin = isMultipliedWin ? Number((totalWinAmt / appliedMult).toFixed(2)) : totalWinAmt;
+  if (isMultipliedWin) setBadgeMultiplier(appliedMult); // authoritative (a fast-stop may skip a soul)
+  const meterBeforeFinal = Number(el.lastWin.textContent || 0);
+  if (Math.abs(rawWin - meterBeforeFinal) > 0.009) {
+    await animateWinMeter(meterBeforeFinal, rawWin, 240);
+  }
 
   let messageShown = false;
   if (maxWinEvt) {
@@ -6320,12 +6353,13 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     await celebrateBigWin(totalWinAmt, bet, {
       finalTier: { ...WIN_TIER_MAX, label: `${WIN_TIER_MAX.label} ${capX.toLocaleString()}×` }
     });
-  } else if (appliedMult >= 50 && totalWinAmt > 0) {
-    // Big multiplier win → the combine sequence reveals Win × Multiplier =
-    // Total; if that total is an overlay tier, the celebration follows it.
-    const rawWin = appliedMult > 0 ? totalWinAmt / appliedMult : totalWinAmt;
-    await playWinCombineSequence(rawWin, appliedMult, totalWinAmt);
-    window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+  } else if (isMultipliedWin) {
+    // Every multiplied win → the combine reveals Win × Total Multiplier =
+    // Total Win (a fast-stop skips it). Then the meter counts to the total; if
+    // that total is an overlay tier, the celebration follows.
+    if (!state.fastStopRequested) await playWinCombineSequence(rawWin, appliedMult, totalWinAmt, { emptyBadge: !payload.is_free_spin });
+    await animateWinMeter(rawWin, totalWinAmt, 360);
+    if (appliedMult >= 50) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
     if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
@@ -7559,6 +7593,7 @@ const anticipationDrone = (() => {
 
 // Step 5 hooks: the renderer reports scatter counts and anticipation; the HUD
 // readout (pinned-height ticker line) and the drone react.
+reelRenderer.onSlamLanded = endFastStop;
 reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
 reelRenderer.onSymbolLand = (row, col) => landingTicks.play(row, col, reelRenderer.rows);
 reelRenderer.onAnticipation = (phase, ms) => {

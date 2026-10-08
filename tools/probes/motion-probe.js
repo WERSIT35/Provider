@@ -238,7 +238,6 @@ async function evaluate(cdp, expression) {
       phase = "burst";
       await R.explode(cells, 380, "blast-medium");
       phase = "after";
-      await R.vacuum(cells);
       await new Promise((r) => setTimeout(r, 40)); // the await gap the round loop has before the refill
       const dropMap = buildDropMap(m, cells);
       await R.drop(next, [], dropMap, 360, { tempo: 1 });
@@ -286,15 +285,15 @@ async function evaluate(cdp, expression) {
       charge: PACING.charge, explode: ANIMATION_TIMING.explode, gone: BLAST_GONE, turbo: TURBO_SCALE };
   })()`);
   const N = pace.runs.normal, T = pace.runs.turbo;
-  check("the caught cluster is held 200-300ms, then it bursts (first catch longest, chains snappier)",
-    N.holds.length >= 2 && N.holds[0] >= 200 && N.holds[0] <= 340 && N.holds.slice(1).every((h) => h >= 190 && h <= 270),
+  check("the caught cluster is held 400-500ms, then it bursts (first catch longest, chains snappier)",
+    N.holds.length >= 2 && N.holds[0] >= 470 && N.holds[0] <= 560 && N.holds.slice(1).every((h) => h >= 370 && h <= 460),
     N.holds.map((h) => h.toFixed(0) + "ms").join(" → "));
-  const maxGap = Math.max(...pace.charge ? Object.values(pace.charge) : [0]) + pace.explode * pace.gone + 30 + 60;
+  const maxGap = Math.max(...pace.charge ? Object.values(pace.charge) : [0]) + pace.explode * pace.gone + 60;
   check("the refill starts falling as soon as the burst's symbols are gone (no empty-board wait)",
     N.gaps.length >= 2 && N.gaps.every((g) => g <= maxGap), N.gaps.map((g) => g.toFixed(0) + "ms").join(", ") + ` (≤ ${maxGap.toFixed(0)})`);
   const ratio = (T.holds[0] || 0) / (N.holds[0] || 1);
-  check("turbo is 2.0-2.5x the pace (holds scale by TURBO_SCALE, once)",
-    pace.turbo >= 0.4 && pace.turbo <= 0.5 && Math.abs(ratio - pace.turbo) < 0.1, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
+  check("turbo is ~1.7x the pace (holds scale by TURBO_SCALE, once)",
+    pace.turbo >= 0.55 && pace.turbo <= 0.65 && Math.abs(ratio - pace.turbo) < 0.1, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
 
   console.log("\nwin focus + idle breathing (#55)");
   await waitIdle();
@@ -392,41 +391,44 @@ async function evaluate(cdp, expression) {
     R.fx.drop.order = R._dropOrder(R.fx.drop.map);
     const land = (r, c, n) => R.dropDelay(r, c, n) + R.cellFallMs(c, n) * R.reelProfile(c).contact;
     const out = { low: land(4, 4, 1), low2: land(3, 4, 1), high: land(2, 4, 2), high2: land(0, 4, 2),
-      rel4a: R.dropDelay(4, 4, 1), rel4b: R.dropDelay(0, 4, 2), rel1: R.dropDelay(4, 1, 1), rel4: R.dropDelay(4, 4, 1) };
+      rel4a: R.dropDelay(4, 4, 1), rel4b: R.dropDelay(0, 4, 2), rel1: R.dropDelay(4, 1, 1), rel4: R.dropDelay(4, 4, 1), colMs: WATERFALL.tumbleColMs };
     R.fx.drop = saved; return out;
   })()`);
   check("a whole reel is released at once (it falls as a stack)", own.rel4a === own.rel4b);
   check("symbols that fall as far land together; the shorter falls land first",
     own.low === own.low2 && own.high === own.high2 && own.low < own.high, `1-row ${own.low.toFixed(0)}ms, 2-row ${own.high.toFixed(0)}ms`);
-  check("a refill releases reels left to right, tumbleColMs apart (no wait for reels that stay put)", own.rel1 === 0 && own.rel4 > own.rel1 && own.rel4 < 60,
+  check("a refill releases reels left to right, tumbleColMs apart (no wait for reels that stay put)", own.rel1 === 0 && own.rel4 === own.colMs,
     `reel 2 at ${own.rel1}ms, reel 5 at ${own.rel4}ms`);
 
-  console.log("\ntumble vacuum");
+  console.log("\ntumble: nothing moves between the pop and the refill");
   await waitIdle();
-  const vac = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer, { rowStep: rs, laneW } = R.getLayout();
-    const winning = [{ row: 4, col: 2 }, { row: 3, col: 2 }];
-    const p = R.vacuum(winning); const s = [];
-    const t0 = performance.now();
-    while (performance.now() - t0 < 26) { s.push({ dip: R.cellOffset(1, 2, rs) / rs, below: R.cellOffset(4, 1, rs) / rs, left: R.cellLeanX("4-1", laneW) / laneW, right: R.cellLeanX("4-3", laneW) / laneW, far: R.cellLeanX("0-0", laneW) }); await new Promise((r) => setTimeout(r, 4)); }
-    await p;
-    const atEnd = R.cellOffset(1, 2, rs) / rs;
-    // the refill: cell (1,2) falls 2 → lands at (3,2)
+  const still = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer, { rowStep: rs } = R.getLayout();
     const m = R.board.matrix.map((r) => r.slice());
-    const dp = R.drop(m, [], { "0-2": 2, "1-2": 2, "2-2": 2, "3-2": 2, "4-2": 2 }, 380, { tempo: 1 });
-    const firstDrop = R.cellOffset(3, 2, rs) / rs + 2; // relative to its old slot (count 2)
-    const side0 = R.cellLeanX("4-3", laneW) / laneW;
-    await new Promise((r) => setTimeout(r, 160));
-    const sideLater = R.cellLeanX("4-3", laneW);
+    const cells = []; for (let r = 1; r < 5; r++) for (let c = 1; c < 3; c++) { m[r][c] = "BLUE_DIAMOND"; cells.push({ row: r, col: c }); }
+    R.setBoard(m, { multipliers: [] });
+    const keys = new Set(cells.map((p) => p.row + "-" + p.col));
+    let moved = 0;
+    const t0 = performance.now();
+    const p = R.explode(cells, 380, "blast-medium");
+    let done = false; p.then(() => { done = true; });
+    while (!done) {
+      for (let r = 0; r < R.rows; r++) for (let c = 0; c < R.cols; c++) if (!keys.has(r + "-" + c)) moved = Math.max(moved, Math.abs(R.cellOffset(r, c, rs)));
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    const gone = performance.now() - t0;
+    // The refill: column 1 and 2 symbols above the void (row 0) fall 4 rows.
+    const dropMap = buildDropMap(m, cells);
+    const dp = R.drop(m.map((row) => row.map((s) => (s === "BLUE_DIAMOND" ? "GOLD_RING" : s))), [], dropMap, 360, { tempo: 1 });
+    const startOff = R.cellOffset(4, 1, rs) / rs; // the old row-0 symbol, now at row 4: starts exactly 4 rows up
     await dp;
-    return { s, atEnd, firstDrop, side0, sideLater, vac: R.fx.vacuum, pull: VACUUM.pull, side: VACUUM.side };
+    return { moved, gone, startOff, count: Number(dropMap["4-1"] || 0), chargeMs: PACING.charge.medium, expect: ANIMATION_TIMING.explode * BLAST_GONE };
   })()`);
-  const last = vac.s[vac.s.length - 1];
-  check("symbols above the void dip into it; the floor beside it does not", last.dip > 0 && last.below === 0, `dip ${last.dip.toFixed(3)} rows`);
-  check("same-row neighbours lean sideways toward the void", last.left > 0 && last.right < 0 && last.far === 0, `left +${last.left.toFixed(3)}, right ${last.right.toFixed(3)} lanes`);
-  check("the dip is carried into the fall (no jump at release)", Math.abs(vac.atEnd - vac.pull) < 1e-6 && Math.abs(vac.firstDrop - vac.pull) < 0.01,
-    `vacuum end ${vac.atEnd.toFixed(3)} → fall start ${vac.firstDrop.toFixed(3)} rows`);
-  check("side lean relaxes without overshoot and clears", vac.side0 < 0 && vac.sideLater === 0 && vac.vac === null);
+  check("no neighbour moves while the cluster bursts (no lean, no dip, no shake)", still.moved === 0, `max offset ${still.moved}px`);
+  check("the refill is released as soon as the burst's art is gone (≈ charge + explode × BLAST_GONE)",
+    still.gone <= still.chargeMs + still.expect + 40, `${still.gone.toFixed(0)}ms (charge ${still.chargeMs} + ${still.expect.toFixed(0)})`);
+  check("a refill symbol starts its fall exactly at its old slot (no carried dip)", Math.abs(still.startOff + still.count) < 0.01,
+    `${still.startOff.toFixed(3)} rows, falls ${still.count}`);
 
   console.log("\ncascade momentum (real round)");
   await waitIdle();
@@ -442,8 +444,8 @@ async function evaluate(cdp, expression) {
     while (isRoundInFlight()) await new Promise((r) => setTimeout(r, 50));
     watch = false; R.drop = realDrop; return { durs, moves: __moves };
   })()`);
-  const want = mom.durs.map((_, k) => Math.max(0.5, 0.85 ** k));
-  check("each tumble in the chain falls (and staggers) 15% faster, floored at 50%", mom.durs.length >= 3 && mom.durs.every((x, k) => Math.abs(x.tempo - want[k]) < 1e-9),
+  const want = mom.durs.map((_, k) => Math.max(0.6, 0.92 ** k));
+  check("each tumble in the chain falls (and staggers) 8% faster, floored at 60%", mom.durs.length >= 3 && mom.durs.every((x, k) => Math.abs(x.tempo - want[k]) < 1e-9),
     mom.durs.map((x) => `${x.d}ms ×${x.tempo.toFixed(3)}`).join(" → "));
   check("board never moved through a full cascade round", mom.moves.max === 0, `${mom.moves.n} frames`);
   await waitIdle();
@@ -483,6 +485,51 @@ async function evaluate(cdp, expression) {
   check("zip only ever moves down (no bounce) and draws motion blur", zip.backwards === 0 && zip.maxBlur > 0.5, `peak travel ${zip.maxBlur.toFixed(0)}px/frame; ghosts capped at 0.35 symbol`);
   await waitIdle();
 
+  console.log("\nStop + tumbles: a Stop never zips or pre-places a refill (every refill falls)");
+  // One forced round with >= 3 tumble steps, played with a press pattern; every
+  // drop is watched frame by frame. "spin" = the opening board (may zip),
+  // "refill" = a tumble refill (must never zip and must visibly fall).
+  const stopRun = (pattern) => evaluate(cdp, `(async () => {
+    const real = window.__realApi || api; window.__realApi = real;
+    api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
+      for (let k = 0; k < 2000; k++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() });
+        if ((r.tumble_steps || []).length >= 3 && !r.free_spins_awarded && Number(r.total_win) / Number(payload.bet_amount || 1) < 10) return r; }
+      return real(p, payload); };
+    state.turbo = true;
+    await new Promise((r) => setTimeout(r, 400)); // past SPIN_SETTLE_GUARD_MS
+    const R = __reelRenderer, rs = R.getLayout().rowStep;
+    const drops = []; let cur = null, presses = 0, lastPress = 0, holdPressed = false;
+    el.spinBtn.click();
+    const t0 = performance.now();
+    while (performance.now() - t0 < 150 || isRoundInFlight()) {
+      const d = R.fx.drop, now = performance.now();
+      if ("${pattern}" === "spin" && !presses && d && d.spin && now - d.start > 60) { presses++; el.spinBtn.click(); }
+      if ("${pattern}" === "hold" && !holdPressed && R.fx.pulse && !d) { holdPressed = true; presses++; el.spinBtn.click(); }
+      if ("${pattern}" === "spam" && now - lastPress > 120 && isRoundInFlight()) { lastPress = now; presses++; el.spinBtn.click(); }
+      if (cur && d !== cur.d) cur = null;
+      if (d && !cur) { cur = { d, spin: Boolean(d.spin), zip: false, moving: 0, enteredFromAbove: false }; drops.push(cur); }
+      if (cur) {
+        if (d.zip) cur.zip = true;
+        let m = 0;
+        for (const k of Object.keys(d.map || {})) { const [r, c] = k.split("-").map(Number); const y = R.cellOffset(r, c, rs); m = Math.max(m, Math.abs(y)); if (y < -rs * 0.5) cur.enteredFromAbove = true; }
+        if (m > 0.5) cur.moving++;
+      }
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    state.turbo = false; api = real;
+    return { presses, latch: state.fastStopRequested, drops: drops.map(({ d, ...x }) => x) };
+  })()`);
+  for (const pattern of ["spin", "hold", "spam"]) {
+    await waitIdle();
+    const run = await stopRun(pattern);
+    const refills = run.drops.filter((x) => !x.spin);
+    check(`Stop (${pattern}): every tumble refill falls under gravity, never zipped`,
+      run.presses > 0 && refills.length >= 2 && refills.every((x) => !x.zip && x.moving >= 8 && x.enteredFromAbove),
+      `${run.presses} presses; refills: ` + refills.map((x) => `${x.moving}f${x.zip ? " ZIP" : ""}`).join(", "));
+    if (pattern === "spin") check("Stop (spin): the spin board zips; the Stop is spent after the round", run.drops[0]?.spin && run.drops[0]?.zip && run.latch === false);
+  }
+  await waitIdle();
+
   console.log("\nfast-stop during the spin-out: the old board clears fast, the new one zips in");
   const born = await evaluate(cdp, `(async () => {
     const R = __reelRenderer; el.spinBtn.click();
@@ -503,7 +550,7 @@ async function evaluate(cdp, expression) {
   let live = -1;
   for (let i = 0; i < 40; i++) { live = await evaluate(cdp, `__reelRenderer.shards.live`); if (live === 0) break; await sleep(100); }
   check("shard pool drained (dust counter back to 0)", live === 0 && (await evaluate(cdp, `__reelRenderer.shards.dust`)) === 0);
-  check("vacuum and zip state left clean", await evaluate(cdp, `__reelRenderer.fx.vacuum == null && !__reelRenderer.fx.drop`));
+  check("zip state left clean", await evaluate(cdp, `!__reelRenderer.fx.drop`));
 
   console.log("\nmultiplier magnetism: Bézier flight + pooled trail (#52)");
   await waitIdle();
@@ -600,6 +647,53 @@ async function evaluate(cdp, expression) {
   check("after the bonus the badge is gone and cleared", hud.after.hidden && hud.after.isEmpty && hud.after.text === "");
   check("win stat is 1.5x the old size (1.2 × --ui), still one line in the same box",
     Math.abs(hud.win.winPx - 1.2 * hud.win.ui) < 0.6 && hud.win.fits && hud.win.boxMoved === 0, `${hud.win.winPx.toFixed(1)}px (spin line ${hud.win.spinPx.toFixed(1)}px), --ui ${hud.win.ui}, fits ${hud.win.fits}, box moved ${hud.win.boxMoved}`);
+
+  console.log("\nbase-game Total Multiplier: souls → badge → Win × Multiplier = Total");
+  await waitIdle();
+  const tm = await evaluate(cdp, `(async () => {
+    const real = window.__realApi || api; window.__realApi = real;
+    let forced = null;
+    api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
+      for (let k = 0; k < 4000; k++) {
+        const r = await real(p, { ...payload, spin_id: crypto.randomUUID() });
+        const m = Number(r.multiplier_applied || 1);
+        if (!r.is_free_spin && m > 1 && m < 50 && Number(r.total_win) > 0 && !r.free_spins_awarded
+          && Number(r.total_win) / Number(payload.bet_amount || 1) < 10 && !(r.events || []).length) { forced = r; return r; }
+      }
+      return real(p, payload); };
+    state.turbo = false;
+    await new Promise((r) => setTimeout(r, 400)); // past SPIN_SETTLE_GUARD_MS
+    const badge = el.bonusMultiBadge, vw = document.querySelector(".vault-window"), b0 = vw.getBoundingClientRect();
+    let shown = false, maxBadge = 0, badgeHits = 0, tickerHits = 0, moved = 0, combineOpened = false, atOpen = null, badgeAtOpen = null;
+    const off = VxNotify.on("open", (d) => { if (d.name === "winCombine") { combineOpened = true; atOpen = Number(el.lastWin.textContent); badgeAtOpen = Number(badge.dataset.value || 0); } });
+    el.spinBtn.click();
+    await new Promise((r) => setTimeout(r, 200));
+    while (isRoundInFlight()) {
+      if (!badge.classList.contains("hidden")) shown = true;
+      maxBadge = Math.max(maxBadge, Number(badge.dataset.value || 0));
+      if (badge.classList.contains("soul-hit")) badgeHits++;
+      if (el.psTicker.classList.contains("soul-hit")) tickerHits++;
+      const r = vw.getBoundingClientRect(); moved = Math.max(moved, Math.abs(r.x - b0.x), Math.abs(r.y - b0.y));
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    off(); api = real;
+    return { forced: forced && { mult: Number(forced.multiplier_applied), total: Number(forced.total_win) },
+      shown, maxBadge, badgeHits, tickerHits, moved, combineOpened, atOpen, badgeAtOpen,
+      after: Number(el.lastWin.textContent), hiddenAfter: badge.classList.contains("hidden") };
+  })()`);
+  if (!tm.forced) {
+    check("found a base-game multiplied win to play", false, "no qualifying spin in 4000 rolls");
+  } else {
+    const raw = Number((tm.forced.total / tm.forced.mult).toFixed(2));
+    check("a base spin's multipliers fly to the Total Multiplier badge (not the ticker)", tm.shown && tm.badgeHits > 0 && tm.tickerHits === 0,
+      `${tm.badgeHits} badge hit frames, ${tm.tickerHits} ticker`);
+    check("the badge ends on the multiplier the engine applied", tm.maxBadge === tm.forced.mult && tm.badgeAtOpen === tm.forced.mult,
+      `badge ${tm.maxBadge}x, engine ${tm.forced.mult}x`);
+    check("the combine plays below 50x, with the WIN line on the win before multiplying", tm.combineOpened && Math.abs(tm.atOpen - raw) < 0.011,
+      `WIN ${tm.atOpen} × ${tm.forced.mult}x`);
+    check("…then the WIN line counts up to the total", Math.abs(tm.after - tm.forced.total) < 0.011, `${tm.after} = ${tm.forced.total}`);
+    check("the base-game badge is gone after the round; the board never moved", tm.hiddenAfter && tm.moved === 0);
+  }
 
   console.log("\nnotification skeleton: every popup through one lifecycle (#49)");
   await waitIdle();
