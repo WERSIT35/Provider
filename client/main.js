@@ -2864,7 +2864,7 @@ class ReelCanvasRenderer {
   }
 
   /** Symbols of reel `col` just hit their slots together: their floor
-   *  glints and one landing tick (onSymbolLand, wired to landingTicks). */
+   *  glints and one landing tick (onSymbolLand, wired to Sound "tick"). */
   symbolsLanded(rows, col) {
     this.landingGlints(col, rows);
     this.onSymbolLand?.(Math.max(...rows), col);
@@ -2946,8 +2946,8 @@ class ReelCanvasRenderer {
   _announceScatters() {
     const p = this._pendingScatters;
     const n = p.resting + p.landed;
-    // win_tick's pitch rises with `progress`, so 1st, 2nd, 3rd… climb.
-    window.Sound?.play("win_tick", { progress: Math.min(1, n / p.need) });
+    // Each scatter chimes a step higher: 1st, 2nd, 3rd… climb.
+    window.Sound?.play("scatter_land", { n, need: p.need });
     this.onScatterCount?.(n, p.need);
   }
 
@@ -3161,6 +3161,7 @@ class ReelCanvasRenderer {
         st.bolted = true;
         st.boltAt = Number.isFinite(now) ? now : performance.now();
         if (!this._reducedMotion) this.spawnLightningStrike(st.r, st.c, st.tier);
+        window.Sound?.play("multiplier_strike", { value: st.value });
       }
       if (!st.swapped && e >= this._strikeSwapAt(d, st)) {
         st.swapped = true;
@@ -4350,6 +4351,7 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
   reelRenderer.pauseRendering();
   const tracked = VxNotify.get("bigwin");
   tracked?.open();
+  window.Sound?.setMusic("bigWin", { temporary: true });
   try {
     return await bigWin.play({
       amount,
@@ -4360,6 +4362,7 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
       autoDismissMs
     });
   } finally {
+    window.Sound?.endTemporaryMusic();
     tracked?.close("done");
     if (!document.hidden) reelRenderer.resumeRendering();
   }
@@ -6774,6 +6777,8 @@ async function autoplayBonus() {
   // A resumed bonus is already showing its terms, so re-saving them is harmless.
   saveBetPref({ featureBet: Number(el.betSelect.value), featureAnte: Boolean(el.anteToggle.checked) });
   embedEmit("featureState", { active: true, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: 0 });
+  window.Sound?.setMusic("freeSpins");
+  window.Sound?.play("fs_intro");
   try {
     pushGameMessage("Bonus autoplay started.", "bonus");
     while (Number(el.freeSpins.textContent || "0") > 0) {
@@ -6788,9 +6793,11 @@ async function autoplayBonus() {
       }
       await animationSleep(120);
     }
+    window.Sound?.play("fs_outro");
     await showFeature(`Bonus Win ${fmt(total)}`, "Press anywhere to continue.");
     pushGameMessage(`Bonus autoplay complete. Total bonus win: ${fmt(total)}.`, "bonus");
   } finally {
+    window.Sound?.setMusic("base");
     embedEmit("featureState", { active: false, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: total });
     state.bonusAutoplay = false;
     // Clear any fast-stop latched on the final free spin so the next base-game
@@ -7681,107 +7688,6 @@ const freeRoundsUi = (() => {
 
 // ── Anticipation drone (Step 5b) ──
 // A rising tension tone while the anticipated reels wait. Its own small Web
-// Audio graph: the shared audio engine lives in client/engine/ (off-limits)
-// and has no drone. It follows the player's mute and volume and stops on
-// skip, at the last landing, and when the tab is hidden.
-// One small Web Audio context for the client-side effects that the shared
-// engine (client/engine/audio.js, off-limits) has no voice for: the
-// anticipation drone and the per-symbol landing ticks.
-const fxAudioCtx = (() => {
-  let ctx = null;
-  return () => {
-    if (ctx) return ctx;
-    const Ctor = window.AudioContext || window.webkitAudioContext;
-    if (!Ctor) return null;
-    try { ctx = new Ctor(); } catch (_) { return null; }
-    return ctx;
-  };
-})();
-
-// ── Landing ticks (per-symbol rat-a-tat) ──
-// A short, bright metallic tick each time ONE symbol lands; the reel's
-// reel_stop thud then accents its last symbol. Pitch climbs as a reel stacks
-// up (bottom-up) and a step per reel, so a board landing reads by ear as a
-// rising run. One oscillator + gain per tick, released on its own.
-const landingTicks = (() => {
-  let last = 0;
-  function play(row, col, rows) {
-    if (!window.Sound || window.Sound.isMuted() || window.Sound.isSuspended?.()) return;
-    const ctx = fxAudioCtx();
-    if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    const now = performance.now();
-    if (now - last < 5) return; // two ticks inside 5ms blur into one anyway
-    last = now;
-    const t = ctx.currentTime;
-    const up = Math.max(0, rows - 1 - row);
-    const freq = 900 * Math.pow(2, (up * 2 + col) / 12);
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "triangle";
-    o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.04);
-    const vol = 0.07 * (window.Sound.getVolume?.() ?? 0.8);
-    g.gain.setValueAtTime(Math.max(0.0002, vol), t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start(t);
-    o.stop(t + 0.05);
-  }
-  return { play };
-})();
-
-const anticipationDrone = (() => {
-  let ctx = null;
-  let nodes = null;
-  function stop() {
-    if (!nodes || !ctx) return;
-    const n = nodes;
-    nodes = null;
-    const t = ctx.currentTime;
-    n.gain.gain.cancelScheduledValues(t);
-    n.gain.gain.setTargetAtTime(0, t, 0.05);
-    setTimeout(() => n.oscs.forEach((o) => { try { o.stop(); } catch (_) { /* already stopped */ } }), 300);
-  }
-  function start(ms, { from = 55, to = 110 } = {}) {
-    stop();
-    if (!window.Sound || window.Sound.isMuted() || window.Sound.isSuspended?.()) return;
-    ctx = fxAudioCtx();
-    if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    const t = ctx.currentTime;
-    const dur = Math.max(0.3, ms / 1000);
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.Q.value = 6;
-    filter.frequency.setValueAtTime(220, t);
-    filter.frequency.exponentialRampToValueAtTime(2400, t + dur);
-    const gain = ctx.createGain();
-    const vol = 0.16 * (window.Sound.getVolume?.() ?? 0.8);
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + Math.min(0.25, dur / 2));
-    const oscs = [0, 9].map((detune) => {
-      const o = ctx.createOscillator();
-      o.type = "sawtooth";
-      o.frequency.setValueAtTime(from, t);
-      o.frequency.exponentialRampToValueAtTime(to, t + dur);
-      o.detune.value = detune;
-      o.connect(filter);
-      o.start(t);
-      return o;
-    });
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-    nodes = { gain, oscs };
-    // Never outlive the anticipation it scores.
-    const mine = nodes;
-    setTimeout(() => { if (nodes === mine) stop(); }, ms + 400);
-  }
-  window.Sound?.onChange?.(() => { if (window.Sound.isMuted()) stop(); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
-  return { start, stop, isPlaying: () => Boolean(nodes) };
-})();
 
 // Step 5 hooks: the renderer reports scatter counts and anticipation; the HUD
 // readout (pinned-height ticker line) and the drone react.
@@ -7790,10 +7696,10 @@ reelRenderer.onSlamLanded = endFastStop;
 // has loaded, so none keeps a fallback font.
 THEME.fontsReady?.then(() => { reelRenderer.emblemSprites.clear(); });
 reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
-reelRenderer.onSymbolLand = (row, col) => landingTicks.play(row, col, reelRenderer.rows);
+reelRenderer.onSymbolLand = (row, col) => window.Sound?.play("tick", { row, col, rows: reelRenderer.rows });
 reelRenderer.onAnticipation = (phase, ms) => {
-  if (phase === "start") anticipationDrone.start(ms);
-  else anticipationDrone.stop();
+  if (phase === "start") window.Sound?.drone.start(ms);
+  else window.Sound?.drone.stop();
 };
 
 // ── Spin input: tap vs hold ──

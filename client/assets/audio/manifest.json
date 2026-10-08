@@ -1,102 +1,109 @@
-[
-  {
-    "file": "click.wav",
-    "from": "click",
-    "seconds": 0.077
+{
+  "version": 1,
+  "formats": [
+    "ogg",
+    "m4a"
+  ],
+  "sounds": {
+    "ui_click": [
+      "sfx/ui_click_1",
+      "sfx/ui_click_2"
+    ],
+    "ui_bet": [
+      "sfx/ui_bet_1"
+    ],
+    "ui_turbo_on": [
+      "sfx/ui_turbo_on_1"
+    ],
+    "ui_turbo_off": [
+      "sfx/ui_turbo_off_1"
+    ],
+    "spin_start": [
+      "sfx/spin_start_1",
+      "sfx/spin_start_2"
+    ],
+    "reel_stop": [
+      "sfx/reel_stop_1",
+      "sfx/reel_stop_2",
+      "sfx/reel_stop_3"
+    ],
+    "tick": [
+      "sfx/tick_1",
+      "sfx/tick_2",
+      "sfx/tick_3",
+      "sfx/tick_4"
+    ],
+    "refill": [
+      "sfx/refill_1",
+      "sfx/refill_2",
+      "sfx/refill_3"
+    ],
+    "explode": [
+      "sfx/explode_1",
+      "sfx/explode_2",
+      "sfx/explode_3"
+    ],
+    "explode_great": [
+      "sfx/explode_great_1",
+      "sfx/explode_great_2"
+    ],
+    "win_tick": [
+      "sfx/win_tick_1",
+      "sfx/win_tick_2",
+      "sfx/win_tick_3",
+      "sfx/win_tick_4"
+    ],
+    "scatter": [
+      "sfx/scatter_1",
+      "sfx/scatter_2"
+    ],
+    "bang": [
+      "sfx/bang_1",
+      "sfx/bang_2"
+    ],
+    "bang_big": [
+      "sfx/bang_big_1",
+      "sfx/bang_big_2"
+    ],
+    "strike": [
+      "sfx/strike_1",
+      "sfx/strike_2"
+    ],
+    "catch": [
+      "sfx/catch_1",
+      "sfx/catch_2"
+    ],
+    "combine": [
+      "sfx/combine_1"
+    ],
+    "win_small": [
+      "sfx/win_small_1"
+    ],
+    "win_big": [
+      "sfx/win_big_1"
+    ],
+    "win_mega": [
+      "sfx/win_mega_1"
+    ],
+    "max_win": [
+      "sfx/max_win_1"
+    ],
+    "bonus_trigger": [
+      "sfx/bonus_trigger_1"
+    ],
+    "fs_intro": [
+      "sfx/fs_intro_1"
+    ],
+    "fs_outro": [
+      "sfx/fs_outro_1"
+    ],
+    "buy": [
+      "sfx/buy_1"
+    ]
   },
-  {
-    "file": "bet_change.wav",
-    "from": "bet_change",
-    "seconds": 0.1
-  },
-  {
-    "file": "turbo_on.wav",
-    "from": "turbo_toggle",
-    "seconds": 0.18
-  },
-  {
-    "file": "turbo_off.wav",
-    "from": "turbo_toggle",
-    "seconds": 0.18
-  },
-  {
-    "file": "spin_start.wav",
-    "from": "spin_start",
-    "seconds": 0.574
-  },
-  {
-    "file": "reel_stop.wav",
-    "from": "reel_stop",
-    "seconds": 0.169
-  },
-  {
-    "file": "tumble.wav",
-    "from": "tumble",
-    "seconds": 0.156
-  },
-  {
-    "file": "explode.wav",
-    "from": "explode",
-    "seconds": 0.228
-  },
-  {
-    "file": "explode_great.wav",
-    "from": "explode",
-    "seconds": 0.37
-  },
-  {
-    "file": "win_tick.wav",
-    "from": "win_tick",
-    "seconds": 0.064
-  },
-  {
-    "file": "win_small.wav",
-    "from": "win_small",
-    "seconds": 0.491
-  },
-  {
-    "file": "win_big.wav",
-    "from": "win_big",
-    "seconds": 0.748
-  },
-  {
-    "file": "win_mega.wav",
-    "from": "win_mega",
-    "seconds": 1.06
-  },
-  {
-    "file": "multiplier_catch.wav",
-    "from": "multiplier_catch",
-    "seconds": 0.235
-  },
-  {
-    "file": "multiplier_combine.wav",
-    "from": "multiplier_combine",
-    "seconds": 0.3
-  },
-  {
-    "file": "multiplier_drop.wav",
-    "from": "multiplier_drop",
-    "seconds": 0.885
-  },
-  {
-    "file": "multiplier_drop_big.wav",
-    "from": "multiplier_drop",
-    "seconds": 1.411
-  },
-  {
-    "file": "bonus_trigger.wav",
-    "from": "bonus_trigger",
-    "seconds": 1.04
-  },
-  {
-    "file": "buy_feature.wav",
-    "from": "buy_feature",
-    "seconds": 0.701
-  },
-  {
-    "file": "max_win.wav",
-    "from": "max_win",
-    "seconds": 1.387
+  "music": {
+    "base": "music/base",
+    "freeSpins": "music/free_spins",
+    "bigWin": "music/big_win"
   }
-]
+}
