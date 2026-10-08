@@ -295,7 +295,7 @@ async function evaluate(cdp, expression) {
   check("turbo is ~1.7x the pace (holds scale by TURBO_SCALE, once)",
     pace.turbo >= 0.55 && pace.turbo <= 0.65 && Math.abs(ratio - pace.turbo) < 0.1, `turbo hold ${T.holds.map((h) => h.toFixed(0)).join("/")}ms = ×${ratio.toFixed(2)}`);
 
-  console.log("\nwin focus + idle breathing (#55)");
+  console.log("\nwin focus (#55); the resting board is still");
   await waitIdle();
   const focus = await evaluate(cdp, `(async () => {
     const R = __reelRenderer; const m = R.board.matrix.map((r) => r.slice());
@@ -320,29 +320,77 @@ async function evaluate(cdp, expression) {
     `level ${focus.outMid.toFixed(2)} @120ms, ${focus.outEnd} @320ms`);
 
   await waitIdle(); await sleep(900);
-  const breath = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer; const idle = R.isIdle(); const per = [];
-    const t0 = performance.now(); let maxB = 0, minB = 1e9;
-    for (let k = 0; k < 6; k++) per.push([]);
-    while (performance.now() - t0 < 3100) {
-      const now = performance.now();
-      for (let c = 0; c < 6; c++) { const b = R.breathOffset(2, c, now); per[c].push(b); maxB = Math.max(maxB, b); minB = Math.min(minB, b); }
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    const peakAt = per.map((a) => a.indexOf(Math.max(...a)));
-    // A spin starts: the float settles DOWN to the slot, quickly, never up.
-    const before = R.breathOffset(2, 0, performance.now()); el.spinBtn.click(); const s = [];
-    const c0 = performance.now();
-    while (performance.now() - c0 < 160) { s.push(R.breathOffset(2, 0, performance.now())); await new Promise((r) => requestAnimationFrame(r)); }
-    let rose = 0; for (let i = 1; i < s.length; i++) if (s[i] > s[i - 1] + 1e-6) rose++;
-    while (isRoundInFlight()) await new Promise((r) => setTimeout(r, 50));
-    return { idle, maxB, minB, peaks: new Set(peakAt).size, before, settled: s[s.length - 1], rose, idleAfterSpinStart: s.length };
+  // The resting board is perfectly still: every idle frame draws every symbol
+  // at the same place and size (no float, bob or scale wobble).
+  const calm = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const ctx = R.ctx; const realDI = ctx.drawImage; const realDraw = R.draw.bind(R);
+    let calls = []; const sigs = [];
+    ctx.drawImage = function (...a) { if (a.length >= 5) calls.push(a.slice(1, 5).map((v) => Math.round(v * 100) / 100).join(",")); return realDI.apply(this, a); };
+    R.draw = (...x) => { calls = []; const out = realDraw(...x); if (!R.isVisuallyBusy()) sigs.push(calls.join("|")); return out; };
+    await new Promise((r) => setTimeout(r, 2000));
+    ctx.drawImage = realDI; R.draw = realDraw;
+    return { frames: sigs.length, distinct: new Set(sigs).size };
   })()`);
-  check("idle symbols breathe 0-1.5px above their slot over a 3s sine", breath.idle && breath.maxB > 1.3 && breath.maxB <= 1.5 + 1e-9 && breath.minB < 0.2 && breath.minB >= 0,
-    `range ${breath.minB.toFixed(2)}-${breath.maxB.toFixed(2)}px`);
-  check("each symbol breathes on its own phase (staggered)", breath.peaks >= 4, `${breath.peaks}/6 distinct peak times`);
-  check("a spin stops the breath at once, settling down (never lifting)", breath.settled === 0 && breath.rose === 0,
-    `${breath.before.toFixed(2)}px → 0 in under 160ms`);
+  check("the idle board is perfectly still (no float, bob or wobble)", calm.frames >= 10 && calm.distinct === 1, `${calm.frames} idle frames, ${calm.distinct} distinct layouts`);
+
+  console.log("\nflight visibility: falling symbols never vanish (handheld throttle)");
+  await waitIdle();
+  const fly = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const prevTier = R.tier; R.applyTier("low");
+    const real = window.__realApi || api; window.__realApi = real;
+    api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
+      for (let k = 0; k < 2000; k++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() });
+        if ((r.tumble_steps || []).length >= 3 && !r.free_spins_awarded && Number(r.total_win) / Number(payload.bet_amount || 1) < 10) return r; }
+      return real(p, payload); };
+    await new Promise((r) => setTimeout(r, 400));
+    const rs = R.getLayout().rowStep; const realDraw = R.draw.bind(R);
+    let lastAt = 0, maxGap = 0, frames = 0, missing = 0; const missed = [];
+    R.draw = (...x) => {
+      R._traceCells = new Set(); const now = performance.now(); const out = realDraw(...x); const d = R.fx.drop;
+      if (d && !d.zip) {
+        frames++;
+        if (lastAt && now - lastAt > maxGap && now < (d.endAt || 0)) maxGap = now - lastAt;
+        lastAt = now;
+        for (const k of Object.keys(d.map || {})) {
+          if (!(Number(d.map[k]) > 0)) continue;
+          const [r, c] = k.split("-").map(Number);
+          const centre = (r + 0.5) * rs + R.cellOffset(r, c, rs);
+          if (centre > rs * 0.15 && !R._traceCells.has(k)) { missing++; if (missed.length < 5) missed.push(k); }
+        }
+      } else lastAt = 0;
+      R._traceCells = null; return out; };
+    el.spinBtn.click();
+    const t0 = performance.now();
+    while (performance.now() - t0 < 200 || isRoundInFlight()) await new Promise((r) => setTimeout(r, 30));
+    R.draw = realDraw; api = real; R.applyTier(prevTier);
+    return { frames, maxGap, missing, missed, cap: 30 };
+  })()`);
+  check("every falling symbol inside the grid is drawn on every frame", fly.frames > 20 && fly.missing === 0, `${fly.frames} drop frames, ${fly.missing} missing ${fly.missed.join(" ")}`);
+  check("the whole fall keeps the busy frame cadence (no idle throttle mid-drop)", fly.maxGap <= fly.cap + 25, `max gap ${fly.maxGap.toFixed(0)}ms (cap ${fly.cap}ms)`);
+
+  console.log("\nmultiplier lands as itself (no decoy, no vanish)");
+  await waitIdle();
+  const ml = await evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const rs = R.getLayout().rowStep;
+    const m = R.board.matrix.map((r) => r.slice()); m[4][2] = "MULTI";
+    const dropMap = { "4-2": 5, "3-2": 5, "2-2": 5, "1-2": 5, "0-2": 5 };
+    const realDraw = R.draw.bind(R); let frames = 0, hidden = 0, notMulti = 0;
+    R.draw = (...x) => { R._traceCells = new Set(); const out = realDraw(...x);
+      if (R.fx.drop) { frames++; const centre = 4.5 * rs + R.cellOffset(4, 2, rs);
+        if (centre > rs * 0.15 && !R._traceCells.has("4-2")) hidden++;
+        if (R.board.matrix[4][2] !== "MULTI") notMulti++; }
+      R._traceCells = null; return out; };
+    R.resetHeavyBangs();
+    const p = R.drop(m, [{ row: 4, col: 2, value: 5, id: "probe-m5" }], dropMap, 480, { animateMultipliers: true, tempo: 1 });
+    const rev = R.fx.heavyReveals.get("4-2"); const land = R.cellLandMs(4, 2, 5);
+    const info = rev ? { decoy: "decoy" in rev, at: rev.revealAt - R.fx.drop.start, land } : null;
+    await p; R.draw = realDraw;
+    return { frames, hidden, notMulti, info };
+  })()`);
+  check("a falling multiplier is drawn as itself on every frame (no decoy, never hidden)",
+    ml.frames > 10 && ml.hidden === 0 && ml.notMulti === 0 && ml.info && !ml.info.decoy, `${ml.frames} frames, ${ml.hidden} hidden`);
+  check("its landing punch starts at the landing (no hide-then-pop delay)", ml.info && Math.abs(ml.info.at - ml.info.land) < 20,
+    ml.info ? `punch @${ml.info.at.toFixed(0)}ms, lands @${ml.info.land.toFixed(0)}ms` : "no reveal entry");
 
   console.log("\nreels land as stacks, no dead air between spins (#47)");
   await waitIdle();

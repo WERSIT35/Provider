@@ -280,7 +280,6 @@ const animationSleep = (ms) =>
   sleep(state.fastStopRequested ? Math.min(50, ms) : Math.round(ms * turboScale()));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const easeOutBack = (t) => 1 + 1.6 * (t - 1) ** 3 + 0.6 * (t - 1) ** 2;
 
 async function animateWinMeter(from, to, duration = 260) {
   const start = Number(from || 0);
@@ -431,10 +430,13 @@ const MOTION = {
   breathBase: 0.03,   // winning symbols' resting swell during the hold (scale-up ≈ 3%)
   breathDepth: 0.02,  // extra swell at the top of each breath: peak 1.05, a micro-lift, not a bounce
   breathMs: 1100,     // one breath (in + out)
-  breathRipple: 0.9,  // phase lag, in half-breaths, from cluster centre to edge
-  idleFloat: 1.5      // idle breathing lift, px (IDLE_BREATH)
+  breathRipple: 0.9   // phase lag, in half-breaths, from cluster centre to edge
 };
-const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0, idleFloat: 0 });
+// A multiplier's landing punch: swells by `scale` and settles over `ms`
+// (sin arc: never below 1, never transparent). Its art is visible the whole
+// fall: no decoy, no hide-and-pop (user: symbols must never vanish).
+const MULTI_PUNCH = { scale: 0.08, ms: 200 };
+const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0 });
 
 // Win focus (#55). From the moment a cluster is caught until the board moves
 // again, every symbol outside it is drawn at 1 − `dim` opacity and the board's
@@ -444,12 +446,8 @@ const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, bre
 // symbol's own globalAlpha: no extra layers, no filters.
 const FOCUS = { dim: 0.4, backdrop: 0.32, inMs: 250, outMs: 260 };
 
-// Idle breathing (#55). While the board is idle each symbol floats up to
-// MOTION.idleFloat px ABOVE its slot and back, one breath per periodMs, on
-// its own random phase. Up-only from the slot, so stopping is a settle DOWN:
-// when a spin starts the float eases out over outMs (never a lift before the
-// drop), and it eases back in over inMs once the board is idle again.
-const IDLE_BREATH = { periodMs: 3000, inMs: 700, outMs: 90 };
+// A resting board is perfectly still: no idle float, bob or scale wobble on
+// any symbol (user rule 2026-10-08: idle motion looked bad on phones).
 
 // A time-based 0..1 envelope ({ from, to, t0, ms }) that can be retargeted at
 // any moment and always continues from where it is (no jumps).
@@ -700,10 +698,10 @@ const prefersReducedMotion = () =>
 //   fxCeil         — ceiling on particle density.
 //   idleThrottleMs — minimum gap between frames when nothing is animating.
 //   maxFrameMs     — minimum gap between frames when something IS animating.
-// idleThrottleMs is now non-zero on every tier: the board is never truly static
-// (symbols float, the fog gradients drift), so an untricked "high" tier meant a
-// full redraw at 60fps forever — the single biggest source of phone heat. ~20fps
-// idle keeps the ambient motion readable at a third of the work.
+// idleThrottleMs is non-zero on every tier: a resting board is still (only
+// lingering fades and ambient light change), so a full redraw at 60fps would be
+// wasted heat on phones. A drop counts as busy until its last symbol has
+// landed (fx.drop.endAt), so no fall is ever drawn at the idle rate.
 const TIER_PROFILES = {
   // Throttles sit just BELOW a whole number of 60Hz frames (16.7ms each), so
   // they land on every Nth vsync: 30 → every 2nd (30fps), 45 → every 3rd
@@ -1068,14 +1066,10 @@ class ReelCanvasRenderer {
       reticles: [],   // 5a: scatter landing reticles
       lockOn: null    // 5c/5d: trigger lock-on
     };
-    this.multiplierDecoyById = new Map();
     this.particles = [];
     this.shards = new ShardEmitter(480);
     // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
     this.focus = { ...makeEnvelope(), set: null };
-    // Idle breathing (IDLE_BREATH): the envelope and each cell's own phase.
-    this._idleEnv = makeEnvelope();
-    this._breathPhase = Float32Array.from({ length: rowsCount * colsCount }, () => Math.random() * Math.PI * 2);
     // Per-frame perf caches (built lazily, invalidated on resize):
     //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
     //    the hot particle loop blits instead of building a gradient every frame.
@@ -1331,7 +1325,7 @@ class ReelCanvasRenderer {
     if (img.naturalWidth <= targetW * 1.25) return img;
 
     // Reuse any bake within a band around the wanted size. Every per-frame scale
-    // animation (idle bob, win breath, landing squash, reveal pop) changes drawW
+    // animation (win breath, landing squash, landing punch) changes drawW
     // a little each frame, and the old exact-size match rebaked every animated
     // symbol every frame: measured ~420 bakes/s on an idle 390px phone board.
     // drawImage scales the cached bake to the exact size; within this band the
@@ -1344,7 +1338,7 @@ class ReelCanvasRenderer {
     }
 
     // A new bake gets headroom above the wanted size, so the scale-UP effects
-    // (breath, reveal pop) stay inside its band instead of forcing a rebake.
+    // (breath, landing punch) stay inside its band instead of forcing a rebake.
     const bakeW = Math.min(img.naturalWidth, Math.round(targetW * SPRITE_BAND.headroom));
     const bakeH = Math.min(img.naturalHeight, Math.round(targetH * SPRITE_BAND.headroom));
     const { cvs, ctx } = this.makeOffscreen(bakeW, bakeH);
@@ -1849,23 +1843,6 @@ class ReelCanvasRenderer {
   resetHeavyBangs() {
     this.fx.bangedKeys = new Set();
     this.fx.struckKeys = new Set();
-    this.multiplierDecoyById = new Map();
-  }
-
-  pickStableMultiplierDecoy(multiplierId, forbiddenSymbols = [], salt = "") {
-    const blocked = new Set((forbiddenSymbols || []).filter(Boolean));
-    const regularSymbols = Object.keys(payouts);
-    const pool = regularSymbols.filter((s) => !blocked.has(s));
-    const pickPool = pool.length ? pool : regularSymbols;
-    if (!pickPool.length) return "BLUE_DIAMOND";
-    const seed = `${String(multiplierId || "anon")}|${String(salt || "")}`;
-    let hash = 2166136261;
-    for (let i = 0; i < seed.length; i += 1) {
-      hash ^= seed.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-      hash >>>= 0;
-    }
-    return pickPool[hash % pickPool.length] || pickPool[0];
   }
 
   // Spawns a tier-scaled lightning strike at the given cell. Used both
@@ -1991,13 +1968,9 @@ class ReelCanvasRenderer {
       ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
       : duration;
 
-    // Clear any stale reveal leftovers from the previous tumble step so
-    // decoy state cannot leak and briefly show an old symbol on this step.
+    // Landing punches belong to one drop: clear the previous step's.
     this.fx.heavyReveals = new Map();
 
-    const previousBoard = Array.isArray(this.board.matrix)
-      ? this.board.matrix.map((row) => (Array.isArray(row) ? row.slice() : []))
-      : [];
     this.setBoard(matrix, { multipliers });
     this.focusOff(); // the refill brings the board back up as it falls
     this.fx.drop = {
@@ -2033,79 +2006,31 @@ class ReelCanvasRenderer {
       return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
     }, 0);
 
-    // Schedule landing impacts and conceal each heavy cell's symbol until it
-    // BANGs into place — the player should not see the multiplier value mid-air.
+    // Multipliers fall as themselves, like every symbol (no decoy, never
+    // hidden). On landing: the BANG (heavy) or a lightning strike (light), and
+    // a short scale punch (MULTI_PUNCH) that never shrinks or fades the art.
     const startTime = performance.now();
-    // Lightning/impact should be visible before the multiplier icon appears.
-    const heavyRevealLeadMs = 260;
-    const lightRevealLeadMs = 320;
-    // Only allow the multiplier-reveal tail when this drop actually contains
-    // multiplier cells; ordinary drops shouldn't pay that cost.
-    let revealEndMs = 0; // when the last multiplier reveal-pop finishes, ms from startTime
+    let revealEndMs = 0; // when the last landing punch finishes, ms from startTime
     heavyCells.forEach((info, key) => {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
       const land = this.cellLandMs(r, c, count);
-      // Mark this cell concealed; render skips its icon until revealAt.
-      // Show a real symbol as decoy during fall (picked once per cell and
-      // kept stable for the full drop), then reveal multiplier on landing.
-      const prevSymbol = previousBoard?.[r]?.[c];
-      const sourceRow = r - count;
-      const sourceSymbol = Number.isInteger(sourceRow) && sourceRow >= 0 ? previousBoard?.[sourceRow]?.[c] : null;
-      const blockedColSymbols = (previousBoard || [])
-        .map((rowArr) => (Array.isArray(rowArr) ? rowArr[c] : null))
-        .filter(Boolean);
-      const decoy = this.pickStableMultiplierDecoy(
-        info.id,
-        [prevSymbol, sourceSymbol, "MULTI", "SCATTER", ...blockedColSymbols],
-        `${r}-${c}-${count}-heavy`
-      );
-      revealEndMs = Math.max(revealEndMs, land + heavyRevealLeadMs + 320);
-      this.fx.heavyReveals.set(key, {
-        revealAt: startTime + land + heavyRevealLeadMs,
-        revealDuration: 320,
-        tier: info.tier,
-        value: info.value,
-        decoy
-      });
+      revealEndMs = Math.max(revealEndMs, land + MULTI_PUNCH.ms);
+      this.fx.heavyReveals.set(key, { revealAt: startTime + land, revealDuration: MULTI_PUNCH.ms, tier: info.tier, value: info.value });
       this.fx.bangedKeys.add(info.dedupeKey);
       setTimeout(() => this.spawnHeavyImpact(r, c, info.tier, info.value), land);
     });
 
-    // Light-only multipliers: still concealed during fall like the heavy ones,
-    // but reveal on a tier-scaled lightning strike instead of a BANG. The
-    // player sees a regular decoy symbol fall, then the lightning hits and
-    // the multiplier pops in. No BANG, no shake, no shockwaves.
+    // Light-only multipliers: a tier-scaled lightning strike on landing, and
+    // the same punch.
     lightOnlyCells.forEach((info, key) => {
       const [r, c] = key.split("-").map(Number);
       const count = Number(dropMap?.[key] || 0);
       if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
       const land = this.cellLandMs(r, c, count);
-      // Tier-scaled reveal pop — common is quick, escalates with rank.
-      const revealDuration = info.tier.key === "mythic" ? 320
-        : info.tier.key === "legendary" ? 300
-        : info.tier.key === "epic" ? 280
-        : info.tier.key === "rare" ? 250
-        : 220; // common
-      const prevSymbol = previousBoard?.[r]?.[c];
-      const sourceRow = r - count;
-      const sourceSymbol = Number.isInteger(sourceRow) && sourceRow >= 0 ? previousBoard?.[sourceRow]?.[c] : null;
-      const blockedColSymbols = (previousBoard || [])
-        .map((rowArr) => (Array.isArray(rowArr) ? rowArr[c] : null))
-        .filter(Boolean);
-      revealEndMs = Math.max(revealEndMs, land + lightRevealLeadMs + revealDuration);
-      this.fx.heavyReveals.set(key, {
-        revealAt: startTime + land + lightRevealLeadMs,
-        revealDuration,
-        tier: info.tier,
-        value: info.value,
-        decoy: this.pickStableMultiplierDecoy(
-          info.id,
-          [prevSymbol, sourceSymbol, "MULTI", "SCATTER", ...blockedColSymbols],
-          `${r}-${c}-${count}-light`
-        )
-      });
+      revealEndMs = Math.max(revealEndMs, land + MULTI_PUNCH.ms);
+      this.fx.heavyReveals.set(key, { revealAt: startTime + land, revealDuration: MULTI_PUNCH.ms, tier: info.tier, value: info.value });
       setTimeout(() => this.spawnLightningStrike(r, c, info.tier), Math.max(0, land));
     });
 
@@ -2130,7 +2055,12 @@ class ReelCanvasRenderer {
     // multiplier reveal-pop has finished, plus one frame. dropDuration /
     // maxDelay are already turbo-adjusted: wait the REAL time so the fall fully
     // lands before the board commits (animationSleep would scale again).
-    await this._dropSettle(Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap), revealEndMs) + 30, { honorStop: !hurried && (isSpin || this._reducedMotion) });
+    const settleMs = Math.max(dropDuration + maxDelay, this.dropEndMs(dropMap), revealEndMs) + 30;
+    // The loop runs at its busy cadence until the LAST symbol has landed
+    // (isVisuallyBusy reads endAt): a spin's reels release up to 500ms apart,
+    // so the drop's own duration (one reel's fall) ends long before it does.
+    this.fx.drop.endAt = startTime + settleMs;
+    await this._dropSettle(settleMs, { honorStop: !hurried && (isSpin || this._reducedMotion) });
     this.fx.drop = null;
     this.fx.heavyDrop = null;
     // A Stop slams ONE board: once the board it caught has landed, the rest of
@@ -2328,32 +2258,6 @@ class ReelCanvasRenderer {
     envelopeTo(f, 0, state.fastStopRequested ? 1 : Math.round(FOCUS.outMs * turboScale()), performance.now());
   }
 
-  /** Idle breath of a cell (px ABOVE its slot, 0..MOTION.idleFloat): one
-   *  breath per IDLE_BREATH.periodMs on the cell's own phase, scaled by the
-   *  idle envelope. */
-  breathOffset(row, col, now = performance.now(), level = this.idleLevel(now), m = this.motion()) {
-    if (!(level > 0) || !m.idleFloat) return 0;
-    // Settling out, the breath freezes where the spin caught it and only
-    // shrinks with the envelope: straight down, never a last rise.
-    const e = this._idleEnv;
-    const at = e.to === 0 ? Math.min(now, e.t0) : now;
-    const w = (at / IDLE_BREATH.periodMs) * Math.PI * 2 + this._breathPhase[row * this.cols + col];
-    return level * m.idleFloat * (0.5 - 0.5 * Math.cos(w));
-  }
-
-  /** Idle-breath envelope now: retargeted from isIdle() on every read, so a
-   *  spin starts settling the breath on the very next query. */
-  idleLevel(now = performance.now()) {
-    const idle = this.isIdle();
-    envelopeTo(this._idleEnv, idle ? 1 : 0, idle ? IDLE_BREATH.inMs : IDLE_BREATH.outMs, now);
-    return envelopeLevel(this._idleEnv, now);
-  }
-
-  /** Board idle: shown, nothing dropping, no round in flight. */
-  isIdle() {
-    return !this.board.hidden && !this.fx.drop && !isRoundInFlight();
-  }
-
   async multiplierCatch(multipliers = [], duration = 620) {
     duration = Math.round(duration * turboScale()); // turbo speeds the whole spin
     if (!Array.isArray(multipliers) || multipliers.length === 0) return;
@@ -2451,7 +2355,7 @@ class ReelCanvasRenderer {
   isVisuallyBusy() {
     const now = performance.now();
     const timedFxActive =
-      (this.fx.drop && now < this.fx.drop.start + this.fx.drop.duration + 120) ||
+      (this.fx.drop && now < Math.max(this.fx.drop.endAt || 0, this.fx.drop.start + this.fx.drop.duration) + 60) ||
       (this.fx.pulse && now < this.fx.pulse.start + this.fx.pulse.duration + 80) ||
       (this.fx.blast && now < this.fx.blast.start + this.fx.blast.duration + 100) ||
       (this.fx.spinBurst && now < this.fx.spinBurst.start + this.fx.spinBurst.duration + 80) ||
@@ -2659,6 +2563,7 @@ class ReelCanvasRenderer {
     // The drop's own clock now ends with the zip (busy checks read it).
     drop.start = now;
     drop.duration = total;
+    drop.endAt = now + total + 30;
     this._zipEnd = now + total;
     this.cancelColumnStops();
     for (const [c, rows] of rowsByCol) this._queueColumnStop(c, ends[c], rows);
@@ -3543,10 +3448,6 @@ class ReelCanvasRenderer {
       ctx.fillStyle = `rgba(2, 5, 12, ${(FOCUS.backdrop * focusLevel).toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
-    // Idle breathing (IDLE_BREATH, #55): in when the board rests, out the
-    // moment a spin starts.
-    const mo = this.motion();
-    const idleLevel = this.idleLevel(frameNow);
 
     // Spin-out (#47): the old board falling out, behind the new one.
     if (this.fx.exit) this.drawExitBoard(ctx, { width, top, padX, laneW, rowStep, radius });
@@ -3622,8 +3523,6 @@ class ReelCanvasRenderer {
           chargeGlow = easeOutCubic(chargeT);
         }
         const isSpotlit = Boolean(this.fx.spotlight?.set?.has(key));
-        const yFloat = y - this.breathOffset(r, c, frameNow, idleLevel, mo);
-        const idlePulse = 1 + idleLevel * Math.sin(this.time * 0.0012 + r * 0.41 + c * 0.57) * 0.02;
         // Winners breathe during the hold: a resting swell plus a slow in-out,
         // phase-lagged from the cluster centre (breathPhases) so it ripples.
         let pulseScale = 1;
@@ -3644,25 +3543,16 @@ class ReelCanvasRenderer {
         const deform = this.dropDeform(r, c);
         squashX *= deform.sx;
         squashY *= deform.sy;
-        const baseScale = pulseScale * catchScale * idlePulse * chargeShrink * blastPop;
-        // Heavy-drop concealment: while a high-tier multiplier is falling,
-        // hide its symbol entirely so the player only sees the descending
-        // beam and BANG impact. After landing, the symbol pops in.
+        const baseScale = pulseScale * catchScale * chargeShrink * blastPop;
+        // A multiplier that just landed punches (MULTI_PUNCH): it swells and
+        // settles back, never shrinking, never fading, never hidden.
         const reveal = this.fx.heavyReveals.get(key);
-        let concealIcon = false;
         let revealScale = 1;
-        let revealAlpha = 1;
         if (reveal) {
           const nowMs = performance.now();
-          if (nowMs < reveal.revealAt) {
-            concealIcon = true;
-          } else {
+          if (nowMs >= reveal.revealAt) {
             const rt = clamp((nowMs - reveal.revealAt) / reveal.revealDuration, 0, 1);
-            // Pop-in: overshoot scale, alpha ramp.
-            revealScale = rt < 0.4
-              ? 0.2 + easeOutBack(rt / 0.4) * 1.05
-              : 1.25 - easeOutCubic((rt - 0.4) / 0.6) * 0.25;
-            revealAlpha = clamp(rt * 2, 0, 1);
+            if (!this._reducedMotion) revealScale = 1 + MULTI_PUNCH.scale * Math.sin(Math.PI * rt);
             if (rt >= 1) this.fx.heavyReveals.delete(key);
           }
         }
@@ -3681,32 +3571,32 @@ class ReelCanvasRenderer {
         const iconH = iconBase * squashY;
         // A squashed symbol stays planted on its floor instead of shrinking
         // toward its centre.
-        const iconCy = yFloat + Math.max(0, iconBase - iconH) * 0.5;
+        const iconCy = y + Math.max(0, iconBase - iconH) * 0.5;
         // Win focus (FOCUS): symbols outside the focus set step back.
         const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
 
         // Spotlight halo: brighten cells on the spotlight set during big
         // events, working with the dim overlay to draw the eye in.
         if (isSpotlit && spotlightAlpha > 0.05) {
-          const sp = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 2.4);
+          const sp = ctx.createRadialGradient(x, y, 0, x, y, coreR * 2.4);
           sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
           sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
           sp.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.fillStyle = sp;
           ctx.beginPath();
-          ctx.arc(x, yFloat, coreR * 2.4, 0, Math.PI * 2);
+          ctx.arc(x, y, coreR * 2.4, 0, Math.PI * 2);
           ctx.fill();
         }
 
         if (isCharging) {
           // Building glow during the wind-up.
-          const cg = ctx.createRadialGradient(x, yFloat, 0, x, yFloat, coreR * 1.9);
+          const cg = ctx.createRadialGradient(x, y, 0, x, y, coreR * 1.9);
           cg.addColorStop(0, `rgba(255, 245, 215, ${(0.55 * chargeGlow).toFixed(3)})`);
           cg.addColorStop(0.5, `rgba(255, 210, 150, ${(0.25 * chargeGlow).toFixed(3)})`);
           cg.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.fillStyle = cg;
           ctx.beginPath();
-          ctx.arc(x, yFloat, coreR * 1.9, 0, Math.PI * 2);
+          ctx.arc(x, y, coreR * 1.9, 0, Math.PI * 2);
           ctx.fill();
         }
 
@@ -3722,18 +3612,18 @@ class ReelCanvasRenderer {
           const glow = this.getGlowSprite(auraColor);
           const haloR = ringR * 1.55;
           ctx.globalAlpha = 0.85 * blastFade * haloPulse;
-          ctx.drawImage(glow.cvs, x - haloR, yFloat - haloR, haloR * 2, haloR * 2);
+          ctx.drawImage(glow.cvs, x - haloR, y - haloR, haloR * 2, haloR * 2);
           ctx.globalAlpha = 1;
         }
 
         if (isSlamColumn) {
-          const slamGlow = ctx.createRadialGradient(x, yFloat - coreR * 0.8, 0, x, yFloat, coreR * 1.7);
+          const slamGlow = ctx.createRadialGradient(x, y - coreR * 0.8, 0, x, y, coreR * 1.7);
           slamGlow.addColorStop(0, this.fx.reelSlam.accent || "rgba(170, 214, 255, 0.36)");
           slamGlow.addColorStop(1, "rgba(170, 214, 255, 0)");
           ctx.globalAlpha = Math.max(0, 0.62 * (1 - reelSlamProgress));
           ctx.fillStyle = slamGlow;
           ctx.beginPath();
-          ctx.arc(x, yFloat, coreR * 1.7, 0, Math.PI * 2);
+          ctx.arc(x, y, coreR * 1.7, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1;
         }
@@ -3744,17 +3634,8 @@ class ReelCanvasRenderer {
         const multiTier = symbol === "MULTI" ? getMultiplierTier(multiValueNum) : null;
         const multiImageKey = multiTier ? multiTier.image : null;
         const img = (multiImageKey && this.images.get(multiImageKey)) || this.images.get(symbol);
-        if (concealIcon) {
-          // Show the decoy regular symbol falling in this cell. It gets
-          // visually "replaced" by the multiplier on the BANG impact.
-          const decoyImg = reveal?.decoy ? this.images.get(reveal.decoy) : null;
-          if (decoyImg?.complete && decoyImg.naturalWidth) {
-            ctx.globalAlpha = blastFade * spotDim;
-            const decoySprite = this.getSymbolSprite(reveal.decoy, decoyImg, iconW, iconH);
-            ctx.drawImage(decoySprite, x - iconW / 2, iconCy - iconH / 2, iconW, iconH);
-          }
-        } else if (img?.complete && img.naturalWidth) {
-          ctx.globalAlpha = blastFade * revealAlpha * spotDim;
+        if (img?.complete && img.naturalWidth) {
+          ctx.globalAlpha = blastFade * spotDim;
           // SCATTER art is a rectangular (wide) tile, not a square sprite. Draw
           // it at its true aspect ratio contained inside the icon box so it is
           // never stretched; every other symbol still fills the square box.
@@ -3799,20 +3680,20 @@ class ReelCanvasRenderer {
           ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(symbol.slice(0, 2), x, yFloat);
+          ctx.fillText(symbol.slice(0, 2), x, y);
         }
 
         if (symbol === "TOP_CROWN") {
-          const crownGlow = ctx.createRadialGradient(x, yFloat - coreR * 0.36, 0, x, yFloat - coreR * 0.36, coreR * 0.75);
+          const crownGlow = ctx.createRadialGradient(x, y - coreR * 0.36, 0, x, y - coreR * 0.36, coreR * 0.75);
           crownGlow.addColorStop(0, THEME.alpha(THEME.glow.winHot, 0.26));
           crownGlow.addColorStop(1, THEME.alpha(THEME.glow.winHot, 0));
           ctx.fillStyle = crownGlow;
           ctx.beginPath();
-          ctx.arc(x, yFloat - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
+          ctx.arc(x, y - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        if (symbol === "MULTI" && !concealIcon) {
+        if (symbol === "MULTI") {
           // The tier token art carries the rarity; we only stamp the number onto
           // its blank center plate. Drawn for EVERY value (no per-value images).
           const tier = multiTier || getMultiplierTier(multiValueNum);
@@ -3825,8 +3706,8 @@ class ReelCanvasRenderer {
           ctx.textBaseline = "middle";
           ctx.strokeStyle = THEME.alpha(THEME.color.vaultDoor, 0.92);
           ctx.lineWidth = Math.max(2.4, coreR * 0.1);
-          ctx.strokeText(value, x, yFloat + coreR * 0.02);
-          ctx.fillText(value, x, yFloat + coreR * 0.02);
+          ctx.strokeText(value, x, y + coreR * 0.02);
+          ctx.fillText(value, x, y + coreR * 0.02);
         }
 
         if (symbol === "SCATTER") {
@@ -3834,12 +3715,12 @@ class ReelCanvasRenderer {
           ctx.strokeStyle = `rgba(198, 211, 255, ${0.38 * blastFade})`;
           ctx.lineWidth = 1.4;
           ctx.beginPath();
-          ctx.arc(x, yFloat, ringR * orbit, 0, Math.PI * 2);
+          ctx.arc(x, y, ringR * orbit, 0, Math.PI * 2);
           ctx.stroke();
           ctx.strokeStyle = `rgba(224, 235, 255, ${0.22 * blastFade})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(x, yFloat, ringR * (orbit + 0.15), 0, Math.PI * 2);
+          ctx.arc(x, y, ringR * (orbit + 0.15), 0, Math.PI * 2);
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
