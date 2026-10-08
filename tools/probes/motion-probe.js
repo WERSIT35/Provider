@@ -381,57 +381,75 @@ async function evaluate(cdp, expression) {
     check(`(${tag}) the whole fall keeps the busy frame cadence (no idle throttle mid-drop)`, fly.maxGap <= fly.cap + 25, `max gap ${fly.maxGap.toFixed(0)}ms (cap ${fly.cap}ms)`);
   }
 
-  console.log("\nmultiplier tease: only the multiplier waits, its socket charges, then it lands as itself");
-  // A tumble refill of reel 3 with one new multiplier at row 4; the others
-  // (rows 0-3) are plain symbols. chargeMs/staggerMs come from MULTI_TEASE.
-  const teaseRun = (opts) => evaluate(cdp, `(async () => {
+  console.log("\nmultiplier strike: a full board, then lightning turns a stand-in into the multiplier");
+  // A tumble refill of reel 3 (and reel 5 with two=true), a new multiplier at
+  // row 4. It must fall in its reel's stack as a stand-in (no gap, no tell),
+  // then be struck beatMs after the drop has landed and turn at the flash.
+  const strikeRun = (opts) => evaluate(cdp, `(async () => {
     const R = __reelRenderer; const rs = R.getLayout().rowStep; const o = ${JSON.stringify(opts)};
     const m = R.board.matrix.map((r) => r.slice()); m[4][2] = "MULTI"; if (o.two) m[4][4] = "MULTI";
     const dropMap = { "4-2": 5, "3-2": 5, "2-2": 5, "1-2": 5, "0-2": 5 }; if (o.two) Object.assign(dropMap, { "4-4": 5, "3-4": 5, "2-4": 5, "1-4": 5, "0-4": 5 });
-    const mults = [{ row: 4, col: 2, value: 5, id: "probe-t5-" + Math.random() }]; if (o.two) mults.push({ row: 4, col: 4, value: 5, id: "probe-t5b-" + Math.random() });
-    const realDraw = R.draw.bind(R); let frames = 0, hiddenAfterRelease = 0, visibleBeforeRelease = 0, notMulti = 0, socketFrames = 0;
-    R.draw = (...x) => { R._traceCells = new Set(); const out = realDraw(...x); const d = R.fx.drop;
-      if (d && d.tease) { frames++; const e = performance.now() - d.start; const t = d.tease.cells.get("4-2"); const centre = 4.5 * rs + R.cellOffset(4, 2, rs);
-        if (centre > rs * 0.15) { if (e < t.releaseMs - 1) visibleBeforeRelease++; if (!R._traceCells.has("4-2")) hiddenAfterRelease++; }
-        if (e >= d.tease.chargeFrom && e < t.releaseMs) socketFrames++;
-        if (R.board.matrix[4][2] !== "MULTI") notMulti++; }
-      R._traceCells = null; return out; };
+    const mults = [{ row: 4, col: 2, value: 5, id: "probe-s5-" + Math.random() }]; if (o.two) mults.push({ row: 4, col: 4, value: 5, id: "probe-s5b-" + Math.random() });
+    const realDraw = R.draw.bind(R); let frames = 0, missingInGrid = 0, minAlpha = 1, standInFrames = 0, multiBeforeSwap = 0;
+    R.draw = (...x) => { R._traceCells = new Set(); R._traceAlpha = new Map(); const out = realDraw(...x); const d = R.fx.drop;
+      if (d && d.strikeMap) { frames++; const st = d.strikeMap.get("4-2"); const centre = 4.5 * rs + R.cellOffset(4, 2, rs);
+        if (centre > rs * 0.15) { if (!R._traceCells.has("4-2")) missingInGrid++; const al = R._traceAlpha.get("4-2"); if (al !== undefined) minAlpha = Math.min(minAlpha, al); }
+        if (st && !st.swapped) { standInFrames++; } }
+      R._traceCells = null; R._traceAlpha = null; return out; };
     R.resetHeavyBangs(); state.turbo = Boolean(o.turbo);
     const p = R.drop(m, mults, dropMap, 480, { animateMultipliers: true, tempo: 1 });
-    const d = R.fx.drop; const tz = d.tease;
-    const info = tz ? { chargeFrom: tz.chargeFrom, chargeMs: tz.chargeMs, peak: tz.peak && tz.peak.key,
-      rel: [...tz.cells.entries()].map(([k, t]) => ({ k, ms: t.releaseMs })), want: Math.round(MULTI_TEASE.chargeMs[tz.peak.key] * (o.turbo ? TURBO_SCALE : 1)),
-      stagger: Math.round(MULTI_TEASE.staggerMs * (o.turbo ? TURBO_SCALE : 1)),
-      othersLand: Math.max(...["3-2", "2-2", "1-2", "0-2"].map((k) => { const [r, c] = k.split("-").map(Number); return R.dropDelay(r, c, 5) + R.cellFallMs(c, 5); })) } : null;
-    let punchAt = null, landAt = null;
-    if (o.stopAt) { await new Promise((r) => setTimeout(r, tz.chargeFrom + o.stopAt)); el.spinBtn.click(); }
-    const t0 = performance.now();
-    while (R.fx.drop === d) { const rv = R.fx.heavyReveals.get("4-2"); if (rv && punchAt === null) { punchAt = rv.revealAt - d.start; landAt = R.cellLandMs(4, 2, 5); } await new Promise((r) => requestAnimationFrame(r)); }
+    const d = R.fx.drop; const sts = (d.strikes || []).slice();
+    const sameStack = R.cellLandMs(4, 2, 5) === R.cellLandMs(3, 2, 5);
+    const standIns = sts.map((st) => st.standIn);
+    const landed = R._landedMs(d); // while the drop's timing exists
+    if (o.stopAt) { await new Promise((r) => setTimeout(r, o.stopAt)); el.spinBtn.click(); }
     await p; R.draw = realDraw; state.turbo = false;
-    const relAfter = tz ? [...tz.cells.values()].map((t) => t.releaseMs) : [];
-    return { frames, hiddenAfterRelease, visibleBeforeRelease, notMulti, socketFrames, info, punchAt, landAt, relAfter, zip: Boolean(d.zip) };
+    return { frames, missingInGrid, minAlpha, standInFrames, sameStack, standIns, quick: d.strikeQuick,
+      bolts: sts.map((st) => ({ k: st.key, bolt: st.boltAt - d.start, swapped: st.swapped })), landed,
+      beat: Math.round(STRIKE.beatMs * (o.turbo ? TURBO_SCALE : 1)), gap: Math.round(STRIKE.gapMs * (o.turbo ? TURBO_SCALE : 1)),
+      peak: Math.round(STRIKE.flashPeakMs * (o.turbo ? TURBO_SCALE : 1)), after: R.board.matrix[4][2], leftover: Boolean(R.fx.drop) };
   })()`);
   await waitIdle();
-  const T1 = await teaseRun({});
-  check("only the multiplier waits: the rest of its reel lands first, then the socket charges",
-    T1.info && T1.info.chargeFrom >= T1.info.othersLand - 1 && T1.info.rel[0].ms >= T1.info.chargeFrom + T1.info.chargeMs - 1,
-    T1.info ? `others land @${T1.info.othersLand.toFixed(0)}ms, charge @${T1.info.chargeFrom.toFixed(0)} for ${T1.info.chargeMs}ms, release @${T1.info.rel[0].ms.toFixed(0)}` : "no tease");
-  check("the charge lasts the tier's chargeMs (common 500ms)", T1.info && T1.info.chargeMs === T1.info.want && T1.socketFrames > 10, T1.info ? `${T1.info.peak} ${T1.info.chargeMs}ms, ${T1.socketFrames} socket frames` : "");
-  check("the multiplier is never inside the grid before its release, and drawn as itself every frame after",
-    T1.visibleBeforeRelease === 0 && T1.hiddenAfterRelease === 0 && T1.notMulti === 0, `${T1.frames} frames`);
-  check("its BANG + punch fire at its real landing", T1.punchAt !== null && Math.abs(T1.punchAt - T1.landAt) < 40, `punch @${T1.punchAt?.toFixed(0)}ms, lands @${T1.landAt?.toFixed(0)}ms`);
+  const S1 = await strikeRun({});
+  check("a full board: the multiplier's cell falls in its reel's stack as a stand-in (no gap, no tell)",
+    S1.sameStack && S1.missingInGrid === 0 && S1.standInFrames > 10 && S1.standIns.every((x) => x && x !== "SCATTER" && x !== "MULTI"),
+    `stand-in ${S1.standIns.join(",")}, ${S1.frames} frames, ${S1.missingInGrid} missing`);
+  check("lightning strikes beatMs after the drop has landed, and the art turns at the flash",
+    Math.abs(S1.bolts[0].bolt - (S1.landed + S1.beat)) < 40 && S1.bolts[0].swapped && S1.after === "MULTI",
+    `landed @${S1.landed.toFixed(0)}ms, bolt @${S1.bolts[0].bolt.toFixed(0)}ms (beat ${S1.beat})`);
+  check("the cell is never transparent through the strike (art opacity stays up)", S1.minAlpha >= 0.5, `min alpha ${S1.minAlpha.toFixed(2)}`);
   await waitIdle();
-  const T2 = await teaseRun({ turbo: true, two: true });
-  check("turbo scales the charge; two multipliers release left to right, staggerMs apart",
-    T2.info && T2.info.chargeMs === T2.info.want && T2.info.rel.length === 2 && T2.info.rel[0].k === "4-2" && Math.abs(T2.info.rel[1].ms - T2.info.rel[0].ms - T2.info.stagger) < 1,
-    T2.info ? `charge ${T2.info.chargeMs}ms; ` + T2.info.rel.map((x) => x.k + "@" + x.ms.toFixed(0)).join(", ") : "");
+  const S2 = await strikeRun({ turbo: true, two: true });
+  check("turbo + two multipliers: strikes go left to right, gapMs apart",
+    S2.bolts.length === 2 && S2.bolts[0].k === "4-2" && Math.abs(S2.bolts[1].bolt - S2.bolts[0].bolt - S2.gap) < 40 && S2.bolts.every((x) => x.swapped),
+    S2.bolts.map((x) => x.k + "@" + x.bolt.toFixed(0)).join(", ") + ` (gap ${S2.gap})`);
   await waitIdle();
   await evaluate(cdp, "state.roundAnimating = true; true"); // a Stop press needs a round in flight
-  const T3 = await teaseRun({ stopAt: 120 });
+  const S3 = await strikeRun({ stopAt: 150 });
   await evaluate(cdp, "state.roundAnimating = false; state.fastStopRequested = false; true");
-  check("a Stop during the charge releases the multiplier at once (a refill falls, never zips)",
-    T3.info && !T3.zip && T3.relAfter[0] < T3.info.rel[0].ms - 200 && T3.hiddenAfterRelease === 0,
-    T3.info ? `release ${T3.info.rel[0].ms.toFixed(0)} → ${T3.relAfter[0].toFixed(0)}ms` : "");
+  check("a Stop makes the strike fire at once (no beat), and it still turns into the multiplier",
+    S3.quick && S3.bolts[0].swapped && S3.after === "MULTI" && S3.bolts[0].bolt <= S3.landed + 40 && !S3.leftover,
+    `bolt @${S3.bolts[0].bolt.toFixed(0)}ms, landed @${S3.landed.toFixed(0)}ms`);
+  // The stand-in can never form or suggest a win: fewest copies, never
+  // SCATTER/MULTI, count + 1 <= min_match - 2. Fuzzed over random boards.
+  const fuzz = await evaluate(cdp, `(() => {
+    const R = __reelRenderer; const syms = Object.keys(payouts).concat(["SCATTER", "MULTI"]); const minMatch = Number(state.rules?.layout?.min_match_count) || 8;
+    let bad = 0, worst = 0;
+    for (let n = 0; n < 500; n++) {
+      const m = []; for (let r = 0; r < 5; r++) { m.push([]); for (let c = 0; c < 6; c++) m[r].push(syms[Math.floor(Math.random() * syms.length)]); }
+      const skip = new Set(); const nm = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < nm; i++) { const r = Math.floor(Math.random() * 5), c = Math.floor(Math.random() * 6); m[r][c] = "MULTI"; skip.add(r + "-" + c); }
+      const chosen = new Map();
+      for (const k of skip) {
+        const sIn = R.pickStandIn(m, skip, k, chosen); chosen.set(sIn, (chosen.get(sIn) || 0) + 1);
+        let count = 0; for (let r = 0; r < 5; r++) for (let c = 0; c < 6; c++) if (!skip.has(r + "-" + c) && m[r][c] === sIn) count++;
+        const shown = count + chosen.get(sIn); worst = Math.max(worst, shown);
+        if (sIn === "SCATTER" || sIn === "MULTI" || !(sIn in payouts) || shown > minMatch - 2) bad++;
+      }
+    }
+    return { bad, worst, minMatch };
+  })()`);
+  check("the stand-in can never form or suggest a win (500 random boards)", fuzz.bad === 0, `worst ${fuzz.worst} copies shown (limit ${fuzz.minMatch - 2})`);
 
   console.log("\nreels land as stacks, no dead air between spins (#47)");
   await waitIdle();
@@ -441,7 +459,6 @@ async function evaluate(cdp, expression) {
     let ticks = 0; const realTick = R.onSymbolLand; R.onSymbolLand = (r, c) => { ticks++; realTick?.(r, c); };
     const realDrop = R.drop.bind(R); let pred = null, start = 0;
     const realAntic = R.makeAnticipation; R.makeAnticipation = () => null; // judge the plain landing beat
-    const realTease = R._setupTease; R._setupTease = (drop) => { drop.tease = null; }; // (a multiplier tease lands later on purpose)
     const press = performance.now(); let firstMove = 0, emptyFrames = 0, watching = true;
     const watch = () => { if (!watching) return;
       // A frame with neither the old board (fx.exit) nor the new one showing is dead air.
@@ -455,7 +472,7 @@ async function evaluate(cdp, expression) {
     for (let i = 0; i < 200 && !pred; i++) await new Promise((r) => setTimeout(r, 5));
     const resultAt = start - press;
     await new Promise((r) => setTimeout(r, 1300));
-    watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic; R._setupTease = realTease;
+    watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic;
     // Each reel's landing thud (a multiplier's BANG plays its own reel_stop too).
     const seen = new Set();
     const thuds = __snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t >= start && !seen.has(s.i) && seen.add(s.i)).map((s) => ({ c: s.i, t: s.t - start }));
