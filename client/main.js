@@ -436,21 +436,16 @@ const MOTION = {
 // (sin arc: never below 1, never transparent). Its art is visible the whole
 // fall: no decoy, no hide-and-pop (user: symbols must never vanish).
 const MULTI_PUNCH = { scale: 0.08, ms: 200 };
-// Multiplier tease (user, 2026-10-08: "let the player know something good is
-// coming"). Only the multiplier waits: every other symbol of the drop lands,
-// the multiplier's slot stays an empty socket that charges up for
-// chargeMs[highest tier] (light only: glow, a tightening ring, inbound
-// sparks, a lane streak, a rising drone), then the multiplier alone falls in
-// under the same gravity and BANGs. Several in one drop release left to
-// right, staggerMs apart. Turbo-scaled; a Stop releases it at once.
-// The socket's energy colour (warm gold, readable on every tier and board).
-const TEASE_GOLD = "#ffd76a";
-const MULTI_TEASE = {
-  chargeMs: { common: 500, rare: 650, epic: 800, legendary: 950, mythic: 1100 },
-  staggerMs: 140,
-  order: ["common", "rare", "epic", "legendary", "mythic"],
-  reducedMaxMs: 300
-};
+// Multiplier strike (user, 2026-10-08: the player must not know a multiplier
+// is coming, and it should arrive like a lightning strike). Every board lands
+// FULL: a new multiplier falls in its reel's stack as a stand-in symbol (one
+// that can never form or suggest a win, see pickStandIn). Once the whole drop
+// has landed, after beatMs, lightning strikes the cell: a short crackle at
+// the top of its lane (flickerMs), the bolt, and a white-gold flash; at the
+// flash's peak (flashPeakMs) the art turns into the multiplier (always at
+// full opacity), which then punches and BANGs. Several strike left to right,
+// gapMs apart. Turbo-scaled; a Stop strikes at once (stopMs per strike).
+const STRIKE = { beatMs: 140, gapMs: 160, flickerMs: 60, flashPeakMs: 90, flashMs: 220, stopMs: 120, flash: "#fff4c8" };
 const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0 });
 
 // Win focus (#55). From the moment a cluster is caught until the board moves
@@ -1505,8 +1500,8 @@ class ReelCanvasRenderer {
     if (drop && !drop.spin && !this._reducedMotion) {
       // A tumble refill in the air keeps its fall; the Stop only ends the
       // celebration bits and is spent when this refill lands. A multiplier
-      // still charging in its socket is released now (it falls, never zips).
-      this._releaseTease(drop);
+      // waiting for its strike is struck at once.
+      this._quickStrikes(drop);
       this._zipPending = false;
       this.fx.charge = null;
       this.fx.spotlight = null;
@@ -1946,8 +1941,6 @@ class ReelCanvasRenderer {
     const animateMultipliers = Boolean(options.animateMultipliers);
     const heavyCells = new Map();
     const lightOnlyCells = new Map();
-    let peakTier = null;
-    let peakValue = 0;
     const alreadyBanged = this.fx.bangedKeys.size > 0;
     if (animateMultipliers) (multipliers || []).forEach((m) => {
       const v = Number(m?.value || 0);
@@ -1963,14 +1956,13 @@ class ReelCanvasRenderer {
       const isHeavyEligible = true;
       if (isHeavyEligible) {
         heavyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k, id: m?.id || "" });
-        if (v > peakValue) { peakValue = v; peakTier = tier; }
       } else {
         lightOnlyCells.set(`${m.row}-${m.col}`, { tier, value: v, dedupeKey: k, id: m?.id || "" });
       }
       this.fx.struckKeys.add(k);
     });
-    const heavyKeyMatchesDropMap = Array.from(heavyCells.keys()).some((k) => Object.prototype.hasOwnProperty.call(dropMap || {}, k));
-    // Snappier drop slow-down — the previous values dragged the moment out.
+    // A drop with a multiplier in it falls exactly like any other (no
+    // slow-down): nothing may tell the player one is coming (STRIKE).
     // A Stop pressed before this board falls slams it in with the visible zip
     // (below), so it keeps its real timing; only reduced motion lands at once.
     const isSpin = Boolean(options.spin);
@@ -1979,11 +1971,7 @@ class ReelCanvasRenderer {
     // visibly, under the same gravity. Never zipped, never pre-placed.
     const hurried = state.fastStopRequested && !this._reducedMotion && !isSpin;
     if (hurried) duration = Math.min(duration, Math.round(ANIMATION_TIMING.tumbleDrop * TURBO_SCALE * tempo));
-    const dropDuration = state.fastStopRequested && this._reducedMotion
-      ? FAST_STOP_DROP_MS
-      : (peakTier && heavyKeyMatchesDropMap)
-      ? Math.round(duration * (peakTier.key === "mythic" ? 1.18 : peakTier.key === "legendary" ? 1.12 : peakTier.key === "epic" ? 1.06 : 1.02))
-      : duration;
+    const dropDuration = state.fastStopRequested && this._reducedMotion ? FAST_STOP_DROP_MS : duration;
 
     // Landing punches belong to one drop: clear the previous step's.
     this.fx.heavyReveals = new Map();
@@ -2001,26 +1989,12 @@ class ReelCanvasRenderer {
       spin: Boolean(options.spin), // a spin's board (WATERFALL.spinColMs), not a tumble refill
       tempo
     };
-    // New multipliers: their tease timing must exist before anything reads
-    // dropDelay (the column stops, the waterfall, the settle).
-    const multiCells = new Map([...heavyCells, ...lightOnlyCells]);
-    this._setupTease(this.fx.drop, multiCells);
     this.scheduleColumnStops(dropMap, dropDuration);
-    this._queueTeaseSound(this.fx.drop);
     // Stop pressed before this SPIN board started falling (during the
     // spin-out): it is born zipping, so it visibly falls into place in ≤110ms.
     if (slam) {
       this._zipPending = false;
       this._startZip(this.fx.drop);
-    }
-    if (peakTier && heavyKeyMatchesDropMap) {
-      this.fx.heavyDrop = {
-        start: performance.now(),
-        duration: dropDuration,
-        cells: heavyCells,
-        peakTier,
-        map: dropMap
-      };
     }
     const maxDelay = Object.entries(dropMap || {}).reduce((acc, [key, count]) => {
       const [row, col] = key.split("-").map((n) => Number(n));
@@ -2028,24 +2002,14 @@ class ReelCanvasRenderer {
       return Math.max(acc, this.dropDelay(row, col, Number(count || 0)));
     }, 0);
 
-    // Multipliers fall as themselves, like every symbol (no decoy, never
-    // hidden). On landing: the BANG (heavy) or a lightning strike (light), and
-    // a short scale punch (MULTI_PUNCH) that never shrinks or fades the art.
-    // Each multiplier's landing (BANG for a heavy one, a lightning strike for
-    // a light one, and the MULTI_PUNCH) fires when it REALLY lands: checked
-    // every frame (_fireLandings), so a zip or a Stop that releases a tease
-    // early keeps the impact on the landing.
+    // New multipliers (STRIKE): they fall as stand-ins and are struck into
+    // place once the whole drop has landed; the strikes are fired frame by
+    // frame (_fireStrikes), timed off the drop's real landing.
     const startTime = performance.now();
-    const impacts = [];
-    multiCells.forEach((info, key) => {
-      const [r, c] = key.split("-").map(Number);
-      const count = Number(dropMap?.[key] || 0);
-      if (!Number.isFinite(r) || !Number.isFinite(c) || count <= 0) return;
-      if (heavyCells.has(key)) this.fx.bangedKeys.add(info.dedupeKey);
-      impacts.push({ key, r, c, count, heavy: heavyCells.has(key), tier: info.tier, value: info.value, fired: false });
-    });
-    this.fx.drop.impacts = impacts;
-    const revealEndMs = this._impactsEndMs(this.fx.drop);
+    const multiCells = new Map([...heavyCells, ...lightOnlyCells]);
+    for (const [key, info] of heavyCells) if (Number(dropMap?.[key]) > 0) this.fx.bangedKeys.add(info.dedupeKey);
+    this._planStrikes(this.fx.drop, multiCells, heavyCells);
+    const revealEndMs = this._strikesEndMs(this.fx.drop);
 
     // Landing dust only on real tumble drops (post-win), and only for cells
     // that fell a meaningful distance (count >= 2). No dust on intro, no
@@ -2072,12 +2036,11 @@ class ReelCanvasRenderer {
     // The loop runs at its busy cadence until the LAST symbol has landed
     // (isVisuallyBusy reads endAt): a spin's reels release up to 500ms apart,
     // so the drop's own duration (one reel's fall) ends long before it does.
-    // A Stop that releases a tease early moves endAt in; the settle follows it.
+    // A Stop that hurries the strikes moves endAt; the settle follows it.
     const thisDrop = this.fx.drop;
     thisDrop.endAt = startTime + settleMs;
     await this._dropSettle(settleMs, { honorStop: !hurried && (isSpin || this._reducedMotion), until: () => thisDrop.endAt });
-    this._fireLandings(Infinity); // anything a skipped frame left unfired lands now
-    if (thisDrop.tease && !thisDrop.tease.ended) { thisDrop.tease.ended = true; this.onMultiTease?.("end"); }
+    this._fireStrikes(Infinity); // a strike a skipped frame left pending lands now: never leave a stand-in
     this.fx.drop = null;
     this.fx.heavyDrop = null;
     // A Stop slams ONE board: once the board it caught has landed, the rest of
@@ -2090,7 +2053,7 @@ class ReelCanvasRenderer {
     }
   }
 
-  spawnHeavyImpact(row, col, tier, value) {
+  spawnHeavyImpact(row, col, tier, value, { bolt = true } = {}) {
     // Fire the multiplier drop sound + lightning reaction at the EXACT moment
     // the multiplier bangs into place (this is the visual reveal), so the audio
     // is perfectly in sync with each multiplier's landing and scales with its
@@ -2131,8 +2094,9 @@ class ReelCanvasRenderer {
       born: now, life: 520 * heaviness,
       tier, value, heaviness
     });
-    // Lightning strike — delegated to the shared tier-scaled method.
-    this.spawnLightningStrike(row, col, tier);
+    // Lightning strike — delegated to the shared tier-scaled method (a
+    // STRIKE reveal has already struck: bolt: false, so it never hits twice).
+    if (bolt) this.spawnLightningStrike(row, col, tier);
 
     // BANG: full-screen tier-colored radial flash centered on the impact.
     // Short and punchy — long flashes feel laggy.
@@ -2581,7 +2545,7 @@ class ReelCanvasRenderer {
     drop.start = now;
     drop.duration = total;
     drop.endAt = now + total + 30;
-    if (drop.tease && !drop.tease.ended) { drop.tease.ended = true; this.onMultiTease?.("end"); }
+    this._quickStrikes(drop); // the zip lands everything; its strikes follow at once
     this._zipEnd = now + total;
     this.cancelColumnStops();
     for (const [c, rows] of rowsByCol) this._queueColumnStop(c, ends[c], rows);
@@ -2915,161 +2879,147 @@ class ReelCanvasRenderer {
     this._columnStops.clear();
   }
 
-  /** MULTI_TEASE timing for the new multipliers of `drop` (cells: key →
-   *  { tier }). Their socket charges once every other symbol of the drop has
-   *  landed (bounce included), for the highest tier's chargeMs. None under a
-   *  pending Stop: a slammed spin board zips, a hurried refill just falls. */
-  _setupTease(drop, cells) {
-    drop.tease = null;
-    const keys = [...cells.keys()].filter((k) => Number(drop.map?.[k]) > 0);
-    if (!keys.length || state.fastStopRequested) return;
-    let chargeFrom = 0;
-    for (const [k, n] of Object.entries(drop.map || {})) {
-      const count = Number(n);
-      if (!(count > 0) || cells.has(k)) continue;
-      const [r, c] = k.split("-").map(Number);
-      chargeFrom = Math.max(chargeFrom, this.dropDelay(r, c, count) + this.cellFallMs(c, count, drop));
+  /** A stand-in for a new multiplier that falls before its strike: the
+   *  regular symbol with the fewest copies on `matrix` (multiplier cells and
+   *  stand-ins already chosen counted), never SCATTER or MULTI, so it can never
+   *  form or suggest a win (count + 1 ≤ min_match − 2). Ties break on the cell,
+   *  so the choice is stable. Cosmetic only: nothing is evaluated on it. */
+  pickStandIn(matrix, skip, key, extra = new Map()) {
+    const counts = new Map(Object.keys(payouts).map((sym) => [sym, extra.get(sym) || 0]));
+    for (let r = 0; r < matrix.length; r += 1) {
+      for (let c = 0; c < (matrix[r] || []).length; c += 1) {
+        const sym = matrix[r][c];
+        if (skip.has(`${r}-${c}`) || !counts.has(sym)) continue;
+        counts.set(sym, counts.get(sym) + 1);
+      }
     }
-    const rank = (t) => MULTI_TEASE.order.indexOf(t?.key);
-    let peak = null;
-    for (const k of keys) { const t = cells.get(k).tier; if (!peak || rank(t) > rank(peak)) peak = t; }
-    let chargeMs = Math.round((MULTI_TEASE.chargeMs[peak?.key] || MULTI_TEASE.chargeMs.common) * turboScale());
-    if (this._reducedMotion) chargeMs = Math.min(chargeMs, MULTI_TEASE.reducedMaxMs);
-    const stagger = Math.round(MULTI_TEASE.staggerMs * turboScale());
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i += 1) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    const syms = [...counts.keys()];
+    let best = null;
+    for (let i = 0; i < syms.length; i += 1) {
+      const sym = syms[(h + i) % syms.length];
+      if (best === null || counts.get(sym) < counts.get(best)) best = sym;
+    }
+    return best;
+  }
+
+  /** STRIKE plan for the new multipliers of `drop` (cells: key → info). */
+  _planStrikes(drop, cells, heavy) {
+    const keys = [...cells.keys()].filter((k) => Number(drop.map?.[k]) > 0);
     keys.sort((a, b) => { const [ra, ca] = a.split("-").map(Number); const [rb, cb] = b.split("-").map(Number); return ca - cb || rb - ra; });
-    drop.tease = {
-      cells: new Map(keys.map((k, i) => [k, { tier: cells.get(k).tier, releaseMs: chargeFrom + chargeMs + i * stagger }])),
-      chargeFrom, chargeMs, peak, ended: false
-    };
+    const skip = new Set(keys);
+    const chosen = new Map();
+    drop.strikes = keys.map((key, i) => {
+      const [r, c] = key.split("-").map(Number);
+      const info = cells.get(key);
+      const standIn = this.pickStandIn(this.board.matrix, skip, key, chosen);
+      chosen.set(standIn, (chosen.get(standIn) || 0) + 1);
+      return { key, r, c, i, tier: info.tier, value: info.value, heavy: heavy.has(key), standIn, bolted: false, swapped: false };
+    });
+    drop.strikeMap = new Map(drop.strikes.map((st) => [st.key, st]));
+    drop.strikeQuick = state.fastStopRequested;
   }
 
-  /** The tease's drone: from the moment the socket starts charging to the
-   *  first release (queued with the column stops, so a zip cancels it). */
-  _queueTeaseSound(drop) {
-    const tz = drop.tease;
-    if (!tz) return;
-    this._queueTimer(tz.chargeFrom, () => { if (!tz.ended) this.onMultiTease?.("start", tz.chargeMs, tz.peak?.key); });
-    this._queueTimer(tz.chargeFrom + tz.chargeMs, () => { if (!tz.ended) { tz.ended = true; this.onMultiTease?.("end"); } });
+  /** When the whole drop has landed (bounce included), ms from its start. */
+  _landedMs(drop) {
+    if (drop.zip) return Math.max(0, ...drop.zip.ends);
+    return this.dropEndMs(drop.map);
   }
 
-  /** A Stop during a refill: every multiplier still charging is released now
-   *  (or as soon as the rest has landed), and the drop's end moves in. */
-  _releaseTease(drop) {
-    const tz = drop?.tease;
-    if (!tz) return;
-    const e = performance.now() - drop.start;
-    for (const t of tz.cells.values()) if (t.releaseMs > e) t.releaseMs = Math.max(e, tz.chargeFrom);
-    if (!tz.ended) { tz.ended = true; this.onMultiTease?.("end"); }
-    drop.endAt = drop.start + Math.max(this.dropEndMs(drop.map), this._impactsEndMs(drop)) + 30;
+  /** When strike `st` hits (its bolt), ms from the drop's start. */
+  _strikeAt(drop, st) {
+    const t = turboScale();
+    if (drop.strikeQuick) return this._landedMs(drop) + st.i * Math.round(STRIKE.stopMs * 0.5);
+    return this._landedMs(drop) + Math.round((STRIKE.beatMs + st.i * STRIKE.gapMs) * t);
   }
 
-  /** When the last multiplier landing punch of `drop` ends, ms from its start. */
-  _impactsEndMs(drop) {
+  /** When strike `st` turns the stand-in into the multiplier (flash peak). */
+  _strikeSwapAt(drop, st) {
+    return this._strikeAt(drop, st) + (drop.strikeQuick ? 40 : Math.round(STRIKE.flashPeakMs * turboScale()));
+  }
+
+  /** When the last strike's punch ends, ms from the drop's start. */
+  _strikesEndMs(drop) {
     let end = 0;
-    for (const im of drop?.impacts || []) end = Math.max(end, this.cellLandMs(im.r, im.c, im.count) + MULTI_PUNCH.ms);
+    for (const st of drop?.strikes || []) end = Math.max(end, this._strikeSwapAt(drop, st) + MULTI_PUNCH.ms);
     return end;
   }
 
-  /** Fire each multiplier's landing (BANG or lightning, plus the punch) the
-   *  frame it lands. `now` = Infinity fires everything still pending. */
-  _fireLandings(now = performance.now()) {
+  /** A Stop: every pending strike fires at once (quick), never skipped. */
+  _quickStrikes(drop) {
+    if (!drop?.strikes?.length || drop.strikeQuick) return;
+    drop.strikeQuick = true;
+    drop.endAt = Math.max(drop.endAt || 0, drop.start + Math.max(this._landedMs(drop), this._strikesEndMs(drop)) + 30);
+  }
+
+  /** Fire each strike's bolt and swap on the frame they are due. `now` =
+   *  Infinity fires everything still pending. */
+  _fireStrikes(now = performance.now()) {
     const d = this.fx.drop;
-    if (!d?.impacts?.length) return;
+    if (!d?.strikes?.length) return;
     const e = now - d.start;
-    for (const im of d.impacts) {
-      if (im.fired || e < this.cellLandMs(im.r, im.c, im.count)) continue;
-      im.fired = true;
-      const at = Number.isFinite(now) ? now : performance.now();
-      this.fx.heavyReveals.set(im.key, { revealAt: at, revealDuration: MULTI_PUNCH.ms, tier: im.tier, value: im.value });
-      if (im.heavy) this.spawnHeavyImpact(im.r, im.c, im.tier, im.value);
-      else this.spawnLightningStrike(im.r, im.c, im.tier);
+    for (const st of d.strikes) {
+      if (!st.bolted && e >= this._strikeAt(d, st)) {
+        st.bolted = true;
+        st.boltAt = Number.isFinite(now) ? now : performance.now();
+        if (!this._reducedMotion) this.spawnLightningStrike(st.r, st.c, st.tier);
+      }
+      if (!st.swapped && e >= this._strikeSwapAt(d, st)) {
+        st.swapped = true;
+        const at = Number.isFinite(now) ? now : performance.now();
+        if (!st.boltAt) st.boltAt = at;
+        this.fx.heavyReveals.set(st.key, { revealAt: at, revealDuration: MULTI_PUNCH.ms, tier: st.tier, value: st.value });
+        if (st.heavy) this.spawnHeavyImpact(st.r, st.c, st.tier, st.value, { bolt: false });
+        else window.Sound?.play("multiplier_drop", { value: st.value });
+      }
     }
   }
 
-  /** The charging sockets of a tease (light only, under the cells): a glow
-   *  that swells, a ring that tightens onto the slot, sparks drawn inward and
-   *  a streak down the lane, all building toward the release. */
-  drawTeaseSockets(ctx, { padX, top, laneW, rowStep }) {
+  /** The strikes' light: a crackle at the top of the lane just before the
+   *  bolt, then a white-gold flash over the cell that peaks as the art turns
+   *  (drawn ON TOP of the cells, additive; the art itself never fades). */
+  drawStrikes(ctx, { padX, top, laneW, rowStep }) {
     const d = this.fx.drop;
-    const tz = d?.tease;
-    if (!tz) return;
-    const e = performance.now() - d.start;
+    if (!d?.strikes?.length) return;
+    const now = performance.now();
+    const e = now - d.start;
     const cs = Math.min(laneW, rowStep);
+    const t = turboScale();
     const calm = this._reducedMotion;
-    for (const [key, t] of tz.cells) {
-      const [r, c] = key.split("-").map(Number);
-      const count = Number(d.map?.[key] || 0);
-      const land = this.cellLandMs(r, c, count);
-      if (e < tz.chargeFrom || e > land) continue;
-      const span = Math.max(1, t.releaseMs - tz.chargeFrom);
-      const k = clamp((e - tz.chargeFrom) / span, 0, 1);
-      const build = easeInCubic(k);
-      const x = padX + laneW * (c + 0.5);
-      const y = top + rowStep * (r + 0.5);
-      const color = t.tier?.accent || TEASE_GOLD;
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      // Outer glow in the tier's colour, swelling.
-      const glow = this.getGlowSprite(color);
-      const gr = cs * (0.6 + 0.5 * build);
-      ctx.globalAlpha = 0.45 + 0.55 * build;
-      ctx.drawImage(glow.cvs, x - gr, y - gr, gr * 2, gr * 2);
-      // A hot gold core gathering in the slot: the energy of what is coming.
-      const core = this.getGlowSprite(TEASE_GOLD);
-      const cr = cs * (0.16 + 0.3 * build);
-      ctx.globalAlpha = 0.55 + 0.45 * build;
-      ctx.drawImage(core.cvs, x - cr, y - cr, cr * 2, cr * 2);
-      // Gold ring tightening onto the slot.
-      ctx.globalAlpha = 0.6 + 0.4 * build;
-      ctx.strokeStyle = TEASE_GOLD;
-      ctx.lineWidth = Math.max(2, cs * (0.035 + 0.04 * build));
-      ctx.beginPath();
-      ctx.arc(x, y, cs * (0.6 - 0.2 * build), 0, Math.PI * 2);
-      ctx.stroke();
-      if (!calm) {
-        // A heartbeat: rings pulse out of the core, quickening toward release.
-        const beat = (e * (0.002 + 0.006 * build)) % 1;
-        ctx.globalAlpha = (1 - beat) * (0.35 + 0.45 * build);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1.5, cs * 0.025);
-        ctx.beginPath();
-        ctx.arc(x, y, cs * (0.2 + 0.45 * beat), 0, Math.PI * 2);
-        ctx.stroke();
-        // Streak down the lane from the board's top edge to the slot.
-        const streak = ctx.createLinearGradient(x, top, x, y);
-        streak.addColorStop(0, "rgba(255, 255, 255, 0)");
-        streak.addColorStop(1, TEASE_GOLD);
-        ctx.globalAlpha = 0.25 + 0.5 * build;
-        ctx.strokeStyle = streak;
-        ctx.lineWidth = Math.max(2, cs * 0.06);
-        ctx.beginPath();
-        ctx.moveTo(x, top);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        // Sparks drawn into the slot on a loop, faster as it builds.
-        ctx.fillStyle = TEASE_GOLD;
-        const n = 10;
-        for (let i = 0; i < n; i += 1) {
-          const ph = (e * (0.0012 + 0.0022 * build) + i / n) % 1;
-          const ang = (i / n) * Math.PI * 2 + e * 0.0016;
-          const rr = cs * 0.8 * (1 - ph);
-          ctx.globalAlpha = (0.45 + 0.55 * build) * ph;
-          ctx.beginPath();
-          ctx.arc(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr, Math.max(1.2, cs * 0.03), 0, Math.PI * 2);
-          ctx.fill();
-        }
+    const flashMs = Math.max(60, Math.round(STRIKE.flashMs * (d.strikeQuick ? 0.5 : t)));
+    const flash = this.getGlowSprite(STRIKE.flash);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const st of d.strikes) {
+      const at = this._strikeAt(d, st);
+      const x = padX + laneW * (st.c + 0.5);
+      const y = top + rowStep * (st.r + 0.5);
+      // Crackle at the top of the lane, flickering in just before the bolt.
+      const flick = Math.round(STRIKE.flickerMs * t);
+      if (!calm && !d.strikeQuick && e >= at - flick && e < at) {
+        const k = (e - (at - flick)) / Math.max(1, flick);
+        ctx.globalAlpha = (0.35 + 0.5 * k) * (0.6 + 0.4 * Math.random());
+        const fr = cs * (0.18 + 0.12 * k);
+        ctx.drawImage(flash.cvs, x - fr, top - fr * 0.5, fr * 2, fr * 2);
       }
-      ctx.restore();
+      // The impact flash, peaking as the art turns into the multiplier.
+      if (e >= at && e < at + flashMs) {
+        const peak = Math.max(1, this._strikeSwapAt(d, st) - at);
+        const u = e - at;
+        const a = u < peak ? u / peak : 1 - (u - peak) / Math.max(1, flashMs - peak);
+        ctx.globalAlpha = clamp(a, 0, 1) * (calm ? 0.5 : 0.95);
+        const fr = cs * (0.7 + 0.35 * (u / flashMs));
+        ctx.drawImage(flash.cvs, x - fr, y - fr, fr * 2, fr * 2);
+      }
     }
+    ctx.restore();
   }
 
   dropDelay(row, col, count) {
     // A Stop collapses a spin board's waterfall (a zip snapshot reads the
     // live one); a tumble refill keeps its waterfall.
     if (this._stopHits() && !this._liveTiming) return 0;
-    // A teased multiplier (MULTI_TEASE) releases after its socket charged.
-    const teased = this.fx.drop?.tease?.cells.get(`${row}-${col}`);
-    if (teased) return teased.releaseMs;
     // Reel release (WATERFALL): the whole reel goes at once (it falls as a
     // stack), reels left to right by their rank among the reels that drop.
     // A spin uses spinColMs, a tumble refill tumbleColMs; cascade momentum
@@ -3607,9 +3557,8 @@ class ReelCanvasRenderer {
 
     // 5b: anticipation lanes, behind the symbols.
     if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
-    // Multiplier tease: land what has landed, then draw the charging sockets.
-    this._fireLandings();
-    if (this.fx.drop?.tease) this.drawTeaseSockets(ctx, { padX, top, laneW, rowStep });
+    // Multiplier strikes due this frame (bolt, then the swap at the flash).
+    this._fireStrikes();
 
     // Win focus (FOCUS, #55): one backdrop darkening behind the symbols; the
     // symbols outside the focus set step back through their own alpha below.
@@ -3627,7 +3576,9 @@ class ReelCanvasRenderer {
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
         if (this.board.hidden) continue;
-        const symbol = this.board.matrix?.[r]?.[c] || "BLUE_DIAMOND";
+        // A new multiplier shows its stand-in until its strike turns it (STRIKE).
+        const strike = this.fx.drop?.strikeMap?.get(`${r}-${c}`);
+        const symbol = strike && !strike.swapped ? strike.standIn : this.board.matrix?.[r]?.[c] || "BLUE_DIAMOND";
         const key = `${r}-${c}`;
         const x = padX + laneW * (c + 0.5);
         const yBase = top + rowStep * (r + 0.5);
@@ -3904,6 +3855,9 @@ class ReelCanvasRenderer {
         if (inFlight) ctx.restore(); // reel mask
       }
     }
+
+    // Multiplier strikes: the crackle and the flash, over the symbols.
+    if (this.fx.drop?.strikes?.length) this.drawStrikes(ctx, { padX, top, laneW, rowStep });
 
     // 5a/5c/5d: scatter reticles and the trigger lock-on, over the symbols.
     if (this.fx.reticles.length || this.fx.lockOn) this.drawScatterLocks(ctx, radius);
@@ -7656,13 +7610,6 @@ reelRenderer.onScatterCount = (n, need) => ticker.say(`Scatters ${n}/${need}`);
 reelRenderer.onSymbolLand = (row, col) => landingTicks.play(row, col, reelRenderer.rows);
 reelRenderer.onAnticipation = (phase, ms) => {
   if (phase === "start") anticipationDrone.start(ms);
-  else anticipationDrone.stop();
-};
-// Multiplier tease: the same rising drone, higher for bigger tiers.
-const TEASE_PITCH = { common: [70, 140], rare: [80, 170], epic: [90, 200], legendary: [100, 240], mythic: [110, 280] };
-reelRenderer.onMultiTease = (phase, ms, tierKey) => {
-  const [from, to] = TEASE_PITCH[tierKey] || TEASE_PITCH.common;
-  if (phase === "start") anticipationDrone.start(ms, { from, to });
   else anticipationDrone.stop();
 };
 
