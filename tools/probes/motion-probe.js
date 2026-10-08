@@ -333,10 +333,13 @@ async function evaluate(cdp, expression) {
   })()`);
   check("the idle board is perfectly still (no float, bob or wobble)", calm.frames >= 10 && calm.distinct === 1, `${calm.frames} idle frames, ${calm.distinct} distinct layouts`);
 
-  console.log("\nflight visibility: falling symbols never vanish (handheld throttle)");
-  await waitIdle();
-  const fly = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer; const prevTier = R.tier; R.applyTier("low");
+  console.log("\nflight visibility: falling symbols never vanish or blink (handheld throttle)");
+  // A real >= 3-step round on the low tier, normal and turbo. Every frame of
+  // every drop AND the 400ms after it, every in-grid symbol must be drawn
+  // with its art visible (alpha >= 0.3; the win-focus dim is 0.6). The old
+  // blink: a refill landing while the burst's timer ran drew at alpha 0.
+  const flyRun = (turbo) => evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const prevTier = R.tier; R.applyTier("low"); state.turbo = ${turbo};
     const real = window.__realApi || api; window.__realApi = real;
     api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
       for (let k = 0; k < 2000; k++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() });
@@ -344,53 +347,91 @@ async function evaluate(cdp, expression) {
       return real(p, payload); };
     await new Promise((r) => setTimeout(r, 400));
     const rs = R.getLayout().rowStep; const realDraw = R.draw.bind(R);
-    let lastAt = 0, maxGap = 0, frames = 0, missing = 0; const missed = [];
+    let lastAt = 0, maxGap = 0, frames = 0, missing = 0, faint = 0, watchUntil = 0, lastDrop = null; const missed = [];
     R.draw = (...x) => {
-      R._traceCells = new Set(); const now = performance.now(); const out = realDraw(...x); const d = R.fx.drop;
-      if (d && !d.zip) {
+      R._traceCells = new Set(); R._traceAlpha = new Map(); const now = performance.now(); const out = realDraw(...x); const d = R.fx.drop;
+      if (d) { lastDrop = d; watchUntil = (d.endAt || now) + 400; }
+      if (d && !d.zip) { if (lastAt && now - lastAt > maxGap && now < (d.endAt || 0)) maxGap = now - lastAt; lastAt = now; } else lastAt = 0;
+      if ((d || now < watchUntil) && !R.fx.exit && !(R.fx.blast && !d)) {
         frames++;
-        if (lastAt && now - lastAt > maxGap && now < (d.endAt || 0)) maxGap = now - lastAt;
-        lastAt = now;
-        for (const k of Object.keys(d.map || {})) {
-          if (!(Number(d.map[k]) > 0)) continue;
-          const [r, c] = k.split("-").map(Number);
+        for (let r = 0; r < R.rows; r++) for (let c = 0; c < R.cols; c++) {
+          const k = r + "-" + c;
+          if (R.board.cleared.has(k)) continue; // exploded: gone on purpose
           const centre = (r + 0.5) * rs + R.cellOffset(r, c, rs);
-          if (centre > rs * 0.15 && !R._traceCells.has(k)) { missing++; if (missed.length < 5) missed.push(k); }
+          if (centre <= rs * 0.15) continue; // still above the grid (waiting or entering)
+          if (!R._traceCells.has(k)) { missing++; if (missed.length < 5) missed.push("missing " + k); continue; }
+          const al = R._traceAlpha.get(k);
+          if (al !== undefined && al < 0.3) { faint++; if (missed.length < 5) missed.push("faint " + k + "@" + al.toFixed(2)); }
         }
-      } else lastAt = 0;
-      R._traceCells = null; return out; };
+      }
+      R._traceCells = null; R._traceAlpha = null; return out; };
     el.spinBtn.click();
     const t0 = performance.now();
     while (performance.now() - t0 < 200 || isRoundInFlight()) await new Promise((r) => setTimeout(r, 30));
-    R.draw = realDraw; api = real; R.applyTier(prevTier);
-    return { frames, maxGap, missing, missed, cap: 30 };
+    await new Promise((r) => setTimeout(r, 450));
+    R.draw = realDraw; api = real; R.applyTier(prevTier); state.turbo = false;
+    return { frames, maxGap, missing, faint, missed, cap: 30 };
   })()`);
-  check("every falling symbol inside the grid is drawn on every frame", fly.frames > 20 && fly.missing === 0, `${fly.frames} drop frames, ${fly.missing} missing ${fly.missed.join(" ")}`);
-  check("the whole fall keeps the busy frame cadence (no idle throttle mid-drop)", fly.maxGap <= fly.cap + 25, `max gap ${fly.maxGap.toFixed(0)}ms (cap ${fly.cap}ms)`);
+  for (const turbo of [false, true]) {
+    await waitIdle();
+    const fly = await flyRun(turbo);
+    const tag = turbo ? "turbo" : "normal";
+    check(`(${tag}) every in-grid symbol is drawn and visible on every frame of a drop and after it (no blink)`,
+      fly.frames > 20 && fly.missing === 0 && fly.faint === 0, `${fly.frames} frames, ${fly.missing} missing, ${fly.faint} faint ${fly.missed.join(" ")}`);
+    check(`(${tag}) the whole fall keeps the busy frame cadence (no idle throttle mid-drop)`, fly.maxGap <= fly.cap + 25, `max gap ${fly.maxGap.toFixed(0)}ms (cap ${fly.cap}ms)`);
+  }
 
-  console.log("\nmultiplier lands as itself (no decoy, no vanish)");
-  await waitIdle();
-  const ml = await evaluate(cdp, `(async () => {
-    const R = __reelRenderer; const rs = R.getLayout().rowStep;
-    const m = R.board.matrix.map((r) => r.slice()); m[4][2] = "MULTI";
-    const dropMap = { "4-2": 5, "3-2": 5, "2-2": 5, "1-2": 5, "0-2": 5 };
-    const realDraw = R.draw.bind(R); let frames = 0, hidden = 0, notMulti = 0;
-    R.draw = (...x) => { R._traceCells = new Set(); const out = realDraw(...x);
-      if (R.fx.drop) { frames++; const centre = 4.5 * rs + R.cellOffset(4, 2, rs);
-        if (centre > rs * 0.15 && !R._traceCells.has("4-2")) hidden++;
+  console.log("\nmultiplier tease: only the multiplier waits, its socket charges, then it lands as itself");
+  // A tumble refill of reel 3 with one new multiplier at row 4; the others
+  // (rows 0-3) are plain symbols. chargeMs/staggerMs come from MULTI_TEASE.
+  const teaseRun = (opts) => evaluate(cdp, `(async () => {
+    const R = __reelRenderer; const rs = R.getLayout().rowStep; const o = ${JSON.stringify(opts)};
+    const m = R.board.matrix.map((r) => r.slice()); m[4][2] = "MULTI"; if (o.two) m[4][4] = "MULTI";
+    const dropMap = { "4-2": 5, "3-2": 5, "2-2": 5, "1-2": 5, "0-2": 5 }; if (o.two) Object.assign(dropMap, { "4-4": 5, "3-4": 5, "2-4": 5, "1-4": 5, "0-4": 5 });
+    const mults = [{ row: 4, col: 2, value: 5, id: "probe-t5-" + Math.random() }]; if (o.two) mults.push({ row: 4, col: 4, value: 5, id: "probe-t5b-" + Math.random() });
+    const realDraw = R.draw.bind(R); let frames = 0, hiddenAfterRelease = 0, visibleBeforeRelease = 0, notMulti = 0, socketFrames = 0;
+    R.draw = (...x) => { R._traceCells = new Set(); const out = realDraw(...x); const d = R.fx.drop;
+      if (d && d.tease) { frames++; const e = performance.now() - d.start; const t = d.tease.cells.get("4-2"); const centre = 4.5 * rs + R.cellOffset(4, 2, rs);
+        if (centre > rs * 0.15) { if (e < t.releaseMs - 1) visibleBeforeRelease++; if (!R._traceCells.has("4-2")) hiddenAfterRelease++; }
+        if (e >= d.tease.chargeFrom && e < t.releaseMs) socketFrames++;
         if (R.board.matrix[4][2] !== "MULTI") notMulti++; }
       R._traceCells = null; return out; };
-    R.resetHeavyBangs();
-    const p = R.drop(m, [{ row: 4, col: 2, value: 5, id: "probe-m5" }], dropMap, 480, { animateMultipliers: true, tempo: 1 });
-    const rev = R.fx.heavyReveals.get("4-2"); const land = R.cellLandMs(4, 2, 5);
-    const info = rev ? { decoy: "decoy" in rev, at: rev.revealAt - R.fx.drop.start, land } : null;
-    await p; R.draw = realDraw;
-    return { frames, hidden, notMulti, info };
+    R.resetHeavyBangs(); state.turbo = Boolean(o.turbo);
+    const p = R.drop(m, mults, dropMap, 480, { animateMultipliers: true, tempo: 1 });
+    const d = R.fx.drop; const tz = d.tease;
+    const info = tz ? { chargeFrom: tz.chargeFrom, chargeMs: tz.chargeMs, peak: tz.peak && tz.peak.key,
+      rel: [...tz.cells.entries()].map(([k, t]) => ({ k, ms: t.releaseMs })), want: Math.round(MULTI_TEASE.chargeMs[tz.peak.key] * (o.turbo ? TURBO_SCALE : 1)),
+      stagger: Math.round(MULTI_TEASE.staggerMs * (o.turbo ? TURBO_SCALE : 1)),
+      othersLand: Math.max(...["3-2", "2-2", "1-2", "0-2"].map((k) => { const [r, c] = k.split("-").map(Number); return R.dropDelay(r, c, 5) + R.cellFallMs(c, 5); })) } : null;
+    let punchAt = null, landAt = null;
+    if (o.stopAt) { await new Promise((r) => setTimeout(r, tz.chargeFrom + o.stopAt)); el.spinBtn.click(); }
+    const t0 = performance.now();
+    while (R.fx.drop === d) { const rv = R.fx.heavyReveals.get("4-2"); if (rv && punchAt === null) { punchAt = rv.revealAt - d.start; landAt = R.cellLandMs(4, 2, 5); } await new Promise((r) => requestAnimationFrame(r)); }
+    await p; R.draw = realDraw; state.turbo = false;
+    const relAfter = tz ? [...tz.cells.values()].map((t) => t.releaseMs) : [];
+    return { frames, hiddenAfterRelease, visibleBeforeRelease, notMulti, socketFrames, info, punchAt, landAt, relAfter, zip: Boolean(d.zip) };
   })()`);
-  check("a falling multiplier is drawn as itself on every frame (no decoy, never hidden)",
-    ml.frames > 10 && ml.hidden === 0 && ml.notMulti === 0 && ml.info && !ml.info.decoy, `${ml.frames} frames, ${ml.hidden} hidden`);
-  check("its landing punch starts at the landing (no hide-then-pop delay)", ml.info && Math.abs(ml.info.at - ml.info.land) < 20,
-    ml.info ? `punch @${ml.info.at.toFixed(0)}ms, lands @${ml.info.land.toFixed(0)}ms` : "no reveal entry");
+  await waitIdle();
+  const T1 = await teaseRun({});
+  check("only the multiplier waits: the rest of its reel lands first, then the socket charges",
+    T1.info && T1.info.chargeFrom >= T1.info.othersLand - 1 && T1.info.rel[0].ms >= T1.info.chargeFrom + T1.info.chargeMs - 1,
+    T1.info ? `others land @${T1.info.othersLand.toFixed(0)}ms, charge @${T1.info.chargeFrom.toFixed(0)} for ${T1.info.chargeMs}ms, release @${T1.info.rel[0].ms.toFixed(0)}` : "no tease");
+  check("the charge lasts the tier's chargeMs (common 500ms)", T1.info && T1.info.chargeMs === T1.info.want && T1.socketFrames > 10, T1.info ? `${T1.info.peak} ${T1.info.chargeMs}ms, ${T1.socketFrames} socket frames` : "");
+  check("the multiplier is never inside the grid before its release, and drawn as itself every frame after",
+    T1.visibleBeforeRelease === 0 && T1.hiddenAfterRelease === 0 && T1.notMulti === 0, `${T1.frames} frames`);
+  check("its BANG + punch fire at its real landing", T1.punchAt !== null && Math.abs(T1.punchAt - T1.landAt) < 40, `punch @${T1.punchAt?.toFixed(0)}ms, lands @${T1.landAt?.toFixed(0)}ms`);
+  await waitIdle();
+  const T2 = await teaseRun({ turbo: true, two: true });
+  check("turbo scales the charge; two multipliers release left to right, staggerMs apart",
+    T2.info && T2.info.chargeMs === T2.info.want && T2.info.rel.length === 2 && T2.info.rel[0].k === "4-2" && Math.abs(T2.info.rel[1].ms - T2.info.rel[0].ms - T2.info.stagger) < 1,
+    T2.info ? `charge ${T2.info.chargeMs}ms; ` + T2.info.rel.map((x) => x.k + "@" + x.ms.toFixed(0)).join(", ") : "");
+  await waitIdle();
+  await evaluate(cdp, "state.roundAnimating = true; true"); // a Stop press needs a round in flight
+  const T3 = await teaseRun({ stopAt: 120 });
+  await evaluate(cdp, "state.roundAnimating = false; state.fastStopRequested = false; true");
+  check("a Stop during the charge releases the multiplier at once (a refill falls, never zips)",
+    T3.info && !T3.zip && T3.relAfter[0] < T3.info.rel[0].ms - 200 && T3.hiddenAfterRelease === 0,
+    T3.info ? `release ${T3.info.rel[0].ms.toFixed(0)} → ${T3.relAfter[0].toFixed(0)}ms` : "");
 
   console.log("\nreels land as stacks, no dead air between spins (#47)");
   await waitIdle();
@@ -400,6 +441,7 @@ async function evaluate(cdp, expression) {
     let ticks = 0; const realTick = R.onSymbolLand; R.onSymbolLand = (r, c) => { ticks++; realTick?.(r, c); };
     const realDrop = R.drop.bind(R); let pred = null, start = 0;
     const realAntic = R.makeAnticipation; R.makeAnticipation = () => null; // judge the plain landing beat
+    const realTease = R._setupTease; R._setupTease = (drop) => { drop.tease = null; }; // (a multiplier tease lands later on purpose)
     const press = performance.now(); let firstMove = 0, emptyFrames = 0, watching = true;
     const watch = () => { if (!watching) return;
       // A frame with neither the old board (fx.exit) nor the new one showing is dead air.
@@ -413,7 +455,7 @@ async function evaluate(cdp, expression) {
     for (let i = 0; i < 200 && !pred; i++) await new Promise((r) => setTimeout(r, 5));
     const resultAt = start - press;
     await new Promise((r) => setTimeout(r, 1300));
-    watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic;
+    watching = false; R.drop = realDrop; R.symbolsLanded = realS; R.onSymbolLand = realTick; R.makeAnticipation = realAntic; R._setupTease = realTease;
     // Each reel's landing thud (a multiplier's BANG plays its own reel_stop too).
     const seen = new Set();
     const thuds = __snd.filter((s) => s.n === "reel_stop" && s.i >= 0 && s.t >= start && !seen.has(s.i) && seen.add(s.i)).map((s) => ({ c: s.i, t: s.t - start }));
