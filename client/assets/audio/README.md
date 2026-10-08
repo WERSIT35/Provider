@@ -1,8 +1,9 @@
 # Vault 20K: audio
 
-The sound engine is `client/audio/audio.js`. It plays the files listed in
-`manifest.json` and falls back to its synthesized voices until a file is decoded
-(or if one is missing), so the game is never silent.
+The sound engine is `client/audio/audio.js`. It plays only the recordings listed
+in `manifest.json` (no generated sounds). They are fetched and decoded as soon as
+the page loads, so the first spin is fully voiced; the first tap only starts the
+audio output (browser autoplay policy).
 
 - `sfx/<key>_<n>.{ogg,m4a}`: 1-4 variations per sound key, mono, levelled per
   bus. The engine rotates them (never the same one twice in a row) with a small

@@ -55,6 +55,8 @@ const SOUNDS = {
   explode: { bus: "sfx", variations: [0, 1, 3].map((i) => ({ layers: [[k("impact-sounds", `impactGlass_medium_00${i}.ogg`), 0, 0]], max: 0.55, fadeOut: 160 })) },
   explode_great: { bus: "sfx", variations: [0, 1].map((i) => ({
     layers: [[k("impact-sounds", `impactGlass_medium_00${i + 2}.ogg`), 0, 0], [k("sci-fi-sounds", `explosionCrunch_00${i}.ogg`), -6, 0]], max: 0.85, fadeOut: 300 })) },
+  // The scatter anticipation: a recorded air swell, looped by the engine (it raises its pitch and opens a filter).
+  riser: { bus: "sfx", variations: [{ layers: [[o("sfx100v2_air_01.ogg"), 0, 0]], max: 2.4, fadeOut: 40 }] },
   // The win meter counting: chip clinks.
   win_tick: { bus: "sfx", variations: [1, 2, 3, 4].map((i) => ({ layers: [[k("casino-audio", `chips-collide-${i}.ogg`), 0, 0]], max: 0.2, fadeOut: 60 })) },
   // A scatter lands: a gem sparkle (the engine raises it a step per scatter).
