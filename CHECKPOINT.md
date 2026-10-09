@@ -1,6 +1,6 @@
 # CHECKPOINT — 2026-10-09 (end of day)
 
-Everything below is merged to `main` (`d65cbc2`). The code and the repo are ready for the
+Everything below is merged to `main` (`113cfe6`; no open PRs). The code and the repo are ready for the
 next step, hosting. **The platform is not hosted yet**: Vercel serves only the static client.
 
 ## Merged today
@@ -13,6 +13,7 @@ next step, hosting. **The platform is not hosted yet**: Vercel serves only the s
 | #78 | **Security hardening (Phase 0)**, findings F1–F8 in `qa/security/findings-register.md`. Two High: concurrent rounds on one session (now `SESSION_BUSY`) and global, reusable idempotency keys (now single-use and tied to a session). Also: engine input allow-list + fail-closed `assertPayable` (crazy mode, forced multipliers, cap), strict bodies, prototype-poisoning parser fix, security headers, no internal errors leaked, no admin/crazy controls on `/play`. `test/security/abuse.test.ts` (57 tests). |
 | #79 | **Trace id on the ledgers** (migration 0011): `rounds.trace_id` / `audit_records.trace_id`, in the chain, `omitNull`, in the export and the Round Inspector. |
 | #81 | **Signing keyring + signed ledger rows** (migration 0012; replaces #80, which GitHub closed when its base branch was deleted). One active key + retired public keys in `signing_keys`; rotation = new `EXPORT_SIGNING_KEY` + restart; `/.well-known/round-export-keys` publishes all of them. Every round and audit row is signed (~29 µs per row); a bad signature means **tampered**. |
+| #82 | This checkpoint, `ROADMAP.md` "Next steps to the first casino", and the signing-key settings in `infra/.env.prod.example` (the expiry line stays commented out: an empty value fails boot validation). |
 
 **Combined verification** (all six merged together locally before merging on GitHub; `main`
 is byte-identical to that tree):
@@ -37,6 +38,15 @@ is byte-identical to that tree):
 - Website: separate Vercel project, Vault 20K look, email contact only.
 - Per-row ledger signing (not checkpoints); one rotating key for v1 (no per-jurisdiction keys yet).
 - The user is a game provider with the required provider certifications and licences.
+
+## Lessons
+- **Stacked PRs:** merging the base PR with branch deletion CLOSES the stacked PR (GitHub doesn't retarget it). Retarget it to `main` first, or reopen it from the same branch (#80 → #81).
+- **Combined check before merging:** merge every open PR into a throwaway local branch and run `verify:release` + `verify:browser` on the result; `main` must end up identical to the tested tree.
+
+## Resume here (next session)
+1. **User:** claim the GitHub Student Pack, create the droplet (Ubuntu LTS, 2 GB, SSH key only), point `rgs.<domain>` (and `casino.<domain>`) at it. Send the real partners email and the GLI reference number.
+2. **Claude:** `ROADMAP.md` step 2 (deploy staging per `infra/README.md`), then steps 3–4.
+3. Local leftovers: the user's old `stash@{0}` ("WIP on main: 55959ca"), untouched.
 
 Next steps, in order: `ROADMAP.md` → "Next steps to the first casino".
 
