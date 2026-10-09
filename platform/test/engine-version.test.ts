@@ -103,7 +103,7 @@ describe("replay verification is engine-version and rules aware", () => {
   const RULES = "a".repeat(64);
   const verifier = (r: RoundRecord, replayOk: boolean, chainOk = true) =>
     new RoundVerificationService(
-      { getRound: () => r, verifyIntegrity: () => ({ rounds: { ok: chainOk } }) } as unknown as RoundLedgerService,
+      { getRound: () => r, verifyIntegrity: () => ({ rounds: { ok: chainOk } }), roundSignature: () => ({ status: "valid", key_id: "ed25519:test" }) } as unknown as RoundLedgerService,
       {
         engineVersion: () => "1.0.0",
         rulesHash: () => RULES,

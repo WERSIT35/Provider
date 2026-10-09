@@ -196,7 +196,7 @@ it, anything else is `404`) returns `{ bundle, signature }`. The bundle
   bytes the round drew), the engine version and the rules hash;
 - **outcome:** the pre-spin state, the engine result and `outcome_hash`;
 - **verification:** the platform's replay verdict and hash-chain check;
-- **ledger:** the round's chain link;
+- **ledger:** the round's chain link, plus the row's own Ed25519 `signature` and `signing_key_id`;
 - **wallet:** every money move for the round;
 - **adjustments:** any provider void or settle.
 
@@ -209,9 +209,34 @@ npx tsx scripts/verify-round-export.ts export.json --platform https://<rgs>
 
 That checks the signature, the seed digest, a rebuild of the random stream from the seed, and
 the outcome hash. Keep the bundle as delivered: the outcome hash depends on the engine's key
-order. The signing key is `EXPORT_SIGNING_KEY` (an Ed25519 PKCS#8 PEM). It is required in
-staging and production, because a per-process key would leave old exports unverifiable after a
-restart. Every export is audited (`round.export`).
+order. Every export is audited (`round.export`).
+
+**Signed ledger rows.** Every `rounds` and `audit_records` row is also signed, as it is written,
+over `vault20k.ledger.v1|<table>|<seq>|<chain_hash>` (migration 0012). The table and seq
+bind a signature to one row of one ledger. A hash chain stops edits, but not a full rewrite by
+someone with database access, who could recompute every hash; they cannot forge these. A round
+whose signature is invalid, or made by a key the platform never had, is **tampered** in the
+Round Inspector. `GET /admin/v1/integrity` reports `signatures` per ledger. Rows from before 0012
+are `unsigned` (a note, not a failure; the chain still covers them).
+
+**Keys and rotation.** `EXPORT_SIGNING_KEY` (an Ed25519 PKCS#8 PEM) is the one **active** key;
+it signs exports and ledger rows. It is required in staging and production, because a
+per-process key would leave old signatures unverifiable after a restart.
+`EXPORT_SIGNING_KEY_EXPIRES_AT` (optional, ISO) makes staging/production refuse to boot once it
+has passed. The public half of every key that ever signed is kept in `signing_keys` (private
+keys are never stored; a DB trigger makes the key material write-once and rows permanent).
+
+To rotate:
+1. Generate a new key (`node infra/gen-secrets.mjs` prints one) and put it in
+   `EXPORT_SIGNING_KEY`.
+2. Restart. On boot the new key becomes active and the previous one is marked `retired`. Old
+   exports and rows keep verifying with it.
+
+`/.well-known/round-export-keys` returns `{ active_key_id, keys }`. Every key, active first,
+has `key_id`, `status`, `created_at`, `retired_at` and `expires_at`. Verifiers select by the
+`key_id` a signature carries. A retired key is never accepted as active again: boot fails with
+`SIGNING_KEY_RETIRED`. If a key may have leaked, rotate immediately, then review its rows'
+signatures with `/admin/v1/integrity`.
 
 ### 4f. Observability: tracing, the money log, metrics
 

@@ -5,7 +5,8 @@ import type { InMemoryRoundAdjustmentStore } from "./round-adjustment.store";
 import type { RoundVerificationService } from "./round-verification.service";
 import type { ManagementService } from "../management/management.service";
 import { streamBytes } from "../../lib/seeded-rng";
-import type { ExportSigner, ExportSignature } from "../../lib/security/export-signer";
+import type { ExportSignature } from "../../lib/security/export-signer";
+import type { SigningKeyring } from "../../lib/security/signing-keyring";
 
 export const ROUND_EXPORT_FORMAT = "vault20k.round-export/v1";
 
@@ -23,7 +24,7 @@ export const ROUND_EXPORT_FORMAT = "vault20k.round-export/v1";
  *   ledger         the round's link in the append-only hash chain
  *   wallet         every money move for the round (debit / credit / rollback, failed too)
  *   adjustments    provider void / settle actions on it
- * …signed with Ed25519 over its canonical JSON (ExportSigner). Only the round's own
+ * …signed with Ed25519 over its canonical JSON (the platform signing keyring). Only the round's own
  * operator can export it.
  */
 export interface RoundExport {
@@ -38,7 +39,7 @@ export class RoundExportService {
     private readonly adjustments: InMemoryRoundAdjustmentStore,
     private readonly verification: RoundVerificationService,
     private readonly mgmt: ManagementService,
-    private readonly signer: ExportSigner,
+    private readonly signer: Pick<SigningKeyring, "sign">,
     private readonly now: () => Date = () => new Date()
   ) {}
 
@@ -96,7 +97,16 @@ export class RoundExportService {
       verification: verdict
         ? { verdict: verdict.verdict, outcome_ok: verdict.outcome_ok, chain_ok: verdict.chain_ok, recomputed_hash: verdict.recomputed_hash, notes: verdict.notes }
         : null,
-      ledger: { seq: round.seq, prev_hash: round.prev_hash, payload_hash: round.payload_hash, chain_hash: round.chain_hash },
+      // The row's own signature (over vault20k.ledger.v1|rounds|<seq>|<chain_hash>) rides
+      // along, so a reviewer can check the recorded row itself, not just this bundle.
+      ledger: {
+        seq: round.seq,
+        prev_hash: round.prev_hash,
+        payload_hash: round.payload_hash,
+        chain_hash: round.chain_hash,
+        signature: round.signature ?? null,
+        signing_key_id: round.signing_key_id ?? null
+      },
       wallet: this.transactions.list({ round_ref: round.round_ref }).map((t) => ({
         seq: t.seq,
         type: t.type,

@@ -162,6 +162,7 @@ function renderInspector() {
       kv('Math config', r.math_config ? (esc(r.math_config.version) + ' · RTP ' + r.math_config.theoretical_rtp + '% · ' + esc(r.math_config.status)) : esc(r.math_config_id)) +
       kv('Engine', r.engine_version ? '<code>'+esc(r.engine_version)+'</code>' : '<span class="muted">unversioned</span>') +
       kv('Rules hash', r.rules_hash ? '<code title="'+esc(r.rules_hash)+'">'+esc(r.rules_hash.slice(0, 16))+'…</code>' : '<span class="muted">not recorded</span>') +
+      kv('Signature', sigBadge(r.signature)) +
       kv('Trace ID', r.trace_id ? '<code title="W3C trace: search the request logs and the casino ledger for it">'+esc(r.trace_id)+'</code>' : '<span class="muted">not recorded</span>') +
       kv('Currency', esc(r.currency || '—')) +
       kv('Bet', fmtMoney(r.bet_amount) + (r.ante_enabled ? ' (ante)' : '')) +
@@ -203,10 +204,18 @@ function verdictBannerHtml() {
   if (v.error) return '<div class="verdict pending">Verification unavailable: ' + esc(v.error) + '</div>';
   const cls = v.verdict === 'tampered' ? 'bad' : (v.verdict === 'legitimate' ? 'good' : 'pending');
   return '<div class="verdict ' + cls + '"><b>' + esc(String(v.verdict).toUpperCase()) + '</b>' +
-    '<span>outcome ' + (v.outcome_ok === null ? 'n/a' : (v.outcome_ok ? '✓' : '✗')) + ' · chain ' + (v.chain_ok ? '✓' : '✗') + '</span>' +
+    '<span>outcome ' + (v.outcome_ok === null ? 'n/a' : (v.outcome_ok ? '✓' : '✗')) + ' · chain ' + (v.chain_ok ? '✓' : '✗') + (v.signature ? ' · signature ' + (v.signature.status === 'valid' ? '✓' : v.signature.status === 'unsigned' ? 'n/a' : '✗') : '') + '</span>' +
     (v.notes && v.notes.length ? '<span class="muted">' + esc(v.notes.join(' · ')) + '</span>' : '') + '</div>';
 }
 function kv(k, v) { return '<span>'+k+'</span><div>'+(v ?? '')+'</div>'; }
+// The round row's Ed25519 signature (migration 0012), as checked by the server.
+function sigBadge(sig) {
+  if (!sig || sig.status === 'unsigned') return '<span class="muted">unsigned (recorded before per-row signatures)</span>';
+  const key = sig.key_id ? ' <code>' + esc(sig.key_id) + '</code>' : '';
+  if (sig.status === 'valid') return '<b class="ok">✓ valid</b>' + key;
+  if (sig.status === 'unknown_key') return '<span class="err">✗ signed by a key this platform never had</span>' + key;
+  return '<span class="err">✗ INVALID</span>' + key;
+}
 
 // Dimension 1 — the spins of the bonus: Trigger ➔ Free spin 1 ➔ … ➔ Free spin N.
 function timelineHtml() {

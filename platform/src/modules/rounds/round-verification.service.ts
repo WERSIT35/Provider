@@ -1,5 +1,6 @@
 import type { RoundLedgerService } from "../ledger/round-ledger.service";
 import type { AuthoritativeResolver } from "../rng/authoritative-resolver";
+import type { SignatureStatus } from "../../lib/security/signing-keyring";
 
 /**
  * "Was this win legitimate?" — the dispute-resolution backbone.
@@ -10,10 +11,14 @@ import type { AuthoritativeResolver } from "../rng/authoritative-resolver";
  * hash-chain integrity. Together they answer two distinct questions:
  *   - outcome_ok: the stored outcome is exactly what the seed produces (not forged)
  *   - chain_ok:   the stored round has not been retroactively edited
+ *   - signature:  the row carries a valid Ed25519 signature by a platform key. The hash
+ *                 chain cannot stop a full rewrite by someone with database access (who
+ *                 recomputes every hash); a signature needs the private key.
  *
  * Verdict:
  *   legitimate    — both checks pass
- *   tampered      — either check fails (outcome forged or ledger edited)
+ *   tampered      — any check fails (outcome forged, ledger edited, or the row's
+ *                   signature invalid or by a key the platform never had)
  *   inconclusive  — round predates pre-state capture, or it was resolved by a different
  *                   engine version or rules payload than the one running, so it can't
  *                   be replayed here
@@ -28,6 +33,8 @@ export interface VerificationResult {
   stored_hash: string;
   recomputed_hash: string | null;
   chain: { seq: number; prev_hash: string; payload_hash: string; chain_hash: string };
+  /** The round row's Ed25519 signature check (unsigned = recorded before migration 0012). */
+  signature: { status: SignatureStatus; key_id: string | null };
   notes: string[];
   /** The replayed engine result (original key order), only with verify(ref, { withResult: true }). */
   replayed_result?: unknown;
@@ -44,12 +51,19 @@ export class RoundVerificationService {
     const round = this.ledger.getRound(roundRef);
     if (!round) return null;
 
-    const chain = this.ledger.verifyIntegrity().rounds;
-    const chain_ok = chain.ok;
+    // This round's own signature is checked below; no full signature sweep per round.
+    const chainCheck = this.ledger.verifyIntegrity({ signatures: false }).rounds;
     const notes: string[] = [];
-    if (!chain_ok) {
-      notes.push(`ledger chain broken at seq ${chain.brokenAtSeq} (${chain.reason})`);
+    if (!chainCheck.ok) {
+      notes.push(`ledger chain broken at seq ${chainCheck.brokenAtSeq} (${chainCheck.reason})`);
     }
+    const signature = this.ledger.roundSignature(roundRef) ?? { status: "unsigned" as const, key_id: null };
+    const signatureBad = signature.status === "invalid" || signature.status === "unknown_key";
+    if (signature.status === "invalid") notes.push(`row signature does not verify with key ${signature.key_id}`);
+    if (signature.status === "unknown_key") notes.push(`row is signed by ${signature.key_id}, a key this platform never had`);
+    if (signature.status === "unsigned") notes.push("row predates per-row signatures (migration 0012); the hash chain still covers it");
+    // A bad signature fails integrity exactly like a broken chain.
+    const chain_ok = chainCheck.ok && !signatureBad;
 
     if (!round.pre_state) {
       notes.push("round predates pre-state capture — deterministic replay not possible");
@@ -66,6 +80,7 @@ export class RoundVerificationService {
           payload_hash: round.payload_hash,
           chain_hash: round.chain_hash
         },
+        signature,
         notes
       };
     }
@@ -124,6 +139,7 @@ export class RoundVerificationService {
         payload_hash: round.payload_hash,
         chain_hash: round.chain_hash
       },
+      signature,
       notes,
       ...(opts.withResult ? { replayed_result: replay.result } : {})
     };

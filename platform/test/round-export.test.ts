@@ -111,11 +111,11 @@ describe("signed round-history export", () => {
   });
 
   it("an ephemeral key in tests; a configured PEM is used as given", async () => {
-    expect(c.exportSigner.ephemeral).toBe(true);
+    expect(c.signingKeyring.ephemeral).toBe(true);
     const { generateKeyPairSync } = await import("node:crypto");
     const pem = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
     const c2 = buildContainer({ ...CONFIG, exportSigningKey: pem.replace(/\n/g, "\\n") });
-    expect(c2.exportSigner.ephemeral).toBe(false);
+    expect(c2.signingKeyring.ephemeral).toBe(false);
     expect(() => buildContainer({ ...CONFIG, exportSigningKey: generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString() })).toThrow(/Ed25519/);
   });
 });

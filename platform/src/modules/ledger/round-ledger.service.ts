@@ -8,6 +8,20 @@ import type {
   ChainVerification
 } from "./ledger.types";
 import { deriveFeatureFamilies } from "./feature-family";
+import type { InMemoryAuditRepository, InMemoryRoundRepository } from "./memory-repositories";
+import type { SignatureStatus, SignatureSummary } from "../../lib/security/signing-keyring";
+
+/** Checks one ledger row against the key it names (SigningKeyring.verifyLedger). */
+export interface LedgerVerifier {
+  verifyLedger(table: "rounds" | "audit_records", row: { seq: number; chain_hash: string; signature?: string | null; signing_key_id?: string | null }): SignatureStatus;
+}
+
+export interface IntegrityReport {
+  rounds: ChainVerification;
+  audit: ChainVerification;
+  /** Per-row Ed25519 signatures (migration 0012); present when a keyring is wired. */
+  signatures?: { rounds: SignatureSummary; audit: SignatureSummary };
+}
 
 /** Context the platform supplies alongside the engine outcome to record a round. */
 export interface RoundContext {
@@ -40,7 +54,8 @@ export interface RoundContext {
 export class RoundLedgerService {
   constructor(
     private readonly rounds: RoundRepository,
-    private readonly audit: AuditRepository
+    private readonly audit: AuditRepository,
+    private readonly verifier?: LedgerVerifier
   ) {}
 
   recordResolvedRound(ctx: RoundContext, resolved: AuthoritativeRound): RoundRecord {
@@ -118,7 +133,32 @@ export class RoundLedgerService {
     return list.length ? list.reduce((a, b) => (b.seq > a.seq ? b : a)) : null;
   }
 
-  verifyIntegrity(): { rounds: ChainVerification; audit: ChainVerification } {
-    return { rounds: this.rounds.verifyChain(), audit: this.audit.verifyChain() };
+  /**
+   * Hash chains of both ledgers, plus every row's signature unless asked not to. Checking
+   * signatures costs ~75µs per row, so per-round callers (the inspector, exports) pass
+   * { signatures: false } and check only their own row (roundSignature); the full sweep
+   * is for GET /admin/v1/integrity.
+   */
+  verifyIntegrity(opts: { signatures?: boolean } = {}): IntegrityReport {
+    const report: IntegrityReport = { rounds: this.rounds.verifyChain(), audit: this.audit.verifyChain() };
+    if (opts.signatures === false) return report;
+    const v = this.verifier;
+    const rounds = this.rounds as Partial<InMemoryRoundRepository>;
+    const audit = this.audit as Partial<InMemoryAuditRepository>;
+    if (v && rounds.verifySignatures && audit.verifySignatures) {
+      report.signatures = {
+        rounds: rounds.verifySignatures((row) => v.verifyLedger("rounds", row)),
+        audit: audit.verifySignatures((row) => v.verifyLedger("audit_records", row))
+      };
+    }
+    return report;
+  }
+
+  /** One round's signature check: what the Round Inspector shows. */
+  roundSignature(roundRef: string): { status: SignatureStatus; key_id: string | null } | null {
+    const round = this.rounds.getByRef(roundRef);
+    if (!round) return null;
+    if (!this.verifier) return { status: "unsigned", key_id: round.signing_key_id ?? null };
+    return { status: this.verifier.verifyLedger("rounds", round), key_id: round.signing_key_id ?? null };
   }
 }

@@ -45,9 +45,14 @@ const EnvSchema = z.object({
   // Optional Postgres persistence. When set, state is durably mirrored to Postgres
   // (loaded on boot, written through per request). Unset → pure in-memory (default).
   DATABASE_URL: z.string().url().optional(),
-  // Ed25519 private key (PKCS#8 PEM; escaped newlines allowed) that signs round-history
-  // exports. Required in staging/production; local/test generate an ephemeral one.
+  // The ACTIVE Ed25519 private key (PKCS#8 PEM; escaped newlines allowed) that signs
+  // round-history exports and every ledger row. Required in staging/production;
+  // local/test generate an ephemeral one. Rotation: set a new key and restart; the old
+  // one is retired and stays published (src/lib/security/signing-keyring.ts).
   EXPORT_SIGNING_KEY: z.string().optional(),
+  // Optional planned end of life of the active key (ISO 8601). Staging/production refuse
+  // to boot once it has passed, so a rotation can't be forgotten.
+  EXPORT_SIGNING_KEY_EXPIRES_AT: z.string().datetime({ offset: true }).optional(),
   // Bearer token GET /metrics requires (Prometheus scrape). Unset: /metrics is open,
   // so keep it on an internal network or set this.
   METRICS_TOKEN: z.string().min(16).optional(),
@@ -97,6 +102,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     // Exports signed with a per-process key could never be verified after a restart.
     if (!env.EXPORT_SIGNING_KEY) {
       throw new Error("Unsafe production environment: EXPORT_SIGNING_KEY is required");
+    }
+    if (env.EXPORT_SIGNING_KEY_EXPIRES_AT && Date.parse(env.EXPORT_SIGNING_KEY_EXPIRES_AT) <= Date.now()) {
+      throw new Error(`Unsafe production environment: EXPORT_SIGNING_KEY expired at ${env.EXPORT_SIGNING_KEY_EXPIRES_AT}; rotate it`);
     }
   }
   return env;

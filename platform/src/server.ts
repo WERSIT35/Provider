@@ -38,7 +38,8 @@ async function main(): Promise<void> {
       bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD,
       totpIssuer: env.TOTP_ISSUER,
       totpRequired: env.ADMIN_TOTP_REQUIRED,
-      exportSigningKey: env.EXPORT_SIGNING_KEY
+      exportSigningKey: env.EXPORT_SIGNING_KEY,
+      exportSigningKeyExpiresAt: env.EXPORT_SIGNING_KEY_EXPIRES_AT
     },
     { persistence }
   );
