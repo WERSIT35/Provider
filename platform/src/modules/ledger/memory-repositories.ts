@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GENESIS_HASH, hashPayload, chainHash } from "./hash-chain";
+import { currentTrace } from "../../lib/trace-context";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
 import type {
   RoundRepository,
@@ -29,6 +30,19 @@ function contentOf<T extends Record<string, unknown>>(record: T): Record<string,
   return out;
 }
 
+/**
+ * The content to hash for a new entry: the input plus the current request's trace id
+ * (src/lib/trace-context.ts), unless the caller passed one. The key is added ONLY when
+ * there is a trace: the payload hash covers every key (even an undefined one hashes as
+ * null), so an entry without a trace must hash exactly as entries did before 0011, and
+ * Postgres's NULL is dropped again on hydrate (persistence.ts TABLES omitNull).
+ */
+function withTrace<T extends { trace_id?: string }>(input: T): T {
+  const { trace_id, ...rest } = input;
+  const traceId = trace_id ?? currentTrace()?.traceId;
+  return (traceId ? { ...rest, trace_id: traceId } : rest) as T;
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -54,7 +68,7 @@ export class InMemoryRoundRepository implements RoundRepository {
     const seq = this.entries.length;
     const prev_hash = seq === 0 ? GENESIS_HASH : this.entries[seq - 1].chain_hash;
     const created_at = new Date().toISOString();
-    const content = { ...input, seq, created_at };
+    const content = { ...withTrace(input), seq, created_at };
     const payload_hash = hashPayload(content);
     const record: RoundRecord = {
       ...content,
@@ -110,7 +124,7 @@ export class InMemoryAuditRepository implements AuditRepository {
     const seq = this.entries.length;
     const prev_hash = seq === 0 ? GENESIS_HASH : this.entries[seq - 1].chain_hash;
     const created_at = new Date().toISOString();
-    const content = { ...input, seq, created_at };
+    const content = { ...withTrace(input), seq, created_at };
     const payload_hash = hashPayload(content);
     const record: AuditRecord = {
       ...content,

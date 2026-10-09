@@ -112,6 +112,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       math_config: mathConfig,
       engine_version: round.engine_version ?? null,
       rules_hash: round.rules_hash ?? null,
+      // W3C trace of the request that recorded the round (migration 0011; null before it).
+      trace_id: round.trace_id ?? null,
       session_id: round.session_id,
       currency: app.container.sessions.tryGet(round.session_id)?.currency ?? null,
       bet_amount: round.bet_amount,

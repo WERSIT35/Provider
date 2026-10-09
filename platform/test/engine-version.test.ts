@@ -79,7 +79,7 @@ describe("engine_version on rounds", () => {
         query: async () => ({
           rows: saved.map((r) => {
             const row: Record<string, unknown> = { ...r, outcome_jsonb: r.outcome };
-            for (const col of ["campaign_id", "grant_id", "engine_version", "rules_hash"]) if (row[col] === undefined) row[col] = null;
+            for (const col of ["campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id"]) if (row[col] === undefined) row[col] = null;
             return row;
           })
         })

@@ -71,7 +71,10 @@ export class RoundExportService {
         recorded_status: round.status,
         effective_status: this.adjustments.effectiveStatus(round.round_ref, round.status),
         campaign_id: round.campaign_id ?? null,
-        grant_id: round.grant_id ?? null
+        grant_id: round.grant_id ?? null,
+        // W3C trace of the request that recorded the round (null before migration 0011):
+        // the key to the request logs and the casino's own webhook rows.
+        trace_id: round.trace_id ?? null
       },
       rng: {
         algo: round.rng_algo,
@@ -103,6 +106,7 @@ export class RoundExportService {
         error_code: t.error_code ?? null,
         idempotency_key: t.idempotency_key,
         operator_tx_ref: t.operator_tx_ref ?? null,
+        trace_id: t.trace_id ?? null,
         created_at: t.created_at
       })),
       adjustments: this.adjustments.list({ round_ref: round.round_ref }).map((a) => ({
