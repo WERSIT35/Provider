@@ -1,22 +1,44 @@
-# CHECKPOINT — 2026-10-09
+# CHECKPOINT — 2026-10-09 (end of day)
 
-## Latest (2026-10-09): hosting kit, provider website, open items closed
+Everything below is merged to `main` (`d65cbc2`). The code and the repo are ready for the
+next step, hosting. **The platform is not hosted yet**: Vercel serves only the static client.
 
-- **Hosting kit `infra/`** (`infra/README.md`): one server with `docker-compose.prod.yml`
-  (platform + Postgres + Caddy HTTPS), `gen-secrets.mjs` (fills `.env.prod`, which is
-  git-ignored), `backup.sh`. The plan is free student credit (GitHub Student Pack →
-  DigitalOcean droplet), starting in `NODE_ENV=staging`. The platform is **not hosted yet**;
-  Vercel serves only the static client.
-- **CI:** new job `rtp-parity` (reduced seeded run: 5M base, 500k buys), closing §6.2. New
-  job `deploy` (SSH, pinned host key) stays off until the repo variable `DEPLOY_ENABLED=true`.
-- **Provider website `website/`** (`website/README.md`): a static B2B site (home + Vault 20K
-  game sheet), deployed as a **separate** Vercel project with root directory `website`.
-  Contact is by email only. It still has two placeholders to fill: the partners email and
-  the GLI report reference.
-- **Certification:** the user reports the lab certification is done (2026-10-09), by GLI.
-  The GLI report reference is not yet recorded in the repo.
-- §5 item 8 fixed: the landscape-phone autoplay/turbo hit areas (`hit-target-probe` PASS).
-  Item 10 fixed: `.claude/settings.local.json` is no longer tracked.
+## Merged today
+
+| PR | What |
+|---|---|
+| #75 | **Hosting kit `infra/`** (`infra/README.md`): one server with `docker-compose.prod.yml` (platform + Postgres + Caddy HTTPS), `gen-secrets.mjs` (fills a git-ignored `.env.prod`), `backup.sh`. **CI:** job `rtp-parity` (seeded, 5M base + 500k buys); job `deploy` (SSH, pinned host key), off until the repo variable `DEPLOY_ENABLED=true`. `.claude/settings.local.json` untracked. |
+| #76 | Landscape-phone autoplay/turbo hit areas (§5 item 8): `hit-target-probe` PASS at every viewport. |
+| #77 | **Provider website `website/`**: static B2B site (home + Vault 20K game sheet), a separate Vercel project (root `website`), contact by email. |
+| #78 | **Security hardening (Phase 0)**, findings F1–F8 in `qa/security/findings-register.md`. Two High: concurrent rounds on one session (now `SESSION_BUSY`) and global, reusable idempotency keys (now single-use and tied to a session). Also: engine input allow-list + fail-closed `assertPayable` (crazy mode, forced multipliers, cap), strict bodies, prototype-poisoning parser fix, security headers, no internal errors leaked, no admin/crazy controls on `/play`. `test/security/abuse.test.ts` (57 tests). |
+| #79 | **Trace id on the ledgers** (migration 0011): `rounds.trace_id` / `audit_records.trace_id`, in the chain, `omitNull`, in the export and the Round Inspector. |
+| #81 | **Signing keyring + signed ledger rows** (migration 0012; replaces #80, which GitHub closed when its base branch was deleted). One active key + retired public keys in `signing_keys`; rotation = new `EXPORT_SIGNING_KEY` + restart; `/.well-known/round-export-keys` publishes all of them. Every round and audit row is signed (~29 µs per row); a bad signature means **tampered**. |
+
+**Combined verification** (all six merged together locally before merging on GitHub; `main`
+is byte-identical to that tree):
+- `npm run verify:release` PASS: platform 314 tests, demo-operator 50, client checks, 0 vulnerabilities.
+- `npm run verify:browser` PASS: all 7 real-Chrome checks + operator e2e.
+- RTP (CI sizes): base 96.68% PASS, buy 96.66% PASS. The math is untouched.
+
+## Readiness: what is and isn't ready
+
+| Area | State |
+|---|---|
+| Game + math | Ready. Certified math build; the user holds GLI certification and the provider licences (reference number not yet recorded here). |
+| RGS / integration API | Ready. HMAC operator API, seamless wallet, free rounds, embedding, exports, tracing, signed ledgers. |
+| Security (code) | Phase 0 done; 57 abuse tests in CI. **Tool-based pentest (Phase 3B) not run yet.** |
+| Hosting | **Not done.** Kit ready; no server yet. The Docker image has never been built or booted, and migrations 0011/0012 have never run on a real Postgres (Docker Desktop was off). |
+| Staging tests (load, resilience, restore) | Not done (needs the server). |
+| Website | Built, **not published**: placeholders `partners@example.com` and `[GLI REFERENCE NO.]`. |
+| Scale | One server, no failover: fine for a pilot (~30 concurrent players), not for a big SLA. |
+
+## Decisions (user, 2026-10-09)
+- Hosting on free student credit: one DigitalOcean droplet, `NODE_ENV=staging` first.
+- Website: separate Vercel project, Vault 20K look, email contact only.
+- Per-row ledger signing (not checkpoints); one rotating key for v1 (no per-jurisdiction keys yet).
+- The user is a game provider with the required provider certifications and licences.
+
+Next steps, in order: `ROADMAP.md` → "Next steps to the first casino".
 
 ---
 

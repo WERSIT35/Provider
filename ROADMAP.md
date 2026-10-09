@@ -84,10 +84,30 @@ Move forward only when exit criteria are complete.
 
 Details, verification results and open items: [CHECKPOINT.md](CHECKPOINT.md).
 
-## Immediate Next Action
+## Completed Milestones (2026-10-09)
 
-**Lab submission readiness:** close the certification report's open items O1–O4
-(CHECKPOINT.md §5): declare the ante RTP, show scaled pays in the paytable, rewrite the player
-rules copy, and report the 94 / 92 profiles. Then the first provider sandbox pass with the demo
-casino and CI regression automation. Keep docs aligned with runtime behavior after each major
-change.
+- **Production readiness of the code:** hosting kit (`infra/`), CI (`rtp-parity`, gated
+  `deploy`), security hardening (findings F1–F8, 57 abuse tests), trace id on the ledgers,
+  signing keyring with rotation and per-row signed ledgers, and the B2B provider website.
+  Lab certification and provider licences are held (user). Details: [CHECKPOINT.md](CHECKPOINT.md).
+
+## Next steps to the first casino
+
+Each step has an owner and a "done when". Steps 1–2 unblock everything else; steps 6–7
+(casino paperwork) can run in parallel from today.
+
+| # | Step | Owner | Done when |
+|---|---|---|---|
+| 1 | **Server.** Claim the GitHub Student Pack; create a DigitalOcean droplet (Ubuntu LTS, 2 GB, SSH key only); DNS `rgs.<domain>` (+ `casino.<domain>` for staging) → droplet. | User | `ssh` works; DNS resolves |
+| 2 | **Deploy staging.** Follow `infra/README.md`: server baseline (ufw 22/80/443, fail2ban, unattended upgrades, no root SSH), `gen-secrets.mjs`, `docker compose up` with `NODE_ENV=staging`. First real build of the image and first run of migrations 0001–0012 on Postgres. Add the demo casino as a `staging` compose service, off-site backups (B2/R2) + a restore script, UptimeRobot on `/health`, alerts on `rgs_engine_integrity_violations_total` > 0 and pending reversals. Turn on CI `deploy`. | Claude (+ user for accounts) | `https://rgs.<domain>/health` OK; boot log shows migrations + hydration; a backup restored to a fresh DB with both chains and signatures verifying |
+| 3 | **Staging tests.** `npm run e2e` and the embed checks against the hosted URLs; real phones (iOS Safari, Android Chrome); load test 30 → 60 players for 15 min (p95 spin < 300 ms, no 5xx, CPU < 50%); restart mid-session; the casino down during a debit; casino vs RGS ledgers reconcile per round. | Claude | All pass; results in `qa/` |
+| 4 | **Pentest (Phase 3B).** Docker Desktop on; local prod-like stack: OWASP ZAP (authenticated), Burp, nuclei, ffuf, sqlmap, admin console attacks, trivy, gitleaks; nmap + testssl.sh against staging. | Claude (+ user's machine) | No open Critical/High in `qa/security/findings-register.md` |
+| 5 | **Publish the website.** Fill `partners@example.com` and `[GLI REFERENCE NO.]`; Vercel project with root `website`; optional domain. | User → Claude | Site live with real contact and certificate reference |
+| 6 | **Casino paperwork.** Contract (revenue share, SLA, payment terms, liability, GDPR; `docs/commercial-terms-template.md`); the casino's due-diligence pack (licences, GLI certificates for their markets, RTP variants, rules, findings register, incident response). Decide the SLA (modest: one server) and who handles support out of hours. | User | Signed contract |
+| 7 | **Casino integration.** Their operator account, HMAC credentials, allowed domains; they build the wallet webhooks + embed `/play`; joint sandbox certification (spins, buy, free rounds, lost-debit rollback, signed export); set their RTP variant, currencies, bets, jurisdiction profile. | Casino + Claude | Sandbox run signed off by both |
+| 8 | **Go live.** `NODE_ENV=production`, rotate every staging secret (new `EXPORT_SIGNING_KEY`), remove the staging services, production credentials; watch 24–48 h with a rollback plan (`docs/release-checklist.md`). | Claude + user | First real-money rounds settle and reconcile |
+
+**After launch:** OpenTelemetry export (epic Issue #4); an external pentest before real
+money at scale; multi-server (Redis for the nonce store, rate limiter and timers; managed
+Postgres) when a casino needs a higher SLA; per-jurisdiction signing keys if a regulator
+asks; new games on the same engine and platform.
