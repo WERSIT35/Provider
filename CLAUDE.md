@@ -122,6 +122,8 @@ npm run check:casino-embed  # casino page framing + driving the game in real Chr
 
 Static-client hosting only (`netlify.toml`, `vercel.json`): both publish `client/` as a SPA with a catch-all rewrite to `index.html`. These deploy the front end **without** an API backend.
 
+**Platform hosting (`infra/`, see `infra/README.md`):** one server running `docker-compose.prod.yml` (platform from `platform/Dockerfile` + Postgres + Caddy for HTTPS). `node infra/gen-secrets.mjs > infra/.env.prod` fills every secret the boot guards require (`.env.prod` is git-ignored). Migrations apply on boot. **One platform replica only** (nonce store, rate limiter, regulatory timers and the read model are in memory). CI job `deploy` (off until the repo variable `DEPLOY_ENABLED=true`) SSHes in after `release-check`, `browser-checks` and `rtp-parity` pass on `main`. CI job `rtp-parity` is a reduced seeded run (5M base, 500k buys); the 30M run stays the local/certification gate.
+
 ## Environment notes
 
 - Windows + PowerShell is the primary shell; a Bash tool is also available for POSIX scripts.

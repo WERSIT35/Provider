@@ -16,6 +16,7 @@ on:
       - "package-lock.json"
       - ".dockerignore"
       - "platform/Dockerfile"
+      - "infra/**"
       - ".github/workflows/platform-ci.yml"
   pull_request:
     paths:
@@ -27,6 +28,7 @@ on:
       - "package-lock.json"
       - ".dockerignore"
       - "platform/Dockerfile"
+      - "infra/**"
       - ".github/workflows/platform-ci.yml"
   workflow_dispatch:
 
@@ -91,3 +93,55 @@ jobs:
           path: ${{ runner.temp }}/shots
           if-no-files-found: ignore
           retention-days: 7
+
+  # Reduced seeded RTP parity of the shared engine (the full 30M run stays a local /
+  # certification step). Seeded, so a given engine always gives the same verdict: it
+  # cannot flake, it only fails when the math really moved. Wider MAX_SE than the
+  # certification run, sized for a 4-core runner (~1 min).
+  rtp-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Paid rounds (5M, base)
+        run: node tools/rtp-parity.js
+        env: { STEPS: "5000000", MAX_SE: "1.0" }
+      - name: Bonus buys (500k)
+        run: node tools/rtp-parity.js
+        env: { MODE: buy, STEPS: "500000", MAX_SE: "0.25" }
+
+  # Deploys main to the single RGS server (infra/README.md) once every check passed.
+  # Off until the server exists: set the repo variable DEPLOY_ENABLED=true and the
+  # secrets DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY (a key allowed to run the commands below)
+  # and DEPLOY_KNOWN_HOSTS (`ssh-keyscan -H <host>` output, checked once by hand: a pinned
+  # host key means a spoofed server never receives the deploy).
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    needs: [release-check, browser-checks, rtp-parity]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Pull, rebuild and restart on the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy "$DEPLOY_USER@$DEPLOY_HOST" "set -e
+            cd /opt/provider && git fetch --quiet origin main && git checkout --quiet ${{ github.sha }}
+            cd infra && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+            for i in \$(seq 1 30); do
+              docker compose -f docker-compose.prod.yml --env-file .env.prod ps platform | grep -q '(healthy)' && exit 0
+              sleep 5
+            done
+            echo 'platform did not become healthy' >&2; exit 1"

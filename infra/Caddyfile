@@ -1,0 +1,6 @@
+# HTTPS in front of the platform. Caddy fetches and renews the certificate itself;
+# RGS_DOMAIN's DNS A record must point at this server before first start.
+{$RGS_DOMAIN} {
+	encode gzip
+	reverse_proxy platform:8080
+}
