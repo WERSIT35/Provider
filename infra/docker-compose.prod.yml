@@ -1,0 +1,69 @@
+# Single-server staging/production stack for the provider platform (RGS + consoles).
+#
+#   cd infra
+#   node gen-secrets.mjs > .env.prod      # once; then set RGS_DOMAIN
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# ONE platform replica only: the nonce store, rate limiter, regulatory timers and the
+# read model live in process memory (Postgres is write-through). Do not scale it out.
+# Migrations apply on boot (src/server.ts → runMigrations).
+services:
+  platform:
+    build:
+      context: ..
+      dockerfile: platform/Dockerfile
+    image: bananax-platform:latest
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8080"
+      DATABASE_URL: postgres://bananax:${POSTGRES_PASSWORD}@postgres:5432/bananax
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bananax
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: bananax
+    # No published port: reachable only from the platform container.
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bananax -d bananax"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RGS_DOMAIN: ${RGS_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - platform
+
+volumes:
+  pg-data:
+  caddy-data:
+  caddy-config:

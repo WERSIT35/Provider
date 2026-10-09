@@ -14,3 +14,6 @@ demo-operator/data/
 
 # Release artifacts (e.g. the lab compliance package) are built locally, never committed.
 *.zip
+
+# Production secrets for the hosted platform (infra/.env.prod.example is the template).
+infra/.env.prod
