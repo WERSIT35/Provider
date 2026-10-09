@@ -1,3 +1,25 @@
+# CHECKPOINT — 2026-10-09
+
+## Latest (2026-10-09): hosting kit, provider website, open items closed
+
+- **Hosting kit `infra/`** (`infra/README.md`): one server with `docker-compose.prod.yml`
+  (platform + Postgres + Caddy HTTPS), `gen-secrets.mjs` (fills `.env.prod`, which is
+  git-ignored), `backup.sh`. The plan is free student credit (GitHub Student Pack →
+  DigitalOcean droplet), starting in `NODE_ENV=staging`. The platform is **not hosted yet**;
+  Vercel serves only the static client.
+- **CI:** new job `rtp-parity` (reduced seeded run: 5M base, 500k buys), closing §6.2. New
+  job `deploy` (SSH, pinned host key) stays off until the repo variable `DEPLOY_ENABLED=true`.
+- **Provider website `website/`** (`website/README.md`): a static B2B site (home + Vault 20K
+  game sheet), deployed as a **separate** Vercel project with root directory `website`.
+  Contact is by email only. It still has two placeholders to fill: the partners email and
+  the GLI report reference.
+- **Certification:** the user reports the lab certification is done (2026-10-09), by GLI.
+  The GLI report reference is not yet recorded in the repo.
+- §5 item 8 fixed: the landscape-phone autoplay/turbo hit areas (`hit-target-probe` PASS).
+  Item 10 fixed: `.claude/settings.local.json` is no longer tracked.
+
+---
+
 # CHECKPOINT — 2026-10-08
 
 Where the work stands, the decisions behind it, and what comes next. Everything below is
