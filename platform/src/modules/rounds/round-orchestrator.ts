@@ -72,8 +72,11 @@ export interface SpinOutcome {
 const ENGINE_BALANCE_SENTINEL = Number.MAX_SAFE_INTEGER / 1000;
 
 export class RoundOrchestrator {
-  private readonly idem = new Map<string, SpinOutcome>();
+  /** Outcomes by idempotency key, with the session that played them (see claimKey). */
+  private readonly idem = new Map<string, { sessionId: string; outcome: SpinOutcome }>();
   private readonly inflight = new Set<string>();
+  /** Sessions with a round in progress (see exclusive). */
+  private readonly busySessions = new Set<string>();
   private readonly debits: DebitReconciler;
 
   constructor(
@@ -95,18 +98,56 @@ export class RoundOrchestrator {
   }
 
   async spin(sessionId: string, req: SpinRequest): Promise<SpinOutcome> {
-    // App-level idempotency: a repeated key returns the stored outcome verbatim.
-    const cached = this.idem.get(req.idempotency_key);
-    if (cached) return { ...cached, idempotent_replay: true };
-    // A retry that arrives while the original is still running must not play a
-    // second round (it would burn a second free round, or race the ledger).
-    if (this.inflight.has(req.idempotency_key)) throw new Error("REQUEST_IN_PROGRESS");
-    this.inflight.add(req.idempotency_key);
+    return this.exclusive(sessionId, req.idempotency_key, () => this.spinOnce(sessionId, req));
+  }
+
+  /**
+   * One round at a time per session, and one use per idempotency key. Both checks and
+   * both claims happen synchronously, before the first await, so two requests can never
+   * both pass them. Without the session lock, a buy and a spin (or two buys) sent
+   * together each read the session BEFORE the other's debit settled: both were paid,
+   * and both saw "no feature running", which also bypassed the feature lock. A cached
+   * replay of the same key is still answered while the session is busy.
+   */
+  private async exclusive(sessionId: string, key: string, run: () => Promise<SpinOutcome>): Promise<SpinOutcome> {
+    const replay = this.claimKey(sessionId, key);
+    if (replay) return replay;
+    if (this.busySessions.has(sessionId)) throw new Error("SESSION_BUSY");
+    this.busySessions.add(sessionId);
+    this.inflight.add(key);
     try {
-      return await this.spinOnce(sessionId, req);
+      return await run();
     } finally {
-      this.inflight.delete(req.idempotency_key);
+      this.inflight.delete(key);
+      this.busySessions.delete(sessionId);
     }
+  }
+
+  /**
+   * The idempotency key names the round everywhere: the round ref (`r_<key>`) and the
+   * casino wallet keys (`<key>:debit`, `<key>:credit`). So a key is single-use across the
+   * whole platform, and tied to the session that used it:
+   *  - a repeat from the SAME session returns the stored outcome verbatim (a retry);
+   *  - the same key from ANOTHER session is refused (it would read that player's round,
+   *    and the casino would take its debit for a repeat of theirs: no charge);
+   *  - a retry while the original still runs is refused (no second round);
+   *  - a key whose round was voided stays refused (ROUND_VOIDED);
+   *  - a key that already made a round or a debit, but whose outcome is not cached (a
+   *    restart, or a round rolled back after its debit), is refused BEFORE any money
+   *    moves: the casino would otherwise answer the new debit with the old one.
+   */
+  private claimKey(sessionId: string, key: string): SpinOutcome | null {
+    const cached = this.idem.get(key);
+    if (cached) {
+      if (cached.sessionId !== sessionId) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+      return { ...cached.outcome, idempotent_replay: true };
+    }
+    if (this.inflight.has(key)) throw new Error("REQUEST_IN_PROGRESS");
+    if (this.debits.isVoided(`${key}:debit`)) throw new Error("ROUND_VOIDED");
+    if (this.ledger.getRound(`r_${key}`) || this.transactions.getByKey(`${key}:debit`)) {
+      throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+    }
+    return null;
   }
 
   private async spinOnce(sessionId: string, req: SpinRequest): Promise<SpinOutcome> {
@@ -262,9 +303,10 @@ export class RoundOrchestrator {
    * subsequent 0-charge free spins flow through the normal spin() path.
    */
   async buyFeature(sessionId: string, req: BuyFeatureRequest): Promise<SpinOutcome> {
-    const cached = this.idem.get(req.idempotency_key);
-    if (cached) return { ...cached, idempotent_replay: true };
+    return this.exclusive(sessionId, req.idempotency_key, () => this.buyOnce(sessionId, req));
+  }
 
+  private async buyOnce(sessionId: string, req: BuyFeatureRequest): Promise<SpinOutcome> {
     const session = this.sessions.get(sessionId);
     this.mgmt.assertOperatorActive(session.operator_id);
     if (session.free_spins_left > 0) throw new Error("FEATURE_IN_PROGRESS");
@@ -505,7 +547,7 @@ export class RoundOrchestrator {
         : null,
       result: resolved.result
     };
-    this.idem.set(idempotencyKey, outcome);
+    this.idem.set(idempotencyKey, { sessionId: session.id, outcome });
     return outcome;
   }
 

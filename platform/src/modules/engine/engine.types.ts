@@ -24,7 +24,8 @@ export interface SpinInput {
   bet_amount: number;
   ante_enabled?: boolean;
   spin_id?: string;
-  force_multiplier_value?: number;
+  // No force_multiplier_value: the engine's dev-only inputs are never part of an RGS
+  // spin (engine.service.ts engineInput).
 }
 
 export interface WaysWin {

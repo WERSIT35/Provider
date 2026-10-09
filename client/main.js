@@ -2,9 +2,13 @@ const $ = (id) => document.getElementById(id);
 
 // Public/admin mode — default is public (player view). Add `?admin=1` to the
 // URL (or set window.__adminMode = true before scripts load) for the dev view.
+// Never on a platform launch (`?lt=` or served under /play/): a real-money player
+// gets no simulator or crazy-mode controls. The RGS would ignore them anyway (it
+// resolves every round itself), but they have no business on a casino's page.
 (() => {
   const params = new URLSearchParams(window.location.search);
-  const isAdmin = params.has("admin") || Boolean(window.__adminMode);
+  const onPlatform = params.has("lt") || /^\/play(\/|$)/.test(window.location.pathname);
+  const isAdmin = !onPlatform && (params.has("admin") || Boolean(window.__adminMode));
   document.body.classList.add(isAdmin ? "admin-mode" : "public-mode");
 })();
 
