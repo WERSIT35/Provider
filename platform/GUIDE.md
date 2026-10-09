@@ -219,6 +219,11 @@ restart. Every export is audited (`round.export`).
   `traceparent` on the spin or buy. The RGS continues it, or starts one when none arrives:
   - it gives each request a span and echoes `traceparent` on the response;
   - it stamps `trace_id` on its request logs and on every `wallet_transactions` row;
+  - it stamps the same `trace_id` on the round's `rounds` row and its `audit_records` entry
+    (migration 0011). The trace is part of each row's chain hash, so editing it is detected
+    as tampering. Rows from before 0011, and rows written by background jobs outside a
+    request, carry no trace. The Round Inspector shows it, and the signed round export (§4e)
+    includes the round's trace and each wallet move's;
   - it forwards a child span to the casino's wallet webhooks, where the demo casino stores the
     same `trace_id` on its own ledger row.
 

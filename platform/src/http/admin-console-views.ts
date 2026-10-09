@@ -162,6 +162,7 @@ function renderInspector() {
       kv('Math config', r.math_config ? (esc(r.math_config.version) + ' · RTP ' + r.math_config.theoretical_rtp + '% · ' + esc(r.math_config.status)) : esc(r.math_config_id)) +
       kv('Engine', r.engine_version ? '<code>'+esc(r.engine_version)+'</code>' : '<span class="muted">unversioned</span>') +
       kv('Rules hash', r.rules_hash ? '<code title="'+esc(r.rules_hash)+'">'+esc(r.rules_hash.slice(0, 16))+'…</code>' : '<span class="muted">not recorded</span>') +
+      kv('Trace ID', r.trace_id ? '<code title="W3C trace: search the request logs and the casino ledger for it">'+esc(r.trace_id)+'</code>' : '<span class="muted">not recorded</span>') +
       kv('Currency', esc(r.currency || '—')) +
       kv('Bet', fmtMoney(r.bet_amount) + (r.ante_enabled ? ' (ante)' : '')) +
       kv('Bet charged', fmtMoney(r.bet_charged)) +

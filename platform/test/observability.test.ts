@@ -97,6 +97,27 @@ describe("trace context", () => {
     // The request's own log lines carry it too.
     expect(logLines.some((l) => l.trace_id === CLIENT_TRACE && l.req)).toBe(true);
   });
+
+  it("stamps the round ledger, its audit entry and the signed export with the client's trace (0011)", async () => {
+    const token = await sessionToken();
+    expect((await spin(token, CLIENT_TP)).statusCode).toBe(200);
+    const round = c.roundsRepo.list({ operator_id: opId })[0];
+    expect(round.trace_id).toBe(CLIENT_TRACE);
+    const entry = c.auditRepo.list({ action: "round.resolved" }).find((a) => a.target_id === round.round_ref)!;
+    expect(entry.trace_id).toBe(CLIENT_TRACE);
+    expect(c.ledger.verifyIntegrity()).toMatchObject({ rounds: { ok: true }, audit: { ok: true } });
+
+    const { bundle } = c.roundExport.export(round.round_ref, opId)!;
+    const exported = bundle as { round: { trace_id: string | null }; wallet: Array<{ type: string; trace_id: string | null }> };
+    expect(exported.round.trace_id).toBe(CLIENT_TRACE);
+    expect(exported.wallet.find((t) => t.type === "DEBIT")?.trace_id).toBe(CLIENT_TRACE);
+
+    // The Round Inspector shows it (GET /admin/v1/rounds/:ref feeds the console view).
+    const admin = c.adminAuth.mintToken({ admin_id: "prov-1", scope: "provider", role: "provider_super_admin" });
+    const inspected = await app.inject({ method: "GET", url: `/admin/v1/rounds/${round.round_ref}`, headers: { authorization: `Bearer ${admin}` } });
+    expect(inspected.statusCode).toBe(200);
+    expect(inspected.json().trace_id).toBe(CLIENT_TRACE);
+  });
 });
 
 describe("trace context to the casino", () => {

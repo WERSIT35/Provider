@@ -61,6 +61,11 @@ export interface RoundInput {
   engine_version?: string;
   /** SHA-256 of the canonical rules payload that resolved the round (absent on older rounds). */
   rules_hash?: string;
+  /**
+   * W3C trace id of the request that recorded the round (src/lib/trace-context.ts);
+   * filled from the current trace on append. Absent on rounds recorded before 0011.
+   */
+  trace_id?: string;
 }
 
 export interface RoundRecord extends RoundInput {
@@ -79,6 +84,8 @@ export interface AuditInput {
   action: string;
   target_type: string;
   target_id: string;
+  /** W3C trace id of the request that wrote the entry; absent outside a request (jobs) and before 0011. */
+  trace_id?: string;
 }
 
 export interface AuditRecord extends AuditInput {
