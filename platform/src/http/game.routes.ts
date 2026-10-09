@@ -1,11 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import { gameBearerAuth } from "./auth";
 import { envelope, sendDomainError } from "./errors";
+import { checkBody, isIdempotencyKey, SPIN_BODY, BUY_BODY } from "./validation";
 import { signToken } from "../lib/tokens";
 import type { Session } from "../modules/session/session.service";
 
+/** Validated by checkBody (SPIN_BODY / BUY_BODY): exactly these fields, bet required. */
 interface SpinBody {
-  bet_amount?: number;
+  bet_amount: number;
   ante_enabled?: boolean;
 }
 
@@ -152,13 +154,12 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
 
   app.post("/game/v1/spin", { preHandler: bearer }, async (req, reply) => {
     const idem = req.headers["idempotency-key"];
-    if (typeof idem !== "string" || idem.length === 0) {
-      return reply.code(422).send(envelope("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header required", req.id));
+    if (!isIdempotencyKey(idem)) {
+      return reply.code(422).send(envelope("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header required: 1-128 chars of A-Z a-z 0-9 . _ : -", req.id));
     }
-    const body = (req.body ?? {}) as SpinBody;
-    if (typeof body.bet_amount !== "number") {
-      return reply.code(422).send(envelope("VALIDATION", "bet_amount (number) required", req.id));
-    }
+    const checked = checkBody<SpinBody>(req.body, SPIN_BODY);
+    if (!checked.ok) return reply.code(422).send(envelope("VALIDATION", checked.message, req.id));
+    const body = checked.body;
     try {
       const outcome = await app.container.orchestrator.spin(req.sessionId as string, {
         bet_amount: body.bet_amount,
@@ -190,13 +191,12 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
   // server-authoritative, idempotent lifecycle as a spin.
   app.post("/game/v1/buy-feature", { preHandler: bearer }, async (req, reply) => {
     const idem = req.headers["idempotency-key"];
-    if (typeof idem !== "string" || idem.length === 0) {
-      return reply.code(422).send(envelope("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header required", req.id));
+    if (!isIdempotencyKey(idem)) {
+      return reply.code(422).send(envelope("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header required: 1-128 chars of A-Z a-z 0-9 . _ : -", req.id));
     }
-    const body = (req.body ?? {}) as SpinBody;
-    if (typeof body.bet_amount !== "number") {
-      return reply.code(422).send(envelope("VALIDATION", "bet_amount (number) required", req.id));
-    }
+    const checked = checkBody<SpinBody>(req.body, BUY_BODY);
+    if (!checked.ok) return reply.code(422).send(envelope("VALIDATION", checked.message, req.id));
+    const body = checked.body;
     try {
       const outcome = await app.container.orchestrator.buyFeature(req.sessionId as string, {
         bet_amount: body.bet_amount,

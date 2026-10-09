@@ -2,6 +2,7 @@ import { EngineService, type SessionSnapshot } from "../engine/engine.service";
 import type { SpinInput, SpinResult } from "../engine/engine.types";
 import { generateSeed, RNG_ALGO } from "../../lib/seeded-rng";
 import { outcomeHash } from "../../lib/outcome-hash";
+import { metrics } from "../../lib/metrics";
 
 /** The reproducible record of one resolved round (the data the ledger persists). */
 export interface AuthoritativeRound {
@@ -34,6 +35,7 @@ export class AuthoritativeResolver {
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
     const { result, bytesDrawn } = this.engine.resolveDeterministic(snapshot, input, seedHex);
+    this.assertPayable(result, input, "spin");
     return {
       seed_hex: seedHex,
       rng_algo: RNG_ALGO,
@@ -47,6 +49,7 @@ export class AuthoritativeResolver {
   resolveBuy(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
     const { result, bytesDrawn } = this.engine.resolveDeterministicBuy(snapshot, input, seedHex);
+    this.assertPayable(result, input, "buy");
     return {
       seed_hex: seedHex,
       rng_algo: RNG_ALGO,
@@ -54,6 +57,29 @@ export class AuthoritativeResolver {
       outcome_hash: outcomeHash(result),
       result
     };
+  }
+
+  /**
+   * Fail-closed check on every result before it can be recorded or paid. Each of these
+   * "cannot happen" through the RGS (engine.service.ts engineInput pins the engine's
+   * dev inputs off); if one ever does, the round is refused. Throwing here takes the
+   * orchestrator's resolve-failure path: the debit is rolled back and nothing is
+   * recorded or credited. rgs_engine_integrity_violations_total must stay 0.
+   */
+  private assertPayable(result: SpinResult, input: SpinInput, mode: "spin" | "buy"): void {
+    const fail = (check: string, detail: string): never => {
+      metrics.engineIntegrity.inc({ check });
+      throw new Error(`ENGINE_INTEGRITY:${check}: ${detail}`);
+    };
+    if (result.crazy_mode === true) fail("crazy_mode", "crazy mode is never allowed on a paid round");
+    if (Number(result.bet_amount) !== input.bet_amount) fail("bet_amount", `result bet ${result.bet_amount} != requested ${input.bet_amount}`);
+    if (mode === "spin" && !result.is_free_spin && Boolean(result.ante_enabled) !== Boolean(input.ante_enabled)) {
+      fail("ante", `result ante ${result.ante_enabled} != requested ${Boolean(input.ante_enabled)}`);
+    }
+    const win = Number(result.total_win);
+    // The cap covers a whole feature round, so no single round can pay more than it.
+    const cap = this.engine.maxWinMultiplier() * input.bet_amount;
+    if (!Number.isFinite(win) || win < 0 || win > cap + 1e-6) fail("total_win", `win ${result.total_win} outside [0, ${cap}]`);
   }
 
   /** True iff replaying the stored seed against the same pre-spin state reproduces the outcome. */

@@ -18,6 +18,7 @@ import providerConsoleRoutes from "./http/provider-console";
 import operatorConsoleRoutes from "./http/operator-console";
 import playPageRoutes from "./http/play-page";
 import staticAssetsRoutes from "./http/static-assets";
+import { installSecurityHeaders, safeJsonParse, BODY_LIMIT_BYTES } from "./http/security-headers";
 import type { AdminClaims } from "./modules/admin/admin-auth";
 
 // Shared container + per-request auth context.
@@ -63,15 +64,17 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
       const ctx = traceForRaw(rawReq);
       return logger.child({ ...bindings, trace_id: ctx.traceId, span_id: ctx.spanId }, opts);
     },
-    trustProxy: true
+    trustProxy: true,
+    bodyLimit: BODY_LIMIT_BYTES
   });
+  installSecurityHeaders(app);
 
   // Keep the raw body so we can verify HMAC signatures over the exact bytes signed.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     const raw = typeof body === "string" ? body : body.toString("utf8");
     (req as { rawBody?: string }).rawBody = raw;
     try {
-      done(null, raw.length ? JSON.parse(raw) : {});
+      done(null, raw.length ? safeJsonParse(raw) : {});
     } catch (err) {
       (err as FastifyError).statusCode = 400;
       done(err as Error, undefined);

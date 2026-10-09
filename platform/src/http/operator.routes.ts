@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { operatorHmacAuth } from "./auth";
 import { envelope, sendDomainError } from "./errors";
+import { checkBody, LAUNCH_BODY, GRANT_BODY, CANCEL_BODY } from "./validation";
 import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
 
 interface LaunchBody {
@@ -52,7 +53,9 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
     app.container.mgmt.listGames().find((g) => g.id === gameId)?.code ?? null;
 
   app.post("/operator/v1/launch", { preHandler: auth }, async (req, reply) => {
-    const body = (req.body ?? {}) as LaunchBody;
+    const checked = checkBody<LaunchBody>(req.body, LAUNCH_BODY);
+    if (!checked.ok) return reply.code(422).send(envelope("VALIDATION", checked.message, req.id));
+    const body = checked.body;
     if (!body.game_code || !body.operator_player_id || !body.currency || !body.origin) {
       return reply.code(422).send(envelope("VALIDATION", "game_code, operator_player_id, currency, origin required", req.id));
     }
@@ -75,7 +78,9 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
   // never topped up, so a casino retrying after a timeout can't double the award.
   app.post("/operator/v1/free-rounds/grant", { preHandler: auth }, async (req, reply) => {
     const operatorId = req.operatorId as string;
-    const body = (req.body ?? {}) as GrantBody;
+    const checked = checkBody<GrantBody>(req.body, GRANT_BODY);
+    if (!checked.ok) return reply.code(422).send(envelope("VALIDATION", checked.message, req.id));
+    const body = checked.body;
     const playerId = typeof body.operator_player_id === "string" ? body.operator_player_id.trim() : "";
     if (!body.campaign_id || !playerId) {
       return reply.code(422).send(envelope("VALIDATION", "campaign_id, operator_player_id required", req.id));
@@ -113,7 +118,9 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
   // still plays out. Another operator's campaign is indistinguishable from a missing one.
   app.post("/operator/v1/free-rounds/cancel", { preHandler: auth }, async (req, reply) => {
     const operatorId = req.operatorId as string;
-    const body = (req.body ?? {}) as CancelBody;
+    const checked = checkBody<CancelBody>(req.body, CANCEL_BODY);
+    if (!checked.ok) return reply.code(422).send(envelope("VALIDATION", checked.message, req.id));
+    const body = checked.body;
     if (!body.campaign_id || typeof body.campaign_id !== "string") {
       return reply.code(422).send(envelope("VALIDATION", "campaign_id required", req.id));
     }

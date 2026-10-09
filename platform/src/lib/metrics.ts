@@ -95,6 +95,7 @@ export const metrics = {
   dbFlush: new Histogram("rgs_db_flush_duration_seconds", "Postgres write-through flush latency per request (persistence enabled only).", LATENCY_BUCKETS),
   walletTx: new Counter("rgs_wallet_transactions_total", "Money-movement records by type and status."),
   rounds: new Counter("rgs_rounds_total", "Rounds resolved, by kind (paid, buy, free_spin, free_round)."),
+  engineIntegrity: new Counter("rgs_engine_integrity_violations_total", "Engine results refused by the fail-closed guard, by check. Must stay 0: alert on any increase."),
   activeSessions: new Gauge("rgs_active_sessions", "Player sessions currently active."),
   pendingReversals: new Gauge("rgs_debit_reversals_pending", "Lost-debit reversals the casino has not acknowledged yet (reconciliation queue)."),
   failedSettlements: new Gauge("rgs_failed_settlements_pending", "Wins whose credit failed and is not yet settled."),

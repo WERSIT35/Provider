@@ -10,7 +10,10 @@ import type {
   RtpProfile
 } from "./engine.types";
 
-/** Pre-spin engine session state required to deterministically resolve a round. */
+/**
+ * Pre-spin engine session state required to deterministically resolve a round.
+ * Deliberately has no crazy-mode or forced-multiplier field: see engineInput().
+ */
 export interface SessionSnapshot {
   gameId?: string;
   balance?: number;
@@ -18,7 +21,23 @@ export interface SessionSnapshot {
   freeSpinPersistentMultiplier?: number;
   bonusRoundWin?: number;
   anteEnabled?: boolean;
-  crazyMode?: boolean;
+}
+
+/**
+ * The ONLY fields the RGS ever passes to the engine's spin / buy. The shared engine
+ * (client/engine/) also honours dev and test inputs that would change the outcome:
+ * `force_multiplier_value`, `force_free_spin_trigger`, and the session's `crazyMode`
+ * (4.5x pays, forced triggers). They exist for the browser's dev view and must never be
+ * reachable from a paid round, whatever a caller or a future refactor hands us. So the
+ * input is rebuilt from this allow-list here, at the engine boundary, and crazy mode and
+ * forced multipliers are pinned off on every session object (buildSessionObject).
+ */
+function engineInput(input: { bet_amount: number; ante_enabled?: boolean; spin_id?: string }): SpinInput {
+  return {
+    bet_amount: input.bet_amount,
+    ...(input.ante_enabled !== undefined ? { ante_enabled: Boolean(input.ante_enabled) } : {}),
+    ...(input.spin_id !== undefined ? { spin_id: String(input.spin_id) } : {})
+  };
 }
 
 /**
@@ -84,6 +103,11 @@ export class EngineService {
   }
   private cachedRulesHash: string | null = null;
 
+  /** The rules' max-win cap, in multiples of the bet (what the engine itself enforces). */
+  maxWinMultiplier(): number {
+    return Number(this.template.MAX_WIN_CAP_X);
+  }
+
   getAllowedBets(): number[] {
     return this.template.getAllowedBets();
   }
@@ -123,12 +147,12 @@ export class EngineService {
   /** Resolve a spin server-side. Idempotent per (session, spin_id). */
   spin(sessionId: string, input: SpinInput): SpinResult {
     const engine = this.requireSession(sessionId);
-    return engine.spin(input) as SpinResult;
+    return engine.spin(engineInput(input)) as SpinResult;
   }
 
   buyFreeSpins(sessionId: string, input: { bet_amount: number; spin_id?: string }): SpinResult {
     const engine = this.requireSession(sessionId);
-    return engine.buyFreeSpins(input) as SpinResult;
+    return engine.buyFreeSpins({ bet_amount: input.bet_amount, ...(input.spin_id !== undefined ? { spin_id: String(input.spin_id) } : {}) }) as SpinResult;
   }
 
   getSessionState(sessionId: string): Record<string, unknown> {
@@ -154,9 +178,10 @@ export class EngineService {
       freeSpinsLeft: snapshot.freeSpinsLeft ?? 0,
       freeSpinPersistentMultiplier: snapshot.freeSpinPersistentMultiplier ?? 0,
       bonusRoundWin: snapshot.bonusRoundWin ?? 0,
+      // Pinned off, never read from the snapshot (see engineInput).
       forceMultiplierValue: null,
       anteEnabled: Boolean(snapshot.anteEnabled),
-      crazyMode: Boolean(snapshot.crazyMode),
+      crazyMode: false,
       spinHistory: new Map(),
       createdAt: "1970-01-01T00:00:00.000Z"
     };
@@ -175,7 +200,7 @@ export class EngineService {
     const engine = new this.ns.SpinEngine({ rules: this.rules, storage: new MemoryStorage() });
     engine.session = this.buildSessionObject(snapshot);
     const seed = Buffer.from(seedHex, "hex");
-    const { result, bytesDrawn } = withSeed(seed, () => engine.spin(input) as SpinResult);
+    const { result, bytesDrawn } = withSeed(seed, () => engine.spin(engineInput(input)) as SpinResult);
     return { result, bytesDrawn };
   }
 
