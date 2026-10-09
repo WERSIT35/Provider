@@ -68,7 +68,17 @@ export interface RoundInput {
   trace_id?: string;
 }
 
-export interface RoundRecord extends RoundInput {
+/**
+ * Ed25519 signature over a ledger row (signing-keyring.ts ledgerMessage) and the key that
+ * made it. Outside the hashed payload: added after chain_hash is computed. Absent on rows
+ * recorded before migration 0012.
+ */
+export interface RowSignature {
+  signature?: string;
+  signing_key_id?: string;
+}
+
+export interface RoundRecord extends RoundInput, RowSignature {
   id: string;
   seq: number;
   created_at: string;
@@ -88,7 +98,7 @@ export interface AuditInput {
   trace_id?: string;
 }
 
-export interface AuditRecord extends AuditInput {
+export interface AuditRecord extends AuditInput, RowSignature {
   id: string;
   seq: number;
   created_at: string;

@@ -186,10 +186,14 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
     return out;
   });
 
-  // Public keys that verify round exports (public by design; no auth).
-  app.get("/.well-known/round-export-keys", async () => ({
-    keys: [{ key_id: app.container.exportSigner.keyId, alg: "Ed25519", public_key_pem: app.container.exportSigner.publicKeyPem }]
-  }));
+  // Every public key that ever signed (exports and ledger rows): the active one first,
+  // then the retired ones, each identified by the key_id its signatures carry. Public
+  // by design; no auth. Retired keys stay listed forever, or old signatures could no
+  // longer be checked.
+  app.get("/.well-known/round-export-keys", async () => {
+    const ring = app.container.signingKeyring;
+    return { active_key_id: ring.activeKeyId, keys: ring.publicKeys() };
+  });
 
   // A player's open free rounds with this operator (active grants, soonest expiry first).
   app.get("/operator/v1/free-rounds/player/:operatorPlayerId", { preHandler: auth }, async (req) => {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GENESIS_HASH, hashPayload, chainHash } from "./hash-chain";
 import { currentTrace } from "../../lib/trace-context";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
+import type { LedgerSignature, SignatureStatus, SignatureSummary } from "../../lib/security/signing-keyring";
 import type {
   RoundRepository,
   RoundInput,
@@ -20,7 +21,13 @@ import type {
  * migrations/0001_core.sql) is the production swap-in. Used directly in tests/dev.
  */
 
-const CHAIN_FIELDS = new Set(["id", "prev_hash", "payload_hash", "chain_hash"]);
+// Not part of a row's hashed content: the chain links, and the signature made over them.
+const CHAIN_FIELDS = new Set(["id", "prev_hash", "payload_hash", "chain_hash", "signature", "signing_key_id"]);
+
+/** Signs each new ledger row (the platform keyring, signing-keyring.ts). */
+export interface LedgerSigner {
+  signLedger(table: "rounds" | "audit_records", seq: number, chainHash: string): LedgerSignature;
+}
 
 function contentOf<T extends Record<string, unknown>>(record: T): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -51,7 +58,10 @@ export class InMemoryRoundRepository implements RoundRepository {
   private readonly entries: RoundRecord[] = [];
   private readonly byRef = new Map<string, RoundRecord>();
 
-  constructor(private readonly persistence: Persistence = NullPersistence) {}
+  constructor(
+    private readonly persistence: Persistence = NullPersistence,
+    private readonly signer?: LedgerSigner
+  ) {}
 
   /** Rebuild state from Postgres on boot (rows already carry their chain fields). */
   hydrate(rows: RoundRecord[]): void {
@@ -70,12 +80,14 @@ export class InMemoryRoundRepository implements RoundRepository {
     const created_at = new Date().toISOString();
     const content = { ...withTrace(input), seq, created_at };
     const payload_hash = hashPayload(content);
+    const chain_hash = chainHash(prev_hash, payload_hash);
     const record: RoundRecord = {
       ...content,
       id: randomUUID(),
       prev_hash,
       payload_hash,
-      chain_hash: chainHash(prev_hash, payload_hash)
+      chain_hash,
+      ...(this.signer ? this.signer.signLedger("rounds", seq, chain_hash) : {})
     };
     this.entries.push(record);
     this.byRef.set(record.round_ref, record);
@@ -101,6 +113,11 @@ export class InMemoryRoundRepository implements RoundRepository {
     return verifyChainGeneric(this.entries);
   }
 
+  /** Check every row's signature (see summarizeSignatures). */
+  verifySignatures(check: (row: RoundRecord) => SignatureStatus): SignatureSummary {
+    return summarizeSignatures(this.entries, check);
+  }
+
   size(): number {
     return this.entries.length;
   }
@@ -114,7 +131,10 @@ export class InMemoryRoundRepository implements RoundRepository {
 export class InMemoryAuditRepository implements AuditRepository {
   private readonly entries: AuditRecord[] = [];
 
-  constructor(private readonly persistence: Persistence = NullPersistence) {}
+  constructor(
+    private readonly persistence: Persistence = NullPersistence,
+    private readonly signer?: LedgerSigner
+  ) {}
 
   hydrate(rows: AuditRecord[]): void {
     for (const r of rows) this.entries.push(r);
@@ -126,12 +146,14 @@ export class InMemoryAuditRepository implements AuditRepository {
     const created_at = new Date().toISOString();
     const content = { ...withTrace(input), seq, created_at };
     const payload_hash = hashPayload(content);
+    const chain_hash = chainHash(prev_hash, payload_hash);
     const record: AuditRecord = {
       ...content,
       id: randomUUID(),
       prev_hash,
       payload_hash,
-      chain_hash: chainHash(prev_hash, payload_hash)
+      chain_hash,
+      ...(this.signer ? this.signer.signLedger("audit_records", seq, chain_hash) : {})
     };
     this.entries.push(record);
     this.persistence.save("audit_records", record);
@@ -151,9 +173,37 @@ export class InMemoryAuditRepository implements AuditRepository {
     return verifyChainGeneric(this.entries);
   }
 
+  /** Check every row's signature (see summarizeSignatures). */
+  verifySignatures(check: (row: AuditRecord) => SignatureStatus): SignatureSummary {
+    return summarizeSignatures(this.entries, check);
+  }
+
+  /** TEST-ONLY: corrupt a stored record to prove tamper detection. Never call in prod. */
+  __unsafeTamper(seq: number, patch: Partial<AuditRecord>): void {
+    Object.assign(this.entries[seq], patch);
+  }
+
   size(): number {
     return this.entries.length;
   }
+}
+
+/**
+ * Tally of per-row signature checks. ok = no row is invalid or signed by a key the
+ * platform does not know. Unsigned rows (recorded before migration 0012) are counted,
+ * not failed: the hash chain still covers them.
+ */
+function summarizeSignatures<T extends { seq: number }>(entries: ReadonlyArray<T>, check: (row: T) => SignatureStatus): SignatureSummary {
+  const out: SignatureSummary = { ok: true, checked: entries.length, valid: 0, unsigned: 0, invalid: 0, unknown_key: 0, first_bad_seq: null };
+  for (const row of entries) {
+    const status = check(row);
+    out[status] += 1;
+    if ((status === "invalid" || status === "unknown_key") && out.first_bad_seq === null) {
+      out.first_bad_seq = row.seq;
+      out.ok = false;
+    }
+  }
+  return out;
 }
 
 interface ChainEntry {

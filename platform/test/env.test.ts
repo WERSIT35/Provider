@@ -50,6 +50,17 @@ describe("environment config", () => {
     expect(loadEnv({ NODE_ENV: "local" }).EXPORT_SIGNING_KEY).toBeUndefined();
   });
 
+  it("refuses to boot staging/production on an expired signing key, so a rotation can't be forgotten", () => {
+    const past = new Date(Date.now() - 1000).toISOString();
+    const future = new Date(Date.now() + 864e5).toISOString();
+    expect(() => loadEnv({ ...prodBase, EXPORT_SIGNING_KEY_EXPIRES_AT: past })).toThrow(/expired.*rotate/);
+    expect(() => loadEnv({ ...prodBase, NODE_ENV: "staging", EXPORT_SIGNING_KEY_EXPIRES_AT: past })).toThrow(/expired/);
+    expect(loadEnv({ ...prodBase, EXPORT_SIGNING_KEY_EXPIRES_AT: future }).EXPORT_SIGNING_KEY_EXPIRES_AT).toBe(future);
+    expect(() => loadEnv({ ...prodBase, EXPORT_SIGNING_KEY_EXPIRES_AT: "next tuesday" })).toThrow(/EXPORT_SIGNING_KEY_EXPIRES_AT/);
+    // Local development is never blocked by it.
+    expect(() => loadEnv({ NODE_ENV: "local", EXPORT_SIGNING_KEY_EXPIRES_AT: past })).not.toThrow();
+  });
+
   it("keeps admin TOTP mandatory in production", () => {
     expect(() => loadEnv({ ...prodBase, ADMIN_TOTP_REQUIRED: "false" })).toThrow(/ADMIN_TOTP_REQUIRED/);
   });

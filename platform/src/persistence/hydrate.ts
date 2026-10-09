@@ -11,6 +11,7 @@ import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, Operato
 import type { AdminAccount } from "../modules/admin/admin-account";
 import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
+import type { SigningKeyRecord } from "../lib/security/signing-keyring";
 
 /**
  * Load durable state from Postgres into the in-memory stores on boot, in the same
@@ -18,7 +19,7 @@ import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wal
  * chains and seq counters continue seamlessly.
  */
 export async function hydrateContainer(c: Container, p: Persistence): Promise<void> {
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns] =
+  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns, signingKeys] =
     await Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
@@ -38,8 +39,13 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
       p.loadTable("wallet_debit_refs"),
       p.loadTable("admin_accounts"),
       p.loadTable("campaigns"),
-      p.loadTable("player_campaigns")
+      p.loadTable("player_campaigns"),
+      p.loadTable("signing_keys")
     ]);
+
+  // Every key that ever signed, so retired keys keep verifying; the previous active key
+  // is retired here when EXPORT_SIGNING_KEY changed (rotation).
+  c.signingKeyring.hydrate(signingKeys as unknown as SigningKeyRecord[]);
 
   c.mgmt.hydrate({
     operators: operators as unknown as Operator[],

@@ -1,15 +1,18 @@
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
+import { createPublicKey, verify } from "node:crypto";
 
 /**
- * Ed25519 signer for round-history exports (GET /operator/v1/rounds/:ref/export).
+ * Signature format for round-history exports (GET /operator/v1/rounds/:ref/export).
  *
  * The bundle is signed over its CANONICAL JSON (object keys sorted recursively, no
  * whitespace), so anyone can re-serialize the parsed bundle and check the signature
- * with the public key (/.well-known/round-export-keys, scripts/verify-round-export.ts).
+ * with the public key its key_id names (/.well-known/round-export-keys,
+ * scripts/verify-round-export.ts).
  *
- * The key comes from EXPORT_SIGNING_KEY (a PKCS#8 PEM). Without one, an ephemeral key
- * is generated: fine for local/test, and refused by loadEnv() in staging/production,
- * because bundles signed by a key that vanished on restart can never be verified.
+ * Signing lives in the keyring (signing-keyring.ts): one active key from
+ * EXPORT_SIGNING_KEY, plus every retired key's public half. Without a configured key an
+ * ephemeral one is generated: fine for local/test, and refused by loadEnv() in
+ * staging/production, because signatures by a key that vanished on restart can never
+ * be verified.
  */
 export interface ExportSignature {
   alg: "Ed25519";
@@ -28,34 +31,7 @@ export function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
-export class ExportSigner {
-  private readonly privateKey: KeyObject;
-  readonly publicKeyPem: string;
-  readonly keyId: string;
-  readonly ephemeral: boolean;
-
-  constructor(privateKeyPem?: string) {
-    if (privateKeyPem) {
-      this.privateKey = createPrivateKey(privateKeyPem.replace(/\\n/g, "\n"));
-      if (this.privateKey.asymmetricKeyType !== "ed25519") throw new Error("EXPORT_SIGNING_KEY must be an Ed25519 private key");
-      this.ephemeral = false;
-    } else {
-      this.privateKey = generateKeyPairSync("ed25519").privateKey;
-      this.ephemeral = true;
-    }
-    const pub = createPublicKey(this.privateKey);
-    this.publicKeyPem = pub.export({ type: "spki", format: "pem" }).toString();
-    const der = pub.export({ type: "spki", format: "der" });
-    this.keyId = `ed25519:${createHash("sha256").update(der).digest("hex").slice(0, 16)}`;
-  }
-
-  sign(payload: unknown): ExportSignature {
-    const value = sign(null, Buffer.from(canonicalJson(payload)), this.privateKey).toString("base64");
-    return { alg: "Ed25519", key_id: this.keyId, value };
-  }
-}
-
-/** Verify a signature made by ExportSigner, given the signer's public key PEM. */
+/** Verify an export signature offline, given the public key PEM its key_id names. */
 export function verifyExportSignature(payload: unknown, signature: ExportSignature, publicKeyPem: string): boolean {
   if (signature?.alg !== "Ed25519") return false;
   return verify(null, Buffer.from(canonicalJson(payload)), createPublicKey(publicKeyPem), Buffer.from(signature.value, "base64"));

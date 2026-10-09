@@ -106,9 +106,9 @@ const TABLES: Record<string, TableSpec> = {
     { jsonb: ["allowed_bets"], orderBy: "created_at" }
   ),
   rounds: spec(
-    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id", "prev_hash", "payload_hash", "chain_hash", "created_at"],
+    ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id", "prev_hash", "payload_hash", "chain_hash", "signature", "signing_key_id", "created_at"],
     ["id"],
-    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id"] }
+    { jsonb: ["pre_state", "outcome_jsonb"], appendOnly: true, rename: { outcome_jsonb: "outcome" }, orderBy: "seq", omitNull: ["campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id", "signature", "signing_key_id"] }
   ),
   wallet_transactions: spec(
     ["id", "seq", "operator_id", "session_id", "round_ref", "type", "amount", "currency", "idempotency_key", "operator_tx_ref", "status", "error_code", "campaign_id", "trace_id", "created_at"],
@@ -121,10 +121,13 @@ const TABLES: Record<string, TableSpec> = {
     { jsonb: ["wallet_tx_refs"], appendOnly: true, orderBy: "seq" }
   ),
   audit_records: spec(
-    ["id", "seq", "operator_id", "actor_type", "actor_id", "action", "target_type", "target_id", "trace_id", "payload_hash", "prev_hash", "chain_hash", "created_at"],
+    ["id", "seq", "operator_id", "actor_type", "actor_id", "action", "target_type", "target_id", "trace_id", "payload_hash", "prev_hash", "chain_hash", "signature", "signing_key_id", "created_at"],
     ["id"],
-    { appendOnly: true, orderBy: "seq", omitNull: ["trace_id"] }
+    { appendOnly: true, orderBy: "seq", omitNull: ["trace_id", "signature", "signing_key_id"] }
   ),
+  // Public halves of every key that ever signed (migration 0012). Status changes on
+  // rotation; the key material itself is write-once (DB trigger).
+  signing_keys: spec(["key_id", "alg", "public_key_pem", "status", "created_at", "retired_at", "expires_at"], ["key_id"], { orderBy: "created_at" }),
   disputes: spec(
     ["id", "operator_id", "round_ref", "kind", "reason", "status", "requested_by", "resolved_by", "resolution_note", "created_at", "resolved_at"],
     ["id"],

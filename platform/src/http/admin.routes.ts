@@ -114,6 +114,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       rules_hash: round.rules_hash ?? null,
       // W3C trace of the request that recorded the round (migration 0011; null before it).
       trace_id: round.trace_id ?? null,
+      // The row's Ed25519 signature, checked against the key it names (migration 0012).
+      signature: app.container.ledger.roundSignature(round.round_ref),
       session_id: round.session_id,
       currency: app.container.sessions.tryGet(round.session_id)?.currency ?? null,
       bet_amount: round.bet_amount,

@@ -17,7 +17,7 @@ import { InMemoryRoundAdjustmentStore } from "./modules/rounds/round-adjustment.
 import { RoundLifecycleService } from "./modules/rounds/round-lifecycle.service";
 import { RoundVerificationService } from "./modules/rounds/round-verification.service";
 import { RoundExportService } from "./modules/rounds/round-export.service";
-import { ExportSigner } from "./lib/security/export-signer";
+import { SigningKeyring } from "./lib/security/signing-keyring";
 import { DisputeService } from "./modules/disputes/dispute.service";
 import { InMemoryCampaignRepository } from "./modules/campaigns/campaign.repository";
 import { NonceStore } from "./lib/security/nonce-store";
@@ -42,6 +42,8 @@ export interface PlatformConfig {
   totpRequired?: boolean;
   /** Ed25519 PKCS#8 PEM for round exports; absent = an ephemeral key (local/test only). */
   exportSigningKey?: string;
+  /** Optional planned end of life of the active key (ISO); staging/production refuse to boot past it. */
+  exportSigningKeyExpiresAt?: string;
 }
 
 /**
@@ -69,7 +71,8 @@ export interface Container {
   verification: RoundVerificationService;
   /** Signed round-history exports (GET /operator/v1/rounds/:ref/export). */
   roundExport: RoundExportService;
-  exportSigner: ExportSigner;
+  /** Ed25519 keyring: signs exports and every ledger row; publishes active + retired keys. */
+  signingKeyring: SigningKeyring;
   disputes: DisputeService;
   // Operator-granted Free Rounds (NOT the engine scatter feature).
   campaigns: InMemoryCampaignRepository;
@@ -95,10 +98,12 @@ export function buildContainer(
 ): Container {
   const persistence = overrides.persistence ?? NullPersistence;
   const engine = new EngineService();
-  const audit = new InMemoryAuditRepository(persistence);
+  // First: both ledgers sign every row they append with the active key.
+  const signingKeyring = new SigningKeyring({ activePrivateKeyPem: config.exportSigningKey, expiresAt: config.exportSigningKeyExpiresAt ?? null }, persistence);
+  const audit = new InMemoryAuditRepository(persistence, signingKeyring);
   const mgmt = new ManagementService(audit, persistence);
-  const rounds = new InMemoryRoundRepository(persistence);
-  const ledger = new RoundLedgerService(rounds, audit);
+  const rounds = new InMemoryRoundRepository(persistence, signingKeyring);
+  const ledger = new RoundLedgerService(rounds, audit, signingKeyring);
   const sessions = new SessionService(mgmt, config.launchSecret, persistence);
   // walletFactory exists because a WebhookWallet needs `mgmt`, which is only
   // available once buildContainer is already underway (constructor-order chicken/egg).
@@ -130,8 +135,7 @@ export function buildContainer(
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
   const verification = new RoundVerificationService(ledger, resolver);
-  const exportSigner = new ExportSigner(config.exportSigningKey);
-  const roundExport = new RoundExportService(ledger, transactions, adjustments, verification, mgmt, exportSigner);
+  const roundExport = new RoundExportService(ledger, transactions, adjustments, verification, mgmt, signingKeyring);
   const disputes = new DisputeService(lifecycle, ledger, audit, persistence);
 
   return {
@@ -151,7 +155,7 @@ export function buildContainer(
     lifecycle,
     verification,
     roundExport,
-    exportSigner,
+    signingKeyring,
     disputes,
     campaigns,
     adminAuth: new AdminAuthService(config.adminSecret),
