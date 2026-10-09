@@ -1460,6 +1460,14 @@ body.public-mode .ps-bet-display { display: none; }
     column-gap: clamp(10px, 2vw, 20px);
   }
   body.public-mode .ps-ticker { justify-content: flex-end; }
+  /* The autoplay / turbo row sits flush at the screen's bottom edge here, so the
+     lower half of its 44px hit area (the ::after, (44px - --sub-h) / 2 past the
+     row) fell 1–2px off-screen (hit-target-probe at 844x390 / 740x360). Lift it
+     just enough to keep the whole hit area on screen; transform is out of flow,
+     so the deck and board do not move, and it still clears the spin button. */
+  body.public-mode .ps-spin-sub {
+    transform: translateY(min(0px, calc((var(--sub-h) - 44px) / 2 + 5px)));
+  }
 }
 
 /* ── Admin view: same markup, plain stacked layout, no art slots ── */
