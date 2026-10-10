@@ -4473,7 +4473,7 @@ function freeRoundsNote(result) {
   freeRounds.queue = freeRounds.queue.filter((g) => g.spins_remaining > 0);
 }
 
-/** The deck's Bet readout while free rounds run: the count, "FREE ROUNDS 7"
+/** The deck's Bet readout while free rounds run: the count, "FREE 7"
  *  (null = show the normal bet). Count only: "7 × 5.00" overflowed the readout
  *  strip on phones and pushed CREDIT into an ellipsis. The locked bet is on the
  *  ticker line and in the award modal. */
@@ -4936,8 +4936,10 @@ function setBadgeMultiplier(mult) {
   const m = Number(mult) || 0;
   badge.classList.toggle("is-empty", m <= 0);
   if (m <= 0) {
+    // The value stays while the badge fades out: clearing it here emptied and
+    // shrank the pill on the fade's first frame. Hidden by is-empty (opacity 0),
+    // it is never seen as a "1x"; the next catch overwrites it.
     badge.dataset.value = "0";
-    if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = "";
     return;
   }
   if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = mfmt(m);
@@ -7618,7 +7620,10 @@ const freeRoundsUi = (() => {
   }
   function paintReadout() {
     const text = freeRoundsReadoutText();
-    if (el.betReadoutLabel) el.betReadoutLabel.textContent = text ? "Free Rounds" : "Bet";
+    // "Free", not "Free Rounds": the label's box reserves the width of "Free"
+    // (styles.css), so the switch moves nothing; the full wording is on the
+    // ticker line and in the award modal.
+    if (el.betReadoutLabel) el.betReadoutLabel.textContent = text ? "Free" : "Bet";
     if (el.footerBet) el.footerBet.textContent = text ?? el.betView.textContent;
   }
   function apply() {

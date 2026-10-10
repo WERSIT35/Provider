@@ -352,6 +352,11 @@ button:disabled {
   color: #cbb985;
 }
 .bonus-multi-badge-value {
+  /* Holds its line even while empty, so the badge never changes height, and
+     spans the badge's width, so a longer total never re-centres the box. */
+  min-height: 1em;
+  align-self: stretch;
+  text-align: center;
   font: 900 clamp(1rem, 3.6vmin, 1.7rem)/1 "SF Pro Display", "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums;
   color: #ffe28a;
@@ -1187,13 +1192,22 @@ body.public-mode .ps-deck-status {
   align-items: center;
   justify-content: center;
 }
+/* The line itself is a full-width box of one fixed height (sized for the
+   largest state, the WIN line), so a new text or a state change only redraws
+   glyphs inside it: the box never re-centres or grows (layout shift 0). */
+.ps-ticker {
+  --ticker-lh: calc(min(calc(1.2 * var(--ui, 14px)), 4.2vw) * 1.25);
+}
 .ps-ticker > span {
-  display: inline-block;
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  height: var(--ticker-lh);
+  line-height: var(--ticker-lh);
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
 }
 .ps-ticker[data-state="spin"] { color: var(--text-hud); }
 /* The win stat (#46): 1.5x the old 0.8 size so a win commands the deck. It is
@@ -1223,10 +1237,15 @@ body.public-mode .ps-deck-status {
   .ps-ticker.soul-hit, .bonus-multi-badge.soul-hit { animation: none; }
 }
 
+/* Fixed-width strip: Credit pinned left, Bet pinned right. The balance grows
+   into the space between them and the Bet value has a reserved width, so a
+   balance or bet change never moves a neighbour (the strip used to be
+   content-sized and centred: every balance change slid both readouts). */
 .ps-readouts {
   display: flex;
-  justify-content: center;
-  gap: clamp(14px, 4vw, 48px);
+  justify-content: space-between;
+  gap: clamp(8px, 3vw, 48px);
+  width: min(100%, calc(24 * var(--ui, 14px)));
   min-width: 0;
   max-width: 100%;
 }
@@ -1237,6 +1256,27 @@ body.public-mode .ps-deck-status {
   min-width: 0;
   white-space: nowrap;
 }
+.ps-readout:first-child { flex: 1 1 auto; }
+.ps-readout:last-child { flex: 0 0 auto; }
+/* The balance owns the rest of the Credit side: a fixed box, text from its left. */
+#footerBalance { flex: 1 1 auto; text-align: left; }
+/* Bets go up to 500.00: the box always holds that width exactly (a hidden
+   second row, as for the label), value right-aligned in it. */
+#footerBet { display: inline-grid; justify-items: end; }
+#footerBet::after { content: "500.00"; height: 0; overflow: hidden; visibility: hidden; }
+/* Narrow phones: tighter tracking and gap (and, at 320, smaller figures) leave
+   the balance room for "1,000.00" next to a full "500.00" bet. */
+@media (max-width: 360px) {
+  .ps-readouts { gap: 6px; }
+  body.public-mode .ps-deck-status .ps-readout span { letter-spacing: 0.04em; }
+}
+@media (max-width: 340px) {
+  body.public-mode .ps-deck-status .ps-readout strong { font-size: calc(0.85 * var(--ui, 14px)); }
+}
+/* "Bet" ↔ "Free" (operator free rounds): the label box always holds the wider
+   word (a hidden second row), so the switch moves nothing. */
+#betReadoutLabel { display: inline-grid; justify-items: end; }
+#betReadoutLabel::after { content: "Free"; height: 0; overflow: hidden; visibility: hidden; }
 .ps-readout span {
   font: 600 calc(0.58 * var(--ui, 14px)) / 1 var(--font-ui);
   letter-spacing: 0.18em;
@@ -1388,6 +1428,27 @@ body.public-mode .ps-spin-sub .tool-btn {
   min-width: var(--sub-h);
   padding: 0 clamp(8px, 1.2vw, 14px);
 }
+/* Autoplay's spins-left count: a fixed-size bubble on the button's corner,
+   out of the flow. Inline, it widened the button when it appeared and on
+   every 10 → 9, and the centred row moved Turbo with it. */
+body.public-mode .ps-spin-sub .tool-btn .tool-count {
+  position: absolute;
+  top: -0.55em;
+  right: -0.55em;
+  z-index: 1;
+  width: 2.3em;
+  height: 1.7em;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--win-gold-deep);
+  background: var(--bg-gunmetal);
+  color: var(--win-gold-bright);
+  font-size: calc(0.62 * var(--ui, 14px));
+  line-height: 1;
+  pointer-events: none;
+}
+body.public-mode .ps-spin-sub .tool-btn .tool-count:empty { display: none; }
 /* Kept for main.js (it writes the bet here); the Bet readout shows it. */
 body.public-mode .ps-bet-display { display: none; }
 
@@ -1460,6 +1521,10 @@ body.public-mode .ps-bet-display { display: none; }
     column-gap: clamp(10px, 2vw, 20px);
   }
   body.public-mode .ps-ticker { justify-content: flex-end; }
+  body.public-mode .ps-ticker > span { text-align: right; transform-origin: right center; }
+  /* The readouts sit in an auto column here: a fixed strip, so the ticker
+     keeps the rest of the row. */
+  body.public-mode .ps-readouts { width: calc(16 * var(--ui, 14px)); }
   /* The autoplay / turbo row sits flush at the screen's bottom edge here, so the
      lower half of its 44px hit area (the ::after, (44px - --sub-h) / 2 past the
      row) fell 1–2px off-screen (hit-target-probe at 844x390 / 740x360). Lift it
@@ -1499,6 +1564,14 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   background: color-mix(in srgb, var(--bg-vault-door) 82%, transparent);
 }
 .ps-modal[hidden] { display: none; }
+/* Entrance for every modal on this shell (info, reality check, free rounds):
+   the buy confirm's fade + pop. Opacity/transform only; replays on each open
+   because the root comes back from display:none. */
+.ps-modal:not([hidden]) { animation: confirmFade 0.18s ease; }
+.ps-modal:not([hidden]) > .ps-modal__panel,
+.ps-modal:not([hidden]) > .vx-reality__panel {
+  animation: confirmPop 0.32s cubic-bezier(0.16, 1.05, 0.3, 1);
+}
 .ps-modal__panel {
   width: min(960px, 100%);
   height: min(680px, 100%);
@@ -3233,6 +3306,9 @@ body.admin-mode .sim-grid strong {
   justify-content: center;
   overflow: hidden;
   transition: opacity calc(0.32s * var(--combine-t, 1)) ease;
+  /* A size container, so a chip's lane (a quarter of the overlay either side
+     of centre) is a transform in cqw: the slam never animates `left`. */
+  container-type: size;
 }
 
 .win-combine-overlay.is-fading {
@@ -3256,7 +3332,7 @@ body.admin-mode .sim-grid strong {
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   opacity: 0;
-  transform: translate(calc(-50% + var(--from-x, 0px)), calc(-50% + var(--from-y, 0px))) scale(0.6);
+  transform: translate(calc(-50% + var(--lane, 0px) + var(--from-x, 0px)), calc(-50% + var(--from-y, 0px))) scale(0.6);
   transition:
     transform calc(0.48s * var(--combine-t, 1)) cubic-bezier(0.18, 0.84, 0.22, 1),
     opacity calc(0.32s * var(--combine-t, 1)) ease,
@@ -3283,9 +3359,11 @@ body.admin-mode .sim-grid strong {
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4)) drop-shadow(0 0 18px rgba(255, 200, 120, 0.45));
 }
 
-/* Amount chip — rises from the WIN line (else slides in from the left). */
+/* Amount chip — rises from the WIN line (else slides in from the left). Its
+   slot is a quarter of the overlay left of centre (--lane). */
 .combine-amount {
-  left: 25%;
+  left: 50%;
+  --lane: -25cqw;
   border-color: rgba(255, 209, 102, 0.5);
 }
 .combine-amount .combine-kicker { color: #ffd99d; }
@@ -3293,7 +3371,8 @@ body.admin-mode .sim-grid strong {
 /* Multiplier chip — flies down from the Total Multiplier badge (else slides in
    from the right), tier-colored. */
 .combine-multi {
-  left: 75%;
+  left: 50%;
+  --lane: 25cqw;
   border-color: var(--combine-color, rgba(255, 132, 184, 0.6));
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.6),
@@ -3311,22 +3390,14 @@ body.admin-mode .sim-grid strong {
 .combine-amount.is-entered,
 .combine-multi.is-entered {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(calc(-50% + var(--lane, 0px)), -50%) scale(1);
 }
 
-.combine-amount.is-slamming {
-  transition: transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
-  transform: translate(calc(-50% + (50% - 25%) * 1px), -50%) scale(1.08);
-  /* Move toward 50% — using left: 25% means we need to translate +25% of viewport. */
-  left: 50%;
-}
+/* Slam: both chips travel from their lane to the centre. Transform only. */
+.combine-amount.is-slamming,
 .combine-multi.is-slamming {
-  transition: transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1), left calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
-  left: 50%;
+  transition: transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
   transform: translate(-50%, -50%) scale(1.08);
-}
-.combine-amount.is-slamming {
-  transition: left calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1), transform calc(0.36s * var(--combine-t, 1)) cubic-bezier(0.5, 0, 0.85, 1);
 }
 
 .combine-amount.is-merged,
@@ -3776,6 +3847,14 @@ pre,
     transparent 70%);
   transition: background 0.3s ease;
 }
+/* Label and amount are full-width lines of a stage whose width big-win.js fixes
+   for the whole celebration (_reserveStage): a count tick or a tier-up changes
+   the text only, never a box (they used to re-centre on every tick). */
+.bw-label,
+.bw-amount {
+  align-self: stretch;
+  text-align: center;
+}
 .bw-label {
   min-height: 1em; /* reserved, so the amount doesn't jump when the label appears */
   font-family: var(--font-display);
@@ -3915,7 +3994,7 @@ body.public-mode .ps-deck-sys {
 body.public-mode .ps-deck-status {
   justify-self: center;
   width: min(100%, 640px);
-  padding: 0 clamp(12px, 2vw, 28px);
+  padding: 0 clamp(8px, 2vw, 28px);
   border-radius: clamp(14px, 2vh, 22px);
 }
 /* System buttons inside a pill: borderless glass discs, not steel plates. */
