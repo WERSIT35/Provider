@@ -64,13 +64,19 @@ A CSS named-area grid ("PLAYER SHELL" in `styles.css`) on `.vault-shell`:
 
 1. **Zero reflow.** No state change (ticker states, bonus values, round ID) may move or resize
    the board: fixed tracks, single-line clipped text, overlays outside the document flow.
-   Enforced by `tools/layout-check.js` at 9 viewports.
+   Enforced by `tools/layout-check.js` at 9 viewports. The same holds for everything outside
+   the grid: value elements reserve their box (the ticker line has one fixed height, the
+   Credit/Bet strip a fixed width with the Bet value and label reserved, the autoplay count is
+   a corner bubble, the big-win stage is sized once per celebration), and animations use
+   transform/opacity only. `tools/probes/ui-stability-probe.js` measures it (layout-shift 0 and
+   no moved box at 320/360/390/768/1366, every animation actually running).
 2. **Board shape** is the engine's 6×5 (`aspect-ratio: 6 / 5`), letterboxed/pillarboxed, never
    stretched.
 3. **Touch targets** ≥44px (invisible `::after` hit areas where the visual is smaller).
 4. **Controls are vector** (inline SVG + CSS); no image plates.
 5. **Ticker** (`#psTicker`) is the only message line; its WIN state is gold, bold, laser-glow
-   (`.ps-ticker[data-state="win"]`). Its box never changes size.
+   (`.ps-ticker[data-state="win"]`). Its box never changes size, and neither does its line
+   (`#psTickerText`: full width, one fixed line height for every state).
 
 ## Source of truth
 

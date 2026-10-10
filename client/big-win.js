@@ -342,7 +342,34 @@
           this.advance();
         }
       };
-      this._onResize = () => this.field.resize();
+      this._onResize = () => {
+        this.field.resize();
+        if (this.run) this._reserveStage(this.run);
+      };
+    }
+
+    /** Fix the stage's width for the whole celebration: the widest text it will
+     *  show (each tier label it reaches, and the final amount). The label and
+     *  amount are full-width centred lines inside it (styles.css), so a count
+     *  tick or a tier-up changes only the text, never a box. Measured while the
+     *  overlay is laid out but invisible, before the first frame. */
+    _reserveStage(run) {
+      if (!this.stage) return;
+      const range = document.createRange();
+      const textWidth = (node, text) => {
+        node.textContent = text;
+        range.selectNodeContents(node);
+        return range.getBoundingClientRect().width;
+      };
+      const labels = [...run.reached, run.finalTier].filter(Boolean).map((t) => t.label || "");
+      const widest = Math.max(
+        textWidth(this.amountEl, this.format(run.amount)),
+        ...labels.map((l) => textWidth(this.labelEl, l))
+      );
+      const pad = parseFloat(getComputedStyle(this.stage).paddingLeft) * 2 || 0;
+      this.stage.style.width = `${Math.ceil(widest + pad + 2)}px`;
+      this.labelEl.textContent = run.tier?.label || "";
+      this.amountEl.textContent = this._lastText;
     }
 
     get active() {
@@ -401,6 +428,8 @@
       delete this.root.dataset.tier;
       this.root.classList.remove("is-done");
       this.root.classList.toggle("is-reduced", run.reduced);
+      this._lastText = "";
+      this._reserveStage(run);
       this.labelEl.textContent = "";
       this._setAmount(0);
       if (this.announceEl) this.announceEl.textContent = "";
