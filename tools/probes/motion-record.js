@@ -6,6 +6,11 @@
 //   --ref   record an older commit (checked out into a temp worktree)
 //   --tumbles  keep re-rolling the spin until it has at least n tumble steps
 //   --mult     …and until it is a multiplied win (Total Multiplier + combine)
+//   --scatter-move  instead: a feature trigger where a scatter moved during a
+//              tumble (the scatter-celebration case, tools/scatter-celebration-check.js)
+//   --seed <prefix>  deterministic re-roll: try <prefix>/0, <prefix>/1, … with
+//              the engine session restored between tries, so two builds (or
+//              --ref) record the SAME round
 //   --ms       how long to record (default 6000)
 // Needs Chrome and sharp (root devDependency).
 const http = require("http");
@@ -24,6 +29,8 @@ const NAME = opt("name", REF || "working-tree");
 const OUT = path.resolve(opt("out", fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-"))));
 const TUMBLES = Number(opt("tumbles", 2));
 const MULT = flag("mult");
+const SCATTER_MOVE = flag("scatter-move");
+const SEED = opt("seed", "");
 const [W, H] = opt("size", "1280x800").split("x").map(Number);
 const PORT = 3100 + Math.floor(Math.random() * 400);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -123,6 +130,22 @@ const VCLOCK = `(() => {
   };
 })();`;
 
+// --seed: crypto.getRandomValues becomes seedable (__seedRng(text) / __seedRng(null)).
+const SEEDABLE_RNG = `(() => {
+  const real = crypto.getRandomValues.bind(crypto);
+  let gen = null;
+  function xmur3(str) { let h = 1779033703 ^ str.length; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); } return () => { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^= h >>> 16) >>> 0; }; }
+  function sfc32(a, b, c, d) { return () => { a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0; let t = (a + b) | 0; a = b ^ (b >>> 9); b = (c + (c << 3)) | 0; c = (c << 21) | (c >>> 11); d = (d + 1) | 0; t = (t + d) | 0; c = (c + t) | 0; return t >>> 0; }; }
+  crypto.getRandomValues = (arr) => {
+    if (!gen) return real(arr);
+    if (arr instanceof Uint32Array) { for (let i = 0; i < arr.length; i++) arr[i] = gen(); return arr; }
+    const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = gen() & 255;
+    return arr;
+  };
+  window.__seedRng = (text) => { if (text == null) { gen = null; return; } const s = xmur3(String(text)); gen = sfc32(s(), s(), s(), s()); };
+})();`;
+
 /** Evenly spaced frames → animated WebP at `speed` (1 = real time). Every
  *  `step`-th frame is kept so each frame shows for ≥ 20ms (browsers stretch
  *  shorter ones), with one constant delay, so playback time is exact. */
@@ -152,6 +175,7 @@ async function writeWebp(frames, file, speed, width) {
   await cdp.ready;
   await cdp.send("Runtime.enable"); await cdp.send("Page.enable");
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: VCLOCK });
+  if (SEED) await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: SEEDABLE_RNG });
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: W < 900 });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/index.html` });
   for (let i = 0; i < 150; i++) { await sleep(100); if (await evaluate(cdp, `document.body && document.body.classList.contains("app-ready") && typeof state !== "undefined" && !!state.sessionId`)) break; }
@@ -159,7 +183,14 @@ async function writeWebp(frames, file, speed, width) {
   if (flag("turbo")) await evaluate(cdp, `(() => { if (!state.turbo) document.getElementById("turboBtn")?.click(); state.turbo = true; return true; })()`);
   // Re-roll the round until it has a tumble chain (standalone engine, no money involved).
   await evaluate(cdp, `(() => { const real = window.__realApi || api; window.__realApi = real; api = async (p, payload) => { if (p !== "/api/v1/spin") return real(p, payload);
-    for (let i = 0; i < ${MULT ? 4000 : 400}; i++) { const r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded
+    const eng = await getEngine(); const snap = Object.fromEntries(Object.entries(eng.session).filter(([, v]) => v === null || typeof v !== "object"));
+    const scat = (m) => { const o = []; (m || []).forEach((row, r) => (row || []).forEach((x, c) => { if (x === "SCATTER") o.push(r + "-" + c); })); return o; };
+    const moved = (r) => { const fin = new Set(scat((r.tumble_steps || []).slice(-1)[0]?.matrix)); return (r.tumble_steps || []).some((st) => scat(st.matrix).some((k) => !fin.has(k))); };
+    for (let i = 0; i < ${MULT || SCATTER_MOVE ? 20000 : 400}; i++) {
+      ${SEED ? `Object.assign(eng.session, snap); window.__seedRng(${JSON.stringify(SEED)} + "/" + i);` : ""}
+      let r; try { r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); } finally { ${SEED ? "window.__seedRng(null);" : ""} }
+      if (${SCATTER_MOVE}) { if (Number(r.free_spins_awarded) > 0 && moved(r) && !(r.events || []).length) { console.log("[motion-record] seed index " + i); return r; } continue; }
+      if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded
       && (!${MULT} || (Number(r.multiplier_applied) > 1 && Number(r.total_win) > 0 && !(r.events || []).length))) return r; }
     return real(p, payload); }; return true; })()`);
 

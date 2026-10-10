@@ -5937,25 +5937,44 @@ function renderCaughtLines(wins = [], multipliers = []) {
   });
 }
 
-function scatterPositionsFromPayload(payload = {}) {
-  const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
-    ? payload.tumble_steps
-    : [{ matrix: payload.matrix }];
-  const positions = [];
-  const seen = new Set();
-  for (const step of steps) {
-    const matrix = Array.isArray(step?.matrix) ? step.matrix : [];
-    for (let row = 0; row < matrix.length; row += 1) {
-      for (let col = 0; col < (matrix[row] || []).length; col += 1) {
-        if (matrix[row][col] !== "SCATTER") continue;
-        const key = `${row}-${col}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        positions.push({ row, col });
-      }
-    }
+/** The scatters to celebrate: every SCATTER on the board the player is looking
+ *  at (the renderer's committed board), read when the celebration starts. It
+ *  used to be the union over all tumble steps: a scatter that fell during a
+ *  tumble left its old cell in that union, and the glow landed on whatever
+ *  symbol sits there now. Scatters never win, so they are never cleared: the
+ *  final board holds all of them, and its count is the engine's trigger count
+ *  (the highest scatter count on a single board). */
+function displayedScatterCells() {
+  const out = [];
+  (reelRenderer.board.matrix || []).forEach((row, r) => {
+    (row || []).forEach((sym, c) => { if (sym === "SCATTER") out.push({ row: r, col: c }); });
+  });
+  return out;
+}
+
+// Dev builds (local / admin view) check the scatter celebration against what is
+// on screen and against the engine, and say so loudly when they disagree.
+const DEV_CHECKS = /^(localhost|127\.|\[::1\])/.test(window.location.hostname)
+  || document.body.classList.contains("admin-mode");
+function assertScatterCells(cells, payload, label) {
+  if (!DEV_CHECKS) return;
+  const board = reelRenderer.board.matrix || [];
+  const problems = [];
+  for (const { row, col } of cells) {
+    const sym = board[row]?.[col];
+    if (sym !== "SCATTER") problems.push(`cell r${row}c${col} shows ${sym}, not SCATTER`);
   }
-  return positions;
+  const engineCount = Number(payload?.scatter_count);
+  if (Number.isFinite(engineCount) && engineCount !== cells.length) {
+    problems.push(`${cells.length} scatters on screen, engine counted ${engineCount}`);
+  }
+  const final = payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix || payload?.matrix;
+  if (Array.isArray(final) && final.some((row, r) => (row || []).some((s, c) => (s === "SCATTER") !== (board[r]?.[c] === "SCATTER")))) {
+    problems.push("the board on screen is not the round's final board");
+  }
+  if (!problems.length) return;
+  window.__scatterAssertFailures = (window.__scatterAssertFailures || 0) + problems.length;
+  console.error(`[scatter-check] ${label}: ${problems.join("; ")}`);
 }
 
 // Scatters needed for this round's feature: the base trigger, or the free-spin
@@ -5968,11 +5987,14 @@ function scatterTargetFor(payload) {
 }
 
 async function celebrateScatterCatch(payload, label = "Bonus Catch") {
-  const scatters = scatterPositionsFromPayload(payload);
+  const scatters = displayedScatterCells();
+  assertScatterCells(scatters, payload, label);
   if (!scatters.length) return;
   // 5c/5d: lock on before the feature reveal.
   await reelRenderer.lockOn(scatters, 760);
-  const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
+  // Highlight on the same board the cells were read from, so the glow and the
+  // symbols under it cannot disagree.
+  const matrix = reelRenderer.board.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
   window.Sound?.play("bonus_trigger");
