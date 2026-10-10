@@ -7403,6 +7403,13 @@ const psModal = (() => {
     dots.forEach((d) => d.classList.toggle("is-active", d.dataset.psDot === current));
     if (body) body.scrollTop = 0;
     if (current === "rules") renderInfoRules();
+    revealTab();
+  }
+  // On phones the tab bar is a horizontal strip wider than the screen: keep the
+  // active tab in view. "nearest" moves nothing when it is already visible.
+  function revealTab() {
+    root.querySelector(".ps-modal__tab[aria-current='page']")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   function step(delta) {
     show(ids[(ids.indexOf(current) + delta + ids.length) % ids.length]);
@@ -7425,6 +7432,7 @@ const psModal = (() => {
     show(id);
     trigger?.focus?.(); // the skeleton returns the focus to what had it on open
     shell.open();
+    revealTab(); // show() ran while the modal was hidden, so nothing scrolled then
     // Keyboard users land on the section they asked for.
     setTimeout(() => root.querySelector(".ps-modal__tab[aria-current='page']")?.focus(), 0);
   }
