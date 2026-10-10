@@ -3900,8 +3900,13 @@ class ReelCanvasRenderer {
         const iconW = isMulti ? laneW * MULTI_EMBLEM.boxW * baseScale * revealScale * squashX : iconBase * squashX;
         const iconH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale * squashY : iconBase * squashY;
         // A squashed symbol stays planted on its floor instead of shrinking
-        // toward its centre.
-        const iconCy = y + Math.max(0, iconBase - iconH) * 0.5;
+        // toward its centre: the floor of its OWN unsquashed box. (It used to
+        // be the square icon box for every symbol; a multiplier's emblem box is
+        // shorter, so the emblem sat below the cell centre, jumped down at its
+        // strike swap (5.8px at 390, 11.6px at 1366) and drifted with every
+        // pulse. At rest every symbol is now centred on its cell.)
+        const restH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale : iconBase;
+        const iconCy = y + Math.max(0, restH - iconH) * 0.5;
         // Win focus (FOCUS): symbols outside the focus set step back.
         const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
 
@@ -3980,6 +3985,8 @@ class ReelCanvasRenderer {
           // every cell, every frame (a multiplier: its baked emblem).
           const sprite = emblem || this.getSymbolSprite(symbol, img, drawW, drawH);
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          // probes: where each cell's art was drawn this frame (centre and size, CSS px)
+          if (this._traceDraw) this._traceDraw.push({ key, symbol, x, y: iconCy, w: drawW, h: drawH, fall: inFlight });
           if (this.fx.waves.length && !isBlast) {
             // Shockwave light (#54): the front lights each symbol it passes.
             const lit = this.waveLight(x, iconCy, performance.now());

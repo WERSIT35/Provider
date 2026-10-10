@@ -6,12 +6,18 @@
 //   --ref   record an older commit (checked out into a temp worktree)
 //   --tumbles  keep re-rolling the spin until it has at least n tumble steps
 //   --mult     …and until it is a multiplied win (Total Multiplier + combine)
+//   --mult-refill  …whose multiplier lands in a tumble refill (none on the spin board)
 //   --scatter-move  instead: a feature trigger where a scatter moved during a
 //              tumble (the scatter-celebration case, tools/scatter-celebration-check.js)
 //   --seed <prefix>  deterministic re-roll: try <prefix>/0, <prefix>/1, … with
 //              the engine session restored between tries, so two builds (or
 //              --ref) record the SAME round
 //   --ms       how long to record (default 6000)
+//   --dpr      device pixel ratio (default 1)
+//   --trace-mult  log every multiplier cell's drawn centre and size each frame
+//              (renderer probe hook _traceDraw) from landing to rest: writes
+//              <name>-mult-trace.md / .json and <name>-mult-<cell>-strip.jpg
+//              (every frame around the swap, crosshairs at the resting centre)
 // Needs Chrome and sharp (root devDependency).
 const http = require("http");
 const fs = require("fs");
@@ -28,9 +34,12 @@ const REF = opt("ref", "");
 const NAME = opt("name", REF || "working-tree");
 const OUT = path.resolve(opt("out", fs.mkdtempSync(path.join(os.tmpdir(), "vx-rec-"))));
 const TUMBLES = Number(opt("tumbles", 2));
-const MULT = flag("mult");
+const MULT = flag("mult") || flag("mult-refill");
+const MULT_REFILL = flag("mult-refill");
 const SCATTER_MOVE = flag("scatter-move");
 const SEED = opt("seed", "");
+const DPR = Number(opt("dpr", 1));
+const TRACE = flag("trace-mult");
 const [W, H] = opt("size", "1280x800").split("x").map(Number);
 const PORT = 3100 + Math.floor(Math.random() * 400);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,6 +155,87 @@ const SEEDABLE_RNG = `(() => {
   window.__seedRng = (text) => { if (text == null) { gen = null; return; } const s = xmur3(String(text)); gen = sfc32(s(), s(), s(), s()); };
 })();`;
 
+/** --trace-mult: per multiplier cell, every frame from its stand-in landing to
+ *  the end: drawn centre (cx, cy) and size, and the offset from its resting
+ *  centre. After the cell has landed (not falling), a frame "moved" if its
+ *  centre differs from rest by ≥ 0.01 CSS px, "scaled" if its size differs. */
+async function writeMultTrace(trace, frames, geo) {
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const byKey = new Map();
+  for (const f of trace) for (const e of f.cells) {
+    if (!byKey.has(e.key)) byKey.set(e.key, []);
+    byKey.get(e.key).push({ t: f.t, ...e });
+  }
+  const turbo = flag("turbo");
+  const out = { name: NAME, size: `${W}x${H}`, dpr: DPR, turbo, cells: [] };
+  const md = [`# ${NAME}: multiplier cells (${W}x${H}, DPR ${DPR}, turbo ${turbo ? "on" : "off"})`, ""];
+  for (const [key, rows] of byKey) {
+    const swapIdx = rows.findIndex((x) => x.symbol === "MULTI");
+    if (swapIdx < 0) continue;
+    // This multiplier's run at this cell: from its first MULTI frame to its
+    // last; rest = its last frame that is not falling.
+    let endIdx = rows.length - 1;
+    while (endIdx > swapIdx && rows[endIdx].symbol !== "MULTI") endIdx -= 1;
+    const restRow = [...rows.slice(swapIdx, endIdx + 1)].reverse().find((x) => !x.fall) || rows[endIdx];
+    // Landing: the first frame of the not-falling run that leads into the swap.
+    let landIdx = swapIdx;
+    for (let i = swapIdx; i >= 0 && !rows[i].fall; i -= 1) landIdx = i;
+    const span = rows.slice(landIdx, endIdx + 1);
+    const flagged = [];
+    // The swap: the art's centre on the stand-in's last frame vs the multiplier's first.
+    const pre = rows[swapIdx - 1];
+    const jump = pre && !pre.fall ? { dx: r2(rows[swapIdx].x - pre.x), dy: r2(rows[swapIdx].y - pre.y) } : null;
+    const jumpPx = jump ? Math.max(Math.abs(jump.dx), Math.abs(jump.dy)) : 0;
+    md.push(`## cell ${key}`, "",
+      `landed ${Math.round(rows[landIdx].t)}ms (as ${rows[landIdx].symbol}), swapped to MULTI ${Math.round(rows[swapIdx].t)}ms; rest centre (${r2(restRow.x)}, ${r2(restRow.y)}) size ${r2(restRow.w)}×${r2(restRow.h)}`, "",
+      `swap jump (stand-in centre → multiplier centre): ${jump ? `Δx ${jump.dx}, Δy ${jump.dy}` : "n/a (still falling)"}`, "",
+      "| ms | symbol | falling | cx | cy | w | h | Δx | Δy | scale | note |", "|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const x of span) {
+      const dx = r2(x.x - restRow.x), dy = r2(x.y - restRow.y);
+      const scale = Math.round((x.w / restRow.w) * 1000) / 1000;
+      const isMulti = x.symbol === "MULTI";
+      const moved = isMulti && !x.fall && (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01);
+      const scaled = isMulti && Math.abs(x.w - restRow.w) >= 0.01;
+      if (moved || scaled) flagged.push({ t: x.t, dx, dy, scale, moved, scaled });
+      md.push(`| ${Math.round(x.t)} | ${x.symbol} | ${x.fall ? "yes" : ""} | ${r2(x.x)} | ${r2(x.y)} | ${r2(x.w)} | ${r2(x.h)} | ${dx} | ${dy} | ${scale} | ${moved ? "**MOVED**" : ""}${scaled ? " scaled" : ""} |`);
+    }
+    const maxD = flagged.filter((f) => f.moved).reduce((m, f) => Math.max(m, Math.abs(f.dx), Math.abs(f.dy)), 0);
+    const maxS = flagged.reduce((m, f) => Math.max(m, Math.abs(f.scale - 1)), 0);
+    md.push("", `swap jump ${jumpPx}px; after landing: ${flagged.filter((f) => f.moved).length} frames moved (max ${maxD}px CSS = ${r2(maxD * DPR)} device px), ${flagged.filter((f) => f.scaled).length} frames scaled (max ${Math.round(maxS * 1000) / 10}%)`, "");
+    out.cells.push({ key, landedMs: rows[landIdx].t, swapMs: rows[swapIdx].t, rest: restRow, swapJump: jump, flagged, maxMovePx: Math.max(maxD, jumpPx), maxScale: maxS });
+    // Strip: every frame from 4 before the swap to 24 after, around the cell,
+    // crosshairs at the resting centre (device px).
+    if (geo) {
+      const half = Math.round(geo.rowStep * 0.8 * DPR);
+      const cx = Math.round((geo.left + restRow.x) * DPR), cy = Math.round((geo.top + restRow.y) * DPR);
+      const crop = { left: Math.max(0, cx - half), top: Math.max(0, cy - half), width: half * 2, height: half * 2 };
+      const t0 = rows[swapIdx].t - 4 * (1000 / 60), t1 = rows[swapIdx].t + 24 * (1000 / 60);
+      const pick = frames.filter((f) => f.t >= t0 - 1 && f.t <= t1 + 1);
+      const tw = Math.min(crop.width, 160), k = tw / crop.width;
+      const tiles = await Promise.all(pick.map(async (f) => {
+        const img = await sharp(f.buf).extract(crop).resize({ width: tw }).toBuffer();
+        const gx = Math.round((cx - crop.left) * k), gy = Math.round((cy - crop.top) * k);
+        const over = Buffer.from(`<svg width="${tw}" height="${tw}"><line x1="${gx}" y1="0" x2="${gx}" y2="${tw}" stroke="#0f0" stroke-width="1" opacity="0.7"/><line x1="0" y1="${gy}" x2="${tw}" y2="${gy}" stroke="#0f0" stroke-width="1" opacity="0.7"/><rect width="${tw}" height="16" fill="black" opacity="0.7"/><text x="3" y="12" fill="white" font-size="11" font-family="monospace">${Math.round(f.t - rows[swapIdx].t)}ms</text></svg>`);
+        return sharp(img).composite([{ input: over, top: 0, left: 0 }]).toBuffer();
+      }));
+      if (tiles.length) {
+        const cols = Math.min(tiles.length, 14);
+        await sharp({ create: { width: cols * tw, height: Math.ceil(tiles.length / cols) * tw, channels: 3, background: "#000" } })
+          .composite(tiles.map((input, i) => ({ input, left: (i % cols) * tw, top: Math.floor(i / cols) * tw })))
+          .jpeg({ quality: 88 }).toFile(path.join(OUT, `${NAME}-mult-${key}-strip.jpg`));
+      }
+    }
+  }
+  if (!out.cells.length) md.push("(no new multiplier landed in this round)");
+  fs.writeFileSync(path.join(OUT, `${NAME}-mult-trace.md`), md.join("\n"));
+  fs.writeFileSync(path.join(OUT, `${NAME}-mult-trace.json`), JSON.stringify(out, null, 1));
+  const moved = out.cells.reduce((n, c) => n + c.flagged.filter((f) => f.moved).length, 0);
+  const scaled = out.cells.reduce((n, c) => n + c.flagged.filter((f) => f.scaled).length, 0);
+  const worst = out.cells.reduce((m, c) => Math.max(m, c.maxMovePx), 0);
+  const jumps = out.cells.map((c) => (c.swapJump ? Math.max(Math.abs(c.swapJump.dx), Math.abs(c.swapJump.dy)) : 0));
+  console.log(`${NAME}: ${out.cells.length} multiplier cell(s); swap jump ${Math.max(0, ...jumps)}px; after landing: ${moved} frames moved (max ${worst}px CSS), ${scaled} frames scaled`);
+}
+
 /** Evenly spaced frames → animated WebP at `speed` (1 = real time). Every
  *  `step`-th frame is kept so each frame shows for ≥ 20ms (browsers stretch
  *  shorter ones), with one constant delay, so playback time is exact. */
@@ -164,7 +254,7 @@ async function writeWebp(frames, file, speed, width) {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
   const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
-    "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"
+    "--no-first-run", "--hide-scrollbars", `--force-device-scale-factor=${DPR}`, "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const base = await new Promise((resolve) => {
     let buf = "";
@@ -176,7 +266,7 @@ async function writeWebp(frames, file, speed, width) {
   await cdp.send("Runtime.enable"); await cdp.send("Page.enable");
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: VCLOCK });
   if (SEED) await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: SEEDABLE_RNG });
-  await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: W < 900 });
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: DPR, mobile: W < 900 });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/index.html` });
   for (let i = 0; i < 150; i++) { await sleep(100); if (await evaluate(cdp, `document.body && document.body.classList.contains("app-ready") && typeof state !== "undefined" && !!state.sessionId`)) break; }
   await sleep(1200);
@@ -191,14 +281,18 @@ async function writeWebp(frames, file, speed, width) {
       let r; try { r = await real(p, { ...payload, spin_id: crypto.randomUUID() }); } finally { ${SEED ? "window.__seedRng(null);" : ""} }
       if (${SCATTER_MOVE}) { if (Number(r.free_spins_awarded) > 0 && moved(r) && !(r.events || []).length) { console.log("[motion-record] seed index " + i); return r; } continue; }
       if ((r.tumble_steps || []).length >= ${TUMBLES} && !r.free_spins_awarded
-      && (!${MULT} || (Number(r.multiplier_applied) > 1 && Number(r.total_win) > 0 && !(r.events || []).length))) return r; }
+      && (!${MULT} || (Number(r.multiplier_applied) > 1 && Number(r.total_win) > 0 && !(r.events || []).length))
+      && (!${MULT_REFILL} || (!(r.tumble_steps[0].multipliers || []).length && r.tumble_steps.some((st) => (st.multipliers || []).length)))) return r; }
     return real(p, payload); }; return true; })()`);
+  // Keep the round that was played (the trace watches its multiplier cells).
+  await evaluate(cdp, `(() => { const inner = api; api = async (p, payload) => { const r = await inner(p, payload); if (p === "/api/v1/spin" && !window.__picked) window.__picked = r; return r; }; return true; })()`);
 
   // Deterministic capture: the page's clock (performance.now, timers, rAF;
   // VCLOCK below) is switched to manual and advanced exactly one 60fps frame
   // at a time, each frame screenshotted, so every frame is there and evenly
   // spaced however slow the capture itself is. The spin is pressed 300ms in.
   const frames = [];
+  const trace = [];
   const FRAME = 1000 / 60;
   const advance = (ms) => evaluate(cdp, `__vclock.advance(${ms})`);
   const maxMs = Number(opt("ms", 6000));
@@ -207,12 +301,21 @@ async function writeWebp(frames, file, speed, width) {
   let idleSince = null;
   for (let t = 0; t <= maxMs; t += FRAME) {
     if (!pressed && t >= 300) {
+      if (TRACE) await evaluate(cdp, `(reelRenderer._traceDraw = [], true)`);
       await evaluate(cdp, `(document.getElementById("spinBtn") || el.spinBtn).click(), true`);
       pressed = true;
     }
     await advance(FRAME);
     const shot = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 85 });
     frames.push({ t, buf: Buffer.from(shot.data, "base64") });
+    if (TRACE && pressed) {
+      trace.push({ t, ...(await evaluate(cdp, `(() => {
+        const all = reelRenderer._traceDraw || []; reelRenderer._traceDraw = [];
+        const p = window.__picked;
+        const watch = new Set((p?.tumble_steps || []).flatMap((s) => (s.multipliers || []).map((m) => m.row + "-" + m.col)));
+        return { drew: all.length > 0, cells: all.filter((e) => watch.has(e.key)) };
+      })()`)) });
+    }
     if (pressed && t > 800 && Math.round(t / FRAME) % 6 === 0) {
       const busy = await evaluate(cdp, `isRoundInFlight()`);
       if (!busy && idleSince === null) idleSince = t;
@@ -220,9 +323,11 @@ async function writeWebp(frames, file, speed, width) {
       if (idleSince !== null && t - idleSince > 600) break;
     }
   }
+  const geo = TRACE ? await evaluate(cdp, `(() => { const r = el.reels.getBoundingClientRect(); const L = reelRenderer.getLayout(); return { left: r.left, top: r.top, rowStep: L.rowStep, laneW: L.laneW }; })()`) : null;
   cdp.close(); chrome.kill(); server.close();
 
   fs.mkdirSync(OUT, { recursive: true });
+  if (TRACE) await writeMultTrace(trace, frames, geo);
   const span = frames.length ? frames[frames.length - 1].t : 0;
   const fps = frames.length / Math.max(0.001, span / 1000);
   const width = Math.min(W, 960);
