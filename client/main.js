@@ -4309,7 +4309,7 @@ async function resyncAfterContextLoss() {
 //   countMs  — overlay only: time for the count to cross this tier's span
 //   fx       — overlay only: celebration effect set ("coins" | "sparks" | "motherlode")
 const WIN_TIERS = Object.freeze([
-  Object.freeze({ key: "epic",  minX: 50, label: "MOTHERLODE",    color: THEME.winTier.epic, overlay: true,  sfx: "win_mega",  blast: "blast-great",  flash: true,  countMs: 2200, fx: "motherlode" }),
+  Object.freeze({ key: "epic",  minX: 50, label: "MOTHERLODE",    color: THEME.winTier.epic, overlay: true,  sfx: "win_epic",  blast: "blast-great",  flash: true,  countMs: 2200, fx: "motherlode" }),
   Object.freeze({ key: "mega",  minX: 25, label: "LASER BREACH",  color: THEME.winTier.mega, overlay: true,  sfx: "win_mega",  blast: "blast-great",  flash: false, countMs: 1500, fx: "sparks" }),
   Object.freeze({ key: "big",   minX: 10, label: "VAULT CRACKED", color: THEME.winTier.big,  overlay: true,  sfx: "win_big",   blast: "blast-medium", flash: false, countMs: 1800, fx: "coins" }),
   // "Heartbeat" wins: no overlay (no UI interruption), but the cluster still
