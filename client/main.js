@@ -2750,7 +2750,10 @@ class ReelCanvasRenderer {
     for (const [c, rows] of rowsByCol) this._queueColumnStop(c, ends[c], rows);
     // Scatters still in the air ping as their reel locks.
     const pending = this._pendingScatters?.cells || [];
-    for (const sc of pending.slice()) this._queueTimer(ends[sc.col] || 0, () => this._landScatter(sc));
+    // Same column = same frame: one ping per reel, at the count it brings.
+    const byCol = new Map();
+    for (const sc of pending) { if (!byCol.has(sc.col)) byCol.set(sc.col, []); byCol.get(sc.col).push(sc); }
+    for (const [c, group] of byCol) this._queueTimer(ends[c] || 0, () => this._landScatters(group));
     if (k) {
       this._queueTimer(total, () => window.Sound?.play("click"));
       this._queueTimer(total + FAST_ZIP.clickGapMs, () => window.Sound?.play("click"));
@@ -2922,17 +2925,30 @@ class ReelCanvasRenderer {
       this.flushScatterLandings();
       return;
     }
-    lands.forEach((s) => this._queueTimer(s.t, () => this._landScatter(s)));
+    // Scatters that land on the same frame ring once, at their final count, so
+    // the climb never skips a step (two bells on one frame would be debounced).
+    const groups = new Map();
+    for (const s of lands) {
+      const f = Math.round(s.t / (1000 / 60));
+      if (!groups.has(f)) groups.set(f, []);
+      groups.get(f).push(s);
+    }
+    for (const group of groups.values()) this._queueTimer(Math.min(...group.map((s) => s.t)), () => this._landScatters(group));
   }
 
-  _landScatter(s) {
+  _landScatters(group) {
     const p = this._pendingScatters;
-    const i = p ? p.cells.indexOf(s) : -1;
-    if (i < 0) return;
-    p.cells.splice(i, 1);
-    p.landed += 1;
-    this.spawnReticle(s.row, s.col);
-    this._announceScatters();
+    if (!p) return;
+    let landed = 0;
+    for (const s of group) {
+      const i = p.cells.indexOf(s);
+      if (i < 0) continue;
+      p.cells.splice(i, 1);
+      p.landed += 1;
+      landed += 1;
+      this.spawnReticle(s.row, s.col);
+    }
+    if (landed) this._announceScatters();
   }
 
   /** Fast-stop: every scatter still in the air lands now: one ping, final count. */
@@ -6010,14 +6026,15 @@ async function celebrateScatterCatch(payload, label = "Bonus Catch") {
   const scatters = displayedScatterCells();
   assertScatterCells(scatters, payload, label);
   if (!scatters.length) return;
-  // 5c/5d: lock on before the feature reveal.
+  // 5c/5d: lock on before the feature reveal. The catch (the gong) lands on
+  // the lock-on itself; a retrigger rings the same gong, lighter.
+  window.Sound?.play("scatter_catch", { retrigger: Boolean(payload?.is_free_spin) });
   await reelRenderer.lockOn(scatters, 760);
   // Highlight on the same board the cells were read from, so the glow and the
   // symbols under it cannot disagree.
   const matrix = reelRenderer.board.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
-  window.Sound?.play("bonus_trigger");
   window.Ambiance?.react("bonus");
   pushGameMessage(`${label}: ${scatters.length} scatters caught.`, "bonus");
   await Promise.all([
