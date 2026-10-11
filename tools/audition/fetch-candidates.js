@@ -11,7 +11,7 @@
 //
 //   node tools/audition/fetch-candidates.js [--per 5] [--only spin_start,tick] [--refresh]
 // An event keeps the candidates it has (minus any off-brief title) and is topped
-// up to --per; --refresh (or --only) fetches it from scratch.
+// up to --per (--only limits the run to some events); --refresh fetches from scratch.
 //
 // Freesound originals need a login; the HQ previews are the same CC0 sound.
 
@@ -79,7 +79,7 @@ async function main() {
   const used = new Set(Object.values(list.events).flat().map((c) => c.id));
   for (const ev of EVENTS) {
     if (ONLY && !ONLY.has(ev.id)) continue;
-    const keep = ONLY || REFRESH ? [] : (list.events[ev.id] || []).filter((c) => allowed(ev, c));
+    const keep = REFRESH ? [] : (list.events[ev.id] || []).filter((c) => allowed(ev, c));
     if (keep.length >= PER) { list.events[ev.id] = keep; console.log(`${ev.id}: kept ${keep.length}`); continue; }
     const picks = keep.slice();
     const seen = new Set();

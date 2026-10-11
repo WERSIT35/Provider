@@ -135,7 +135,7 @@ function RECORDER() {
     const rec = Sound.debug.recent();
     const tail = rec[rec.length - 1];
     const last = tail && tail !== prevLast ? tail : null;
-    R.sounds.push({ t: now(), scenario: R.scenario, name, opts: o, key: last?.key || null, file: last?.file || null, played: Boolean(last && last.name === name) });
+    R.sounds.push({ t: now(), scenario: R.scenario, name, opts: o, key: last?.key || null, file: last?.file || null, played: Boolean(last && last.name === name), voice: last && last.name === name ? { bus: last.bus, pan: last.pan, rate: last.rate, db: last.db, send: last.send } : null });
   };
   const realDrone = Sound.drone.start.bind(Sound.drone);
   Sound.drone.start = (ms) => { R.sounds.push({ t: now(), scenario: R.scenario, name: "drone", key: "riser", file: "sfx/riser_1", played: true }); return realDrone(ms); };
@@ -328,7 +328,7 @@ const PAIRS = [
   // Only the round's final count-up (the running meter updates per step before it).
   { beat: "win count-up lands", sound: ["win_land", "win_small"], where: (b) => b.final && !b.overlay && b.to > 0, before: 120, after: 120 },
   { beat: "big win: overlay opens", sound: ["bigwin_open"], before: 200, after: 200 },
-  { beat: "big win: tier", sound: ["win_big", "win_mega", "max_win"], before: 120, after: 120 },
+  { beat: "big win: tier", sound: ["win_big", "win_mega", "win_epic", "max_win"], before: 120, after: 120 },
   { beat: "buy confirm opens", sound: ["click"], before: 120, after: 120 },
   { beat: "info modal opens", sound: ["click"], before: 120, after: 120 }
 ];
