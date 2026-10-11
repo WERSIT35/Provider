@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "formats": [
     "ogg",
     "m4a"
@@ -16,8 +16,7 @@
       "sfx/ui_confirm_1"
     ],
     "spin_start": [
-      "sfx/spin_start_1",
-      "sfx/spin_start_2"
+      "sfx/spin_start_1"
     ],
     "reel_stop": [
       "sfx/reel_stop_1",
@@ -31,9 +30,10 @@
       "sfx/tick_4"
     ],
     "refill": [
-      "sfx/refill_1",
-      "sfx/refill_2",
-      "sfx/refill_3"
+      "sfx/refill_1"
+    ],
+    "win_light": [
+      "sfx/win_light_1"
     ],
     "explode": [
       "sfx/explode_1",
@@ -44,21 +44,24 @@
       "sfx/explode_great_1",
       "sfx/explode_great_2"
     ],
-    "riser": [
-      "sfx/riser_1"
-    ],
     "win_tick": [
       "sfx/win_tick_1",
       "sfx/win_tick_2",
       "sfx/win_tick_3",
       "sfx/win_tick_4"
     ],
-    "scatter": [
-      "sfx/scatter_1"
+    "win_land": [
+      "sfx/win_land_1",
+      "sfx/win_land_2"
     ],
-    "scatter_catch": [
-      "sfx/scatter_catch_1",
-      "sfx/scatter_catch_2"
+    "win_small": [
+      "sfx/win_small_1"
+    ],
+    "combine_total": [
+      "sfx/combine_total_1"
+    ],
+    "strike": [
+      "sfx/strike_1"
     ],
     "bang": [
       "sfx/bang_1",
@@ -67,10 +70,6 @@
     "bang_big": [
       "sfx/bang_big_1",
       "sfx/bang_big_2"
-    ],
-    "strike": [
-      "sfx/strike_1",
-      "sfx/strike_2"
     ],
     "soul_launch": [
       "sfx/soul_launch_1"
@@ -88,30 +87,15 @@
     "combine": [
       "sfx/combine_1"
     ],
-    "combine_total": [
-      "sfx/combine_total_1"
+    "scatter": [
+      "sfx/scatter_1"
     ],
-    "win_light": [
-      "sfx/win_light_1"
+    "riser": [
+      "sfx/riser_1"
     ],
-    "win_land": [
-      "sfx/win_land_1",
-      "sfx/win_land_2"
-    ],
-    "win_small": [
-      "sfx/win_small_1"
-    ],
-    "win_big": [
-      "sfx/win_big_1"
-    ],
-    "win_mega": [
-      "sfx/win_mega_1"
-    ],
-    "max_win": [
-      "sfx/max_win_1"
-    ],
-    "bigwin_open": [
-      "sfx/bigwin_open_1"
+    "scatter_catch": [
+      "sfx/scatter_catch_1",
+      "sfx/scatter_catch_2"
     ],
     "feature_award": [
       "sfx/feature_award_1"
@@ -127,11 +111,64 @@
     ],
     "buy": [
       "sfx/buy_1"
+    ],
+    "bigwin_open": [
+      "sfx/bigwin_open_1"
+    ],
+    "win_big": [
+      "sfx/win_big_1"
+    ],
+    "win_mega": [
+      "sfx/win_mega_1"
+    ],
+    "win_epic": [
+      "sfx/win_epic_1"
+    ],
+    "max_win": [
+      "sfx/max_win_1"
     ]
+  },
+  "sends": {
+    "ui_click": 0,
+    "ui_toggle": 0,
+    "ui_confirm": 0,
+    "spin_start": 0.07,
+    "reel_stop": 0.07,
+    "tick": 0.03,
+    "refill": 0.07,
+    "win_light": 0.14,
+    "explode": 0.14,
+    "explode_great": 0.14,
+    "win_tick": 0.03,
+    "win_land": 0.14,
+    "win_small": 0.14,
+    "combine_total": 0.14,
+    "strike": 0.14,
+    "bang": 0.14,
+    "bang_big": 0.14,
+    "soul_launch": 0.07,
+    "catch": 0.14,
+    "combine_enter": 0.07,
+    "combine_slam": 0.14,
+    "combine": 0.14,
+    "scatter": 0.14,
+    "riser": 0.14,
+    "scatter_catch": 0.22,
+    "feature_award": 0.22,
+    "feature_more": 0.22,
+    "fs_intro": 0.22,
+    "fs_outro": 0.22,
+    "buy": 0.22,
+    "bigwin_open": 0.28,
+    "win_big": 0.28,
+    "win_mega": 0.28,
+    "win_epic": 0.28,
+    "max_win": 0.28
   },
   "music": {
     "base": "music/base",
     "freeSpins": "music/free_spins",
     "bigWin": "music/big_win"
-  }
+  },
+  "ir": "ir/room"
 }
