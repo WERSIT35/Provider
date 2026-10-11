@@ -2324,11 +2324,9 @@ class ReelCanvasRenderer {
         });
       }
     }
-    // An anvil, not a jelly: weight through sound and LOCAL light only (the
-    // board never moves).
-    // A low, heavy thud under the multiplier's own sound…
-    window.Sound?.play("reel_stop", { index: 0 });
-    // …and a short spotlight flash on the landing cell. Never over a cluster
+    // An anvil, not a jelly: weight through its own bell (whose weight follows
+    // the value) and LOCAL light only: the board never moves. A short
+    // spotlight flash on the landing cell. Never over a cluster
     // spotlight that is already running: that one belongs to a win.
     if (!this.fx.spotlight) {
       this.fx.spotlight = {
@@ -3165,13 +3163,14 @@ class ReelCanvasRenderer {
         st.bolted = true;
         st.boltAt = Number.isFinite(now) ? now : performance.now();
         if (!this._reducedMotion) this.spawnLightningStrike(st.r, st.c, st.tier);
-        window.Sound?.play("multiplier_strike", { value: st.value });
       }
       if (!st.swapped && e >= this._strikeSwapAt(d, st)) {
         st.swapped = true;
         const at = Number.isFinite(now) ? now : performance.now();
         if (!st.boltAt) st.boltAt = at;
         this.fx.heavyReveals.set(st.key, { revealAt: at, revealDuration: MULTI_PUNCH.ms, tier: st.tier, value: st.value });
+        // The crack + thunder lands on the flash's peak, the frame the art turns.
+        window.Sound?.play("multiplier_strike", { value: st.value });
         if (st.heavy) this.spawnHeavyImpact(st.r, st.c, st.tier, st.value, { bolt: false });
         else window.Sound?.play("multiplier_drop", { value: st.value });
       }
@@ -5598,6 +5597,7 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
     const p = { x: sx, y: sy };
     const startTime = performance.now() + delay;
     let lastD = 0;
+    let launched = false;
 
     function tick(now) {
       const elapsed = now - startTime;
@@ -5605,6 +5605,8 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
         requestAnimationFrame(tick);
         return;
       }
+      // The whoosh leaves with the orb, on its first drawn frame.
+      if (!launched) { launched = true; window.Sound?.play("soul_launch"); }
       const t = clamp(elapsed / duration, 0, 1);
       const d = t * t; // magnetism: from rest, ever faster into the HUD
       path.at(d, p);
@@ -5644,7 +5646,7 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
   // In the bonus the badge compounds as each multiplier lands (#46): this
   // spin's catches on top of the carried total (the engine adds them to it).
   if (meterNode === el.bonusMultiBadge) setBadgeMultiplier(next);
-  window.Sound?.play("multiplier_combine", { value: next });
+  window.Sound?.play("multiplier_catch", { value: next });
 
   meterNode.style.setProperty("--soul-glow", tier.glow);
   meterNode.classList.remove("soul-hit");
@@ -5681,6 +5683,8 @@ function combineLaunchOffset(overlay, leftFrac, node) {
  *  from the WIN line, so the player sees both values travel into the sum.
  *  `emptyBadge` (base game): the badge empties as its chip leaves it; in the
  *  bonus it keeps the persistent total. Turbo-scaled (--combine-t). */
+// The Total Win chip's pop peaks 20% into its 1.5s combineTotalIn (styles.css).
+const COMBINE_TOTAL_PEAK_MS = 300;
 function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false } = {}) {
   if (!el.reels?.parentElement) return Promise.resolve();
   const stage = el.reels.parentElement;
@@ -5731,6 +5735,8 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       if (emptyBadge) setBadgeMultiplier(0); // base game: the badge becomes the chip
       amount.classList.add("is-entered");
       multi.classList.add("is-entered");
+      // Each phase's sound goes with the class that starts it.
+      window.Sound?.play("combine_enter");
     });
     setTimeout(() => {
       // Slam together.
@@ -5738,12 +5744,19 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       multi.classList.add("is-slamming");
     }, ENTER + HOLD);
     setTimeout(() => {
-      // Collision flash + total reveal.
+      // Collision flash + total reveal. The punch is the collision itself (the
+      // chips meet at the end of their slam)…
       amount.classList.add("is-merged");
       multi.classList.add("is-merged");
       flash.classList.add("is-live");
       total.classList.add("is-live");
+      window.Sound?.play("combine_slam");
     }, ENTER + HOLD + SLAM);
+    setTimeout(() => {
+      // …the bell and the coins land on the total's pop (combineTotalIn peaks at 20%).
+      window.Sound?.play("multiplier_combine", { value: multiplier });
+      window.Sound?.play("combine_total");
+    }, ENTER + HOLD + SLAM + Math.round(COMBINE_TOTAL_PEAK_MS * t));
     setTimeout(() => {
       overlay.classList.add("is-fading");
     }, ENTER + HOLD + SLAM + REVEAL - 320);
