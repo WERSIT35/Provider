@@ -17,3 +17,10 @@ demo-operator/data/
 
 # Production secrets for the hosted platform (infra/.env.prod.example is the template).
 infra/.env.prod
+
+# Sound audition: candidate recordings and files dropped in for auditioning are
+# not committed (candidates.json lists them; picks are copied into art-src/audio/
+# when built).
+art-src/audio/candidates/*.ogg
+art-src/audio/incoming/*
+!art-src/audio/incoming/README.md
