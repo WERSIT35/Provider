@@ -4362,6 +4362,15 @@ const bigWin = new BigWinController({
   }
 });
 
+/** The win count-up has landed: a stinger sized to the win. A small win is
+ *  chips and a coin glint, a nice one (5x+) the orchestral hit; an overlay win
+ *  has the big win's own open and tier stings instead. */
+function playWinLand(amount, bet) {
+  const tier = getWinTier(amount, bet);
+  if (tier.overlay || !(amount > 0)) return;
+  window.Sound?.play(tier.key === "nice" ? "win_small" : "win_land");
+}
+
 /** Celebrate a settled round win. Resolves once the player (or the
  *  auto-dismiss) closes the overlay. */
 async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
@@ -4377,6 +4386,7 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
   reelRenderer.pauseRendering();
   const tracked = VxNotify.get("bigwin");
   tracked?.open();
+  window.Sound?.play("bigwin_open");
   window.Sound?.setMusic("bigWin", { temporary: true });
   try {
     return await bigWin.play({
@@ -6530,7 +6540,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       // step (and stacking banners/callouts) is noisy and repetitive — so steps
       // only update the running meter + play the tier's sound. Exactly ONE win
       // message is shown at the end of the spin (the finale below).
-      window.Sound?.play(stepTier.sfx);
       pushGameMessage(`${stepTier.label || "Win"}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
       if (stepTier.flash) {
         await reelRenderer.jackpotFlash({
@@ -6572,6 +6581,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         }
       }
     }
+    // The cluster lights up now (after the multiplier souls, if any): its sound with it.
+    if (isWinStep) window.Sound?.play("win_light");
     await reelRenderer.highlight(
       step.matrix,
       { winning: step.winning_positions || [], multipliers: step.multipliers || [] },
@@ -6617,10 +6628,14 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     // that total is an overlay tier, the celebration follows.
     if (!state.fastStopRequested) await playWinCombineSequence(rawWin, appliedMult, totalWinAmt, { emptyBadge: !payload.is_free_spin });
     await animateWinMeter(rawWin, totalWinAmt, 360);
+    playWinLand(totalWinAmt, bet);
     if (appliedMult >= 50) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
     if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
+
+  // A plain win's count-up has landed (its last chip counted in): its stinger.
+  if (!maxWinEvt && !isMultipliedWin && totalWinAmt > 0) playWinLand(totalWinAmt, bet);
 
   // No-win / bonus-trigger only touch the admin log (no over-reel text — the
   // player can see the board).
@@ -6779,6 +6794,7 @@ async function spin(options = {}) {
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
       await celebrateScatterCatch(payload, "Bonus Catch");
+      window.Sound?.play("feature_award");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     } else if (
@@ -6792,6 +6808,7 @@ async function spin(options = {}) {
       // continues without requiring a click. Player can still click to
       // skip it sooner.
       await celebrateScatterCatch(payload, "Retrigger Catch");
+      window.Sound?.play("feature_award", { retrigger: true });
       const sf = showFeature(`You won ${payload.free_spins_awarded} more Free Spins`, "Spins resume in a moment...");
       const autoDismiss = setTimeout(() => dismissFeature(), 1800);
       try { await sf; } finally { clearTimeout(autoDismiss); }
@@ -6990,6 +7007,7 @@ async function buyFreeSpins() {
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0) {
       await celebrateScatterCatch(payload, "Bonus Catch");
+      window.Sound?.play("feature_award");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     }
@@ -7308,6 +7326,7 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 // only when the controls next refresh at spin time.
 if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
+    window.Sound?.play("toggle", { on: el.anteToggle.checked });
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
     if (isPlayerBetChoice()) saveBetPref({ ante: el.anteToggle.checked });
     // The standalone engine keeps its own ante flag (it refuses a buy while it is on)
@@ -7316,7 +7335,8 @@ if (el.anteToggle) {
     if (!_platform.enabled) getEngine().then((engine) => engine.setAnteEnabled(el.anteToggle.checked)).catch(() => {});
   });
 }
-el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
+// The buy dialog voices its own opening (ui_open), so no click on top of it.
+el.buyFreeBtn.addEventListener("click", () => buyFreeSpins());
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
 
 // Sound on/off toggle — reflects + persists via the engine, syncs the glyph.
@@ -7339,14 +7359,15 @@ if (el.soundToggle) {
 if (el.autoplayBtn) {
   el.autoplayBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (state.autoplayActive) { stopAutoplay(); return; }
+    if (state.autoplayActive) { window.Sound?.play("toggle", { on: false }); stopAutoplay(); return; }
     el.autoplayPopover?.classList.toggle("hidden");
+    window.Sound?.play("click");
   });
 }
 if (el.autoplayPopover) {
   el.autoplayPopover.querySelectorAll("button[data-autoplay]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      window.Sound?.play("click");
+      window.Sound?.play("toggle", { on: true });
       const raw = btn.dataset.autoplay;
       const count = raw === "inf" ? Infinity : Number(raw);
       startAutoplay(count);
@@ -7429,7 +7450,7 @@ VxNotify.register("buyConfirm", document.getElementById("buyConfirmModal"), {
   kind: "modal",
   visibility: "class",
   dismiss: { backdrop: "cancel", escape: "cancel", enter: "confirm" },
-  audio: { confirm: "buy_feature" }
+  audio: { open: "ui_open", confirm: "buy_feature" }
 });
 // The reality check has no way out but its two buttons (continue / leave).
 VxNotify.register("reality", document.getElementById("realityCheck"), { kind: "modal", visibility: "attr" });
