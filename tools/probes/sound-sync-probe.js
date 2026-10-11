@@ -329,7 +329,7 @@ const PAIRS = [
   { beat: "win count-up lands", sound: ["win_land", "win_small"], where: (b) => b.final && !b.overlay && b.to > 0, before: 120, after: 120 },
   { beat: "big win: overlay opens", sound: ["bigwin_open"], before: 200, after: 200 },
   { beat: "big win: tier", sound: ["win_big", "win_mega", "max_win"], before: 120, after: 120 },
-  { beat: "buy confirm opens", sound: ["ui_open"], before: 120, after: 120 },
+  { beat: "buy confirm opens", sound: ["click"], before: 120, after: 120 },
   { beat: "info modal opens", sound: ["click"], before: 120, after: 120 }
 ];
 

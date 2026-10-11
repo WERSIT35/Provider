@@ -14,10 +14,10 @@ Pack licence texts: `art-src/audio/kenney/<pack>/License.txt`.
 
 | Original | Pack | Used in |
 |---|---|---|
-| click_001.ogg, click_003.ogg | Interface Sounds | `ui_click` |
-| select_002.ogg | Interface Sounds | `ui_bet` |
-| maximize_002.ogg, minimize_002.ogg | Interface Sounds | `ui_turbo_on`, `ui_turbo_off` |
-| open_002.ogg | Interface Sounds | `ui_open` |
+| click_002.ogg, click_004.ogg | Interface Sounds | `ui_click` (every button, bet ±; retrieved 2026-10-11) |
+| toggle_004.ogg | Interface Sounds | `ui_toggle` (on/off switches, pitched up/down; retrieved 2026-10-11) |
+| select_001.ogg | Interface Sounds | `ui_confirm` (with click_002; retrieved 2026-10-11) |
+| click_001.ogg, click_003.ogg, select_002.ogg, maximize_002.ogg, minimize_002.ogg, open_002.ogg | Interface Sounds | not used since 2026-10-11 (UI pass: too long or too loud for a button; kept as originals) |
 | impactSoft_heavy_000.ogg, impactSoft_heavy_001.ogg, impactSoft_heavy_002.ogg, impactSoft_heavy_003.ogg, impactSoft_heavy_004.ogg | Impact Sounds | `reel_stop`, `spin_start`, `bang`, `scatter_catch` |
 | impactPlate_heavy_000.ogg, impactPlate_heavy_001.ogg, impactPlate_heavy_002.ogg, impactPlate_heavy_003.ogg, impactPlate_heavy_004.ogg | Impact Sounds | `reel_stop` |
 | impactGlass_light_000.ogg, impactGlass_light_001.ogg, impactGlass_light_002.ogg, impactGlass_light_003.ogg, impactGlass_light_004.ogg | Impact Sounds | `tick` |

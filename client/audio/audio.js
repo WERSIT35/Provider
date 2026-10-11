@@ -29,9 +29,10 @@
   const STORAGE_KEY = "bananax.sound";
   const AUDIO_BASE = "assets/audio/";
 
-  // Bus levels (linear) under the master. UI sits under the game; music
-  // under both.
-  const BUS_LEVEL = { sfx: 1, ui: 0.55, music: 0.42, ambience: 0.5 };
+  // Bus levels (linear) under the master. UI sits ~12 dB under the game (its
+  // files are levelled 4 dB under sfx, build-audio TARGET, and its bus is
+  // -8 dB); music under both.
+  const BUS_LEVEL = { sfx: 1, ui: 0.4, music: 0.42, ambience: 0.5 };
   // Music: crossfade between moods, and how far / how fast it ducks.
   const MUSIC_FADE_S = 0.8;
   const DUCK = { db: -9, attackS: 0.04, releaseS: 0.35 };
@@ -161,10 +162,12 @@
   const SCATTER_STEPS = [0, 4, 7, 12]; // semitones: root, major 3rd, 5th, octave
   const EVENTS = {
     click: { minGap: 30, voice: () => ({ key: "ui_click", bus: "ui" }) },
-    bet_change: { minGap: 20, voice: (o) => ({ key: "ui_bet", bus: "ui", rate: o.up ? 1.06 : 0.94 }) },
-    turbo_toggle: { voice: (o) => ({ key: o.on ? "ui_turbo_on" : "ui_turbo_off", bus: "ui" }) },
+    // Bet ±: the same click, a hair up or down.
+    bet_change: { minGap: 20, voice: (o) => ({ key: "ui_click", bus: "ui", rate: o.up ? 1.06 : 0.94 }) },
+    // On/off switches: one toggle, two semitones up for on, down for off (exact pitch).
+    turbo_toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
     // Every other on/off switch (ante, autoplay start/stop) shares turbo's pair.
-    toggle: { minGap: 30, voice: (o) => ({ key: o.on ? "ui_turbo_on" : "ui_turbo_off", bus: "ui" }) },
+    toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
     spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -2 }) },
     // A reel lands as a stack: one thud per reel, placed left → right.
     reel_stop: { minGap: 8, voice: (o) => ({ key: "reel_stop", bus: "sfx", pan: colPan(o.index), rate: semis(-(Number(o.index) || 0) * 0.35) }) },
@@ -222,7 +225,8 @@
     fs_intro: { voice: () => ({ key: "fs_intro", bus: "sfx", duck: true }) },
     fs_outro: { voice: () => ({ key: "fs_outro", bus: "sfx", duck: true }) },
     buy_feature: { voice: () => ({ key: "buy", bus: "sfx", duck: true }) },
-    ui_open: { minGap: 60, voice: () => ({ key: "ui_open", bus: "ui" }) }
+    // A dialog's positive answer (play, continue): a touch fuller than a click.
+    ui_confirm: { minGap: 60, voice: () => ({ key: "ui_confirm", bus: "ui" }) }
   };
 
   // --- manifest + file loading ---------------------------------------------
