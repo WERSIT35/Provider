@@ -40,12 +40,12 @@ const o = (file) => `oga/${file}`;
 // onset: false exempts a sound that is meant to swell (whooshes, UI, transition
 // stings); every other key must hit within ONSET_MS of its start (--check).
 const SOUNDS = {
-  ui_click: { bus: "ui", onset: false, variations: [k("interface-sounds", "click_001.ogg"), k("interface-sounds", "click_003.ogg")].map((f) => ({ layers: [[f, 0, 0]], max: 0.12 })) },
-  ui_bet: { bus: "ui", onset: false, variations: [{ layers: [[k("interface-sounds", "select_002.ogg"), 0, 0]], max: 0.1 }] },
-  ui_turbo_on: { bus: "ui", onset: false, variations: [{ layers: [[k("interface-sounds", "maximize_002.ogg"), 0, 0]], max: 0.3 }] },
-  ui_turbo_off: { bus: "ui", onset: false, variations: [{ layers: [[k("interface-sounds", "minimize_002.ogg"), 0, 0]], max: 0.3 }] },
-  // A dialog opens (buy confirm): a soft rising tick on the UI bus.
-  ui_open: { bus: "ui", onset: false, variations: [{ layers: [[k("interface-sounds", "open_002.ogg"), 0, 0]], max: 0.32, fadeOut: 80 }] },
+  // UI: soft, short, tactile, never a tail (< 80 ms). Two takes of the same
+  // small switch click for every button; one toggle the engine pitches up (on)
+  // or down (off); confirm is the click with a soft pop under it.
+  ui_click: { bus: "ui", variations: ["click_002.ogg", "click_004.ogg"].map((f) => ({ layers: [[k("interface-sounds", f), 0, 0]], max: 0.06, fadeOut: 15 })) },
+  ui_toggle: { bus: "ui", variations: [{ layers: [[k("interface-sounds", "toggle_004.ogg"), 0, 0]], max: 0.07, fadeOut: 15 }] },
+  ui_confirm: { bus: "ui", variations: [{ layers: [[k("interface-sounds", "select_001.ogg"), 0, 0], [k("interface-sounds", "click_002.ogg"), -4, 0]], max: 0.075, fadeOut: 20 }] },
   // A spin kicks off: the same air whoosh over a soft low push (two close takes of the push).
   spin_start: { bus: "sfx", onset: false, variations: [1, 3].map((i) => ({
     layers: [[o("sfx100v2_air_02.ogg"), 0, 0], [k("impact-sounds", `impactSoft_heavy_00${i}.ogg`), -12, 0]], max: 0.6, fadeOut: 220 })) },

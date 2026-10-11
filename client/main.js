@@ -7335,7 +7335,7 @@ if (el.anteToggle) {
     if (!_platform.enabled) getEngine().then((engine) => engine.setAnteEnabled(el.anteToggle.checked)).catch(() => {});
   });
 }
-// The buy dialog voices its own opening (ui_open), so no click on top of it.
+// The buy dialog clicks as it opens, so no click on top of it here.
 el.buyFreeBtn.addEventListener("click", () => buyFreeSpins());
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
 
@@ -7350,7 +7350,7 @@ if (el.soundToggle) {
     if (!window.Sound) return;
     window.Sound.unlock();
     window.Sound.toggleMuted();
-    if (!window.Sound.isMuted()) window.Sound.play("click");
+    if (!window.Sound.isMuted()) window.Sound.play("toggle", { on: true });
     syncSoundToggle();
   });
   window.Sound?.onChange(syncSoundToggle);
@@ -7450,15 +7450,15 @@ VxNotify.register("buyConfirm", document.getElementById("buyConfirmModal"), {
   kind: "modal",
   visibility: "class",
   dismiss: { backdrop: "cancel", escape: "cancel", enter: "confirm" },
-  audio: { open: "ui_open", confirm: "buy_feature" }
+  audio: { open: "click", close: "click", confirm: "buy_feature" }
 });
 // The reality check has no way out but its two buttons (continue / leave).
-VxNotify.register("reality", document.getElementById("realityCheck"), { kind: "modal", visibility: "attr" });
+VxNotify.register("reality", document.getElementById("realityCheck"), { kind: "modal", visibility: "attr", audio: { close: "click" } });
 VxNotify.register("freeRounds", el.frModal, {
   kind: "modal",
   visibility: "attr",
   dismiss: { backdrop: "play", escape: "play", enter: "play", space: true },
-  audio: { open: "click" }
+  audio: { open: "click", close: "ui_confirm" }
 });
 VxNotify.register("bigwin", document.getElementById("bigWinOverlay"), { kind: "bigwin", external: true });
 VxNotify.setBanner((text, tone, ms) => ticker.flash(text, tone, ms));
@@ -7499,7 +7499,7 @@ const psModal = (() => {
     kind: "modal",
     visibility: "attr",
     dismiss: { backdrop: "closed", escape: "closed" },
-    audio: { open: "click" },
+    audio: { open: "click", close: "click" },
     onKey(e) {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return false;
       e.preventDefault();

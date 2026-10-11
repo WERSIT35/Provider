@@ -9,17 +9,11 @@
       "sfx/ui_click_1",
       "sfx/ui_click_2"
     ],
-    "ui_bet": [
-      "sfx/ui_bet_1"
+    "ui_toggle": [
+      "sfx/ui_toggle_1"
     ],
-    "ui_turbo_on": [
-      "sfx/ui_turbo_on_1"
-    ],
-    "ui_turbo_off": [
-      "sfx/ui_turbo_off_1"
-    ],
-    "ui_open": [
-      "sfx/ui_open_1"
+    "ui_confirm": [
+      "sfx/ui_confirm_1"
     ],
     "spin_start": [
       "sfx/spin_start_1",
