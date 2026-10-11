@@ -2324,11 +2324,9 @@ class ReelCanvasRenderer {
         });
       }
     }
-    // An anvil, not a jelly: weight through sound and LOCAL light only (the
-    // board never moves).
-    // A low, heavy thud under the multiplier's own sound…
-    window.Sound?.play("reel_stop", { index: 0 });
-    // …and a short spotlight flash on the landing cell. Never over a cluster
+    // An anvil, not a jelly: weight through its own bell (whose weight follows
+    // the value) and LOCAL light only: the board never moves. A short
+    // spotlight flash on the landing cell. Never over a cluster
     // spotlight that is already running: that one belongs to a win.
     if (!this.fx.spotlight) {
       this.fx.spotlight = {
@@ -2752,7 +2750,10 @@ class ReelCanvasRenderer {
     for (const [c, rows] of rowsByCol) this._queueColumnStop(c, ends[c], rows);
     // Scatters still in the air ping as their reel locks.
     const pending = this._pendingScatters?.cells || [];
-    for (const sc of pending.slice()) this._queueTimer(ends[sc.col] || 0, () => this._landScatter(sc));
+    // Same column = same frame: one ping per reel, at the count it brings.
+    const byCol = new Map();
+    for (const sc of pending) { if (!byCol.has(sc.col)) byCol.set(sc.col, []); byCol.get(sc.col).push(sc); }
+    for (const [c, group] of byCol) this._queueTimer(ends[c] || 0, () => this._landScatters(group));
     if (k) {
       this._queueTimer(total, () => window.Sound?.play("click"));
       this._queueTimer(total + FAST_ZIP.clickGapMs, () => window.Sound?.play("click"));
@@ -2924,17 +2925,30 @@ class ReelCanvasRenderer {
       this.flushScatterLandings();
       return;
     }
-    lands.forEach((s) => this._queueTimer(s.t, () => this._landScatter(s)));
+    // Scatters that land on the same frame ring once, at their final count, so
+    // the climb never skips a step (two bells on one frame would be debounced).
+    const groups = new Map();
+    for (const s of lands) {
+      const f = Math.round(s.t / (1000 / 60));
+      if (!groups.has(f)) groups.set(f, []);
+      groups.get(f).push(s);
+    }
+    for (const group of groups.values()) this._queueTimer(Math.min(...group.map((s) => s.t)), () => this._landScatters(group));
   }
 
-  _landScatter(s) {
+  _landScatters(group) {
     const p = this._pendingScatters;
-    const i = p ? p.cells.indexOf(s) : -1;
-    if (i < 0) return;
-    p.cells.splice(i, 1);
-    p.landed += 1;
-    this.spawnReticle(s.row, s.col);
-    this._announceScatters();
+    if (!p) return;
+    let landed = 0;
+    for (const s of group) {
+      const i = p.cells.indexOf(s);
+      if (i < 0) continue;
+      p.cells.splice(i, 1);
+      p.landed += 1;
+      landed += 1;
+      this.spawnReticle(s.row, s.col);
+    }
+    if (landed) this._announceScatters();
   }
 
   /** Fast-stop: every scatter still in the air lands now: one ping, final count. */
@@ -3165,13 +3179,14 @@ class ReelCanvasRenderer {
         st.bolted = true;
         st.boltAt = Number.isFinite(now) ? now : performance.now();
         if (!this._reducedMotion) this.spawnLightningStrike(st.r, st.c, st.tier);
-        window.Sound?.play("multiplier_strike", { value: st.value });
       }
       if (!st.swapped && e >= this._strikeSwapAt(d, st)) {
         st.swapped = true;
         const at = Number.isFinite(now) ? now : performance.now();
         if (!st.boltAt) st.boltAt = at;
         this.fx.heavyReveals.set(st.key, { revealAt: at, revealDuration: MULTI_PUNCH.ms, tier: st.tier, value: st.value });
+        // The crack + thunder lands on the flash's peak, the frame the art turns.
+        window.Sound?.play("multiplier_strike", { value: st.value });
         if (st.heavy) this.spawnHeavyImpact(st.r, st.c, st.tier, st.value, { bolt: false });
         else window.Sound?.play("multiplier_drop", { value: st.value });
       }
@@ -3900,8 +3915,13 @@ class ReelCanvasRenderer {
         const iconW = isMulti ? laneW * MULTI_EMBLEM.boxW * baseScale * revealScale * squashX : iconBase * squashX;
         const iconH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale * squashY : iconBase * squashY;
         // A squashed symbol stays planted on its floor instead of shrinking
-        // toward its centre.
-        const iconCy = y + Math.max(0, iconBase - iconH) * 0.5;
+        // toward its centre: the floor of its OWN unsquashed box. (It used to
+        // be the square icon box for every symbol; a multiplier's emblem box is
+        // shorter, so the emblem sat below the cell centre, jumped down at its
+        // strike swap (5.8px at 390, 11.6px at 1366) and drifted with every
+        // pulse. At rest every symbol is now centred on its cell.)
+        const restH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale : iconBase;
+        const iconCy = y + Math.max(0, restH - iconH) * 0.5;
         // Win focus (FOCUS): symbols outside the focus set step back.
         const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
 
@@ -3980,6 +4000,8 @@ class ReelCanvasRenderer {
           // every cell, every frame (a multiplier: its baked emblem).
           const sprite = emblem || this.getSymbolSprite(symbol, img, drawW, drawH);
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          // probes: where each cell's art was drawn this frame (centre and size, CSS px)
+          if (this._traceDraw) this._traceDraw.push({ key, symbol, x, y: iconCy, w: drawW, h: drawH, fall: inFlight });
           if (this.fx.waves.length && !isBlast) {
             // Shockwave light (#54): the front lights each symbol it passes.
             const lit = this.waveLight(x, iconCy, performance.now());
@@ -4340,6 +4362,15 @@ const bigWin = new BigWinController({
   }
 });
 
+/** The win count-up has landed: a stinger sized to the win. A small win is
+ *  chips and a coin glint, a nice one (5x+) the orchestral hit; an overlay win
+ *  has the big win's own open and tier stings instead. */
+function playWinLand(amount, bet) {
+  const tier = getWinTier(amount, bet);
+  if (tier.overlay || !(amount > 0)) return;
+  window.Sound?.play(tier.key === "nice" ? "win_small" : "win_land");
+}
+
 /** Celebrate a settled round win. Resolves once the player (or the
  *  auto-dismiss) closes the overlay. */
 async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
@@ -4355,6 +4386,7 @@ async function celebrateBigWin(amount, bet, { finalTier = null } = {}) {
   reelRenderer.pauseRendering();
   const tracked = VxNotify.get("bigwin");
   tracked?.open();
+  window.Sound?.play("bigwin_open");
   window.Sound?.setMusic("bigWin", { temporary: true });
   try {
     return await bigWin.play({
@@ -5591,6 +5623,7 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
     const p = { x: sx, y: sy };
     const startTime = performance.now() + delay;
     let lastD = 0;
+    let launched = false;
 
     function tick(now) {
       const elapsed = now - startTime;
@@ -5598,6 +5631,8 @@ function animateSoul({ sx, sy, tx, ty, value, tier, delay, duration, layer, mete
         requestAnimationFrame(tick);
         return;
       }
+      // The whoosh leaves with the orb, on its first drawn frame.
+      if (!launched) { launched = true; window.Sound?.play("soul_launch"); }
       const t = clamp(elapsed / duration, 0, 1);
       const d = t * t; // magnetism: from rest, ever faster into the HUD
       path.at(d, p);
@@ -5637,7 +5672,7 @@ function onSoulArrive({ tx, ty, value, tier, layer, meterNode, target }) {
   // In the bonus the badge compounds as each multiplier lands (#46): this
   // spin's catches on top of the carried total (the engine adds them to it).
   if (meterNode === el.bonusMultiBadge) setBadgeMultiplier(next);
-  window.Sound?.play("multiplier_combine", { value: next });
+  window.Sound?.play("multiplier_catch", { value: next });
 
   meterNode.style.setProperty("--soul-glow", tier.glow);
   meterNode.classList.remove("soul-hit");
@@ -5674,6 +5709,8 @@ function combineLaunchOffset(overlay, leftFrac, node) {
  *  from the WIN line, so the player sees both values travel into the sum.
  *  `emptyBadge` (base game): the badge empties as its chip leaves it; in the
  *  bonus it keeps the persistent total. Turbo-scaled (--combine-t). */
+// The Total Win chip's pop peaks 20% into its 1.5s combineTotalIn (styles.css).
+const COMBINE_TOTAL_PEAK_MS = 300;
 function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false } = {}) {
   if (!el.reels?.parentElement) return Promise.resolve();
   const stage = el.reels.parentElement;
@@ -5724,6 +5761,8 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       if (emptyBadge) setBadgeMultiplier(0); // base game: the badge becomes the chip
       amount.classList.add("is-entered");
       multi.classList.add("is-entered");
+      // Each phase's sound goes with the class that starts it.
+      window.Sound?.play("combine_enter");
     });
     setTimeout(() => {
       // Slam together.
@@ -5731,12 +5770,19 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       multi.classList.add("is-slamming");
     }, ENTER + HOLD);
     setTimeout(() => {
-      // Collision flash + total reveal.
+      // Collision flash + total reveal. The punch is the collision itself (the
+      // chips meet at the end of their slam)…
       amount.classList.add("is-merged");
       multi.classList.add("is-merged");
       flash.classList.add("is-live");
       total.classList.add("is-live");
+      window.Sound?.play("combine_slam");
     }, ENTER + HOLD + SLAM);
+    setTimeout(() => {
+      // …the bell and the coins land on the total's pop (combineTotalIn peaks at 20%).
+      window.Sound?.play("multiplier_combine", { value: multiplier });
+      window.Sound?.play("combine_total");
+    }, ENTER + HOLD + SLAM + Math.round(COMBINE_TOTAL_PEAK_MS * t));
     setTimeout(() => {
       overlay.classList.add("is-fading");
     }, ENTER + HOLD + SLAM + REVEAL - 320);
@@ -5937,25 +5983,44 @@ function renderCaughtLines(wins = [], multipliers = []) {
   });
 }
 
-function scatterPositionsFromPayload(payload = {}) {
-  const steps = Array.isArray(payload.tumble_steps) && payload.tumble_steps.length
-    ? payload.tumble_steps
-    : [{ matrix: payload.matrix }];
-  const positions = [];
-  const seen = new Set();
-  for (const step of steps) {
-    const matrix = Array.isArray(step?.matrix) ? step.matrix : [];
-    for (let row = 0; row < matrix.length; row += 1) {
-      for (let col = 0; col < (matrix[row] || []).length; col += 1) {
-        if (matrix[row][col] !== "SCATTER") continue;
-        const key = `${row}-${col}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        positions.push({ row, col });
-      }
-    }
+/** The scatters to celebrate: every SCATTER on the board the player is looking
+ *  at (the renderer's committed board), read when the celebration starts. It
+ *  used to be the union over all tumble steps: a scatter that fell during a
+ *  tumble left its old cell in that union, and the glow landed on whatever
+ *  symbol sits there now. Scatters never win, so they are never cleared: the
+ *  final board holds all of them, and its count is the engine's trigger count
+ *  (the highest scatter count on a single board). */
+function displayedScatterCells() {
+  const out = [];
+  (reelRenderer.board.matrix || []).forEach((row, r) => {
+    (row || []).forEach((sym, c) => { if (sym === "SCATTER") out.push({ row: r, col: c }); });
+  });
+  return out;
+}
+
+// Dev builds (local / admin view) check the scatter celebration against what is
+// on screen and against the engine, and say so loudly when they disagree.
+const DEV_CHECKS = /^(localhost|127\.|\[::1\])/.test(window.location.hostname)
+  || document.body.classList.contains("admin-mode");
+function assertScatterCells(cells, payload, label) {
+  if (!DEV_CHECKS) return;
+  const board = reelRenderer.board.matrix || [];
+  const problems = [];
+  for (const { row, col } of cells) {
+    const sym = board[row]?.[col];
+    if (sym !== "SCATTER") problems.push(`cell r${row}c${col} shows ${sym}, not SCATTER`);
   }
-  return positions;
+  const engineCount = Number(payload?.scatter_count);
+  if (Number.isFinite(engineCount) && engineCount !== cells.length) {
+    problems.push(`${cells.length} scatters on screen, engine counted ${engineCount}`);
+  }
+  const final = payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix || payload?.matrix;
+  if (Array.isArray(final) && final.some((row, r) => (row || []).some((s, c) => (s === "SCATTER") !== (board[r]?.[c] === "SCATTER")))) {
+    problems.push("the board on screen is not the round's final board");
+  }
+  if (!problems.length) return;
+  window.__scatterAssertFailures = (window.__scatterAssertFailures || 0) + problems.length;
+  console.error(`[scatter-check] ${label}: ${problems.join("; ")}`);
 }
 
 // Scatters needed for this round's feature: the base trigger, or the free-spin
@@ -5968,14 +6033,18 @@ function scatterTargetFor(payload) {
 }
 
 async function celebrateScatterCatch(payload, label = "Bonus Catch") {
-  const scatters = scatterPositionsFromPayload(payload);
+  const scatters = displayedScatterCells();
+  assertScatterCells(scatters, payload, label);
   if (!scatters.length) return;
-  // 5c/5d: lock on before the feature reveal.
+  // 5c/5d: lock on before the feature reveal. The catch (the gong) lands on
+  // the lock-on itself; a retrigger rings the same gong, lighter.
+  window.Sound?.play("scatter_catch", { retrigger: Boolean(payload?.is_free_spin) });
   await reelRenderer.lockOn(scatters, 760);
-  const matrix = payload?.matrix || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.matrix;
+  // Highlight on the same board the cells were read from, so the glow and the
+  // symbols under it cannot disagree.
+  const matrix = reelRenderer.board.matrix;
   const multipliers = payload?.multipliers || payload?.tumble_steps?.[payload.tumble_steps.length - 1]?.multipliers || [];
   pulseBanner(label, "bonus", 900);
-  window.Sound?.play("bonus_trigger");
   window.Ambiance?.react("bonus");
   pushGameMessage(`${label}: ${scatters.length} scatters caught.`, "bonus");
   await Promise.all([
@@ -6471,7 +6540,6 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       // step (and stacking banners/callouts) is noisy and repetitive — so steps
       // only update the running meter + play the tier's sound. Exactly ONE win
       // message is shown at the end of the spin (the finale below).
-      window.Sound?.play(stepTier.sfx);
       pushGameMessage(`${stepTier.label || "Win"}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
       if (stepTier.flash) {
         await reelRenderer.jackpotFlash({
@@ -6513,6 +6581,8 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         }
       }
     }
+    // The cluster lights up now (after the multiplier souls, if any): its sound with it.
+    if (isWinStep) window.Sound?.play("win_light");
     await reelRenderer.highlight(
       step.matrix,
       { winning: step.winning_positions || [], multipliers: step.multipliers || [] },
@@ -6558,10 +6628,14 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     // that total is an overlay tier, the celebration follows.
     if (!state.fastStopRequested) await playWinCombineSequence(rawWin, appliedMult, totalWinAmt, { emptyBadge: !payload.is_free_spin });
     await animateWinMeter(rawWin, totalWinAmt, 360);
+    playWinLand(totalWinAmt, bet);
     if (appliedMult >= 50) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
     if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
+
+  // A plain win's count-up has landed (its last chip counted in): its stinger.
+  if (!maxWinEvt && !isMultipliedWin && totalWinAmt > 0) playWinLand(totalWinAmt, bet);
 
   // No-win / bonus-trigger only touch the admin log (no over-reel text — the
   // player can see the board).
@@ -6720,6 +6794,7 @@ async function spin(options = {}) {
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
       await celebrateScatterCatch(payload, "Bonus Catch");
+      window.Sound?.play("feature_award");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     } else if (
@@ -6733,6 +6808,7 @@ async function spin(options = {}) {
       // continues without requiring a click. Player can still click to
       // skip it sooner.
       await celebrateScatterCatch(payload, "Retrigger Catch");
+      window.Sound?.play("feature_award", { retrigger: true });
       const sf = showFeature(`You won ${payload.free_spins_awarded} more Free Spins`, "Spins resume in a moment...");
       const autoDismiss = setTimeout(() => dismissFeature(), 1800);
       try { await sf; } finally { clearTimeout(autoDismiss); }
@@ -6931,6 +7007,7 @@ async function buyFreeSpins() {
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0) {
       await celebrateScatterCatch(payload, "Bonus Catch");
+      window.Sound?.play("feature_award");
       await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
       await autoplayBonus();
     }
@@ -7249,6 +7326,7 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 // only when the controls next refresh at spin time.
 if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
+    window.Sound?.play("toggle", { on: el.anteToggle.checked });
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
     if (isPlayerBetChoice()) saveBetPref({ ante: el.anteToggle.checked });
     // The standalone engine keeps its own ante flag (it refuses a buy while it is on)
@@ -7257,7 +7335,8 @@ if (el.anteToggle) {
     if (!_platform.enabled) getEngine().then((engine) => engine.setAnteEnabled(el.anteToggle.checked)).catch(() => {});
   });
 }
-el.buyFreeBtn.addEventListener("click", () => { window.Sound?.play("click"); buyFreeSpins(); });
+// The buy dialog voices its own opening (ui_open), so no click on top of it.
+el.buyFreeBtn.addEventListener("click", () => buyFreeSpins());
 if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
 
 // Sound on/off toggle — reflects + persists via the engine, syncs the glyph.
@@ -7280,14 +7359,15 @@ if (el.soundToggle) {
 if (el.autoplayBtn) {
   el.autoplayBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (state.autoplayActive) { stopAutoplay(); return; }
+    if (state.autoplayActive) { window.Sound?.play("toggle", { on: false }); stopAutoplay(); return; }
     el.autoplayPopover?.classList.toggle("hidden");
+    window.Sound?.play("click");
   });
 }
 if (el.autoplayPopover) {
   el.autoplayPopover.querySelectorAll("button[data-autoplay]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      window.Sound?.play("click");
+      window.Sound?.play("toggle", { on: true });
       const raw = btn.dataset.autoplay;
       const count = raw === "inf" ? Infinity : Number(raw);
       startAutoplay(count);
@@ -7370,7 +7450,7 @@ VxNotify.register("buyConfirm", document.getElementById("buyConfirmModal"), {
   kind: "modal",
   visibility: "class",
   dismiss: { backdrop: "cancel", escape: "cancel", enter: "confirm" },
-  audio: { confirm: "buy_feature" }
+  audio: { open: "ui_open", confirm: "buy_feature" }
 });
 // The reality check has no way out but its two buttons (continue / leave).
 VxNotify.register("reality", document.getElementById("realityCheck"), { kind: "modal", visibility: "attr" });

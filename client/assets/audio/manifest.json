@@ -18,6 +18,9 @@
     "ui_turbo_off": [
       "sfx/ui_turbo_off_1"
     ],
+    "ui_open": [
+      "sfx/ui_open_1"
+    ],
     "spin_start": [
       "sfx/spin_start_1",
       "sfx/spin_start_2"
@@ -57,8 +60,11 @@
       "sfx/win_tick_4"
     ],
     "scatter": [
-      "sfx/scatter_1",
-      "sfx/scatter_2"
+      "sfx/scatter_1"
+    ],
+    "scatter_catch": [
+      "sfx/scatter_catch_1",
+      "sfx/scatter_catch_2"
     ],
     "bang": [
       "sfx/bang_1",
@@ -72,12 +78,31 @@
       "sfx/strike_1",
       "sfx/strike_2"
     ],
+    "soul_launch": [
+      "sfx/soul_launch_1"
+    ],
     "catch": [
-      "sfx/catch_1",
-      "sfx/catch_2"
+      "sfx/catch_1"
+    ],
+    "combine_enter": [
+      "sfx/combine_enter_1"
+    ],
+    "combine_slam": [
+      "sfx/combine_slam_1",
+      "sfx/combine_slam_2"
     ],
     "combine": [
       "sfx/combine_1"
+    ],
+    "combine_total": [
+      "sfx/combine_total_1"
+    ],
+    "win_light": [
+      "sfx/win_light_1"
+    ],
+    "win_land": [
+      "sfx/win_land_1",
+      "sfx/win_land_2"
     ],
     "win_small": [
       "sfx/win_small_1"
@@ -91,8 +116,14 @@
     "max_win": [
       "sfx/max_win_1"
     ],
-    "bonus_trigger": [
-      "sfx/bonus_trigger_1"
+    "bigwin_open": [
+      "sfx/bigwin_open_1"
+    ],
+    "feature_award": [
+      "sfx/feature_award_1"
+    ],
+    "feature_more": [
+      "sfx/feature_more_1"
     ],
     "fs_intro": [
       "sfx/fs_intro_1"

@@ -74,7 +74,7 @@ npm run start:dev-server  # run backend/server.js MVP API on :3000 (PORT env to 
 npm run simulate          # math/simulate.js
 npm run test:api          # tools/api-test.js — requires the MVP server running
 npm run test:rtp-parity   # validate client engine RTP vs. theoretical
-npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e, real Chrome via CDP
+npm run test:client       # spin-lock + layout-check (9 viewports) + spin-e2e + scatter-celebration (seeded), real Chrome via CDP
 npm run verify:release    # CI job release-check: platform + demo-operator typecheck/test, test:client, audit:prod
 npm run verify:browser    # CI job browser-checks: check:resume/embed/inspector/campaigns, e2e, check:back-office/casino-embed
 GAME_ID=bananax_94 node tools/rtp-report.js > qa/rtp-certification-report-94.md  # lab report from qa/data/rtp-certification/<game_id>-*.json

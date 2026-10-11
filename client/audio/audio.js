@@ -37,6 +37,13 @@
   const DUCK = { db: -9, attackS: 0.04, releaseS: 0.35 };
   // Per-play variation on file voices.
   const JITTER = { rate: 0.03, db: 1.5 };
+  // Two loud hits on the same frame (a strike and its reveal, the big-win open
+  // and its first tier) would stack into one clipped blob: the second one, if
+  // it starts within `ms` of the first, sits `db` under it. Both stay on the
+  // frame they belong to.
+  const STACK = { ms: 20, db: -6 };
+  const LOUD = new Set(["strike", "bang", "bang_big", "scatter_catch", "feature_award", "feature_more", "bigwin_open",
+    "win_small", "win_big", "win_mega", "max_win", "combine", "combine_slam", "explode_great", "fs_intro", "fs_outro", "buy"]);
 
   function clamp(v, lo, hi) {
     return Math.min(hi, Math.max(lo, v));
@@ -81,6 +88,7 @@
     buffers: new Map(), // file path -> AudioBuffer
     loading: new Map(), // file path -> Promise
     lastPlay: new Map(), // event -> timestamp (minGap)
+    lastLoudAt: -Infinity, // when the last LOUD voice started (STACK)
     lastVariant: new Map(), // sound key -> last variation index
     recent: [],        // probes: the last plays { name, key, file, bus }
     listeners: new Set(),
@@ -150,10 +158,13 @@
   const colPan = (i, cols = 6) => clamp(((Number(i) || 0) / Math.max(1, cols - 1)) * 0.7 - 0.35, -0.35, 0.35);
   const semis = (n) => Math.pow(2, n / 12);
   const isGreat = (t) => /great|mega|epic|max/.test(String(t || ""));
+  const SCATTER_STEPS = [0, 4, 7, 12]; // semitones: root, major 3rd, 5th, octave
   const EVENTS = {
     click: { minGap: 30, voice: () => ({ key: "ui_click", bus: "ui" }) },
     bet_change: { minGap: 20, voice: (o) => ({ key: "ui_bet", bus: "ui", rate: o.up ? 1.06 : 0.94 }) },
     turbo_toggle: { voice: (o) => ({ key: o.on ? "ui_turbo_on" : "ui_turbo_off", bus: "ui" }) },
+    // Every other on/off switch (ante, autoplay start/stop) shares turbo's pair.
+    toggle: { minGap: 30, voice: (o) => ({ key: o.on ? "ui_turbo_on" : "ui_turbo_off", bus: "ui" }) },
     spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -2 }) },
     // A reel lands as a stack: one thud per reel, placed left → right.
     reel_stop: { minGap: 8, voice: (o) => ({ key: "reel_stop", bus: "sfx", pan: colPan(o.index), rate: semis(-(Number(o.index) || 0) * 0.35) }) },
@@ -166,19 +177,52 @@
     tumble: { minGap: 16, voice: (o) => ({ key: "refill", bus: "sfx", db: -3, rate: semis(Math.min(6, (Number(o.step) || 0) * 1.2)) }) },
     explode: { voice: (o) => ({ key: isGreat(o.tier) ? "explode_great" : "explode", bus: "sfx" }) },
     win_tick: { minGap: 45, voice: (o) => ({ key: "win_tick", bus: "sfx", db: -6, rate: 0.92 + clamp(Number(o.progress) || 0, 0, 1) * 0.5 }) },
-    scatter_land: { minGap: 30, voice: (o) => ({ key: "scatter", bus: "sfx", rate: semis(Math.min(12, ((Number(o.n) || 1) - 1) * 2)) }) },
+    // A scatter lands: one bell, stepped up a major triad per scatter on the
+    // board (1st, 2nd, 3rd, 4th+ = root, 3rd, 5th, octave), a touch louder each
+    // time; the one that completes the trigger rings fullest. Exact pitch (no
+    // jitter), so the climb reads as music.
+    scatter_land: { minGap: 30, voice: (o) => {
+      const n = Math.max(1, Number(o.n) || 1);
+      const step = SCATTER_STEPS[Math.min(n, SCATTER_STEPS.length) - 1] + Math.max(0, n - SCATTER_STEPS.length) * 2;
+      const done = Number(o.need) > 0 && n >= Number(o.need);
+      return { key: "scatter", bus: "sfx", rate: semis(Math.min(16, step)), db: -4 + Math.min(n, 4) + (done ? 1 : 0), jitter: false };
+    } },
+    // The scatters are caught (lock-on): the gong. A retrigger (+5) is the same
+    // gong, lighter and a minor third up.
+    scatter_catch: { minGap: 200, voice: (o) => ({ key: "scatter_catch", bus: "sfx", rate: o.retrigger ? semis(3) : 1, db: o.retrigger ? -3 : 0, duck: true }) },
+    // The feature screen: free spins awarded / more free spins.
+    feature_award: { minGap: 200, voice: (o) => ({ key: o.retrigger ? "feature_more" : "feature_award", bus: "sfx", duck: true }) },
     win_small: { voice: () => ({ key: "win_small", bus: "sfx", duck: true }) },
     win_big: { voice: () => ({ key: "win_big", bus: "sfx", duck: true }) },
     win_mega: { voice: () => ({ key: "win_mega", bus: "sfx", duck: true }) },
     max_win: { voice: () => ({ key: "max_win", bus: "sfx", duck: true }) },
+    // A winning cluster lights up (light), and the count-up lands (small win).
+    win_light: { minGap: 60, voice: () => ({ key: "win_light", bus: "sfx", db: -5 }) },
+    win_land: { minGap: 120, voice: () => ({ key: "win_land", bus: "sfx", duck: true }) },
+    // The big-win overlay opens: a firework over a cannon, and the music dips.
+    bigwin_open: { minGap: 200, voice: () => ({ key: "bigwin_open", bus: "sfx", duck: true }) },
+    // The lightning strike, on the flash frame: crack + short thunder.
     multiplier_strike: { minGap: 40, voice: () => ({ key: "strike", bus: "sfx", duck: true }) },
-    multiplier_drop: { minGap: 8, voice: (o) => ({ key: (Number(o.value) || 2) >= 50 ? "bang_big" : "bang", bus: "sfx", duck: (Number(o.value) || 2) >= 50 }) },
-    multiplier_catch: { minGap: 20, voice: (o) => ({ key: "catch", bus: "sfx", rate: semis(Math.min(7, Math.log2(Math.max(2, Number(o.value) || 2)))) }) },
-    multiplier_combine: { voice: () => ({ key: "combine", bus: "sfx", duck: true }) },
-    bonus_trigger: { voice: () => ({ key: "bonus_trigger", bus: "sfx", duck: true }) },
+    // The multiplier is revealed: its bell's pitch and weight follow the value,
+    // 2x small and bright … 1000x huge and deep (a low blast joins from 50x).
+    multiplier_drop: { minGap: 8, voice: (o) => {
+      const v = Math.max(2, Number(o.value) || 2);
+      const w = clamp(Math.log2(v / 2) / Math.log2(500), 0, 1); // 2x → 0, 1000x → 1
+      return { key: v >= 50 ? "bang_big" : "bang", bus: "sfx", rate: 1.18 - 0.38 * w, db: -6 + 6 * w, duck: v >= 50, jitter: false };
+    } },
+    // Multipliers fly to the total: a whoosh as they leave, a glint as each
+    // lands, pitched up with the total it lands on.
+    soul_launch: { minGap: 60, voice: () => ({ key: "soul_launch", bus: "sfx", db: -6 }) },
+    multiplier_catch: { minGap: 20, voice: (o) => ({ key: "catch", bus: "sfx", rate: semis(Math.min(9, Math.log2(Math.max(2, Number(o.value) || 2)) * 1.2)), jitter: false }) },
+    // Win × Multiplier = Total: chips rise, slam, collide, the total lands.
+    combine_enter: { minGap: 100, voice: () => ({ key: "combine_enter", bus: "sfx", db: -4 }) },
+    combine_slam: { minGap: 100, voice: () => ({ key: "combine_slam", bus: "sfx" }) },
+    multiplier_combine: { minGap: 100, voice: () => ({ key: "combine", bus: "sfx", duck: true }) },
+    combine_total: { minGap: 100, voice: () => ({ key: "combine_total", bus: "sfx" }) },
     fs_intro: { voice: () => ({ key: "fs_intro", bus: "sfx", duck: true }) },
     fs_outro: { voice: () => ({ key: "fs_outro", bus: "sfx", duck: true }) },
-    buy_feature: { voice: () => ({ key: "buy", bus: "sfx", duck: true }) }
+    buy_feature: { voice: () => ({ key: "buy", bus: "sfx", duck: true }) },
+    ui_open: { minGap: 60, voice: () => ({ key: "ui_open", bus: "ui" }) }
   };
 
   // --- manifest + file loading ---------------------------------------------
@@ -259,7 +303,9 @@
     const ctx = state.ctx;
     const src = ctx.createBufferSource();
     src.buffer = state.buffers.get(path);
-    src.playbackRate.value = (v.rate || 1) * (1 + (Math.random() * 2 - 1) * JITTER.rate);
+    // Pitched (musical) events keep their exact pitch: jitter only the rest.
+    const jitterRate = v.jitter === false ? 0 : (Math.random() * 2 - 1) * JITTER.rate;
+    src.playbackRate.value = (v.rate || 1) * (1 + jitterRate);
     const g = ctx.createGain();
     g.gain.value = dbToGain((v.db || 0) + (Math.random() * 2 - 1) * JITTER.db);
     let out = g;
@@ -475,6 +521,11 @@
     const file = nextVariant(v.key);
     if (!file) return; // not decoded yet: skip rather than play anything else
     if (v.duck) duck(name === "win_small" ? 500 : 1100);
+    if (LOUD.has(v.key)) {
+      const now = performance.now();
+      if (now - state.lastLoudAt < STACK.ms) v.db += STACK.db;
+      else state.lastLoudAt = now;
+    }
     try {
       playFile(file, v);
       remember({ name, key: v.key, file, bus: v.bus });
