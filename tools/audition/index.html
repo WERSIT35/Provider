@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Audition</title>
+<style>
+  :root {
+    --bg: #0d0f14; --panel: #161a22; --panel-2: #1d222c; --line: #2a303c; --text: #e8eaf0; --muted: #9aa3b5;
+    --gold: #f2c45a; --gold-ink: #1a1408; --ok: #5fd39a; --warn: #f0a35a; --bad: #ef6b6b; --focus: #8ab4ff;
+    --tier-ui: #6f7a91; --tier-base: #5aa2e8; --tier-win: #5fd39a; --tier-feature: #c58cf5; --tier-peak: #f2c45a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: rgba(13, 15, 20, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 1100px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: 0.02em; }
+  .muted { color: var(--muted); }
+  .progress { font-variant-numeric: tabular-nums; }
+  .spacer { flex: 1; }
+  label.switch { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
+  button { font: inherit; color: inherit; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: #3a4252; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  button.primary { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); font-weight: 600; }
+  .status { min-width: 12ch; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.dirty { color: var(--warn); }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .intro { color: var(--muted); margin: 0 0 18px; max-width: 75ch; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin: 26px 0 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .card.picked { border-color: #3c5a48; }
+  .card.rejected { border-color: #5a3c3c; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+  .name { font-weight: 650; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .tier { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .brief { margin: 4px 0 10px; color: var(--muted); }
+  .now { margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+  td.play { width: 44px; }
+  td.pick { width: 74px; text-align: right; white-space: nowrap; }
+  td.num { width: 1%; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .title { min-width: 0; overflow-wrap: anywhere; }
+  .title a { color: var(--text); text-decoration: none; border-bottom: 1px dotted #59617a; }
+  .by { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .pbtn { width: 34px; height: 30px; padding: 0; border-radius: 8px; }
+  .pbtn.playing { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+  tr.sel td { background: rgba(95, 211, 154, 0.07); }
+  .row-reject td { color: var(--muted); }
+  .note { width: 100%; margin-top: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  .empty { color: var(--warn); padding: 6px 0; }
+  .hidden { display: none; }
+  @media (max-width: 640px) {
+    td.num.hide-sm { display: none; }
+    .now { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>Sound Audition</h1>
+    <span class="progress muted" id="progress">loading…</span>
+    <span class="spacer"></span>
+    <label class="switch" title="Play every candidate at the same loudness so you compare character, not volume"><input type="checkbox" id="match" checked> Match loudness</label>
+    <span class="status" id="status" aria-live="polite"></span>
+    <button class="primary" id="save" type="button">Save</button>
+  </div>
+</header>
+<main>
+  <p class="intro">Pick one sound per event by ear. ▶ plays a candidate (press again to stop); <b>Now</b> plays what the game uses today. If nothing fits, choose <b>None fit</b> and say what you want in the note: more candidates will be fetched. Files you drop into <code>art-src/audio/incoming/</code> appear in every event as extra rows (reload the page). Save writes <code>art-src/audio/selection.json</code>.</p>
+  <div id="list"></div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = { cat: null, picks: {}, dirty: false, ctx: null, buffers: new Map(), voice: null, btn: null };
+const TARGET_RMS_DB = -20;
+
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids) if (k != null) n.append(k);
+  return n;
+}
+const fileUrl = (rel) => "/audition/file/" + rel.split("/").map(encodeURIComponent).join("/");
+const fmtS = (s) => (s == null ? "–" : s < 1 ? `${Math.round(s * 1000)} ms` : `${s.toFixed(2)} s`);
+const fmtDb = (d) => (d == null || !isFinite(d) ? "–" : `${d.toFixed(1)}`);
+
+// ── playback (one AudioContext for the page) ──
+async function buffer(url) {
+  if (state.buffers.has(url)) return state.buffers.get(url);
+  if (!state.ctx) state.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const p = fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then((a) => state.ctx.decodeAudioData(a)).then((b) => {
+    // Measure from the decoded audio, so loudness matching treats every source alike.
+    let pk = 0, ss = 0, n = 0;
+    for (let c = 0; c < b.numberOfChannels; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; ss += v * v; } n += d.length; }
+    return { b, peakDb: 20 * Math.log10(Math.max(pk, 1e-6)), rmsDb: 10 * Math.log10(Math.max(ss / Math.max(1, n), 1e-12)) };
+  });
+  state.buffers.set(url, p);
+  return p;
+}
+function stop() {
+  if (state.voice) { try { state.voice.stop(); } catch {} state.voice = null; }
+  if (state.btn) { state.btn.classList.remove("playing"); state.btn.textContent = "▶"; state.btn.setAttribute("aria-label", state.btn.dataset.label); state.btn = null; }
+}
+async function play(url, btn) {
+  const same = state.btn === btn;
+  stop();
+  if (same) return;
+  try {
+    const { b, peakDb, rmsDb } = await buffer(url);
+    if (state.ctx.state === "suspended") await state.ctx.resume();
+    const src = state.ctx.createBufferSource();
+    src.buffer = b;
+    const g = state.ctx.createGain();
+    // Match: bring it to the target RMS, never past -1 dBFS peak.
+    const db = $("match").checked ? Math.min(TARGET_RMS_DB - rmsDb, -1 - peakDb) : 0;
+    g.gain.value = Math.pow(10, db / 20);
+    src.connect(g).connect(state.ctx.destination);
+    src.onended = () => { if (state.voice === src) stop(); };
+    src.start();
+    state.voice = src; state.btn = btn;
+    btn.classList.add("playing"); btn.textContent = "■"; btn.setAttribute("aria-label", "Stop");
+  } catch (e) { setStatus(`can't play (${e.message})`, "bad"); }
+}
+function playButton(url, label) {
+  const b = el("button", { class: "pbtn", type: "button", "aria-label": label, "data-label": label, text: "▶" });
+  b.addEventListener("click", () => play(url, b));
+  return b;
+}
+
+// ── picks ──
+function setStatus(text, kind = "") { const s = $("status"); s.textContent = text; s.className = "status " + kind; }
+function markDirty() { state.dirty = true; setStatus("unsaved", "dirty"); updateProgress(); }
+function updateProgress() {
+  const evs = state.cat.events;
+  const done = evs.filter((e) => state.picks[e.id] && (state.picks[e.id].file || state.picks[e.id].reject)).length;
+  $("progress").textContent = `${done} / ${evs.length} decided`;
+  for (const e of evs) {
+    const card = document.querySelector(`[data-event="${e.id}"]`);
+    const p = state.picks[e.id];
+    card.classList.toggle("picked", Boolean(p && p.file));
+    card.classList.toggle("rejected", Boolean(p && p.reject));
+    card.querySelectorAll("tr[data-file]").forEach((tr) => tr.classList.toggle("sel", Boolean(p && p.file === tr.dataset.file)));
+  }
+}
+function pick(ev, cand) {
+  const prev = state.picks[ev.id] || {};
+  state.picks[ev.id] = cand ? { file: cand.file, id: cand.id, reject: false, note: prev.note || "" } : { file: null, id: null, reject: true, note: prev.note || "" };
+  markDirty();
+}
+
+function card(ev, incoming) {
+  const tierColor = `var(--tier-${ev.tier})`;
+  const now = ev.current.length ? playButton(ev.current[0], `Play what ${ev.id} sounds like now`) : null;
+  if (now) { now.textContent = "Now"; now.dataset.label = "Now"; now.classList.add("now"); now.style.width = "auto"; now.style.padding = "0 10px"; }
+  const tbody = el("tbody");
+  const rows = [...ev.candidates, ...incoming];
+  const name = `pick-${ev.id}`;
+  const p = state.picks[ev.id];
+  rows.forEach((c, i) => {
+    const radio = el("input", { type: "radio", name, "aria-label": `Pick ${c.title} for ${ev.id}` });
+    radio.checked = Boolean(p && p.file === c.file);
+    radio.addEventListener("change", () => pick(ev, c));
+    const title = c.url ? el("a", { href: c.url, target: "_blank", rel: "noopener noreferrer", text: c.title }) : document.createTextNode(c.title);
+    tbody.append(el("tr", { "data-file": c.file },
+      el("td", { class: "play" }, playButton(fileUrl(c.file), `Play candidate ${i + 1}: ${c.title}`)),
+      el("td", { class: "title" }, el("div", {}, title), el("div", { class: "by", text: `${c.author} · ${c.license}${c.query ? ` · “${c.query}”` : ""}` })),
+      el("td", { class: "num", title: "length" }, fmtS(c.seconds)),
+      el("td", { class: "num hide-sm", title: "peak dBFS" }, c.peakDb != null ? `pk ${fmtDb(c.peakDb)}` : "–"),
+      el("td", { class: "num hide-sm", title: "RMS dBFS (loudness)" }, c.rmsDb != null ? `rms ${fmtDb(c.rmsDb)}` : "–"),
+      el("td", { class: "pick" }, el("label", {}, radio, " pick"))
+    ));
+  });
+  const none = el("input", { type: "radio", name, "aria-label": `None fit for ${ev.id}` });
+  none.checked = Boolean(p && p.reject);
+  none.addEventListener("change", () => pick(ev, null));
+  tbody.append(el("tr", { class: "row-reject" }, el("td"), el("td", { class: "title", text: "None of these fit (fetch more; describe it in the note)" }), el("td", { class: "num" }), el("td", { class: "num hide-sm" }), el("td", { class: "num hide-sm" }), el("td", { class: "pick" }, el("label", {}, none, " none"))));
+  const note = el("input", { class: "note", type: "text", placeholder: "Note (optional): what you like or want instead", value: (p && p.note) || "", "aria-label": `Note for ${ev.id}` });
+  note.addEventListener("input", () => { state.picks[ev.id] = { ...(state.picks[ev.id] || { file: null, id: null, reject: false }), note: note.value }; markDirty(); });
+  return el("section", { class: "card", "data-event": ev.id },
+    el("div", { class: "head" }, el("span", { class: "name", text: ev.id }), el("span", { class: "tier", style: `color:${tierColor}`, text: ev.tier }), now),
+    el("p", { class: "brief", text: ev.brief }),
+    rows.length ? el("table", {}, tbody) : el("div", { class: "empty", text: "No candidates fetched yet." }),
+    note
+  );
+}
+
+async function load() {
+  const r = await fetch("/audition/catalogue", { cache: "no-store" });
+  state.cat = await r.json();
+  state.picks = (state.cat.selection && state.cat.selection.picks) || {};
+  const list = $("list");
+  let group = null;
+  for (const ev of state.cat.events) {
+    if (ev.group !== group) { group = ev.group; list.append(el("h2", { text: group })); }
+    list.append(card(ev, state.cat.incoming));
+  }
+  updateProgress();
+  setStatus(state.cat.selection ? `loaded ${new Date(state.cat.selection.savedAt).toLocaleString()}` : "");
+}
+
+$("save").addEventListener("click", async () => {
+  setStatus("saving…");
+  try {
+    const r = await fetch("/audition/selection", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ picks: state.picks }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    state.dirty = false;
+    setStatus(j.missing.length ? `saved (${j.missing.length} still undecided)` : "saved: all decided", "ok");
+  } catch (e) { setStatus(`save failed: ${e.message}`, "bad"); }
+});
+$("match").addEventListener("change", stop);
+window.addEventListener("beforeunload", (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ""; } });
+load().catch((e) => setStatus(`load failed: ${e.message}`, "bad"));
+</script>
+</body>
+</html>
