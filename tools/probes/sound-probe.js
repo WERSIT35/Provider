@@ -111,9 +111,10 @@ async function main() {
     console.log("\nevents");
     const events = await ev(`(async () => {
       const opts = { bet_change: { up: true }, turbo_toggle: { on: true }, reel_stop: { index: 2 }, tick: { row: 3, col: 1, rows: 5 }, tumble: { step: 2 }, explode: { tier: "blast-great" },
-        win_tick: { progress: 0.5 }, scatter_land: { n: 2, need: 4 }, multiplier_drop: { value: 100 }, multiplier_catch: { value: 10 } };
+        win_tick: { progress: 0.5 }, scatter_land: { n: 2, need: 4 }, multiplier_drop: { value: 100 }, multiplier_catch: { value: 10 }, toggle: { on: true } };
       const names = ["click", "bet_change", "turbo_toggle", "spin_start", "reel_stop", "tick", "tumble", "explode", "win_tick", "scatter_land", "win_small", "win_big", "win_mega", "max_win",
-        "multiplier_strike", "multiplier_drop", "multiplier_catch", "multiplier_combine", "bonus_trigger", "fs_intro", "fs_outro", "buy_feature"];
+        "multiplier_strike", "multiplier_drop", "soul_launch", "multiplier_catch", "combine_enter", "combine_slam", "multiplier_combine", "combine_total",
+        "scatter_catch", "feature_award", "win_light", "win_land", "bigwin_open", "fs_intro", "fs_outro", "buy_feature", "ui_open", "toggle"];
       const out = [];
       for (const n of names) { Sound.play(n, opts[n] || {}); const r = Sound.debug.recent(); const last = r[r.length - 1]; out.push({ n, file: last && last.name === n ? last.file : null }); await new Promise((r) => setTimeout(r, 120)); }
       Sound.drone.start(600); const rr = Sound.debug.recent(); const d = rr[rr.length - 1]; out.push({ n: "drone", file: d && d.name === "drone" ? d.file : null }); Sound.drone.stop();
