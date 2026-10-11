@@ -86,18 +86,19 @@ async function main() {
     const load = await ev(`(async () => {
       await Sound.debug.ready();
       const m = Sound.debug.manifest(); if (!m) return { manifest: false };
-      const all = Object.values(m.sounds).flat().concat(Object.values(m.music));
+      const all = Object.values(m.sounds).flat().concat(Object.values(m.music), m.ir ? [m.ir] : []);
       const t0 = performance.now();
       while (Sound.debug.loaded().length < all.length && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
       const n0 = Sound.debug.recent().length; Sound.play("spin_start"); Sound.play("reel_stop", { index: 0 });
-      return { manifest: true, ext: Sound.debug.ext(), want: all.length, got: Sound.debug.loaded().length, ms: Math.round(performance.now() - t0), unlocked: Sound.debug.unlocked(), queued: Sound.debug.recent().length - n0 };
+      return { manifest: true, ext: Sound.debug.ext(), want: all.length, got: Sound.debug.loaded().length, ms: Math.round(performance.now() - t0), unlocked: Sound.debug.unlocked(), queued: Sound.debug.recent().length - n0, reverb: Sound.debug.reverbReady(), ir: m.ir };
     })()`);
     check("every file is fetched and decoded at page load, before any gesture", load.manifest && load.got === load.want && load.unlocked === false, `${load.got}/${load.want} ${load.ext}, ready ${load.ms}ms after load`);
     check("nothing plays or queues before the first gesture (no late burst)", load.queued === 0);
+    check("the shared reverb has its impulse response", load.reverb === true, load.ir || "no ir in the manifest");
     const first = await ev(`(() => { Sound.setMuted(false); Sound.unlock(); Sound.play("spin_start"); const r = Sound.debug.recent(); const l = r[r.length - 1]; return { name: l && l.name, file: l && l.file }; })()`);
     check("the very first sound after the gesture is a real file (the first spin is voiced)", first.name === "spin_start" && Boolean(first.file), String(first.file));
     const m4a = await ev(`(async () => {
-      const m = Sound.debug.manifest(); const all = Object.values(m.sounds).flat().concat(Object.values(m.music)); const ctx = new OfflineAudioContext(1, 1, 48000); let bad = [];
+      const m = Sound.debug.manifest(); const all = Object.values(m.sounds).flat().concat(Object.values(m.music), m.ir ? [m.ir] : []); const ctx = new OfflineAudioContext(1, 1, 48000); let bad = [];
       for (const p of all) { try { const b = await (await fetch("assets/audio/" + p + ".m4a")).arrayBuffer(); await ctx.decodeAudioData(b); } catch (e) { bad.push(p); } }
       return { n: all.length, bad };
     })()`);
@@ -112,7 +113,7 @@ async function main() {
     const events = await ev(`(async () => {
       const opts = { bet_change: { up: true }, turbo_toggle: { on: true }, reel_stop: { index: 2 }, tick: { row: 3, col: 1, rows: 5 }, tumble: { step: 2 }, explode: { tier: "blast-great" },
         win_tick: { progress: 0.5 }, scatter_land: { n: 2, need: 4 }, multiplier_drop: { value: 100 }, multiplier_catch: { value: 10 }, toggle: { on: true } };
-      const names = ["click", "bet_change", "turbo_toggle", "spin_start", "reel_stop", "tick", "tumble", "explode", "win_tick", "scatter_land", "win_small", "win_big", "win_mega", "max_win",
+      const names = ["click", "bet_change", "turbo_toggle", "spin_start", "reel_stop", "tick", "tumble", "explode", "win_tick", "scatter_land", "win_small", "win_big", "win_mega", "win_epic", "max_win",
         "multiplier_strike", "multiplier_drop", "soul_launch", "multiplier_catch", "combine_enter", "combine_slam", "multiplier_combine", "combine_total",
         "scatter_catch", "feature_award", "win_light", "win_land", "bigwin_open", "fs_intro", "fs_outro", "buy_feature", "ui_confirm", "toggle"];
       const out = [];

@@ -13,7 +13,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.598,
         "peakDb": -3.6,
-        "rmsDb": -21.8
+        "rmsDb": -21.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 70,
+          "decayMs": 455,
+          "audibleMs": 530,
+          "low": 16,
+          "mid": 55,
+          "high": 29,
+          "width": 0,
+          "peakDb": -6.3,
+          "rmsDb": -24.7
+        }
       },
       {
         "id": "399011",
@@ -26,7 +38,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.627,
         "peakDb": -22.2,
-        "rmsDb": -47.4
+        "rmsDb": -47.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 30,
+          "decayMs": 75,
+          "audibleMs": 125,
+          "low": 4,
+          "mid": 22,
+          "high": 74,
+          "width": 0.91,
+          "peakDb": -14.9,
+          "rmsDb": -43.1
+        }
       },
       {
         "id": "835550",
@@ -39,7 +63,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.003,
         "peakDb": -6.8,
-        "rmsDb": -23.4
+        "rmsDb": -23.4,
+        "features": {
+          "leadMs": 55,
+          "attackMs": 175,
+          "decayMs": 415,
+          "audibleMs": 925,
+          "low": 55,
+          "mid": 41,
+          "high": 5,
+          "width": 0.31,
+          "peakDb": -5.1,
+          "rmsDb": -23.4
+        }
       },
       {
         "id": "96151",
@@ -52,7 +88,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.148,
         "peakDb": -19.2,
-        "rmsDb": -38.4
+        "rmsDb": -38.4,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 20,
+          "decayMs": 80,
+          "audibleMs": 125,
+          "low": 73,
+          "mid": 20,
+          "high": 8,
+          "width": 0,
+          "peakDb": -22.3,
+          "rmsDb": -41.3
+        }
       },
       {
         "id": "828131",
@@ -65,7 +113,119 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.738,
         "peakDb": -6.8,
-        "rmsDb": -35.9
+        "rmsDb": -35.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 320,
+          "decayMs": 380,
+          "audibleMs": 705,
+          "low": 12,
+          "mid": 62,
+          "high": 25,
+          "width": 0,
+          "peakDb": -6.6,
+          "rmsDb": -35.8
+        }
+      },
+      {
+        "id": "481789",
+        "file": "candidates/spin_start__fs481789.ogg",
+        "title": "Metallic latch release.wav",
+        "author": "Crinkem",
+        "query": "latch release metal",
+        "url": "https://freesound.org/people/Crinkem/sounds/481789/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 0.476,
+        "peakDb": -10.9,
+        "rmsDb": -35.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 205,
+          "decayMs": 65,
+          "audibleMs": 270,
+          "low": 12,
+          "mid": 39,
+          "high": 49,
+          "width": 0.2,
+          "peakDb": -4.8,
+          "rmsDb": -33.6
+        }
+      },
+      {
+        "id": "94119",
+        "file": "candidates/spin_start__fs94119.ogg",
+        "title": "ClipLoad2.wav",
+        "author": "BMacZero",
+        "query": "ratchet click",
+        "url": "https://freesound.org/people/BMacZero/sounds/94119/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 0.206,
+        "peakDb": -1,
+        "rmsDb": -25.1,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 45,
+          "decayMs": 35,
+          "audibleMs": 110,
+          "low": 2,
+          "mid": 44,
+          "high": 54,
+          "width": 0,
+          "peakDb": -2.1,
+          "rmsDb": -27.6
+        }
+      },
+      {
+        "id": "759923",
+        "file": "candidates/spin_start__fs759923.ogg",
+        "title": "keypad",
+        "author": "SelectDetail57",
+        "query": "vault lock",
+        "url": "https://freesound.org/people/SelectDetail57/sounds/759923/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 1,
+        "peakDb": -9.1,
+        "rmsDb": -23.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 40,
+          "decayMs": 560,
+          "audibleMs": 1000,
+          "low": 33,
+          "mid": 62,
+          "high": 5,
+          "width": 0.74,
+          "peakDb": -7.1,
+          "rmsDb": -23.6
+        }
+      },
+      {
+        "id": "94121",
+        "file": "candidates/spin_start__fs94121.ogg",
+        "title": "Mechanical2.wav",
+        "author": "BMacZero",
+        "query": "lever pull",
+        "url": "https://freesound.org/people/BMacZero/sounds/94121/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 0.604,
+        "peakDb": -11.5,
+        "rmsDb": -31.4,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 210,
+          "decayMs": 100,
+          "audibleMs": 520,
+          "low": 6,
+          "mid": 63,
+          "high": 31,
+          "width": 0,
+          "peakDb": -12.6,
+          "rmsDb": -34.3
+        }
       }
     ],
     "tick": [
@@ -80,7 +240,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.188,
         "peakDb": -1.2,
-        "rmsDb": -26.6
+        "rmsDb": -26.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 75,
+          "audibleMs": 75,
+          "low": 9,
+          "mid": 48,
+          "high": 43,
+          "width": 0,
+          "peakDb": -4,
+          "rmsDb": -29.6
+        }
       },
       {
         "id": "368613",
@@ -93,7 +265,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.459,
         "peakDb": -1,
-        "rmsDb": -21.4
+        "rmsDb": -21.4,
+        "features": {
+          "leadMs": 75,
+          "attackMs": 5,
+          "decayMs": 195,
+          "audibleMs": 200,
+          "low": 29,
+          "mid": 68,
+          "high": 3,
+          "width": 0,
+          "peakDb": -1,
+          "rmsDb": -21.4
+        }
       },
       {
         "id": "29805",
@@ -106,7 +290,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.094,
         "peakDb": -26.3,
-        "rmsDb": -41.4
+        "rmsDb": -41.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 85,
+          "audibleMs": 90,
+          "low": 27,
+          "mid": 67,
+          "high": 6,
+          "width": 0,
+          "peakDb": -26,
+          "rmsDb": -41.4
+        }
       },
       {
         "id": "368614",
@@ -119,7 +315,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.471,
         "peakDb": 0,
-        "rmsDb": -17.3
+        "rmsDb": -17.3,
+        "features": {
+          "leadMs": 25,
+          "attackMs": 5,
+          "decayMs": 140,
+          "audibleMs": 150,
+          "low": 25,
+          "mid": 71,
+          "high": 3,
+          "width": 0,
+          "peakDb": 0.1,
+          "rmsDb": -17.3
+        }
       },
       {
         "id": "405549",
@@ -132,7 +340,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.475,
         "peakDb": 0,
-        "rmsDb": -16
+        "rmsDb": -16,
+        "features": {
+          "leadMs": 130,
+          "attackMs": 25,
+          "decayMs": 125,
+          "audibleMs": 170,
+          "low": 75,
+          "mid": 25,
+          "high": 1,
+          "width": 0,
+          "peakDb": 0.1,
+          "rmsDb": -16
+        }
       }
     ],
     "ui_click": [
@@ -147,7 +367,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.236,
         "peakDb": -12.9,
-        "rmsDb": -31.9
+        "rmsDb": -31.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 65,
+          "audibleMs": 65,
+          "low": 15,
+          "mid": 49,
+          "high": 36,
+          "width": 0,
+          "peakDb": -15.5,
+          "rmsDb": -34.7
+        }
       },
       {
         "id": "671105",
@@ -160,7 +392,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.089,
         "peakDb": -4.4,
-        "rmsDb": -23.9
+        "rmsDb": -23.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 80,
+          "audibleMs": 80,
+          "low": 2,
+          "mid": 60,
+          "high": 38,
+          "width": 0.04,
+          "peakDb": -3.3,
+          "rmsDb": -23.7
+        }
       },
       {
         "id": "822568",
@@ -173,7 +417,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.256,
         "peakDb": -0.2,
-        "rmsDb": -21.4
+        "rmsDb": -21.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 125,
+          "audibleMs": 130,
+          "low": 3,
+          "mid": 54,
+          "high": 43,
+          "width": 0,
+          "peakDb": -2.8,
+          "rmsDb": -24.1
+        }
       },
       {
         "id": "504168",
@@ -186,7 +442,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.347,
         "peakDb": -30.4,
-        "rmsDb": -60.5
+        "rmsDb": -60.5,
+        "features": {
+          "leadMs": 25,
+          "attackMs": 0,
+          "decayMs": 55,
+          "audibleMs": 60,
+          "low": 3,
+          "mid": 28,
+          "high": 69,
+          "width": 0.17,
+          "peakDb": -25.9,
+          "rmsDb": -57
+        }
       }
     ],
     "ui_toggle": [
@@ -201,7 +469,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.161,
         "peakDb": -15,
-        "rmsDb": -41.7
+        "rmsDb": -41.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 140,
+          "audibleMs": 140,
+          "low": 1,
+          "mid": 38,
+          "high": 61,
+          "width": 0.79,
+          "peakDb": -9.3,
+          "rmsDb": -40.2
+        }
       },
       {
         "id": "404049",
@@ -214,7 +494,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.399,
         "peakDb": -7.4,
-        "rmsDb": -27.5
+        "rmsDb": -27.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 25,
+          "decayMs": 145,
+          "audibleMs": 175,
+          "low": 35,
+          "mid": 48,
+          "high": 16,
+          "width": 0.1,
+          "peakDb": -6.9,
+          "rmsDb": -27.3
+        }
       },
       {
         "id": "370962",
@@ -227,7 +519,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.008,
         "peakDb": -12.4,
-        "rmsDb": -25.2
+        "rmsDb": -25.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 5,
+          "audibleMs": 5,
+          "low": 2,
+          "mid": 39,
+          "high": 59,
+          "width": 0,
+          "peakDb": -8.1,
+          "rmsDb": -22.8
+        }
       },
       {
         "id": "253956",
@@ -240,7 +544,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.224,
         "peakDb": 0,
-        "rmsDb": -24.1
+        "rmsDb": -24.1,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 35,
+          "decayMs": 70,
+          "audibleMs": 105,
+          "low": 2,
+          "mid": 53,
+          "high": 45,
+          "width": 0.14,
+          "peakDb": 1.1,
+          "rmsDb": -23.9
+        }
       },
       {
         "id": "566176",
@@ -253,7 +569,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.09,
         "peakDb": -9.2,
-        "rmsDb": -30.8
+        "rmsDb": -30.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 30,
+          "decayMs": 60,
+          "audibleMs": 90,
+          "low": 5,
+          "mid": 34,
+          "high": 61,
+          "width": 0,
+          "peakDb": -6.8,
+          "rmsDb": -28.5
+        }
       }
     ],
     "ui_confirm": [
@@ -268,7 +596,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.406,
         "peakDb": -21.3,
-        "rmsDb": -43.5
+        "rmsDb": -43.5,
+        "features": {
+          "leadMs": 145,
+          "attackMs": 0,
+          "decayMs": 85,
+          "audibleMs": 90,
+          "low": 9,
+          "mid": 82,
+          "high": 9,
+          "width": 0,
+          "peakDb": -20.4,
+          "rmsDb": -43.5
+        }
       },
       {
         "id": "506765",
@@ -281,7 +621,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.222,
         "peakDb": 0,
-        "rmsDb": -1.5
+        "rmsDb": -1.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 35,
+          "audibleMs": 215,
+          "low": 93,
+          "mid": 7,
+          "high": 0,
+          "width": 0,
+          "peakDb": 0.7,
+          "rmsDb": -1.4
+        }
       },
       {
         "id": "388958",
@@ -294,7 +646,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.206,
         "peakDb": -13.4,
-        "rmsDb": -28.6
+        "rmsDb": -28.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 55,
+          "decayMs": 70,
+          "audibleMs": 130,
+          "low": 91,
+          "mid": 9,
+          "high": 1,
+          "width": 0,
+          "peakDb": -16.6,
+          "rmsDb": -31.6
+        }
       },
       {
         "id": "477704",
@@ -307,7 +671,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.22,
         "peakDb": -10.8,
-        "rmsDb": -36.8
+        "rmsDb": -36.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 35,
+          "audibleMs": 35,
+          "low": 4,
+          "mid": 74,
+          "high": 22,
+          "width": 0.11,
+          "peakDb": -10.1,
+          "rmsDb": -36.8
+        }
       },
       {
         "id": "10894",
@@ -320,7 +696,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.344,
         "peakDb": -8.2,
-        "rmsDb": -30.7
+        "rmsDb": -30.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 110,
+          "audibleMs": 115,
+          "low": 54,
+          "mid": 44,
+          "high": 1,
+          "width": 0,
+          "peakDb": -11.2,
+          "rmsDb": -33.7
+        }
       }
     ],
     "reel_stop": [
@@ -335,7 +723,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.168,
         "peakDb": -3.3,
-        "rmsDb": -18.1
+        "rmsDb": -18.1,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 5,
+          "decayMs": 130,
+          "audibleMs": 135,
+          "low": 82,
+          "mid": 17,
+          "high": 1,
+          "width": 0.62,
+          "peakDb": 0.1,
+          "rmsDb": -18
+        }
       },
       {
         "id": "495645",
@@ -348,7 +748,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.246,
         "peakDb": 0,
-        "rmsDb": -21.1
+        "rmsDb": -21.1,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 5,
+          "decayMs": 80,
+          "audibleMs": 85,
+          "low": 46,
+          "mid": 52,
+          "high": 1,
+          "width": 0,
+          "peakDb": 0.1,
+          "rmsDb": -21.1
+        }
       },
       {
         "id": "377552",
@@ -361,7 +773,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.922,
         "peakDb": -11.3,
-        "rmsDb": -37.4
+        "rmsDb": -37.4,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 30,
+          "decayMs": 790,
+          "audibleMs": 820,
+          "low": 15,
+          "mid": 65,
+          "high": 19,
+          "width": 0.22,
+          "peakDb": -10.6,
+          "rmsDb": -37.2
+        }
       },
       {
         "id": "244983",
@@ -374,7 +798,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1,
         "peakDb": -0.6,
-        "rmsDb": -20.5
+        "rmsDb": -20.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 635,
+          "audibleMs": 640,
+          "low": 52,
+          "mid": 44,
+          "high": 4,
+          "width": 0.01,
+          "peakDb": -0.5,
+          "rmsDb": -20.5
+        }
       },
       {
         "id": "360949",
@@ -387,7 +823,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.681,
         "peakDb": -30.3,
-        "rmsDb": -47.5
+        "rmsDb": -47.5,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 90,
+          "decayMs": 445,
+          "audibleMs": 625,
+          "low": 55,
+          "mid": 41,
+          "high": 4,
+          "width": 0,
+          "peakDb": -30.2,
+          "rmsDb": -47.5
+        }
       }
     ],
     "refill": [
@@ -402,7 +850,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.953,
         "peakDb": -9,
-        "rmsDb": -23.6
+        "rmsDb": -23.6,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 295,
+          "decayMs": 355,
+          "audibleMs": 755,
+          "low": 55,
+          "mid": 44,
+          "high": 1,
+          "width": 1.01,
+          "peakDb": -5,
+          "rmsDb": -23.6
+        }
       },
       {
         "id": "60013",
@@ -415,7 +875,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.426,
         "peakDb": -5,
-        "rmsDb": -20.9
+        "rmsDb": -20.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 45,
+          "decayMs": 365,
+          "audibleMs": 415,
+          "low": 39,
+          "mid": 59,
+          "high": 1,
+          "width": 0.26,
+          "peakDb": -3.6,
+          "rmsDb": -20.9
+        }
       },
       {
         "id": "623709",
@@ -428,7 +900,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.97,
         "peakDb": 0,
-        "rmsDb": -19.6
+        "rmsDb": -19.6,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 75,
+          "decayMs": 215,
+          "audibleMs": 320,
+          "low": 75,
+          "mid": 23,
+          "high": 2,
+          "width": 0,
+          "peakDb": 0.4,
+          "rmsDb": -19.6
+        }
       },
       {
         "id": "72191",
@@ -441,7 +925,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.42,
         "peakDb": -0.8,
-        "rmsDb": -18.8
+        "rmsDb": -18.8,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 35,
+          "decayMs": 230,
+          "audibleMs": 290,
+          "low": 38,
+          "mid": 56,
+          "high": 6,
+          "width": 0.02,
+          "peakDb": -0.5,
+          "rmsDb": -18.8
+        }
       },
       {
         "id": "37596",
@@ -454,7 +950,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.927,
         "peakDb": -3.8,
-        "rmsDb": -22.9
+        "rmsDb": -22.9,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 80,
+          "decayMs": 445,
+          "audibleMs": 540,
+          "low": 1,
+          "mid": 48,
+          "high": 51,
+          "width": 0,
+          "peakDb": -6.2,
+          "rmsDb": -25.8
+        }
       }
     ],
     "win_light": [
@@ -469,7 +977,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.702,
         "peakDb": -18.1,
-        "rmsDb": -38.7
+        "rmsDb": -38.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 1340,
+          "audibleMs": 1350,
+          "low": 1,
+          "mid": 46,
+          "high": 53,
+          "width": 0.07,
+          "peakDb": -14.8,
+          "rmsDb": -38.2
+        }
       },
       {
         "id": "376748",
@@ -482,7 +1002,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.422,
         "peakDb": -11.9,
-        "rmsDb": -28
+        "rmsDb": -28,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 290,
+          "decayMs": 1095,
+          "audibleMs": 1405,
+          "low": 3,
+          "mid": 59,
+          "high": 38,
+          "width": 0.46,
+          "peakDb": -11.1,
+          "rmsDb": -27.9
+        }
       },
       {
         "id": "398661",
@@ -495,7 +1027,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.287,
         "peakDb": -21.5,
-        "rmsDb": -36.8
+        "rmsDb": -36.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 455,
+          "decayMs": 645,
+          "audibleMs": 1200,
+          "low": 63,
+          "mid": 36,
+          "high": 2,
+          "width": 1.48,
+          "peakDb": -14.3,
+          "rmsDb": -36.8
+        }
       },
       {
         "id": "817466",
@@ -508,7 +1052,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.158,
         "peakDb": -3.6,
-        "rmsDb": -19.2
+        "rmsDb": -19.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 325,
+          "decayMs": 700,
+          "audibleMs": 2125,
+          "low": 25,
+          "mid": 58,
+          "high": 18,
+          "width": 0,
+          "peakDb": -6.7,
+          "rmsDb": -22
+        }
       },
       {
         "id": "715067",
@@ -521,7 +1077,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.759,
         "peakDb": -29.9,
-        "rmsDb": -45.5
+        "rmsDb": -45.5,
+        "features": {
+          "leadMs": 75,
+          "attackMs": 60,
+          "decayMs": 915,
+          "audibleMs": 1150,
+          "low": 5,
+          "mid": 79,
+          "high": 17,
+          "width": 0.58,
+          "peakDb": -27.5,
+          "rmsDb": -45.5
+        }
       }
     ],
     "explode": [
@@ -536,7 +1104,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.905,
         "peakDb": -0.5,
-        "rmsDb": -29.6
+        "rmsDb": -29.6,
+        "features": {
+          "leadMs": 335,
+          "attackMs": 5,
+          "decayMs": 365,
+          "audibleMs": 370,
+          "low": 32,
+          "mid": 30,
+          "high": 38,
+          "width": 0.12,
+          "peakDb": 0.5,
+          "rmsDb": -29
+        }
       },
       {
         "id": "141563",
@@ -549,7 +1129,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.866,
         "peakDb": -14.3,
-        "rmsDb": -29.9
+        "rmsDb": -29.9,
+        "features": {
+          "leadMs": 200,
+          "attackMs": 10,
+          "decayMs": 1010,
+          "audibleMs": 1465,
+          "low": 8,
+          "mid": 43,
+          "high": 49,
+          "width": 0.13,
+          "peakDb": -11.6,
+          "rmsDb": -29.5
+        }
       },
       {
         "id": "541601",
@@ -562,7 +1154,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.043,
         "peakDb": 0,
-        "rmsDb": -10.6
+        "rmsDb": -10.6,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 15,
+          "decayMs": 1225,
+          "audibleMs": 1450,
+          "low": 11,
+          "mid": 47,
+          "high": 42,
+          "width": 0.48,
+          "peakDb": 2.9,
+          "rmsDb": -9.9
+        }
       },
       {
         "id": "244238",
@@ -575,7 +1179,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.609,
         "peakDb": -0.5,
-        "rmsDb": -19.2
+        "rmsDb": -19.2,
+        "features": {
+          "leadMs": 45,
+          "attackMs": 270,
+          "decayMs": 1030,
+          "audibleMs": 1300,
+          "low": 16,
+          "mid": 36,
+          "high": 49,
+          "width": 0.25,
+          "peakDb": -0.3,
+          "rmsDb": -17.4
+        }
       },
       {
         "id": "212698",
@@ -588,7 +1204,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.304,
         "peakDb": -2.3,
-        "rmsDb": -31.3
+        "rmsDb": -31.3,
+        "features": {
+          "leadMs": 470,
+          "attackMs": 40,
+          "decayMs": 520,
+          "audibleMs": 560,
+          "low": 24,
+          "mid": 58,
+          "high": 18,
+          "width": 0,
+          "peakDb": -2.3,
+          "rmsDb": -31
+        }
       }
     ],
     "win_tick": [
@@ -603,7 +1231,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.202,
         "peakDb": -13.4,
-        "rmsDb": -25.3
+        "rmsDb": -25.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 170,
+          "audibleMs": 170,
+          "low": 6,
+          "mid": 82,
+          "high": 11,
+          "width": 0,
+          "peakDb": -16.2,
+          "rmsDb": -28.3
+        }
       },
       {
         "id": "368203",
@@ -616,7 +1256,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.316,
         "peakDb": -12.2,
-        "rmsDb": -36.9
+        "rmsDb": -36.9,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 5,
+          "decayMs": 220,
+          "audibleMs": 225,
+          "low": 1,
+          "mid": 23,
+          "high": 76,
+          "width": 0.99,
+          "peakDb": -3.3,
+          "rmsDb": -27.7
+        }
       },
       {
         "id": "201809",
@@ -629,7 +1281,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.376,
         "peakDb": -2.9,
-        "rmsDb": -26.7
+        "rmsDb": -26.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 10,
+          "decayMs": 60,
+          "audibleMs": 70,
+          "low": 1,
+          "mid": 27,
+          "high": 72,
+          "width": 0,
+          "peakDb": -4.9,
+          "rmsDb": -29.3
+        }
       },
       {
         "id": "163451",
@@ -642,7 +1306,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.213,
         "peakDb": -10.9,
-        "rmsDb": -36.8
+        "rmsDb": -36.8,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 10,
+          "decayMs": 140,
+          "audibleMs": 150,
+          "low": 1,
+          "mid": 20,
+          "high": 79,
+          "width": 0,
+          "peakDb": -7.6,
+          "rmsDb": -32.6
+        }
       },
       {
         "id": "699533",
@@ -655,7 +1331,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.406,
         "peakDb": -7.4,
-        "rmsDb": -31.3
+        "rmsDb": -31.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 55,
+          "decayMs": 130,
+          "audibleMs": 245,
+          "low": 1,
+          "mid": 27,
+          "high": 72,
+          "width": 0,
+          "peakDb": -7.8,
+          "rmsDb": -31.8
+        }
       }
     ],
     "win_land": [
@@ -670,7 +1358,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.55,
         "peakDb": -18.4,
-        "rmsDb": -43.2
+        "rmsDb": -43.2,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 180,
+          "decayMs": 170,
+          "audibleMs": 380,
+          "low": 3,
+          "mid": 22,
+          "high": 75,
+          "width": 0.23,
+          "peakDb": -12.7,
+          "rmsDb": -37.4
+        }
       },
       {
         "id": "121990",
@@ -683,7 +1383,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.511,
         "peakDb": -5.6,
-        "rmsDb": -18.6
+        "rmsDb": -18.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 175,
+          "decayMs": 310,
+          "audibleMs": 510,
+          "low": 98,
+          "mid": 1,
+          "high": 1,
+          "width": 0,
+          "peakDb": -8,
+          "rmsDb": -21.6
+        }
       },
       {
         "id": "393909",
@@ -696,7 +1408,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.372,
         "peakDb": 0,
-        "rmsDb": -19.5
+        "rmsDb": -19.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 60,
+          "decayMs": 285,
+          "audibleMs": 345,
+          "low": 9,
+          "mid": 21,
+          "high": 69,
+          "width": 0,
+          "peakDb": 0.4,
+          "rmsDb": -16.9
+        }
       },
       {
         "id": "130105",
@@ -709,7 +1433,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.149,
         "peakDb": -4.6,
-        "rmsDb": -27
+        "rmsDb": -27,
+        "features": {
+          "leadMs": 55,
+          "attackMs": 200,
+          "decayMs": 720,
+          "audibleMs": 920,
+          "low": 1,
+          "mid": 35,
+          "high": 64,
+          "width": 0,
+          "peakDb": -6.6,
+          "rmsDb": -29.1
+        }
       },
       {
         "id": "324760",
@@ -722,7 +1458,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.529,
         "peakDb": -12.9,
-        "rmsDb": -39
+        "rmsDb": -39,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 5,
+          "decayMs": 875,
+          "audibleMs": 1205,
+          "low": 0,
+          "mid": 19,
+          "high": 81,
+          "width": 0.02,
+          "peakDb": -1.6,
+          "rmsDb": -19.9
+        }
       }
     ],
     "combine_total": [
@@ -737,7 +1485,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.196,
         "peakDb": -6.5,
-        "rmsDb": -31.6
+        "rmsDb": -31.6,
+        "features": {
+          "leadMs": 70,
+          "attackMs": 165,
+          "decayMs": 870,
+          "audibleMs": 1165,
+          "low": 14,
+          "mid": 36,
+          "high": 50,
+          "width": 0,
+          "peakDb": -6.3,
+          "rmsDb": -31.1
+        }
       },
       {
         "id": "144418",
@@ -750,7 +1510,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.224,
         "peakDb": -0.3,
-        "rmsDb": -19.7
+        "rmsDb": -19.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 115,
+          "audibleMs": 125,
+          "low": 1,
+          "mid": 56,
+          "high": 43,
+          "width": 0.04,
+          "peakDb": 0.4,
+          "rmsDb": -19.6
+        }
       },
       {
         "id": "565700",
@@ -763,7 +1535,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.4,
         "peakDb": -16.8,
-        "rmsDb": -38.9
+        "rmsDb": -38.9,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 210,
+          "decayMs": 155,
+          "audibleMs": 1135,
+          "low": 1,
+          "mid": 25,
+          "high": 74,
+          "width": 0,
+          "peakDb": -12.7,
+          "rmsDb": -34.7
+        }
       },
       {
         "id": "250104",
@@ -776,7 +1560,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.213,
         "peakDb": -6.1,
-        "rmsDb": -16.9
+        "rmsDb": -16.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 10,
+          "decayMs": 175,
+          "audibleMs": 190,
+          "low": 2,
+          "mid": 48,
+          "high": 50,
+          "width": 0,
+          "peakDb": -5.4,
+          "rmsDb": -16.7
+        }
       },
       {
         "id": "94120",
@@ -789,7 +1585,119 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.917,
         "peakDb": 0,
-        "rmsDb": -23.5
+        "rmsDb": -23.5,
+        "features": {
+          "leadMs": 60,
+          "attackMs": 290,
+          "decayMs": 80,
+          "audibleMs": 370,
+          "low": 5,
+          "mid": 51,
+          "high": 44,
+          "width": 0,
+          "peakDb": -2,
+          "rmsDb": -26.1
+        }
+      },
+      {
+        "id": "565699",
+        "file": "candidates/combine_total__fs565699.ogg",
+        "title": "Coin Bag Pickup Drop.wav",
+        "author": "ralph.whitehead",
+        "query": "coin purse",
+        "url": "https://freesound.org/people/ralph.whitehead/sounds/565699/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 1.536,
+        "peakDb": -9.5,
+        "rmsDb": -39.8,
+        "features": {
+          "leadMs": 635,
+          "attackMs": 100,
+          "decayMs": 130,
+          "audibleMs": 240,
+          "low": 2,
+          "mid": 28,
+          "high": 70,
+          "width": 0,
+          "peakDb": -7.8,
+          "rmsDb": -36.6
+        }
+      },
+      {
+        "id": "202531",
+        "file": "candidates/combine_total__fs202531.ogg",
+        "title": "cash drawer and receipt.wav",
+        "author": "kalisemorrison",
+        "query": "cash register",
+        "url": "https://freesound.org/people/kalisemorrison/sounds/202531/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 2.322,
+        "peakDb": -5.2,
+        "rmsDb": -33.4,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 1495,
+          "decayMs": 275,
+          "audibleMs": 2180,
+          "low": 6,
+          "mid": 67,
+          "high": 27,
+          "width": 0,
+          "peakDb": -8.6,
+          "rmsDb": -36.4
+        }
+      },
+      {
+        "id": "485776",
+        "file": "candidates/combine_total__fs485776.ogg",
+        "title": "Heavy Money Bag - 5.wav",
+        "author": "SpaceJoe",
+        "query": "coin purse",
+        "url": "https://freesound.org/people/SpaceJoe/sounds/485776/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 0.755,
+        "peakDb": -3.8,
+        "rmsDb": -25.1,
+        "features": {
+          "leadMs": 230,
+          "attackMs": 20,
+          "decayMs": 265,
+          "audibleMs": 285,
+          "low": 77,
+          "mid": 18,
+          "high": 5,
+          "width": 0.77,
+          "peakDb": -1.9,
+          "rmsDb": -24.8
+        }
+      },
+      {
+        "id": "728224",
+        "file": "candidates/combine_total__fs728224.ogg",
+        "title": "cash register chching",
+        "author": "disman",
+        "query": "cash register",
+        "url": "https://freesound.org/people/disman/sounds/728224/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 1.451,
+        "peakDb": -1.1,
+        "rmsDb": -21.8,
+        "features": {
+          "leadMs": 130,
+          "attackMs": 35,
+          "decayMs": 775,
+          "audibleMs": 1100,
+          "low": 12,
+          "mid": 34,
+          "high": 55,
+          "width": 0,
+          "peakDb": -0.2,
+          "rmsDb": -20.6
+        }
       }
     ],
     "strike": [
@@ -804,7 +1712,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.225,
         "peakDb": -5.1,
-        "rmsDb": -23.3
+        "rmsDb": -23.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 125,
+          "audibleMs": 220,
+          "low": 4,
+          "mid": 27,
+          "high": 70,
+          "width": 0.99,
+          "peakDb": -0.1,
+          "rmsDb": -20
+        }
       },
       {
         "id": "136542",
@@ -817,7 +1737,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.75,
         "peakDb": -3.5,
-        "rmsDb": -22.4
+        "rmsDb": -22.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 290,
+          "audibleMs": 710,
+          "low": 1,
+          "mid": 29,
+          "high": 71,
+          "width": 0,
+          "peakDb": -5.4,
+          "rmsDb": -23.3
+        }
       },
       {
         "id": "188767",
@@ -830,7 +1762,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.669,
         "peakDb": -1,
-        "rmsDb": -20.6
+        "rmsDb": -20.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 245,
+          "decayMs": 2205,
+          "audibleMs": 2480,
+          "low": 51,
+          "mid": 47,
+          "high": 2,
+          "width": 0,
+          "peakDb": -1,
+          "rmsDb": -20.6
+        }
       },
       {
         "id": "143565",
@@ -843,7 +1787,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.602,
         "peakDb": -3.7,
-        "rmsDb": -16.5
+        "rmsDb": -16.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 25,
+          "decayMs": 80,
+          "audibleMs": 570,
+          "low": 22,
+          "mid": 43,
+          "high": 35,
+          "width": 0,
+          "peakDb": -4.7,
+          "rmsDb": -18.8
+        }
       },
       {
         "id": "189630",
@@ -856,7 +1812,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.168,
         "peakDb": -8.4,
-        "rmsDb": -28.3
+        "rmsDb": -28.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 20,
+          "decayMs": 140,
+          "audibleMs": 160,
+          "low": 57,
+          "mid": 21,
+          "high": 23,
+          "width": 0,
+          "peakDb": -7.8,
+          "rmsDb": -29.8
+        }
       }
     ],
     "bang": [
@@ -871,7 +1839,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.72,
         "peakDb": 0,
-        "rmsDb": -12.1
+        "rmsDb": -12.1,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 15,
+          "decayMs": 370,
+          "audibleMs": 420,
+          "low": 2,
+          "mid": 66,
+          "high": 32,
+          "width": 0,
+          "peakDb": -2.9,
+          "rmsDb": -15.1
+        }
       },
       {
         "id": "198386",
@@ -884,7 +1864,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.974,
         "peakDb": -11.8,
-        "rmsDb": -27.3
+        "rmsDb": -27.3,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 675,
+          "decayMs": 60,
+          "audibleMs": 935,
+          "low": 5,
+          "mid": 69,
+          "high": 26,
+          "width": 0.54,
+          "peakDb": -8.5,
+          "rmsDb": -27
+        }
       },
       {
         "id": "270588",
@@ -897,7 +1889,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.371,
         "peakDb": 0,
-        "rmsDb": -17.7
+        "rmsDb": -17.7,
+        "features": {
+          "leadMs": 420,
+          "attackMs": 0,
+          "decayMs": 180,
+          "audibleMs": 195,
+          "low": 2,
+          "mid": 40,
+          "high": 58,
+          "width": 0,
+          "peakDb": -1.5,
+          "rmsDb": -20.2
+        }
       },
       {
         "id": "515612",
@@ -910,7 +1914,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.438,
         "peakDb": -8.9,
-        "rmsDb": -30.4
+        "rmsDb": -30.4,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 540,
+          "decayMs": 615,
+          "audibleMs": 1155,
+          "low": 3,
+          "mid": 56,
+          "high": 40,
+          "width": 0,
+          "peakDb": -5.8,
+          "rmsDb": -29.9
+        }
       },
       {
         "id": "371353",
@@ -923,7 +1939,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.414,
         "peakDb": -2.1,
-        "rmsDb": -29.2
+        "rmsDb": -29.2,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 0,
+          "decayMs": 1130,
+          "audibleMs": 2945,
+          "low": 15,
+          "mid": 33,
+          "high": 52,
+          "width": 1.1,
+          "peakDb": 1.7,
+          "rmsDb": -28.8
+        }
       }
     ],
     "soul_launch": [
@@ -938,7 +1966,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.5,
         "peakDb": -10.7,
-        "rmsDb": -26.7
+        "rmsDb": -26.7,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 45,
+          "decayMs": 270,
+          "audibleMs": 365,
+          "low": 75,
+          "mid": 25,
+          "high": 1,
+          "width": 0.01,
+          "peakDb": -10.1,
+          "rmsDb": -26.7
+        }
       },
       {
         "id": "389590",
@@ -951,7 +1991,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.315,
         "peakDb": -15.4,
-        "rmsDb": -34.2
+        "rmsDb": -34.2,
+        "features": {
+          "leadMs": 25,
+          "attackMs": 60,
+          "decayMs": 80,
+          "audibleMs": 145,
+          "low": 35,
+          "mid": 61,
+          "high": 4,
+          "width": 0,
+          "peakDb": -15.5,
+          "rmsDb": -34.2
+        }
       },
       {
         "id": "203546",
@@ -964,7 +2016,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 47.778,
         "peakDb": 0,
-        "rmsDb": -10.5
+        "rmsDb": -10.5,
+        "features": {
+          "leadMs": 45,
+          "attackMs": 1545,
+          "decayMs": 43380,
+          "audibleMs": 47820,
+          "low": 56,
+          "mid": 42,
+          "high": 2,
+          "width": 0,
+          "peakDb": -2.6,
+          "rmsDb": -13.6
+        }
       },
       {
         "id": "60004",
@@ -977,7 +2041,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.384,
         "peakDb": -0.6,
-        "rmsDb": -21.7
+        "rmsDb": -21.7,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 55,
+          "decayMs": 165,
+          "audibleMs": 230,
+          "low": 37,
+          "mid": 60,
+          "high": 2,
+          "width": 0.32,
+          "peakDb": -0.1,
+          "rmsDb": -21.7
+        }
       },
       {
         "id": "442955",
@@ -990,7 +2066,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.604,
         "peakDb": -9.7,
-        "rmsDb": -25.3
+        "rmsDb": -25.3,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 155,
+          "decayMs": 265,
+          "audibleMs": 495,
+          "low": 82,
+          "mid": 14,
+          "high": 4,
+          "width": 0.06,
+          "peakDb": -9.6,
+          "rmsDb": -25.2
+        }
       }
     ],
     "catch": [
@@ -1005,7 +2093,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.672,
         "peakDb": -9.6,
-        "rmsDb": -31.1
+        "rmsDb": -31.1,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 10,
+          "decayMs": 530,
+          "audibleMs": 540,
+          "low": 7,
+          "mid": 54,
+          "high": 38,
+          "width": 0.57,
+          "peakDb": -4.3,
+          "rmsDb": -30.6
+        }
       },
       {
         "id": "381854",
@@ -1018,7 +2118,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.632,
         "peakDb": 0,
-        "rmsDb": -20.7
+        "rmsDb": -20.7,
+        "features": {
+          "leadMs": 40,
+          "attackMs": 45,
+          "decayMs": 170,
+          "audibleMs": 335,
+          "low": 37,
+          "mid": 47,
+          "high": 16,
+          "width": 0,
+          "peakDb": -2.6,
+          "rmsDb": -23.4
+        }
       },
       {
         "id": "483605",
@@ -1031,7 +2143,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.228,
         "peakDb": -0.6,
-        "rmsDb": -21.6
+        "rmsDb": -21.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 190,
+          "audibleMs": 200,
+          "low": 15,
+          "mid": 30,
+          "high": 55,
+          "width": 0,
+          "peakDb": -3.2,
+          "rmsDb": -23.4
+        }
       },
       {
         "id": "56246",
@@ -1044,7 +2168,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.287,
         "peakDb": -4.6,
-        "rmsDb": -25.9
+        "rmsDb": -25.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 50,
+          "decayMs": 185,
+          "audibleMs": 235,
+          "low": 39,
+          "mid": 50,
+          "high": 11,
+          "width": 0.06,
+          "peakDb": -4.8,
+          "rmsDb": -25.7
+        }
       },
       {
         "id": "536414",
@@ -1057,7 +2193,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.251,
         "peakDb": -8.8,
-        "rmsDb": -35.3
+        "rmsDb": -35.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 40,
+          "decayMs": 40,
+          "audibleMs": 85,
+          "low": 17,
+          "mid": 35,
+          "high": 47,
+          "width": 0,
+          "peakDb": -10,
+          "rmsDb": -33.7
+        }
       }
     ],
     "combine_slam": [
@@ -1072,7 +2220,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.634,
         "peakDb": -0.4,
-        "rmsDb": -24.4
+        "rmsDb": -24.4,
+        "features": {
+          "leadMs": 75,
+          "attackMs": 350,
+          "decayMs": 810,
+          "audibleMs": 1180,
+          "low": 36,
+          "mid": 60,
+          "high": 4,
+          "width": 0,
+          "peakDb": -3.4,
+          "rmsDb": -27.4
+        }
       },
       {
         "id": "418194",
@@ -1085,7 +2245,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.652,
         "peakDb": 0,
-        "rmsDb": -15.3
+        "rmsDb": -15.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 400,
+          "audibleMs": 420,
+          "low": 58,
+          "mid": 25,
+          "high": 17,
+          "width": 0.03,
+          "peakDb": 1.9,
+          "rmsDb": -15
+        }
       },
       {
         "id": "268500",
@@ -1098,7 +2270,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.078,
         "peakDb": 0,
-        "rmsDb": -18
+        "rmsDb": -18,
+        "features": {
+          "leadMs": 270,
+          "attackMs": 245,
+          "decayMs": 1315,
+          "audibleMs": 1805,
+          "low": 58,
+          "mid": 39,
+          "high": 3,
+          "width": 0,
+          "peakDb": 0.4,
+          "rmsDb": -17.9
+        }
       },
       {
         "id": "490769",
@@ -1111,7 +2295,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.267,
         "peakDb": -0.9,
-        "rmsDb": -14.1
+        "rmsDb": -14.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 45,
+          "decayMs": 180,
+          "audibleMs": 240,
+          "low": 89,
+          "mid": 11,
+          "high": 0,
+          "width": 0.01,
+          "peakDb": -0.9,
+          "rmsDb": -14.1
+        }
       },
       {
         "id": "352717",
@@ -1124,7 +2320,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.222,
         "peakDb": -0.2,
-        "rmsDb": -22.7
+        "rmsDb": -22.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 85,
+          "decayMs": 475,
+          "audibleMs": 565,
+          "low": 91,
+          "mid": 7,
+          "high": 2,
+          "width": 0,
+          "peakDb": -0.1,
+          "rmsDb": -22.7
+        }
       }
     ],
     "scatter": [
@@ -1139,7 +2347,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.803,
         "peakDb": -0.1,
-        "rmsDb": -11.3
+        "rmsDb": -11.3,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 10,
+          "decayMs": 1230,
+          "audibleMs": 1535,
+          "low": 15,
+          "mid": 81,
+          "high": 4,
+          "width": 0.03,
+          "peakDb": 0.1,
+          "rmsDb": -11.3
+        }
       },
       {
         "id": "532649",
@@ -1152,7 +2372,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.197,
         "peakDb": -3.6,
-        "rmsDb": -25.9
+        "rmsDb": -25.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 575,
+          "decayMs": 1620,
+          "audibleMs": 2200,
+          "low": 13,
+          "mid": 47,
+          "high": 40,
+          "width": 0,
+          "peakDb": -3.8,
+          "rmsDb": -25.7
+        }
       },
       {
         "id": "519303",
@@ -1165,7 +2397,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.905,
         "peakDb": 0,
-        "rmsDb": -21.8
+        "rmsDb": -21.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 315,
+          "audibleMs": 320,
+          "low": 11,
+          "mid": 83,
+          "high": 6,
+          "width": 0,
+          "peakDb": -2.7,
+          "rmsDb": -24.8
+        }
       },
       {
         "id": "478658",
@@ -1178,7 +2422,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2,
         "peakDb": -12.2,
-        "rmsDb": -29
+        "rmsDb": -29,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 1690,
+          "audibleMs": 1690,
+          "low": 28,
+          "mid": 70,
+          "high": 2,
+          "width": 0,
+          "peakDb": -15.2,
+          "rmsDb": -32
+        }
       },
       {
         "id": "116779",
@@ -1191,7 +2447,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.87,
         "peakDb": -12.3,
-        "rmsDb": -35.2
+        "rmsDb": -35.2,
+        "features": {
+          "leadMs": 275,
+          "attackMs": 35,
+          "decayMs": 545,
+          "audibleMs": 580,
+          "low": 1,
+          "mid": 30,
+          "high": 69,
+          "width": 0.77,
+          "peakDb": -0.6,
+          "rmsDb": -34.2
+        }
       }
     ],
     "riser": [
@@ -1206,7 +2474,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 8,
         "peakDb": -2.5,
-        "rmsDb": -23.5
+        "rmsDb": -23.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 7295,
+          "decayMs": 105,
+          "audibleMs": 8015,
+          "low": 15,
+          "mid": 62,
+          "high": 23,
+          "width": 0.08,
+          "peakDb": -1.1,
+          "rmsDb": -23.2
+        }
       },
       {
         "id": "9523",
@@ -1219,7 +2499,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.158,
         "peakDb": -2,
-        "rmsDb": -15.4
+        "rmsDb": -15.4,
+        "features": {
+          "leadMs": 1120,
+          "attackMs": 905,
+          "decayMs": 505,
+          "audibleMs": 2045,
+          "low": 1,
+          "mid": 53,
+          "high": 46,
+          "width": 0.01,
+          "peakDb": -2.3,
+          "rmsDb": -15.4
+        }
       },
       {
         "id": "404124",
@@ -1232,7 +2524,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.752,
         "peakDb": -4,
-        "rmsDb": -19.7
+        "rmsDb": -19.7,
+        "features": {
+          "leadMs": 715,
+          "attackMs": 1430,
+          "decayMs": 205,
+          "audibleMs": 1845,
+          "low": 11,
+          "mid": 83,
+          "high": 6,
+          "width": 0.55,
+          "peakDb": 0.1,
+          "rmsDb": -19.7
+        }
       },
       {
         "id": "367668",
@@ -1245,7 +2549,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3,
         "peakDb": -0.7,
-        "rmsDb": -20.5
+        "rmsDb": -20.5,
+        "features": {
+          "leadMs": 225,
+          "attackMs": 550,
+          "decayMs": 525,
+          "audibleMs": 1315,
+          "low": 73,
+          "mid": 26,
+          "high": 1,
+          "width": 0.23,
+          "peakDb": -0.2,
+          "rmsDb": -20.5
+        }
       },
       {
         "id": "840719",
@@ -1258,7 +2574,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.592,
         "peakDb": -6,
-        "rmsDb": -24.6
+        "rmsDb": -24.6,
+        "features": {
+          "leadMs": 885,
+          "attackMs": 1745,
+          "decayMs": 85,
+          "audibleMs": 2110,
+          "low": 40,
+          "mid": 56,
+          "high": 4,
+          "width": 1.05,
+          "peakDb": -0.1,
+          "rmsDb": -24.6
+        }
       }
     ],
     "scatter_catch": [
@@ -1273,7 +2601,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.244,
         "peakDb": -4.1,
-        "rmsDb": -21.5
+        "rmsDb": -21.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 55,
+          "decayMs": 4815,
+          "audibleMs": 5070,
+          "low": 19,
+          "mid": 72,
+          "high": 9,
+          "width": 0,
+          "peakDb": -7.2,
+          "rmsDb": -24.5
+        }
       },
       {
         "id": "451659",
@@ -1286,7 +2626,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.247,
         "peakDb": -5.7,
-        "rmsDb": -34
+        "rmsDb": -34,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 890,
+          "audibleMs": 895,
+          "low": 4,
+          "mid": 66,
+          "high": 30,
+          "width": 0,
+          "peakDb": -4.6,
+          "rmsDb": -33.8
+        }
       },
       {
         "id": "94024",
@@ -1299,7 +2651,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.929,
         "peakDb": -13.5,
-        "rmsDb": -31.8
+        "rmsDb": -31.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 10,
+          "decayMs": 5570,
+          "audibleMs": 5580,
+          "low": 8,
+          "mid": 81,
+          "high": 10,
+          "width": 0,
+          "peakDb": -13.5,
+          "rmsDb": -31.8
+        }
       },
       {
         "id": "204912",
@@ -1312,7 +2676,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.123,
         "peakDb": 0,
-        "rmsDb": -9.9
+        "rmsDb": -9.9,
+        "features": {
+          "leadMs": 110,
+          "attackMs": 230,
+          "decayMs": 1535,
+          "audibleMs": 2625,
+          "low": 56,
+          "mid": 43,
+          "high": 1,
+          "width": 0.07,
+          "peakDb": 0.3,
+          "rmsDb": -9.9
+        }
       },
       {
         "id": "578544",
@@ -1325,7 +2701,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.724,
         "peakDb": -4.9,
-        "rmsDb": -23.5
+        "rmsDb": -23.5,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 10,
+          "decayMs": 2270,
+          "audibleMs": 2345,
+          "low": 21,
+          "mid": 71,
+          "high": 8,
+          "width": 0.76,
+          "peakDb": -2.5,
+          "rmsDb": -23.5
+        }
       }
     ],
     "vault_slam": [
@@ -1340,7 +2728,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.37,
         "peakDb": 0,
-        "rmsDb": -13.2
+        "rmsDb": -13.2,
+        "features": {
+          "leadMs": 30,
+          "attackMs": 60,
+          "decayMs": 510,
+          "audibleMs": 625,
+          "low": 49,
+          "mid": 38,
+          "high": 12,
+          "width": 0,
+          "peakDb": 2,
+          "rmsDb": -12.8
+        }
       },
       {
         "id": "406197",
@@ -1353,7 +2753,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.961,
         "peakDb": -2,
-        "rmsDb": -20.2
+        "rmsDb": -20.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 335,
+          "decayMs": 1500,
+          "audibleMs": 1840,
+          "low": 65,
+          "mid": 32,
+          "high": 2,
+          "width": 0,
+          "peakDb": -4.9,
+          "rmsDb": -23.2
+        }
       },
       {
         "id": "678254",
@@ -1366,7 +2778,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.974,
         "peakDb": -10.3,
-        "rmsDb": -38.4
+        "rmsDb": -38.4,
+        "features": {
+          "leadMs": 335,
+          "attackMs": 285,
+          "decayMs": 745,
+          "audibleMs": 1205,
+          "low": 0,
+          "mid": 21,
+          "high": 79,
+          "width": 0,
+          "peakDb": 0.7,
+          "rmsDb": -29.6
+        }
       },
       {
         "id": "372877",
@@ -1379,7 +2803,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.66,
         "peakDb": -8.3,
-        "rmsDb": -30
+        "rmsDb": -30,
+        "features": {
+          "leadMs": 50,
+          "attackMs": 20,
+          "decayMs": 930,
+          "audibleMs": 955,
+          "low": 73,
+          "mid": 26,
+          "high": 1,
+          "width": 0.03,
+          "peakDb": -8.3,
+          "rmsDb": -30
+        }
       },
       {
         "id": "459694",
@@ -1392,7 +2828,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.171,
         "peakDb": -0.4,
-        "rmsDb": -11.7
+        "rmsDb": -11.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 155,
+          "audibleMs": 160,
+          "low": 1,
+          "mid": 48,
+          "high": 51,
+          "width": 0,
+          "peakDb": -3.1,
+          "rmsDb": -14.6
+        }
       }
     ],
     "feature_award": [
@@ -1407,7 +2855,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.66,
         "peakDb": -9.5,
-        "rmsDb": -25.8
+        "rmsDb": -25.8,
+        "features": {
+          "leadMs": 40,
+          "attackMs": 665,
+          "decayMs": 2090,
+          "audibleMs": 2980,
+          "low": 11,
+          "mid": 82,
+          "high": 7,
+          "width": 0.64,
+          "peakDb": -6,
+          "rmsDb": -25.8
+        }
       },
       {
         "id": "456966",
@@ -1420,7 +2880,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.438,
         "peakDb": -6.5,
-        "rmsDb": -23.2
+        "rmsDb": -23.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 35,
+          "decayMs": 2345,
+          "audibleMs": 3065,
+          "low": 11,
+          "mid": 74,
+          "high": 15,
+          "width": 0.38,
+          "peakDb": -5.6,
+          "rmsDb": -23.2
+        }
       },
       {
         "id": "415504",
@@ -1433,7 +2905,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.654,
         "peakDb": -1.6,
-        "rmsDb": -22.3
+        "rmsDb": -22.3,
+        "features": {
+          "leadMs": 65,
+          "attackMs": 5,
+          "decayMs": 2000,
+          "audibleMs": 4095,
+          "low": 27,
+          "mid": 56,
+          "high": 17,
+          "width": 0.42,
+          "peakDb": -0.6,
+          "rmsDb": -22.2
+        }
       },
       {
         "id": "812467",
@@ -1446,7 +2930,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 6,
         "peakDb": -9.3,
-        "rmsDb": -24.7
+        "rmsDb": -24.7,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 310,
+          "decayMs": 1735,
+          "audibleMs": 3655,
+          "low": 18,
+          "mid": 78,
+          "high": 4,
+          "width": 0.91,
+          "peakDb": -5.9,
+          "rmsDb": -24.7
+        }
       },
       {
         "id": "397355",
@@ -1459,7 +2955,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.717,
         "peakDb": -6.3,
-        "rmsDb": -23.5
+        "rmsDb": -23.5,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 45,
+          "decayMs": 1155,
+          "audibleMs": 1275,
+          "low": 12,
+          "mid": 74,
+          "high": 14,
+          "width": 0.54,
+          "peakDb": -5,
+          "rmsDb": -23.5
+        }
       }
     ],
     "feature_more": [
@@ -1474,7 +2982,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.814,
         "peakDb": -1.5,
-        "rmsDb": -20.1
+        "rmsDb": -20.1,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 60,
+          "decayMs": 1720,
+          "audibleMs": 1810,
+          "low": 62,
+          "mid": 35,
+          "high": 3,
+          "width": 0,
+          "peakDb": -4.3,
+          "rmsDb": -23.1
+        }
       },
       {
         "id": "350433",
@@ -1487,7 +3007,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.72,
         "peakDb": -0.6,
-        "rmsDb": -18.9
+        "rmsDb": -18.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 15,
+          "decayMs": 550,
+          "audibleMs": 1325,
+          "low": 6,
+          "mid": 66,
+          "high": 28,
+          "width": 0,
+          "peakDb": -3.4,
+          "rmsDb": -21.8
+        }
       },
       {
         "id": "165599",
@@ -1500,7 +3032,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.018,
         "peakDb": -0.6,
-        "rmsDb": -24.2
+        "rmsDb": -24.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 35,
+          "decayMs": 1335,
+          "audibleMs": 1385,
+          "low": 58,
+          "mid": 39,
+          "high": 3,
+          "width": 0,
+          "peakDb": -3.6,
+          "rmsDb": -27.2
+        }
       },
       {
         "id": "373586",
@@ -1513,7 +3057,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.024,
         "peakDb": -23.4,
-        "rmsDb": -44.1
+        "rmsDb": -44.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 605,
+          "audibleMs": 620,
+          "low": 12,
+          "mid": 83,
+          "high": 6,
+          "width": 0.06,
+          "peakDb": -19.5,
+          "rmsDb": -44.1
+        }
       },
       {
         "id": "822414",
@@ -1526,7 +3082,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.077,
         "peakDb": -4.2,
-        "rmsDb": -20.6
+        "rmsDb": -20.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 705,
+          "audibleMs": 860,
+          "low": 30,
+          "mid": 63,
+          "high": 7,
+          "width": 0.92,
+          "peakDb": -0.2,
+          "rmsDb": -20.6
+        }
       }
     ],
     "fs_intro": [
@@ -1541,7 +3109,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5,
         "peakDb": -1.6,
-        "rmsDb": -17.7
+        "rmsDb": -17.7,
+        "features": {
+          "leadMs": 35,
+          "attackMs": 705,
+          "decayMs": 2215,
+          "audibleMs": 3210,
+          "low": 67,
+          "mid": 31,
+          "high": 1,
+          "width": 0.67,
+          "peakDb": 0.4,
+          "rmsDb": -17.7
+        }
       },
       {
         "id": "648534",
@@ -1554,7 +3134,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.288,
         "peakDb": 0,
-        "rmsDb": -17
+        "rmsDb": -17,
+        "features": {
+          "leadMs": 760,
+          "attackMs": 730,
+          "decayMs": 1395,
+          "audibleMs": 2385,
+          "low": 89,
+          "mid": 11,
+          "high": 1,
+          "width": 0.4,
+          "peakDb": 0.3,
+          "rmsDb": -17
+        }
       },
       {
         "id": "649445",
@@ -1567,7 +3159,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.275,
         "peakDb": -1.7,
-        "rmsDb": -23.9
+        "rmsDb": -23.9,
+        "features": {
+          "leadMs": 680,
+          "attackMs": 1685,
+          "decayMs": 1805,
+          "audibleMs": 3630,
+          "low": 84,
+          "mid": 15,
+          "high": 1,
+          "width": 1.09,
+          "peakDb": -0.1,
+          "rmsDb": -23.9
+        }
       },
       {
         "id": "151819",
@@ -1580,7 +3184,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.816,
         "peakDb": -13,
-        "rmsDb": -33.5
+        "rmsDb": -33.5,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 1245,
+          "decayMs": 1210,
+          "audibleMs": 2705,
+          "low": 2,
+          "mid": 40,
+          "high": 58,
+          "width": 0.01,
+          "peakDb": -12.6,
+          "rmsDb": -33.1
+        }
       },
       {
         "id": "441342",
@@ -1593,7 +3209,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.996,
         "peakDb": -0.4,
-        "rmsDb": -13.6
+        "rmsDb": -13.6,
+        "features": {
+          "leadMs": 120,
+          "attackMs": 530,
+          "decayMs": 975,
+          "audibleMs": 1670,
+          "low": 81,
+          "mid": 18,
+          "high": 2,
+          "width": 0.52,
+          "peakDb": 0.2,
+          "rmsDb": -13.6
+        }
       }
     ],
     "fs_outro": [
@@ -1608,7 +3236,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.52,
         "peakDb": -3.6,
-        "rmsDb": -26.6
+        "rmsDb": -26.6,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 0,
+          "decayMs": 650,
+          "audibleMs": 655,
+          "low": 74,
+          "mid": 25,
+          "high": 1,
+          "width": 1.14,
+          "peakDb": 0,
+          "rmsDb": -26.6
+        }
       },
       {
         "id": "653731",
@@ -1621,7 +3261,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.738,
         "peakDb": -21.9,
-        "rmsDb": -31.6
+        "rmsDb": -31.6,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 20,
+          "decayMs": 1650,
+          "audibleMs": 1720,
+          "low": 27,
+          "mid": 67,
+          "high": 6,
+          "width": 0.98,
+          "peakDb": -18.3,
+          "rmsDb": -31.6
+        }
       },
       {
         "id": "578807",
@@ -1634,7 +3286,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.425,
         "peakDb": -22.4,
-        "rmsDb": -45.5
+        "rmsDb": -45.5,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 10,
+          "decayMs": 520,
+          "audibleMs": 555,
+          "low": 13,
+          "mid": 75,
+          "high": 12,
+          "width": 0.57,
+          "peakDb": -19.2,
+          "rmsDb": -45.5
+        }
       },
       {
         "id": "521645",
@@ -1647,7 +3311,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.785,
         "peakDb": -14.8,
-        "rmsDb": -28.6
+        "rmsDb": -28.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 15,
+          "decayMs": 2655,
+          "audibleMs": 3155,
+          "low": 54,
+          "mid": 43,
+          "high": 3,
+          "width": 0.01,
+          "peakDb": -14.4,
+          "rmsDb": -28.6
+        }
       },
       {
         "id": "234",
@@ -1660,7 +3336,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.908,
         "peakDb": -10.1,
-        "rmsDb": -20.1
+        "rmsDb": -20.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 30,
+          "decayMs": 2875,
+          "audibleMs": 2910,
+          "low": 92,
+          "mid": 7,
+          "high": 0,
+          "width": 0.01,
+          "peakDb": -9,
+          "rmsDb": -20.1
+        }
       }
     ],
     "bigwin_open": [
@@ -1675,7 +3363,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4,
         "peakDb": -0.8,
-        "rmsDb": -23.8
+        "rmsDb": -23.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 795,
+          "audibleMs": 1490,
+          "low": 37,
+          "mid": 54,
+          "high": 9,
+          "width": 0.72,
+          "peakDb": -0.3,
+          "rmsDb": -23.8
+        }
       },
       {
         "id": "348244",
@@ -1688,7 +3388,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.011,
         "peakDb": -2.1,
-        "rmsDb": -27.1
+        "rmsDb": -27.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 20,
+          "audibleMs": 120,
+          "low": 80,
+          "mid": 18,
+          "high": 2,
+          "width": 0.03,
+          "peakDb": -0.1,
+          "rmsDb": -27.1
+        }
       },
       {
         "id": "198116",
@@ -1701,7 +3413,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.204,
         "peakDb": -17.2,
-        "rmsDb": -39.9
+        "rmsDb": -39.9,
+        "features": {
+          "leadMs": 35,
+          "attackMs": 185,
+          "decayMs": 1135,
+          "audibleMs": 1355,
+          "low": 3,
+          "mid": 50,
+          "high": 47,
+          "width": 0.72,
+          "peakDb": -13.9,
+          "rmsDb": -39.8
+        }
       },
       {
         "id": "209772",
@@ -1714,7 +3438,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.057,
         "peakDb": -0.1,
-        "rmsDb": -16.9
+        "rmsDb": -16.9,
+        "features": {
+          "leadMs": 225,
+          "attackMs": 45,
+          "decayMs": 955,
+          "audibleMs": 1080,
+          "low": 52,
+          "mid": 46,
+          "high": 2,
+          "width": 0,
+          "peakDb": -3.1,
+          "rmsDb": -19.9
+        }
       },
       {
         "id": "201571",
@@ -1727,7 +3463,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.792,
         "peakDb": -0.9,
-        "rmsDb": -18.5
+        "rmsDb": -18.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 2770,
+          "audibleMs": 2785,
+          "low": 88,
+          "mid": 11,
+          "high": 0,
+          "width": 0.59,
+          "peakDb": -0.3,
+          "rmsDb": -18.5
+        }
       }
     ],
     "sub_impact": [
@@ -1742,7 +3490,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.436,
         "peakDb": 0,
-        "rmsDb": -5.4
+        "rmsDb": -5.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 25,
+          "audibleMs": 2395,
+          "low": 95,
+          "mid": 5,
+          "high": 0,
+          "width": 0,
+          "peakDb": -2.9,
+          "rmsDb": -8.4
+        }
       },
       {
         "id": "118934",
@@ -1755,7 +3515,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.154,
         "peakDb": -12.4,
-        "rmsDb": -33.7
+        "rmsDb": -33.7,
+        "features": {
+          "leadMs": 490,
+          "attackMs": 440,
+          "decayMs": 2015,
+          "audibleMs": 2515,
+          "low": 81,
+          "mid": 16,
+          "high": 2,
+          "width": 0.54,
+          "peakDb": -11.4,
+          "rmsDb": -33.7
+        }
       },
       {
         "id": "157245",
@@ -1768,7 +3540,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.714,
         "peakDb": -0.7,
-        "rmsDb": -11.5
+        "rmsDb": -11.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 35,
+          "decayMs": 1540,
+          "audibleMs": 1635,
+          "low": 95,
+          "mid": 5,
+          "high": 0,
+          "width": 0,
+          "peakDb": -0.7,
+          "rmsDb": -11.5
+        }
       },
       {
         "id": "63138",
@@ -1781,7 +3565,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.982,
         "peakDb": 0,
-        "rmsDb": -3.5
+        "rmsDb": -3.5,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 520,
+          "audibleMs": 1975,
+          "low": 98,
+          "mid": 2,
+          "high": 0,
+          "width": 0,
+          "peakDb": -2.9,
+          "rmsDb": -6.5
+        }
       },
       {
         "id": "59541",
@@ -1794,7 +3590,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.907,
         "peakDb": 0,
-        "rmsDb": -7.1
+        "rmsDb": -7.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 1065,
+          "decayMs": 25,
+          "audibleMs": 1900,
+          "low": 93,
+          "mid": 7,
+          "high": 0,
+          "width": 0,
+          "peakDb": -3,
+          "rmsDb": -10.1
+        }
       }
     ],
     "win_big": [
@@ -1809,7 +3617,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.857,
         "peakDb": -5.4,
-        "rmsDb": -27.6
+        "rmsDb": -27.6,
+        "features": {
+          "leadMs": 90,
+          "attackMs": 200,
+          "decayMs": 2255,
+          "audibleMs": 2605,
+          "low": 11,
+          "mid": 60,
+          "high": 29,
+          "width": 0.22,
+          "peakDb": -5,
+          "rmsDb": -26.4
+        }
       },
       {
         "id": "439538",
@@ -1822,7 +3642,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.579,
         "peakDb": -3,
-        "rmsDb": -24.4
+        "rmsDb": -24.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 165,
+          "decayMs": 695,
+          "audibleMs": 865,
+          "low": 6,
+          "mid": 26,
+          "high": 68,
+          "width": 0,
+          "peakDb": -0.4,
+          "rmsDb": -18.8
+        }
       },
       {
         "id": "427803",
@@ -1835,7 +3667,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 4.366,
         "peakDb": -0.9,
-        "rmsDb": -16.1
+        "rmsDb": -16.1,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 50,
+          "decayMs": 3215,
+          "audibleMs": 3350,
+          "low": 77,
+          "mid": 21,
+          "high": 1,
+          "width": 0.63,
+          "peakDb": -0.2,
+          "rmsDb": -16.1
+        }
       },
       {
         "id": "385011",
@@ -1848,7 +3692,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.504,
         "peakDb": -1.5,
-        "rmsDb": -20.7
+        "rmsDb": -20.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 2685,
+          "audibleMs": 2770,
+          "low": 61,
+          "mid": 25,
+          "high": 14,
+          "width": 0.15,
+          "peakDb": -1,
+          "rmsDb": -20.6
+        }
       },
       {
         "id": "697057",
@@ -1861,7 +3717,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.967,
         "peakDb": -0.8,
-        "rmsDb": -15.1
+        "rmsDb": -15.1,
+        "features": {
+          "leadMs": 45,
+          "attackMs": 320,
+          "decayMs": 1795,
+          "audibleMs": 2250,
+          "low": 76,
+          "mid": 24,
+          "high": 0,
+          "width": 0.32,
+          "peakDb": -0.4,
+          "rmsDb": -15.1
+        }
       }
     ],
     "win_mega": [
@@ -1876,7 +3744,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.952,
         "peakDb": -4.1,
-        "rmsDb": -18
+        "rmsDb": -18,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 10,
+          "decayMs": 2265,
+          "audibleMs": 2275,
+          "low": 42,
+          "mid": 53,
+          "high": 5,
+          "width": 0.7,
+          "peakDb": -0.2,
+          "rmsDb": -18
+        }
       },
       {
         "id": "847287",
@@ -1889,7 +3769,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.372,
         "peakDb": 0,
-        "rmsDb": -16.8
+        "rmsDb": -16.8,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 230,
+          "audibleMs": 270,
+          "low": 74,
+          "mid": 23,
+          "high": 4,
+          "width": 0.06,
+          "peakDb": 0.1,
+          "rmsDb": -16.8
+        }
       },
       {
         "id": "23152",
@@ -1902,7 +3794,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.057,
         "peakDb": -0.7,
-        "rmsDb": -20.4
+        "rmsDb": -20.4,
+        "features": {
+          "leadMs": 50,
+          "attackMs": 5,
+          "decayMs": 495,
+          "audibleMs": 505,
+          "low": 1,
+          "mid": 39,
+          "high": 61,
+          "width": 0,
+          "peakDb": -4.1,
+          "rmsDb": -23.2
+        }
       },
       {
         "id": "262448",
@@ -1915,7 +3819,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.035,
         "peakDb": -2.2,
-        "rmsDb": -23
+        "rmsDb": -23,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 15,
+          "decayMs": 1360,
+          "audibleMs": 1540,
+          "low": 89,
+          "mid": 11,
+          "high": 0,
+          "width": 0.4,
+          "peakDb": -1.9,
+          "rmsDb": -23
+        }
       },
       {
         "id": "69852",
@@ -1928,7 +3844,119 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2,
         "peakDb": -0.2,
-        "rmsDb": -15.4
+        "rmsDb": -15.4,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 75,
+          "decayMs": 440,
+          "audibleMs": 575,
+          "low": 96,
+          "mid": 4,
+          "high": 0,
+          "width": 0.01,
+          "peakDb": -0.1,
+          "rmsDb": -15.4
+        }
+      },
+      {
+        "id": "578572",
+        "file": "candidates/win_mega__fs578572.ogg",
+        "title": "Congrats! 2",
+        "author": "nomiqbomi",
+        "query": "orchestra stab",
+        "url": "https://freesound.org/people/nomiqbomi/sounds/578572/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 3.018,
+        "peakDb": -1.3,
+        "rmsDb": -21.7,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 1200,
+          "decayMs": 1050,
+          "audibleMs": 2725,
+          "low": 44,
+          "mid": 53,
+          "high": 3,
+          "width": 0.36,
+          "peakDb": -0.3,
+          "rmsDb": -21.7
+        }
+      },
+      {
+        "id": "148832",
+        "file": "candidates/win_mega__fs148832.ogg",
+        "title": ".45 gunside.mp3",
+        "author": "cedarstudios",
+        "query": "brass hit",
+        "url": "https://freesound.org/people/cedarstudios/sounds/148832/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 5.931,
+        "peakDb": 0,
+        "rmsDb": -20,
+        "features": {
+          "leadMs": 300,
+          "attackMs": 5,
+          "decayMs": 1445,
+          "audibleMs": 5110,
+          "low": 13,
+          "mid": 67,
+          "high": 20,
+          "width": 0.03,
+          "peakDb": 3.3,
+          "rmsDb": -19.5
+        }
+      },
+      {
+        "id": "578577",
+        "file": "candidates/win_mega__fs578577.ogg",
+        "title": "Dark Crescendo 3",
+        "author": "nomiqbomi",
+        "query": "brass hit",
+        "url": "https://freesound.org/people/nomiqbomi/sounds/578577/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 3.619,
+        "peakDb": -5.4,
+        "rmsDb": -27.2,
+        "features": {
+          "leadMs": 75,
+          "attackMs": 2025,
+          "decayMs": 405,
+          "audibleMs": 2680,
+          "low": 45,
+          "mid": 52,
+          "high": 3,
+          "width": 0.51,
+          "peakDb": -3.9,
+          "rmsDb": -27.2
+        }
+      },
+      {
+        "id": "730339",
+        "file": "candidates/win_mega__fs730339.ogg",
+        "title": "Old School Brass Stab",
+        "author": "SirCartaux",
+        "query": "brass hit",
+        "url": "https://freesound.org/people/SirCartaux/sounds/730339/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 0.273,
+        "peakDb": -2.8,
+        "rmsDb": -16.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 255,
+          "audibleMs": 265,
+          "low": 77,
+          "mid": 20,
+          "high": 3,
+          "width": 0.03,
+          "peakDb": -2.3,
+          "rmsDb": -16.1
+        }
       }
     ],
     "max_win": [
@@ -1943,7 +3971,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 7.038,
         "peakDb": 0,
-        "rmsDb": -19.1
+        "rmsDb": -19.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 85,
+          "decayMs": 3880,
+          "audibleMs": 4205,
+          "low": 88,
+          "mid": 12,
+          "high": 1,
+          "width": 0,
+          "peakDb": -3,
+          "rmsDb": -22.1
+        }
       },
       {
         "id": "685297",
@@ -1956,7 +3996,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 9.6,
         "peakDb": -13,
-        "rmsDb": -27.3
+        "rmsDb": -27.3,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 40,
+          "decayMs": 6540,
+          "audibleMs": 9620,
+          "low": 16,
+          "mid": 76,
+          "high": 7,
+          "width": 0.91,
+          "peakDb": -11.6,
+          "rmsDb": -27.2
+        }
       },
       {
         "id": "516211",
@@ -1969,7 +4021,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 8.587,
         "peakDb": -11.6,
-        "rmsDb": -27
+        "rmsDb": -27,
+        "features": {
+          "leadMs": 5,
+          "attackMs": 105,
+          "decayMs": 1720,
+          "audibleMs": 7455,
+          "low": 48,
+          "mid": 48,
+          "high": 4,
+          "width": 0.46,
+          "peakDb": -11.2,
+          "rmsDb": -27
+        }
       },
       {
         "id": "535554",
@@ -1982,7 +4046,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 7.449,
         "peakDb": -2.8,
-        "rmsDb": -21
+        "rmsDb": -21,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 4470,
+          "audibleMs": 4600,
+          "low": 83,
+          "mid": 16,
+          "high": 1,
+          "width": 0.18,
+          "peakDb": -2.3,
+          "rmsDb": -21
+        }
       }
     ],
     "buy": [
@@ -1997,7 +4073,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.737,
         "peakDb": -8,
-        "rmsDb": -21.1
+        "rmsDb": -21.1,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 30,
+          "decayMs": 385,
+          "audibleMs": 735,
+          "low": 83,
+          "mid": 8,
+          "high": 10,
+          "width": 0,
+          "peakDb": -9.8,
+          "rmsDb": -23.9
+        }
       },
       {
         "id": "338260",
@@ -2010,7 +4098,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.719,
         "peakDb": -10.9,
-        "rmsDb": -38.9
+        "rmsDb": -38.9,
+        "features": {
+          "leadMs": 285,
+          "attackMs": 210,
+          "decayMs": 145,
+          "audibleMs": 365,
+          "low": 3,
+          "mid": 28,
+          "high": 69,
+          "width": 0.01,
+          "peakDb": -9.5,
+          "rmsDb": -35.4
+        }
       },
       {
         "id": "391950",
@@ -2023,7 +4123,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 2.129,
         "peakDb": -12.1,
-        "rmsDb": -32.9
+        "rmsDb": -32.9,
+        "features": {
+          "leadMs": 55,
+          "attackMs": 60,
+          "decayMs": 840,
+          "audibleMs": 1620,
+          "low": 0,
+          "mid": 21,
+          "high": 78,
+          "width": 0.52,
+          "peakDb": -0.2,
+          "rmsDb": -26.1
+        }
       },
       {
         "id": "547603",
@@ -2036,7 +4148,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.331,
         "peakDb": -12.6,
-        "rmsDb": -33.6
+        "rmsDb": -33.6,
+        "features": {
+          "leadMs": 15,
+          "attackMs": 15,
+          "decayMs": 230,
+          "audibleMs": 265,
+          "low": 24,
+          "mid": 42,
+          "high": 34,
+          "width": 0,
+          "peakDb": -15.9,
+          "rmsDb": -35.8
+        }
       },
       {
         "id": "235532",
@@ -2049,7 +4173,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.14,
         "peakDb": -19.1,
-        "rmsDb": -44.9
+        "rmsDb": -44.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 245,
+          "decayMs": 340,
+          "audibleMs": 1005,
+          "low": 2,
+          "mid": 25,
+          "high": 73,
+          "width": 0,
+          "peakDb": -16.5,
+          "rmsDb": -40.1
+        }
       }
     ],
     "reverb_ir": [
@@ -2064,7 +4200,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5.159,
         "peakDb": -3.7,
-        "rmsDb": -39.5
+        "rmsDb": -39.5,
+        "features": {
+          "leadMs": 65,
+          "attackMs": 0,
+          "decayMs": 1260,
+          "audibleMs": 1260,
+          "low": 14,
+          "mid": 61,
+          "high": 24,
+          "width": 0,
+          "peakDb": -6,
+          "rmsDb": -42.4
+        }
       },
       {
         "id": "240593",
@@ -2077,7 +4225,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 3.665,
         "peakDb": -5.3,
-        "rmsDb": -42.7
+        "rmsDb": -42.7,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 5,
+          "decayMs": 430,
+          "audibleMs": 435,
+          "low": 7,
+          "mid": 75,
+          "high": 17,
+          "width": 0.32,
+          "peakDb": -4.5,
+          "rmsDb": -42.5
+        }
       },
       {
         "id": "530378",
@@ -2090,7 +4250,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 5,
         "peakDb": -1.2,
-        "rmsDb": -34.2
+        "rmsDb": -34.2,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 25,
+          "decayMs": 930,
+          "audibleMs": 965,
+          "low": 13,
+          "mid": 71,
+          "high": 16,
+          "width": 0.84,
+          "peakDb": 0,
+          "rmsDb": -34.2
+        }
       },
       {
         "id": "466020",
@@ -2103,7 +4275,19 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 1.265,
         "peakDb": -7.7,
-        "rmsDb": -32.9
+        "rmsDb": -32.9,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 220,
+          "audibleMs": 220,
+          "low": 2,
+          "mid": 33,
+          "high": 65,
+          "width": 1.15,
+          "peakDb": -1.3,
+          "rmsDb": -30.8
+        }
       },
       {
         "id": "382908",
@@ -2116,7 +4300,273 @@
         "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "seconds": 0.6,
         "peakDb": -4.4,
-        "rmsDb": -26.6
+        "rmsDb": -26.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 0,
+          "decayMs": 105,
+          "audibleMs": 110,
+          "low": 4,
+          "mid": 74,
+          "high": 21,
+          "width": 0.5,
+          "peakDb": -2.7,
+          "rmsDb": -26.6
+        }
+      }
+    ],
+    "thunder": [
+      {
+        "id": "807391",
+        "file": "candidates/thunder__fs807391.ogg",
+        "title": "Magic - Finger snap",
+        "author": "Vrymaa",
+        "query": "thunder crack close",
+        "url": "https://freesound.org/people/Vrymaa/sounds/807391/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 1.951,
+        "peakDb": -2.4,
+        "rmsDb": -37,
+        "features": {
+          "leadMs": 315,
+          "attackMs": 35,
+          "decayMs": 365,
+          "audibleMs": 400,
+          "low": 3,
+          "mid": 54,
+          "high": 43,
+          "width": 0,
+          "peakDb": -6.1,
+          "rmsDb": -39.4
+        }
+      },
+      {
+        "id": "743447",
+        "file": "candidates/thunder__fs743447.ogg",
+        "title": "Thunderclap one shot",
+        "author": "breadmanelex",
+        "query": "thunderclap",
+        "url": "https://freesound.org/people/breadmanelex/sounds/743447/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 4.681,
+        "peakDb": -2.8,
+        "rmsDb": -22.9,
+        "features": {
+          "leadMs": 20,
+          "attackMs": 5,
+          "decayMs": 1740,
+          "audibleMs": 2040,
+          "low": 49,
+          "mid": 46,
+          "high": 4,
+          "width": 0.59,
+          "peakDb": -1.4,
+          "rmsDb": -22.9
+        }
+      },
+      {
+        "id": "475094",
+        "file": "candidates/thunder__fs475094.ogg",
+        "title": "thunder3.ogg",
+        "author": "Josh74000MC",
+        "query": "thunder close",
+        "url": "https://freesound.org/people/Josh74000MC/sounds/475094/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 3.527,
+        "peakDb": -1.8,
+        "rmsDb": -24.4,
+        "features": {
+          "leadMs": 40,
+          "attackMs": 155,
+          "decayMs": 3190,
+          "audibleMs": 3485,
+          "low": 41,
+          "mid": 55,
+          "high": 4,
+          "width": 0.5,
+          "peakDb": 0.2,
+          "rmsDb": -24.4
+        }
+      },
+      {
+        "id": "871778",
+        "file": "candidates/thunder__fs871778.ogg",
+        "title": "Random Spell Design 1_Attack",
+        "author": "CAT-FOX_ALEX",
+        "query": "thunderclap",
+        "url": "https://freesound.org/people/CAT-FOX_ALEX/sounds/871778/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 1.149,
+        "peakDb": -5.3,
+        "rmsDb": -20.1,
+        "features": {
+          "leadMs": 10,
+          "attackMs": 520,
+          "decayMs": 395,
+          "audibleMs": 1050,
+          "low": 78,
+          "mid": 21,
+          "high": 1,
+          "width": 0.08,
+          "peakDb": -4.1,
+          "rmsDb": -20
+        }
+      },
+      {
+        "id": "195439",
+        "file": "candidates/thunder__fs195439.ogg",
+        "title": "strike 3 sec.wav",
+        "author": "Littlebrojay",
+        "query": "thunder strike",
+        "url": "https://freesound.org/people/Littlebrojay/sounds/195439/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 3.684,
+        "peakDb": -2.4,
+        "rmsDb": -18.4,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 600,
+          "decayMs": 2875,
+          "audibleMs": 3485,
+          "low": 60,
+          "mid": 39,
+          "high": 2,
+          "width": 0.45,
+          "peakDb": -1.5,
+          "rmsDb": -18.4
+        }
+      }
+    ],
+    "choir": [
+      {
+        "id": "211494",
+        "file": "candidates/choir__fs211494.ogg",
+        "title": "choir_aah.wav",
+        "author": "Diboz",
+        "query": "choir hit",
+        "url": "https://freesound.org/people/Diboz/sounds/211494/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 7.407,
+        "peakDb": -3.9,
+        "rmsDb": -21.6,
+        "features": {
+          "leadMs": 0,
+          "attackMs": 760,
+          "decayMs": 950,
+          "audibleMs": 5440,
+          "low": 20,
+          "mid": 70,
+          "high": 10,
+          "width": 0.38,
+          "peakDb": -2.7,
+          "rmsDb": -21.6
+        }
+      },
+      {
+        "id": "819290",
+        "file": "candidates/choir__fs819290.ogg",
+        "title": "Mystical female choir swell 01",
+        "author": "Johnmode",
+        "query": "choir swell",
+        "url": "https://freesound.org/people/Johnmode/sounds/819290/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 7.564,
+        "peakDb": -13.3,
+        "rmsDb": -33.2,
+        "features": {
+          "leadMs": 595,
+          "attackMs": 820,
+          "decayMs": 2280,
+          "audibleMs": 3730,
+          "low": 11,
+          "mid": 81,
+          "high": 8,
+          "width": 0.98,
+          "peakDb": -7.4,
+          "rmsDb": -33.2
+        }
+      },
+      {
+        "id": "444491",
+        "file": "candidates/choir__fs444491.ogg",
+        "title": "Short Choir",
+        "author": "Breviceps",
+        "query": "choir ah",
+        "url": "https://freesound.org/people/Breviceps/sounds/444491/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 2.375,
+        "peakDb": -7,
+        "rmsDb": -20.4,
+        "features": {
+          "leadMs": 55,
+          "attackMs": 80,
+          "decayMs": 1410,
+          "audibleMs": 1930,
+          "low": 13,
+          "mid": 80,
+          "high": 6,
+          "width": 0.11,
+          "peakDb": -6.8,
+          "rmsDb": -20.4
+        }
+      },
+      {
+        "id": "274121",
+        "file": "candidates/choir__fs274121.ogg",
+        "title": "Choir of Voices - Single Chord",
+        "author": "bone666138",
+        "query": "choir chord",
+        "url": "https://freesound.org/people/bone666138/sounds/274121/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 6.303,
+        "peakDb": -12.1,
+        "rmsDb": -28.5,
+        "features": {
+          "leadMs": 255,
+          "attackMs": 140,
+          "decayMs": 1450,
+          "audibleMs": 2910,
+          "low": 18,
+          "mid": 77,
+          "high": 6,
+          "width": 0.18,
+          "peakDb": -10.4,
+          "rmsDb": -28.5
+        }
+      },
+      {
+        "id": "819291",
+        "file": "candidates/choir__fs819291.ogg",
+        "title": "Mystical female choir swell 02",
+        "author": "Johnmode",
+        "query": "choir swell",
+        "url": "https://freesound.org/people/Johnmode/sounds/819291/",
+        "license": "CC0 1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "seconds": 7.564,
+        "peakDb": -14.4,
+        "rmsDb": -33.7,
+        "features": {
+          "leadMs": 590,
+          "attackMs": 825,
+          "decayMs": 2280,
+          "audibleMs": 3735,
+          "low": 10,
+          "mid": 81,
+          "high": 8,
+          "width": 1.02,
+          "peakDb": -8.8,
+          "rmsDb": -33.7
+        }
       }
     ]
   }

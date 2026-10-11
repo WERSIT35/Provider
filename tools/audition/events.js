@@ -26,6 +26,7 @@ module.exports = [
 
   // ── Multipliers ──
   { id: "strike", group: "Multipliers", tier: "win", brief: "Lightning strike on the flash: real electric crack + short thunder tail.", maxS: 4, queries: ["electric spark", "electricity zap", "thunder crack", "tesla coil"] },
+  { id: "thunder", group: "Multipliers", tier: "win", brief: "Layer under the strike: a short, close thunder tail (starts ~80 ms after the crack).", maxS: 5, queries: ["thunder crack close", "thunderclap", "thunder close", "thunder strike"] },
   { id: "bang", group: "Multipliers", tier: "win", brief: "Multiplier reveal: gold bell or anvil hit (weight scales with value).", maxS: 3.5, queries: ["anvil hit", "metal bell hit", "bell strike", "church bell single"] },
   { id: "soul_launch", group: "Multipliers", tier: "base", brief: "Multipliers fly to the total: a fast clean whoosh.", maxS: 1, queries: ["whoosh fast", "swish fast", "fly by"] },
   { id: "catch", group: "Multipliers", tier: "win", brief: "Arrival on the total: a satisfying metallic lock-in click.", maxS: 1.2, queries: ["lock click metal", "lock mechanism", "latch lock", "padlock close"] },
@@ -46,6 +47,7 @@ module.exports = [
   { id: "sub_impact", group: "Big wins", tier: "peak", brief: "Layer for big moments: deep sub boom.", maxS: 5, queries: ["sub boom", "sub drop", "deep boom"] },
   { id: "win_big", group: "Big wins", tier: "peak", brief: "Big win tier: orchestral hit.", maxS: 5, queries: ["orchestral hit", "epic hit", "orchestra hit big", "cinematic hit horns", "orchestral cymbal hit"] },
   { id: "win_mega", group: "Big wins", tier: "peak", brief: "Mega / Epic tier: orchestra + choir hit, bigger than Big.", maxS: 6, queries: ["choir hit", "orchestral hit epic", "brass hit", "choir orchestra hit", "orchestra stab", "epic choir hit"] },
+  { id: "choir", group: "Big wins", tier: "peak", brief: "Layer for Epic and Max win: a full choir hit or swell (no words).", maxS: 8, queries: ["choir hit", "choir swell", "choir ah", "choir staccato", "choir chord"] },
   { id: "max_win", group: "Big wins", tier: "peak", brief: "Max win: the biggest moment in the game. Orchestra, choir, sub.", maxS: 10, queries: ["epic cinematic climax", "orchestral climax", "epic choir"] },
   { id: "buy", group: "Big wins", tier: "feature", brief: "Buy feature confirmed: coins handed over, a solid ching.", maxS: 2.5, queries: ["coins handful", "cash register ching", "coins bag"] },
 

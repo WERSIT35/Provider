@@ -38,13 +38,17 @@
   const DUCK = { db: -9, attackS: 0.04, releaseS: 0.35 };
   // Per-play variation on file voices.
   const JITTER = { rate: 0.03, db: 1.5 };
+  // One shared room (convolution reverb from the picked impulse response). Each
+  // sound's send amount comes from the manifest (by loudness tier: UI dry,
+  // frequent sounds close, wins and the feature open up); RETURN is the wet level.
+  const REVERB = { returnGain: 0.9 };
   // Two loud hits on the same frame (a strike and its reveal, the big-win open
   // and its first tier) would stack into one clipped blob: the second one, if
   // it starts within `ms` of the first, sits `db` under it. Both stay on the
   // frame they belong to.
   const STACK = { ms: 20, db: -6 };
   const LOUD = new Set(["strike", "bang", "bang_big", "scatter_catch", "feature_award", "feature_more", "bigwin_open",
-    "win_small", "win_big", "win_mega", "max_win", "combine", "combine_slam", "explode_great", "fs_intro", "fs_outro", "buy"]);
+    "win_small", "win_big", "win_mega", "win_epic", "max_win", "combine", "combine_slam", "explode_great", "fs_intro", "fs_outro", "buy"]);
 
   function clamp(v, lo, hi) {
     return Math.min(hi, Math.max(lo, v));
@@ -91,7 +95,7 @@
     lastPlay: new Map(), // event -> timestamp (minGap)
     lastLoudAt: -Infinity, // when the last LOUD voice started (STACK)
     lastVariant: new Map(), // sound key -> last variation index
-    recent: [],        // probes: the last plays { name, key, file, bus }
+    recent: [],        // probes: the last plays { name, key, file, bus, pan, rate, db, send, at }
     listeners: new Set(),
     warmed: false,
     suspended: false,
@@ -126,6 +130,18 @@
     duckNode.gain.value = 1;
     duckNode.connect(buses.music);
     Object.values(buses).forEach((g) => g.connect(master));
+    // Reverb: every voice with a send feeds reverbIn; the convolver gets its
+    // impulse response once the manifest's IR is decoded (dry until then).
+    const reverbIn = ctx.createGain();
+    const convolver = ctx.createConvolver();
+    const reverbOut = ctx.createGain();
+    reverbOut.gain.value = REVERB.returnGain;
+    reverbIn.connect(convolver);
+    convolver.connect(reverbOut);
+    reverbOut.connect(master);
+    state.reverbIn = reverbIn;
+    state.convolver = convolver;
+    state.reverbReady = false;
     state.ctx = ctx;
     state.master = master;
     state.limiter = limiter;
@@ -198,6 +214,7 @@
     win_small: { voice: () => ({ key: "win_small", bus: "sfx", duck: true }) },
     win_big: { voice: () => ({ key: "win_big", bus: "sfx", duck: true }) },
     win_mega: { voice: () => ({ key: "win_mega", bus: "sfx", duck: true }) },
+    win_epic: { voice: () => ({ key: "win_epic", bus: "sfx", duck: true }) },
     max_win: { voice: () => ({ key: "max_win", bus: "sfx", duck: true }) },
     // A winning cluster lights up (light), and the count-up lands (small win).
     win_light: { minGap: 60, voice: () => ({ key: "win_light", bus: "sfx", db: -5 }) },
@@ -286,7 +303,9 @@
     }
     chain.then(() => {
       if (m.music && m.music[music.mood]) return loadFile(m.music[music.mood]).then(() => { if (music.wanted) playMood(music.mood); });
-    }).then(() => Promise.all(Object.values(m.music || {}).map(loadFile)));
+    }).then(() => Promise.all(Object.values(m.music || {}).map(loadFile)))
+      .then(() => (m.ir ? loadFile(m.ir) : null))
+      .then((ir) => { if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; } });
   }
 
   /** The next variation of sound `key`: round-robin, never the same twice in a row. */
@@ -320,8 +339,17 @@
       out = p;
     }
     out.connect(state.buses[v.bus] || state.buses.sfx);
+    // Its share of the room, after its own gain and pan (UI stays dry).
+    const send = v.bus === "ui" ? 0 : (v.send != null ? v.send : (state.manifest && state.manifest.sends && state.manifest.sends[v.key]) || 0);
+    if (send > 0 && state.reverbReady) {
+      const sg = ctx.createGain();
+      sg.gain.value = send;
+      out.connect(sg);
+      sg.connect(state.reverbIn);
+    }
     src.connect(g);
     src.start();
+    return { rate: src.playbackRate.value, db: 20 * Math.log10(Math.max(g.gain.value, 1e-6)), send };
   }
 
   function remember(entry) {
@@ -531,8 +559,8 @@
       else state.lastLoudAt = now;
     }
     try {
-      playFile(file, v);
-      remember({ name, key: v.key, file, bus: v.bus });
+      const out = playFile(file, v);
+      remember({ name, key: v.key, file, bus: v.bus, pan: v.pan || 0, at: performance.now(), ...out });
     } catch (e) {
       /* never let a sound crash the game */
     }
@@ -649,6 +677,7 @@
       loaded: () => Array.from(state.buffers.keys()),
       ready: () => (state.manifestP || loadManifest()).then(() => true),
       unlocked: () => state.unlocked,
+      reverbReady: () => state.reverbReady,
       music: () => ({ mood: music.mood, prev: music.prev, playing: music.voice ? music.voice.mood : null }),
       duckLevel: () => (state.duckNode ? state.duckNode.gain.value : 1),
       contexts: () => (state.ctx ? 1 : 0)

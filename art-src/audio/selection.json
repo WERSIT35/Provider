@@ -1,0 +1,210 @@
+{
+  "savedAt": "2026-10-11T09:57:19.410Z",
+  "note": "Picks from the audition page (npm run audition). tools/build-audio.js builds from these. First set chosen by measurements (2026-10-11); change any by ear.",
+  "picks": {
+    "ui_click": {
+      "file": "candidates/ui_click__fs528561.ogg",
+      "id": "528561",
+      "reject": false,
+      "note": "65 ms, instant attack, almost no low end: a soft, short button click"
+    },
+    "ui_toggle": {
+      "file": "candidates/ui_toggle__fs566176.ogg",
+      "id": "566176",
+      "reject": false,
+      "note": "a real switch flick, 90 ms, fast attack; pitched up/down for on/off"
+    },
+    "ui_confirm": {
+      "file": "candidates/ui_confirm__fs10894.ogg",
+      "id": "10894",
+      "reject": false,
+      "note": "a rounder pop (54% low-mids) with a 5 ms attack: fuller than the click, still short"
+    },
+    "spin_start": {
+      "file": "candidates/spin_start__fs696746.ogg",
+      "id": "696746",
+      "reject": false,
+      "note": "a metal lever pull: 70 ms attack, 55% mids / 16% lows, trimmed to 380 ms; air push from the refill whoosh under it"
+    },
+    "reel_stop": {
+      "file": "candidates/reel_stop__fs215162.ogg",
+      "id": "215162",
+      "reject": false,
+      "note": "a damped thud: 5 ms attack, 82% low energy, 135 ms: solid, no ring"
+    },
+    "tick": {
+      "file": "candidates/tick__fs443328.ogg",
+      "id": "443328",
+      "reject": false,
+      "note": "a quick clack: instant, 75 ms, only 9% lows: barely there"
+    },
+    "refill": {
+      "file": "candidates/refill__fs60013.ogg",
+      "id": "60013",
+      "reject": false,
+      "note": "a soft whoosh: 45 ms rise, mostly mids, 415 ms; brightened per chain step by the engine"
+    },
+    "win_light": {
+      "file": "candidates/win_light__fs562196.ogg",
+      "id": "562196",
+      "reject": false,
+      "note": "a bright shimmer: 5 ms attack, 53% highs, 1.3 s glittering tail"
+    },
+    "explode": {
+      "file": "candidates/explode__fs541601.ogg",
+      "id": "541601",
+      "reject": false,
+      "note": "a shattering chandelier: crystal, 15 ms attack, wide (0.48), 1.2 s scatter of glass"
+    },
+    "win_tick": {
+      "file": "candidates/win_tick__fs350876.ogg",
+      "id": "350876",
+      "reject": false,
+      "note": "one coin clink: instant, 170 ms, mid-focused; pitch rises with the count"
+    },
+    "win_land": {
+      "file": "candidates/win_land__fs393909.ogg",
+      "id": "393909",
+      "reject": false,
+      "note": "coins collected: 60 ms attack, 345 ms, 69% highs: a short settling of coins"
+    },
+    "combine_total": {
+      "file": "candidates/combine_total__fs728224.ogg",
+      "id": "728224",
+      "reject": false,
+      "note": "a cash-register ching: 35 ms attack, bright: the total locking in"
+    },
+    "strike": {
+      "file": "candidates/strike__fs136542.ogg",
+      "id": "136542",
+      "reject": false,
+      "note": "an electric zap: 5 ms attack, 71% highs: the crack on the flash"
+    },
+    "thunder": {
+      "file": "candidates/thunder__fs743447.ogg",
+      "id": "743447",
+      "reject": false,
+      "note": "a one-shot thunderclap: 5 ms attack, wide (0.59), 49% lows: the short tail under the crack"
+    },
+    "bang": {
+      "file": "candidates/bang__fs270588.ogg",
+      "id": "270588",
+      "reject": false,
+      "note": "an anvil hit: instant metal strike (lead-in trimmed), bright; weight scaled by value in the engine"
+    },
+    "soul_launch": {
+      "file": "candidates/soul_launch__fs60004.ogg",
+      "id": "60004",
+      "reject": false,
+      "note": "a fast swing whoosh: 55 ms rise, 230 ms, wide: things flying off the board"
+    },
+    "catch": {
+      "file": "candidates/catch__fs483605.ogg",
+      "id": "483605",
+      "reject": false,
+      "note": "a mechanical key: 5 ms attack, 200 ms, 55% highs: a metallic lock-in click"
+    },
+    "combine_slam": {
+      "file": "candidates/combine_slam__fs418194.ogg",
+      "id": "418194",
+      "reject": false,
+      "note": "a hard glass impact: instant, 58% lows, 420 ms: the chips colliding"
+    },
+    "scatter": {
+      "file": "candidates/scatter__fs478658.ogg",
+      "id": "478658",
+      "reject": false,
+      "note": "a pure ping: instant attack, 1.7 s clean ring, 70% mids: a tuned bell that steps up per scatter"
+    },
+    "riser": {
+      "file": "candidates/riser__fs334525.ogg",
+      "id": "334525",
+      "reject": false,
+      "note": "a slow riser: 8 s of rise, 62% mids: the tension bed (looped while one scatter away)"
+    },
+    "scatter_catch": {
+      "file": "candidates/scatter_catch__fs18654.ogg",
+      "id": "18654",
+      "reject": false,
+      "note": "a real gong: 55 ms attack, 5 s bloom: the biggest non-win hit"
+    },
+    "vault_slam": {
+      "file": "candidates/vault_slam__fs475313.ogg",
+      "id": "475313",
+      "reject": false,
+      "note": "a fire door closing: 60 ms attack, 49% lows, 625 ms: a heavy door slam"
+    },
+    "feature_award": {
+      "file": "candidates/feature_award__fs456966.ogg",
+      "id": "456966",
+      "reject": false,
+      "note": "trumpet fanfare: 35 ms attack, 74% mids, 3 s: short brass fanfare"
+    },
+    "feature_more": {
+      "file": "candidates/feature_more__fs350433.ogg",
+      "id": "350433",
+      "reject": false,
+      "note": "horn stabs: 15 ms attack, 1.3 s: a lighter brass cousin of the fanfare"
+    },
+    "fs_intro": {
+      "file": "candidates/fs_intro__fs218524.ogg",
+      "id": "218524",
+      "reject": false,
+      "note": "a movie swell: 700 ms rise, wide (0.67), 67% lows: cinematic lift into the bonus"
+    },
+    "fs_outro": {
+      "file": "candidates/fs_outro__fs521645.ogg",
+      "id": "521645",
+      "reject": false,
+      "note": "a win fantasia sting: 15 ms attack, 2.6 s resolve: a closing flourish"
+    },
+    "bigwin_open": {
+      "file": "candidates/bigwin_open__fs736852.ogg",
+      "id": "736852",
+      "reject": false,
+      "note": "a hit and whoosh: 5 ms attack, wide (0.72), 1.5 s: the overlay bursting open"
+    },
+    "sub_impact": {
+      "file": "candidates/sub_impact__fs157245.ogg",
+      "id": "157245",
+      "reject": false,
+      "note": "a deep boom: 35 ms attack, 95% lows, 1.5 s: the sub under the big moments"
+    },
+    "win_big": {
+      "file": "candidates/win_big__fs427803.ogg",
+      "id": "427803",
+      "reject": false,
+      "note": "cinematic hit with horns: 50 ms attack, 77% lows, wide (0.63), 3.3 s"
+    },
+    "win_mega": {
+      "file": "candidates/win_mega__fs336725.ogg",
+      "id": "336725",
+      "reject": false,
+      "note": "a horn victory hit: 10 ms attack, wide (0.70), 2.3 s: bigger and brighter than Big"
+    },
+    "choir": {
+      "file": "candidates/choir__fs444491.ogg",
+      "id": "444491",
+      "reject": false,
+      "note": "a short choir: 80 ms attack, 80% mids, 1.9 s: the voices on Epic and Max"
+    },
+    "max_win": {
+      "file": "candidates/max_win__fs222517.ogg",
+      "id": "222517",
+      "reject": false,
+      "note": "a dramatic hit: 85 ms attack, 88% lows, 3.9 s decay: the floor of the biggest moment"
+    },
+    "buy": {
+      "file": "candidates/buy__fs391950.ogg",
+      "id": "391950",
+      "reject": false,
+      "note": "a chest full of coins: 60 ms attack, bright, wide (0.52): coins handed over"
+    },
+    "reverb_ir": {
+      "file": "candidates/reverb_ir__fs220752.ogg",
+      "id": "220752",
+      "reject": false,
+      "note": "a church impulse: 1.3 s decay, mid-focused: one shared space, sent lightly"
+    }
+  }
+}

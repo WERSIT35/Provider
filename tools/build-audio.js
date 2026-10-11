@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 "use strict";
 
-// Builds the game's sound files from the licensed originals in art-src/audio/.
+// Builds the game's sound files from the picks in art-src/audio/selection.json
+// (made on the audition page: npm run audition).
 //
-//   node tools/build-audio.js           build client/assets/audio/{sfx,music}/* + manifest.json
-//   node tools/build-audio.js --check   verify the built set (licence rows, loudness, peaks, sizes)
+//   node tools/build-audio.js           build client/assets/audio/{sfx,music,ir}/* + manifest.json
+//   node tools/build-audio.js --check   verify the built set (licence rows, sources, peaks, onsets, sizes)
 //
-// Every sound key has 1-4 variations; a variation is a recipe of layers
-// (file, gain dB, delay ms) mixed in mono at 48 kHz, trimmed, faded, then
-// levelled to its bus's target RMS (peaks capped at -3.5 dBFS before encoding, so no file exceeds -1 dBFS). Music moods are
-// stereo and made seamless: the loop's tail is crossfaded into its head. Each
-// output is encoded twice: Opus in Ogg (most browsers) and AAC in .m4a
-// (Safari); the engine (client/audio/audio.js) picks what the browser decodes.
+// Every pick is copied from art-src/audio/candidates/ (or incoming/) into
+// art-src/audio/freesound/ (or user/), and its Freesound licence row is written
+// into client/assets/audio/LICENSES.md from candidates.json. Each sound key is a
+// recipe of picks (layers: pick, gain dB, delay ms, start ms) with its own
+// processing (high-pass, low-pass, pitch, gentle compression), trimmed and
+// faded so its tail never smears the next beat, levelled to its loudness tier
+// (UI < tick < base < win < feature < peak) with peaks capped so no file
+// exceeds -1 dBFS. Sounds are stereo; panned per-column sounds and tiny ticks
+// are mono. Each key also gets a reverb send amount (by tier) in the manifest;
+// the engine (client/audio/audio.js) feeds it to one shared convolution reverb
+// built from the picked impulse response. Music moods are stereo and made
+// seamless (tail crossfaded into head). Output is Opus in Ogg + AAC in .m4a.
 //
 // Sources and licences: client/assets/audio/LICENSES.md (one row per original).
 // Needs the ffmpeg-static devDependency.
@@ -24,110 +31,96 @@ const FF = require("ffmpeg-static");
 const ROOT = path.join(__dirname, "..");
 const SRC = path.join(ROOT, "art-src", "audio");
 const OUT = path.join(ROOT, "client", "assets", "audio");
+const SELECTION = path.join(SRC, "selection.json");
+const CANDIDATES = path.join(SRC, "candidates", "candidates.json");
+const LICENSES = path.join(OUT, "LICENSES.md");
 const TMP = fs.mkdtempSync(path.join(require("os").tmpdir(), "vx-audio-"));
 
-// Bus loudness targets (RMS dBFS of the levelled file; the engine's bus gains
-// and per-event offsets sit on top).
-const TARGET = { sfx: -18, ui: -22, sting: -16, tick: -24, music: -20 };
-const PEAK_CAP = -3.5; // before encoding: lossy codecs (AAC most) overshoot by up to ~2.5 dB
-
-const k = (pack, file) => `kenney/${pack}/${file}`;
-const o = (file) => `oga/${file}`;
-// key → { bus, onset?, variations: [ { layers: [[file, db, delayMs, startMs]], max (s), fadeOut (ms) } ] }
-// One identity per key: its variations are close takes of the SAME sound (the
-// same recipe on sibling recordings), so a repeat never sounds like a different
-// event. startMs trims a recording's lead-in so its hit lands on the beat.
-// onset: false exempts a sound that is meant to swell (whooshes, UI, transition
-// stings); every other key must hit within ONSET_MS of its start (--check).
-const SOUNDS = {
-  // UI: soft, short, tactile, never a tail (< 80 ms). Two takes of the same
-  // small switch click for every button; one toggle the engine pitches up (on)
-  // or down (off); confirm is the click with a soft pop under it.
-  ui_click: { bus: "ui", variations: ["click_002.ogg", "click_004.ogg"].map((f) => ({ layers: [[k("interface-sounds", f), 0, 0]], max: 0.06, fadeOut: 15 })) },
-  ui_toggle: { bus: "ui", variations: [{ layers: [[k("interface-sounds", "toggle_004.ogg"), 0, 0]], max: 0.07, fadeOut: 15 }] },
-  ui_confirm: { bus: "ui", variations: [{ layers: [[k("interface-sounds", "select_001.ogg"), 0, 0], [k("interface-sounds", "click_002.ogg"), -4, 0]], max: 0.075, fadeOut: 20 }] },
-  // A spin kicks off: the same air whoosh over a soft low push (two close takes of the push).
-  spin_start: { bus: "sfx", onset: false, variations: [1, 3].map((i) => ({
-    layers: [[o("sfx100v2_air_02.ogg"), 0, 0], [k("impact-sounds", `impactSoft_heavy_00${i}.ogg`), -12, 0]], max: 0.6, fadeOut: 220 })) },
-  // A reel lands as a stack: a deep soft thud with a heavy plate on top.
-  reel_stop: { bus: "sfx", variations: [0, 2, 4].map((i) => ({
-    layers: [[k("impact-sounds", `impactSoft_heavy_00${i}.ogg`), 0, 0], [k("impact-sounds", `impactPlate_heavy_00${i}.ogg`), -9, 0]], max: 0.38, fadeOut: 140 })) },
-  // One light crystal tink per symbol landing.
-  tick: { bus: "tick", variations: [0, 1, 2, 3].map((i) => ({ layers: [[k("impact-sounds", `impactGlass_light_00${i}.ogg`), 0, 0]], max: 0.16, fadeOut: 60 })) },
-  // A tumble refill: a short airy swish.
-  refill: { bus: "sfx", onset: false, variations: ["swish-3.wav", "swish-4.wav", "swish-7.wav"].map((f) => ({ layers: [[o(f), 0, 0]], max: 0.25, fadeOut: 60 })) },
-  // A cluster bursts: glass breaking; a great burst adds a low crunch.
-  explode: { bus: "sfx", variations: [0, 1, 3].map((i) => ({ layers: [[k("impact-sounds", `impactGlass_medium_00${i}.ogg`), 0, 0]], max: 0.55, fadeOut: 160 })) },
-  explode_great: { bus: "sfx", variations: [0, 1].map((i) => ({
-    layers: [[k("impact-sounds", `impactGlass_medium_00${i + 2}.ogg`), 0, 0], [k("sci-fi-sounds", `explosionCrunch_00${i}.ogg`), -6, 0]], max: 0.85, fadeOut: 300 })) },
-  // The scatter anticipation: a recorded air swell, looped by the engine (it raises its pitch and opens a filter).
-  riser: { bus: "sfx", onset: false, variations: [{ layers: [[o("sfx100v2_air_01.ogg"), 0, 0]], max: 2.4, fadeOut: 40 }] },
-  // The win meter counting: chip clinks.
-  win_tick: { bus: "sfx", onset: false, variations: [1, 2, 3, 4].map((i) => ({ layers: [[k("casino-audio", `chips-collide-${i}.ogg`), 0, 0]], max: 0.2, fadeOut: 60 })) },
-  // A scatter lands: one clear struck bell with a gem glint on top. The engine
-  // steps it up a major triad per scatter (1st, 2nd, 3rd, 4th+) for tension.
-  scatter: { bus: "sfx", variations: [{ layers: [[o("bell_02.ogg"), 0, 0], [o("item_gem_01.ogg"), -7, 0]], max: 0.55, fadeOut: 220 }] },
-  // The scatters are caught (lock-on): a temple gong over a bell and a low
-  // push, the biggest non-win hit in the game. Two close takes of the gong.
-  // The retrigger plays it lighter and higher (engine).
-  scatter_catch: { bus: "sting", variations: ["gong_01.ogg", "gong_02.ogg"].map((g) => ({
-    layers: [[o(g), 0, 0], [k("impact-sounds", "impactBell_heavy_004.ogg"), -6, 0], [k("impact-sounds", "impactSoft_heavy_002.ogg"), -6, 0]], max: 1.4, fadeOut: 600 })) },
-  // Multiplier reveal: a temple bell over a soft low thud; from 50x a low blast
-  // joins. The engine scales its pitch and weight with the value (2x … 1000x).
-  bang: { bus: "sfx", variations: [2, 3].map((i) => ({
-    layers: [[k("impact-sounds", `impactBell_heavy_00${i}.ogg`), 0, 0], [k("impact-sounds", "impactSoft_heavy_000.ogg"), -6, 0]], max: 0.8, fadeOut: 250 })) },
-  bang_big: { bus: "sfx", variations: [0, 1].map((i) => ({
-    layers: [[k("impact-sounds", `impactBell_heavy_00${i}.ogg`), 0, 0], [k("sci-fi-sounds", "lowFrequency_explosion_001.ogg"), -4, 0, 50]], max: 1.5, fadeOut: 500 })) },
-  // The lightning strike, on the flash: a real electric crack (a ground hit and
-  // Tesla-coil sparks) with a short thunder tail. Two close takes of the sparks.
-  strike: { bus: "sfx", variations: [
-    { layers: [[o("groundhit.wav"), 0, 0], [o("continuousspark.wav"), -4, 0], [o("sfx100v2_thunder_01.ogg"), -12, 80, 620]], max: 1.25, fadeOut: 600 },
-    { layers: [[o("groundhit.wav"), 0, 0], [o("spark.wav"), -2, 0, 125], [o("sfx100v2_thunder_01.ogg"), -12, 80, 620]], max: 1.25, fadeOut: 600 }
-  ] },
-  // Multipliers fly to the total: a short air whoosh as they leave the board…
-  soul_launch: { bus: "sfx", onset: false, variations: [{ layers: [[o("sfx100v2_air_03.ogg"), 0, 0]], max: 0.3, fadeOut: 90 }] },
-  // …and a gem glint as each lands on the total (pitched up with the total).
-  catch: { bus: "sfx", variations: [{ layers: [[o("item_gem_03.ogg"), 0, 0], [o("spell_02.ogg"), -12, 0]], max: 0.45, fadeOut: 150 }] },
-  // Win × Multiplier = Total: the chips rise (magic swirl), slam together
-  // (a heavy punch), collide (bell + magic) and the total lands (coins).
-  combine_enter: { bus: "sfx", onset: false, variations: [{ layers: [[o("spell_02.ogg"), 0, 0]], max: 0.5, fadeOut: 150 }] },
-  combine_slam: { bus: "sfx", variations: [0, 1].map((i) => ({ layers: [[k("impact-sounds", `impactPunch_heavy_00${i}.ogg`), 0, 0]], max: 0.5, fadeOut: 150 })) },
-  combine: { bus: "sfx", variations: [{ layers: [[k("impact-sounds", "impactBell_heavy_003.ogg"), 0, 0], [o("spell_01.ogg"), -4, 0]], max: 0.9, fadeOut: 300 }] },
-  combine_total: { bus: "sfx", variations: [{ layers: [[o("item_coins_02.ogg"), 0, 0], [k("casino-audio", "chips-stack-3.ogg"), -6, 0]], max: 0.6, fadeOut: 200 }] },
-  // A winning cluster lights up: a small glass chime with a chip (light; the
-  // burst after it carries the weight).
-  win_light: { bus: "sfx", variations: [{ layers: [[o("sfx100v2_glass_04.ogg"), 0, 0], [k("casino-audio", "chips-stack-2.ogg"), -8, 0]], max: 0.3, fadeOut: 100 }] },
-  // The win count-up lands (small win): chips stacked and a coin glint.
-  win_land: { bus: "sting", variations: [2, 3].map((i) => ({ layers: [[k("casino-audio", `chips-stack-${i}.ogg`), 0, 0], [o("item_coins_02.ogg"), -6, 0]], max: 0.6, fadeOut: 200 })) },
-  // Stings: orchestral hits with a fast attack (they land ON the beat), one
-  // distinct hit per moment.
-  win_small: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT01.ogg"), 0, 0], [k("casino-audio", "chips-collide-2.ogg"), -10, 0]], max: 0.6 }] },
-  win_big: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT06.ogg"), 0, 0], [k("impact-sounds", "impactBell_heavy_002.ogg"), -8, 0]], max: 1.0, fadeOut: 300 }] },
-  win_mega: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT11.ogg"), 0, 0], [k("impact-sounds", "impactBell_heavy_000.ogg"), -6, 0]], max: 1.4, fadeOut: 400 }] },
-  max_win: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT16.ogg"), 0, 0], [o("cannon_01.ogg"), -4, 0, 60], [k("sci-fi-sounds", "lowFrequency_explosion_000.ogg"), -6, 0, 180], [o("gong_02.ogg"), -8, 0]], max: 1.8, fadeOut: 500 }] },
-  // The big-win overlay opens: a firework burst over a cannon boom.
-  bigwin_open: { bus: "sting", variations: [{ layers: [[o("fw_03.ogg"), 0, 0], [o("cannon_01.ogg"), -5, 0, 60]], max: 1.3, fadeOut: 500 }] },
-  // The feature screen: free spins awarded, or more of them (retrigger).
-  feature_award: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT12.ogg"), 0, 0], [o("spell_01.ogg"), -8, 0], [o("item_coins_02.ogg"), -10, 0]], max: 1.0, fadeOut: 400 }] },
-  feature_more: { bus: "sting", variations: [{ layers: [[k("music-jingles", "jingles_HIT07.ogg"), 0, 0], [o("item_coins_02.ogg"), -10, 0]], max: 0.7, fadeOut: 250 }] },
-  fs_intro: { bus: "sting", onset: false, variations: [{ layers: [[k("music-jingles", "jingles_HIT03.ogg"), 0, 0], [o("sfx100v2_air_02.ogg"), -10, 0]], max: 1.0, fadeOut: 300 }] },
-  fs_outro: { bus: "sting", onset: false, variations: [{ layers: [[k("music-jingles", "jingles_HIT10.ogg"), 0, 0], [k("impact-sounds", "impactBell_heavy_002.ogg"), -8, 0]], max: 1.0, fadeOut: 300 }] },
-  // Buy confirmed: chips pushed in, coins and a bell.
-  buy: { bus: "sting", variations: [{ layers: [[k("casino-audio", "chips-stack-3.ogg"), 0, 0], [o("item_coins_02.ogg"), -3, 0], [k("impact-sounds", "impactBell_heavy_002.ogg"), -10, 0]], max: 0.8, fadeOut: 250 }] }
-};
+// Loudness tiers: RMS dBFS of the levelled file (the engine's bus gains and
+// per-event offsets sit on top). UI also sits on a -8 dB bus.
+const TARGET = { ui: -22, tick: -24, base: -20, win: -17, feature: -15, peak: -13, music: -20 };
+// Reverb send by tier (0 = dry). Frequent sounds stay close, big moments open up.
+const SEND = { ui: 0, tick: 0.03, base: 0.07, win: 0.14, feature: 0.22, peak: 0.28 };
+const PEAK_CAP = -4.5; // before encoding: AAC overshoots sharp transients by up to ~3.5 dB
 // A beat-synced sound reaches within 6 dB of its peak this soon after it starts.
 const ONSET_MS = 40;
 
+// ── the picks ──
+const selection = JSON.parse(fs.readFileSync(SELECTION, "utf8"));
+const candidates = fs.existsSync(CANDIDATES) ? JSON.parse(fs.readFileSync(CANDIDATES, "utf8")) : { events: {} };
+/** Where a pick lives once imported (freesound/<file> or user/<file>). */
+function importedPath(ev) {
+  const p = selection.picks[ev];
+  if (!p || !p.file) throw new Error(`selection.json has no pick for "${ev}" (pick one: npm run audition)`);
+  const base = path.basename(p.file);
+  return p.file.startsWith("incoming/") ? `user/${base}` : p.file.startsWith("candidates/") ? `freesound/${base}` : p.file;
+}
+const P = (ev) => importedPath(ev);
+
+// key → { tier, mono?, onset?, variations: [ { layers: [[src, db, delayMs, startMs]], max (s), fadeOut (ms), hp, lp, pitch, comp } ] }
+// One identity per key: extra variations are close takes of the same recording
+// (a hair of pitch), so a repeat never sounds like a different event.
+const takes = (n, v) => [1, 0.97, 1.03, 1.06].slice(0, n).map((pitch) => ({ ...v, pitch: (v.pitch || 1) * pitch }));
+const SOUNDS = {
+  // UI: soft, short, no tail.
+  ui_click: { tier: "ui", mono: true, variations: takes(2, { layers: [[P("ui_click"), 0, 0]], max: 0.07, fadeOut: 15, hp: 300 }) },
+  ui_toggle: { tier: "ui", mono: true, variations: [{ layers: [[P("ui_toggle"), 0, 0]], max: 0.08, fadeOut: 15, hp: 300 }] },
+  ui_confirm: { tier: "ui", mono: true, variations: [{ layers: [[P("ui_confirm"), 0, 0]], max: 0.11, fadeOut: 25, hp: 150 }] },
+  // Base game.
+  spin_start: { tier: "base", variations: [{ layers: [[P("spin_start"), 0, 0, 45], [P("refill"), -10, 0]], max: 0.38, fadeOut: 90, hp: 60, comp: true }] },
+  reel_stop: { tier: "base", mono: true, variations: takes(3, { layers: [[P("reel_stop"), 0, 0]], max: 0.3, fadeOut: 110, hp: 40 }) },
+  tick: { tier: "tick", mono: true, variations: takes(4, { layers: [[P("tick"), 0, 0]], max: 0.12, fadeOut: 40, hp: 400 }) },
+  refill: { tier: "base", onset: false, variations: [{ layers: [[P("refill"), 0, 0]], max: 0.4, fadeOut: 120, hp: 120 }] },
+  // Wins.
+  win_light: { tier: "win", variations: [{ layers: [[P("win_light"), 0, 0]], max: 1.2, fadeOut: 500, hp: 300, comp: true }] },
+  explode: { tier: "win", variations: takes(3, { layers: [[P("explode"), 0, 0]], max: 1.2, fadeOut: 450, hp: 80, comp: true }) },
+  explode_great: { tier: "win", variations: takes(2, { layers: [[P("explode"), 0, 0], [P("sub_impact"), -6, 0]], max: 1.6, fadeOut: 550, hp: 30, comp: true }) },
+  win_tick: { tier: "tick", mono: true, variations: takes(4, { layers: [[P("win_tick"), 0, 0]], max: 0.17, fadeOut: 50, hp: 300 }) },
+  win_land: { tier: "win", variations: takes(2, { layers: [[P("win_land"), 0, 0, 40]], max: 0.5, fadeOut: 150, hp: 200 }) },
+  win_small: { tier: "win", variations: [{ layers: [[P("win_land"), 0, 0, 40], [P("win_light"), -8, 0]], max: 1.0, fadeOut: 400, hp: 150 }] },
+  combine_total: { tier: "win", variations: [{ layers: [[P("combine_total"), 0, 0]], max: 1.0, fadeOut: 300, hp: 150 }] },
+  // Multipliers.
+  strike: { tier: "win", variations: [{ layers: [[P("strike"), 0, 0], [P("thunder"), -6, 80]], max: 1.4, fadeOut: 600, hp: 40, comp: true }] },
+  bang: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0]], max: 0.9, fadeOut: 350, hp: 100 }) },
+  bang_big: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0], [P("sub_impact"), -5, 0]], max: 1.6, fadeOut: 550, hp: 30, comp: true }) },
+  soul_launch: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.3, fadeOut: 80, hp: 150 }] },
+  catch: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0]], max: 0.25, fadeOut: 60, hp: 200 }] },
+  combine_enter: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.35, fadeOut: 100, hp: 150, pitch: 0.9 }] },
+  combine_slam: { tier: "win", variations: takes(2, { layers: [[P("combine_slam"), 0, 0]], max: 0.45, fadeOut: 150, hp: 40, comp: true }) },
+  // The total locks in: the lock-in click, deeper, with a touch of the impact.
+  combine: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0], [P("combine_slam"), -12, 0]], max: 0.4, fadeOut: 120, hp: 60, pitch: 0.85 }] },
+  // Scatters & feature.
+  scatter: { tier: "win", variations: [{ layers: [[P("scatter"), 0, 0]], max: 1.6, fadeOut: 500, hp: 150 }] },
+  riser: { tier: "win", onset: false, variations: [{ layers: [[P("riser"), 0, 0]], max: 8, fadeOut: 60, hp: 60 }] },
+  scatter_catch: { tier: "feature", variations: takes(2, { layers: [[P("scatter_catch"), 0, 0, 45], [P("sub_impact"), -10, 0]], max: 3.5, fadeOut: 1200, hp: 30 }) },
+  feature_award: { tier: "feature", variations: [{ layers: [[P("vault_slam"), 0, 0, 40], [P("feature_award"), -1, 120]], max: 3.2, fadeOut: 900, hp: 40, comp: true }] },
+  feature_more: { tier: "feature", variations: [{ layers: [[P("feature_more"), 0, 0]], max: 1.4, fadeOut: 400, hp: 60 }] },
+  fs_intro: { tier: "feature", onset: false, variations: [{ layers: [[P("fs_intro"), 0, 0]], max: 3.2, fadeOut: 900, hp: 30 }] },
+  // Its first note lands at once; the loudest chord comes ~250 ms later (a closing flourish).
+  fs_outro: { tier: "feature", onset: false, variations: [{ layers: [[P("fs_outro"), 0, 0]], max: 3.0, fadeOut: 900, hp: 40 }] },
+  buy: { tier: "feature", variations: [{ layers: [[P("buy"), 0, 0]], max: 1.3, fadeOut: 400, hp: 120 }] },
+  // Big wins: escalating (Big < Mega < Epic < Max), each a layer bigger.
+  bigwin_open: { tier: "peak", variations: [{ layers: [[P("bigwin_open"), 0, 0], [P("sub_impact"), -6, 0]], max: 1.6, fadeOut: 500, hp: 25, comp: true }] },
+  win_big: { tier: "peak", variations: [{ layers: [[P("win_big"), 0, 0, 25]], max: 3.0, fadeOut: 900, hp: 30 }] },
+  win_mega: { tier: "peak", variations: [{ layers: [[P("win_mega"), 0, 0], [P("sub_impact"), -8, 0]], max: 2.6, fadeOut: 800, hp: 25, comp: true }] },
+  win_epic: { tier: "peak", variations: [{ layers: [[P("win_mega"), 0, 0], [P("choir"), -4, 0], [P("sub_impact"), -6, 0]], max: 3.5, fadeOut: 1000, hp: 25, comp: true }] },
+  max_win: { tier: "peak", variations: [{ layers: [[P("max_win"), 0, 0], [P("choir"), -3, 0], [P("sub_impact"), -4, 0], [P("scatter_catch"), -10, 0]], max: 5, fadeOut: 1500, hp: 25, comp: true }] }
+};
+// The shared reverb's impulse response.
+const IR = { src: P("reverb_ir"), max: 2.0, fadeOut: 400 };
+
 // The three music moods: source, the section used (s), loop crossfade (s).
 const MUSIC = {
-  base: { src: o("desert_mystic2.mp3"), start: 0, end: 56.0, xfade: 2.5 },
-  freeSpins: { src: o("hidden_temple.ogg"), start: 0, end: 67.4, xfade: 2.5 },
-  bigWin: { src: o("determined_pursuit_0-40s.ogg"), start: 0, end: 32, xfade: 1.5 }
+  base: { src: "oga/desert_mystic2.mp3", start: 0, end: 56.0, xfade: 2.5 },
+  freeSpins: { src: "oga/hidden_temple.ogg", start: 0, end: 67.4, xfade: 2.5 },
+  bigWin: { src: "oga/determined_pursuit_0-40s.ogg", start: 0, end: 32, xfade: 1.5 }
 };
 const MUSIC_FILE = { base: "base", freeSpins: "free_spins", bigWin: "big_win" };
+// Sound effects may not come from the old game-asset packs any more.
+const BANNED_SFX = /^(kenney|oga)\//;
 
 // Size budgets (bytes, per encoded file).
-const BUDGET = { sfx: 120 * 1024, music: 1300 * 1024 };
+const BUDGET = { sfx: 160 * 1024, music: 1300 * 1024, ir: 120 * 1024 };
 
 function ff(args) {
   const r = spawnSync(FF, ["-hide_banner", "-y", ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -152,34 +145,91 @@ function onsetMs(file) {
   for (let i = 0; i + 1 < pcm.length; i += 2) if (Math.abs(pcm.readInt16LE(i)) >= gate) return Math.round(i / 2 / 16);
   return 0;
 }
+/** Encode both formats; if a codec overshoots past -1.2 dBFS, re-encode that one quieter. */
 function encode(wav, base, stereo) {
-  const ch = stereo ? 2 : 1;
-  ff(["-i", wav, "-ac", String(ch), "-c:a", "libopus", "-b:a", stereo ? "96k" : "64k", "-vbr", "on", "-application", "audio", `${base}.ogg`]);
-  ff(["-i", wav, "-ac", String(ch), "-c:a", "aac", "-b:a", stereo ? "128k" : "96k", "-movflags", "+faststart", `${base}.m4a`]);
+  const ch = String(stereo ? 2 : 1);
+  const codecs = {
+    ogg: ["-c:a", "libopus", "-b:a", stereo ? "96k" : "64k", "-vbr", "on", "-application", "audio"],
+    m4a: ["-c:a", "aac", "-b:a", stereo ? "128k" : "96k", "-movflags", "+faststart"]
+  };
+  for (const [ext, args] of Object.entries(codecs)) {
+    let trimDb = 0;
+    for (let i = 0; i < 4; i++) {
+      ff(["-i", wav, "-ac", ch, ...(trimDb ? ["-af", `volume=${trimDb.toFixed(2)}dB`] : []), ...args, `${base}.${ext}`]);
+      const over = stats(`${base}.${ext}`).peak + 1.2;
+      if (over <= 0) break;
+      trimDb -= over + 0.2;
+    }
+  }
 }
 
-function buildVariation(key, bus, v, idx) {
+/** Copy every pick into art-src/audio/freesound/ (or user/) and write the Freesound licence rows. */
+function importPicks() {
+  const rows = [];
+  for (const [ev, p] of Object.entries(selection.picks)) {
+    if (!p || !p.file) continue;
+    const to = path.join(SRC, importedPath(ev));
+    const from = path.join(SRC, p.file);
+    if (!fs.existsSync(to)) {
+      if (!fs.existsSync(from)) throw new Error(`${ev}: ${p.file} is neither imported nor in candidates/ (re-fetch: npm run audition:fetch)`);
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+    }
+    const c = (candidates.events[ev] || []).find((x) => x.file === p.file);
+    if (c) rows.push(`| ${path.basename(to)} | ${c.title.replace(/\|/g, "/")} (${c.author}) | ${c.url} | ${c.license} | \`${ev}\` |`);
+  }
+  // The generated block sits between markers; everything else in LICENSES.md is hand-written.
+  const block = ["<!-- freesound:start (generated by tools/build-audio.js from selection.json + candidates.json) -->", "",
+    "## Freesound.org, CC0 1.0", "", "Each file is the HQ preview of a CC0 1.0 sound (licence checked on its page), kept in `art-src/audio/freesound/`.", "",
+    "| Original | Sound (author) | Source | Licence | Pick for |", "|---|---|---|---|---|", ...rows.sort(), "", "<!-- freesound:end -->"].join("\n");
+  let lic = fs.readFileSync(LICENSES, "utf8").replace(/\r\n/g, "\n");
+  lic = /<!-- freesound:start[\s\S]*?<!-- freesound:end -->/.test(lic)
+    ? lic.replace(/<!-- freesound:start[\s\S]*?<!-- freesound:end -->/, block)
+    : lic.replace(/\n## /, `\n${block}\n\n## `);
+  fs.writeFileSync(LICENSES, lic);
+}
+
+function buildVariation(key, def, v, idx) {
+  const stereo = !def.mono;
+  const layout = stereo ? "stereo" : "mono";
   const inputs = [];
   const parts = [];
   v.layers.forEach(([file, db, delay, startMs], i) => {
     const p = path.join(SRC, file);
     if (!fs.existsSync(p)) throw new Error(`${key}: missing source ${file}`);
     inputs.push("-i", p);
-    // startMs: cut the recording's lead-in (a hum, a pickup) so its hit lands on the beat.
     const trim = startMs ? `atrim=start=${(startMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS,` : "";
-    parts.push(`[${i}:a]aformat=sample_rates=48000:channel_layouts=mono,${trim}silenceremove=start_periods=1:start_threshold=-50dB,volume=${db}dB,adelay=${delay || 0}|${delay || 0}[l${i}]`);
+    const d = delay || 0;
+    // Lead-in silence first, then startMs cuts a slow rise so the hit lands on the beat.
+    parts.push(`[${i}:a]aformat=sample_rates=48000:channel_layouts=${layout},silenceremove=start_periods=1:start_threshold=-50dB,${trim}volume=${db}dB,adelay=${d}|${d}[l${i}]`);
   });
   const mix = v.layers.length > 1 ? `${v.layers.map((_, i) => `[l${i}]`).join("")}amix=inputs=${v.layers.length}:normalize=0:duration=longest[m]` : `[l0]anull[m]`;
+  // Processing: pitch (a close take), high-pass, low-pass, gentle compression.
+  const fx = [];
+  if (v.pitch && v.pitch !== 1) fx.push(`asetrate=${Math.round(48000 * v.pitch)},aresample=48000`);
+  if (v.hp) fx.push(`highpass=f=${v.hp}`);
+  if (v.lp) fx.push(`lowpass=f=${v.lp}`);
+  if (v.comp) fx.push("acompressor=threshold=-18dB:ratio=2.5:attack=8:release=120:makeup=1");
   const fade = v.fadeOut ? `,afade=t=out:st=${Math.max(0, v.max - v.fadeOut / 1000).toFixed(3)}:d=${(v.fadeOut / 1000).toFixed(3)}` : "";
   const raw = path.join(TMP, `${key}_${idx}_raw.wav`);
-  ff([...inputs, "-filter_complex", `${parts.join(";")};${mix};[m]atrim=0:${v.max},afade=t=in:d=0.004${fade}[o]`, "-map", "[o]", "-ar", "48000", raw]);
-  // Level to the bus target RMS, peaks capped.
+  ff([...inputs, "-filter_complex", `${parts.join(";")};${mix};[m]${fx.length ? fx.join(",") + "," : ""}atrim=0:${v.max},afade=t=in:d=0.003${fade}[o]`, "-map", "[o]", "-ar", "48000", raw]);
   const s = stats(raw);
-  const gain = Math.min(TARGET[bus] - s.rms, PEAK_CAP - s.peak);
+  const gain = Math.min(TARGET[def.tier] - s.rms, PEAK_CAP - s.peak);
   const lev = path.join(TMP, `${key}_${idx}.wav`);
   ff(["-i", raw, "-af", `volume=${gain.toFixed(2)}dB`, lev]);
   const name = `sfx/${key}_${idx + 1}`;
-  encode(lev, path.join(OUT, name), false);
+  encode(lev, path.join(OUT, name), stereo);
+  return name;
+}
+
+function buildIr() {
+  const raw = path.join(TMP, "ir.wav");
+  ff(["-i", path.join(SRC, IR.src), "-af", `aformat=sample_rates=48000:channel_layouts=stereo,silenceremove=start_periods=1:start_threshold=-60dB,atrim=0:${IR.max},afade=t=out:st=${(IR.max - IR.fadeOut / 1000).toFixed(3)}:d=${(IR.fadeOut / 1000).toFixed(3)}`, raw]);
+  const s = stats(raw);
+  const lev = path.join(TMP, "ir_lev.wav");
+  ff(["-i", raw, "-af", `volume=${(-3 - s.peak).toFixed(2)}dB`, lev]); // the engine normalises it; keep headroom for the codec
+  const name = "ir/room";
+  encode(lev, path.join(OUT, name), true);
   return name;
 }
 
@@ -187,9 +237,7 @@ function buildMusic(mood, m) {
   const p = path.join(SRC, m.src);
   const X = m.xfade;
   const raw = path.join(TMP, `music_${mood}.wav`);
-  // Seamless loop: [tail ⨯ head crossfade] + body, so body's end flows into the
-  // crossfade's start (the original tail) and its end (the original head)
-  // flows into body's start.
+  // Seamless loop: [tail ⨯ head crossfade] + body.
   const fc = [
     `[0:a]aformat=sample_rates=48000:channel_layouts=stereo,asplit=3[a][b][c]`,
     `[a]atrim=${m.start}:${m.start + X},asetpts=PTS-STARTPTS[head]`,
@@ -209,15 +257,18 @@ function buildMusic(mood, m) {
 }
 
 function build() {
-  for (const d of ["sfx", "music"]) {
+  importPicks();
+  for (const d of ["sfx", "music", "ir"]) {
     fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
     fs.mkdirSync(path.join(OUT, d), { recursive: true });
   }
-  const manifest = { version: 1, formats: ["ogg", "m4a"], sounds: {}, music: {} };
+  const manifest = { version: 2, formats: ["ogg", "m4a"], sounds: {}, sends: {}, music: {}, ir: null };
   for (const [key, def] of Object.entries(SOUNDS)) {
-    manifest.sounds[key] = def.variations.map((v, i) => buildVariation(key, def.bus, v, i));
+    manifest.sounds[key] = def.variations.map((v, i) => buildVariation(key, def, v, i));
+    manifest.sends[key] = SEND[def.tier];
     process.stdout.write(`${key} (${def.variations.length}) `);
   }
+  manifest.ir = buildIr();
   for (const [mood, m] of Object.entries(MUSIC)) {
     manifest.music[mood] = buildMusic(mood, m);
     process.stdout.write(`music:${mood} `);
@@ -228,13 +279,20 @@ function build() {
 
 function check() {
   const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "manifest.json"), "utf8"));
-  const licences = fs.readFileSync(path.join(OUT, "LICENSES.md"), "utf8");
+  const licences = fs.readFileSync(LICENSES, "utf8");
   const problems = [];
   const used = new Set();
-  for (const def of Object.values(SOUNDS)) for (const v of def.variations) for (const [f] of v.layers) used.add(f);
+  for (const [key, def] of Object.entries(SOUNDS)) for (const v of def.variations) for (const [f] of v.layers) {
+    used.add(f);
+    if (BANNED_SFX.test(f)) problems.push(`${key} is still built from an old game-asset pack (${f})`);
+    if (!fs.existsSync(path.join(SRC, f))) problems.push(`${key}: source ${f} is missing (run the build to import picks)`);
+  }
+  used.add(IR.src);
   for (const m of Object.values(MUSIC)) used.add(m.src);
   for (const f of used) if (!licences.includes(path.basename(f))) problems.push(`no licence row for ${f}`);
-  const files = [...Object.values(manifest.sounds).flat().map((n) => ["sfx", n]), ...Object.values(manifest.music).map((n) => ["music", n])];
+  for (const key of Object.keys(SOUNDS)) if (!manifest.sounds[key]) problems.push(`manifest has no ${key} (rebuild)`);
+  if (!manifest.ir) problems.push("manifest has no reverb impulse response");
+  const files = [...Object.values(manifest.sounds).flat().map((n) => ["sfx", n]), ...Object.values(manifest.music).map((n) => ["music", n]), ...(manifest.ir ? [["ir", manifest.ir]] : [])];
   let total = 0;
   for (const [kind, n] of files) {
     for (const ext of manifest.formats) {
@@ -259,14 +317,19 @@ function check() {
     }
   }
   console.log(`onset (ms to within 6 dB of peak): ${onsets.join(" ")}`);
-  console.log(`${files.length} sounds, ${(total / 1024).toFixed(0)} KB (ogg set)`);
+  console.log(`${files.length} files, ${(total / 1024).toFixed(0)} KB (ogg set)`);
   if (problems.length) { console.log(problems.map((p) => "  FAIL " + p).join("\n")); process.exit(1); }
   console.log("audio check: PASS");
 }
 
-try {
-  if (process.argv.includes("--check")) check();
-  else build();
-} finally {
+module.exports = { SOUNDS, TARGET, SEND, IR, MUSIC };
+if (require.main === module) {
+  try {
+    if (process.argv.includes("--check")) check();
+    else build();
+  } finally {
+    fs.rmSync(TMP, { recursive: true, force: true });
+  }
+} else {
   fs.rmSync(TMP, { recursive: true, force: true });
 }
