@@ -213,7 +213,7 @@ h3 { font-size: 22px; }
   margin: 0; padding: 22px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg-deep);
   font: 13.5px/1.65 ui-monospace, "Cascadia Code", Consolas, monospace; color: #cfe3df; overflow-x: auto;
 }
-.code .c { color: var(--dim); }
+.code .c { color: var(--muted); } /* comments still read as secondary, at 4.5:1+ */
 .code .k { color: var(--teal); }
 .code .s { color: var(--gold-bright); }
 
@@ -252,7 +252,7 @@ h3 { font-size: 22px; }
 /* ── Gallery ── */
 .gallery { display: grid; grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .gallery figure { margin: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
-.gallery figcaption { padding: 10px 14px; color: var(--dim); font-size: 13px; }
+.gallery figcaption { padding: 10px 14px; color: var(--muted); font-size: 13px; }
 @media (max-width: 720px) { .gallery { grid-template-columns: minmax(0, 1fr); } .gallery .phone { max-width: 320px; margin-inline: auto; } }
 
 .symbols { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
