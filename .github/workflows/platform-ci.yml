@@ -84,7 +84,14 @@ jobs:
         working-directory: demo-operator
       # Screenshot dir for the checks that save PNGs (resume, embed); uploaded on failure.
       - run: echo "SHOTS_DIR=$RUNNER_TEMP/shots" >> "$GITHUB_ENV" && mkdir -p "$RUNNER_TEMP/shots"
-      - run: npm run verify:browser
+      # On failure, the last log lines are also posted as annotations, so the cause is
+      # readable from the PR checks API without downloading the log.
+      - run: |
+          set -o pipefail
+          npm run verify:browser 2>&1 | tee "$RUNNER_TEMP/verify-browser.log"
+      - name: Failure tail as annotations
+        if: failure()
+        run: tail -n 40 "$RUNNER_TEMP/verify-browser.log" | sed 's/^/::error title=verify:browser::/'
       - name: Upload screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4
