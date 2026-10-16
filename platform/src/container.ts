@@ -3,6 +3,8 @@ import { AuthoritativeResolver } from "./modules/rng/authoritative-resolver";
 import { ManagementService } from "./modules/management/management.service";
 import { SessionService } from "./modules/session/session.service";
 import { SandboxWallet } from "./modules/wallet/sandbox-wallet";
+import { sandboxOf } from "./modules/wallet/routing-wallet";
+import { RoundIntentStore } from "./modules/rounds/round-intents";
 import type { WalletAdapter } from "./modules/wallet/wallet.types";
 import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
@@ -61,6 +63,7 @@ export interface Container {
   resolver: AuthoritativeResolver;
   transactions: InMemoryTransactionStore;
   orchestrator: RoundOrchestrator;
+  intents: RoundIntentStore;
   /** Lost-debit reconciliation: in-line retry, void + reversal, and the reversal queue. */
   debits: DebitReconciler;
   /** Jurisdiction rules per operator (round pacing, reality check, feature-buy switch). */
@@ -108,7 +111,7 @@ export function buildContainer(
   // walletFactory exists because a WebhookWallet needs `mgmt`, which is only
   // available once buildContainer is already underway (constructor-order chicken/egg).
   const wallet = overrides.walletFactory ? overrides.walletFactory(mgmt) : (overrides.wallet ?? new SandboxWallet());
-  if (wallet instanceof SandboxWallet) wallet.usePersistence(persistence);
+  sandboxOf(wallet)?.usePersistence(persistence);
   const resolver = new AuthoritativeResolver(engine);
   const transactions = new InMemoryTransactionStore(persistence);
   const campaigns = new InMemoryCampaignRepository(persistence);
@@ -130,7 +133,12 @@ export function buildContainer(
       };
     }
   );
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory);
+  // Write-ahead round intents, committed through the same write-through (no-op in memory).
+  const intents = new RoundIntentStore(persistence);
+  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory, {
+    intents,
+    commit: () => persistence.flush()
+  });
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
@@ -148,6 +156,7 @@ export function buildContainer(
     resolver,
     transactions,
     orchestrator,
+    intents,
     debits,
     regulatory,
     reporting,
@@ -179,4 +188,16 @@ export function seedBootstrapAdmin(c: Container): { username: string; seeded: bo
   if (c.adminAccounts.hasAnyProviderAccount()) return { username, seeded: false };
   c.adminAccounts.seedProviderSuperAdmin(username, password);
   return { username, seeded: true };
+}
+
+/**
+ * Staging/production: every live operator must have its casino wallet webhook. Without
+ * one its players would be declined on every round (and, before RoutingWallet, played
+ * against the provider's sandbox balances).
+ */
+export function assertLiveOperatorsHaveWallets(c: Container): void {
+  const missing = c.mgmt.listOperators().filter((o) => o.status === "live" && !c.mgmt.getWebhookConfig(o.id));
+  if (missing.length > 0) {
+    throw new Error(`Unsafe production environment: live operator(s) without a wallet webhook: ${missing.map((o) => o.slug).join(", ")}`);
+  }
 }

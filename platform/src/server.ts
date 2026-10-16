@@ -1,11 +1,14 @@
 import { loadEnv, isProd } from "./config/env";
 import { createLogger } from "./lib/logger";
-import { buildContainer, seedBootstrapAdmin } from "./container";
+import { buildContainer, seedBootstrapAdmin, assertLiveOperatorsHaveWallets } from "./container";
 import { buildApp } from "./app";
 import { NullPersistence, PostgresPersistence, type Persistence } from "./persistence/persistence";
 import { hydrateContainer } from "./persistence/hydrate";
 import { createPool, closePool } from "./db/pool";
 import { runMigrations } from "./db/migrate";
+import { RoutingWallet } from "./modules/wallet/routing-wallet";
+import { WebhookWallet } from "./modules/wallet/webhook-wallet";
+import { SandboxWallet } from "./modules/wallet/sandbox-wallet";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -22,7 +25,10 @@ async function main(): Promise<void> {
     const pool = createPool(env.DATABASE_URL);
     const migrated = await runMigrations(pool);
     logger.info({ applied: migrated.applied, already: migrated.alreadyApplied.length }, "migrations_ready");
-    persistence = new PostgresPersistence(pool);
+    persistence = new PostgresPersistence(pool, {
+      // A row Postgres refused for good was NOT written: loud, with the row for forensics.
+      onQuarantine: (q) => logger.error({ table: q.table, code: q.code, error: q.error, row: q.row }, "persistence_row_quarantined")
+    });
   }
 
   // Build all services once at boot (engine math loads here, so readiness reflects
@@ -41,7 +47,14 @@ async function main(): Promise<void> {
       exportSigningKey: env.EXPORT_SIGNING_KEY,
       exportSigningKeyExpiresAt: env.EXPORT_SIGNING_KEY_EXPIRES_AT
     },
-    { persistence }
+    {
+      persistence,
+      // Each operator's own casino wallet (webhook). The provider-held sandbox wallet is
+      // a development tool: only local/test may fall back to it, for operators that
+      // have no webhook. Anywhere else such an operator is declined before money moves.
+      walletFactory: (mgmt) =>
+        new RoutingWallet(mgmt, new WebhookWallet(mgmt), env.NODE_ENV === "local" || env.NODE_ENV === "test" ? new SandboxWallet() : null)
+    }
   );
 
   // Restore durable state from Postgres before serving.
@@ -55,6 +68,9 @@ async function main(): Promise<void> {
 
   // Seed the bootstrap provider super-admin (after hydration so a durable account
   // is never duplicated). The seeded admin enrolls TOTP on first login.
+  // Staging/production never boot with a live operator that has no casino wallet.
+  if (isProd(env)) assertLiveOperatorsHaveWallets(container);
+
   const boot = seedBootstrapAdmin(container);
   if (boot.seeded) logger.info({ username: boot.username }, "bootstrap_admin_seeded");
 

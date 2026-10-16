@@ -93,6 +93,8 @@ export const metrics = {
   httpDuration: new Histogram("rgs_http_request_duration_seconds", "HTTP request latency by method and route.", LATENCY_BUCKETS),
   walletCall: new Histogram("rgs_wallet_webhook_duration_seconds", "Casino wallet webhook latency by action and outcome (ok, declined, failed).", LATENCY_BUCKETS),
   dbFlush: new Histogram("rgs_db_flush_duration_seconds", "Postgres write-through flush latency per request (persistence enabled only).", LATENCY_BUCKETS),
+  dbQuarantined: new Counter("rgs_db_rows_quarantined_total", "Rows Postgres permanently refused (constraint/trigger), by table. They were not written: alert on any increase."),
+  dbFlushFailures: new Counter("rgs_db_flush_failures_total", "Flushes that failed, by kind (transient = retried, permanent = rows quarantined)."),
   walletTx: new Counter("rgs_wallet_transactions_total", "Money-movement records by type and status."),
   rounds: new Counter("rgs_rounds_total", "Rounds resolved, by kind (paid, buy, free_spin, free_round)."),
   engineIntegrity: new Counter("rgs_engine_integrity_violations_total", "Engine results refused by the fail-closed guard, by check. Must stay 0: alert on any increase."),
