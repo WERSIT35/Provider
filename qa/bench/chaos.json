@@ -1,6 +1,6 @@
 {
   "name": "chaos",
-  "at": "2026-10-16T16:38:06.275Z",
+  "at": "2026-10-16T18:16:30.350Z",
   "node": "v22.22.0",
   "config": {
     "players": 200,
@@ -14,29 +14,29 @@
   },
   "kills": [
     {
-      "at": "2026-10-16T16:36:15.044Z",
-      "acknowledgedSoFar": 1937
+      "at": "2026-10-16T18:14:38.247Z",
+      "acknowledgedSoFar": 3645
     },
     {
-      "at": "2026-10-16T16:36:36.049Z",
-      "acknowledgedSoFar": 3636
+      "at": "2026-10-16T18:14:59.442Z",
+      "acknowledgedSoFar": 7276
     },
     {
-      "at": "2026-10-16T16:36:57.315Z",
-      "acknowledgedSoFar": 5370
+      "at": "2026-10-16T18:15:21.239Z",
+      "acknowledgedSoFar": 11182
     }
   ],
-  "acknowledgedRounds": 7240,
-  "roundsInDb": 7314,
+  "acknowledgedRounds": 15132,
+  "roundsInDb": 15227,
   "lostAcknowledgedRounds": 0,
   "duplicateRoundRefsInDb": 0,
   "duplicateAcknowledgements": 0,
-  "casinoDebitedRounds": 7320,
+  "casinoDebitedRounds": 14577,
   "debitsWithNoRoundAndNoRollback": 0,
   "doubleDebitedRounds": 0,
   "doubleCreditedRounds": 0,
-  "casinoReplaysAnswered": 18,
-  "clientNetworkErrors": 4937,
+  "casinoReplaysAnswered": 41,
+  "clientNetworkErrors": 5628,
   "pass": true,
   "failures": []
 }

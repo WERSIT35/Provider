@@ -36,6 +36,7 @@ class FakePg {
   /** Returns an error to throw for this statement, or null. */
   fail: (sql: string, values: unknown[]) => { code: string; message: string } | null = () => null;
   maxConcurrentTx = 0;
+  commitDelayMs = 0;
   private openTx = 0;
   readonly log: string[] = [];
 
@@ -57,6 +58,7 @@ class FakePg {
       async query(sql: string, values: unknown[] = []) {
         if (sql === "BEGIN") { db.openTx++; db.maxConcurrentTx = Math.max(db.maxConcurrentTx, db.openTx); staged = []; return; }
         if (sql === "COMMIT") {
+          if (db.commitDelayMs) await new Promise((r) => setTimeout(r, db.commitDelayMs));
           for (const s of staged) { if (!db.tables.has(s.table)) db.tables.set(s.table, new Map()); db.tables.get(s.table)!.set(s.key, s.row); }
           db.openTx--; db.log.push(`commit ${staged.length}`); staged = []; return;
         }
@@ -66,9 +68,26 @@ class FakePg {
         if (sql.startsWith("ROLLBACK TO")) { staged = staged.slice(0, savepoint); return; }
         const m = /^INSERT INTO (\w+) \(([^)]+)\)/.exec(sql);
         if (!m) return;
-        const injected = db.fail(sql, values);
-        if (injected) throw Object.assign(new Error(injected.message), { code: injected.code });
+        // Multi-row VALUES: bind values are row-major. A statement is atomic, so any
+        // failing row fails it whole (the drain then rolls back and salvages per row).
         const cols = m[2].split(", ");
+        const rowsIn: unknown[][] = [];
+        for (let i = 0; i < values.length; i += cols.length) rowsIn.push(values.slice(i, i + cols.length));
+        for (const rv of rowsIn) {
+          const injected = db.fail(sql, rv);
+          if (injected) throw Object.assign(new Error(injected.message), { code: injected.code });
+        }
+        const before = staged.length;
+        try {
+          for (const rv of rowsIn) applyRow(m[1], cols, rv, sql);
+        } catch (e) {
+          staged = staged.slice(0, before);
+          throw e;
+        }
+      }
+    };
+    function applyRow(table: string, cols: string[], values: unknown[], sql: string) {
+        const m = [sql, table] as const;
         const row: Row = Object.fromEntries(cols.map((c, i) => [c, values[i]]));
         const key = String(row.id ?? row.key_id ?? row.idempotency_key ?? row.balance_key ?? row.operator_id ?? randomUUID());
         // The signing_keys trigger (migration 0012): key material is write-once.
@@ -93,8 +112,7 @@ class FakePg {
           return;
         }
         staged.push({ table: m[1], key, row });
-      }
-    };
+    }
   }
 }
 
@@ -150,6 +168,36 @@ describe("write-through durability (PostgresPersistence)", () => {
     expect(pg.maxConcurrentTx).toBe(1);
     expect(pg.tables.get("disputes")!.size).toBe(25);
     expect(pg.log.length).toBeLessThan(25); // grouped
+  });
+
+  it("group commit under steady load: callers arriving during a drain share ONE next transaction", async () => {
+    const pg = new FakePg();
+    pg.commitDelayMs = 2; // a real COMMIT waits for fsync
+    const p = new PostgresPersistence(pg.pool());
+    // 50 players × 5 rounds, each round = save then flush (as a request does).
+    await Promise.all(Array.from({ length: 50 }, (_, w) => inTrace(async () => {
+      for (let r = 0; r < 5; r++) { p.save("disputes", { id: `w${w}r${r}` }); await p.flush(); }
+    })));
+    expect(pg.tables.get("disputes")!.size).toBe(250);
+    expect(pg.maxConcurrentTx).toBe(1);
+    // One transaction per caller would be 250 commits; sharing gives about one per round.
+    expect(pg.log.length).toBeLessThanOrEqual(12);
+  });
+
+  it("one multi-row statement per table; a key saved twice keeps its newest snapshot; chunks stay under the bind limit", async () => {
+    const pg = new FakePg();
+    const statements: string[] = [];
+    const fail = pg.fail;
+    pg.fail = (sql, v) => { if (!statements.includes(sql)) statements.push(sql); return fail(sql, v); };
+    const p = new PostgresPersistence(pg.pool());
+    for (let i = 0; i < 1200; i++) p.save("disputes", { id: `d${i}`, status: "open" });
+    p.save("disputes", { id: "d7", status: "resolved" });
+    await p.flush();
+    expect(pg.tables.get("disputes")!.size).toBe(1200);
+    expect(pg.tables.get("disputes")!.get("d7")!.status).toBe("resolved");
+    expect(pg.log).toEqual(["commit 1200"]);
+    const tuples = (sql: string) => sql.split("), (").length;
+    expect(Math.max(...statements.map(tuples))).toBeLessThanOrEqual(500);
   });
 });
 

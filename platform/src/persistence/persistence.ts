@@ -13,9 +13,10 @@ import { metrics } from "../lib/metrics";
  * unconditional.
  *
  * Durability contract (PostgresPersistence.flush):
- *  - ONE flush runs at a time (a promise chain). Concurrent requests group-commit: a
- *    drain takes every queued row in one transaction, so the platform never holds two
- *    write transactions at once and cannot deadlock with itself.
+ *  - ONE drain runs at a time. Concurrent requests group-commit: every caller that
+ *    arrives while a drain runs shares the NEXT drain, which takes every queued row in
+ *    one transaction (multi-row upserts per table). The platform never holds two write
+ *    transactions at once and cannot deadlock with itself.
  *  - flush() resolves only when every row the CALLER queued (rows are tagged with the
  *    request's trace context) is committed. It rejects if any of them failed: a
  *    transient error (connection, deadlock, serialization) re-queues the rows for the
@@ -224,11 +225,38 @@ interface PendingRow {
 }
 
 const QUARANTINE_KEEP = 200;
+/** Postgres caps one statement at 65,535 bind parameters. */
+const MAX_BIND_PARAMS = 60_000;
+const MAX_ROWS_PER_STATEMENT = 500;
 
 export class PostgresPersistence implements Persistence {
   private pending: PendingRow[] = [];
-  /** Serializes drains: one write transaction at a time. */
-  private chain: Promise<void> = Promise.resolve();
+  /** The drain in progress (one write transaction at a time). */
+  private running: Promise<void> | null = null;
+  /** The drain every caller that arrives meanwhile shares: true group commit, one
+   *  transaction (and one fsync) for all of them, not one per caller. */
+  private next: Promise<void> | null = null;
+
+  /**
+   * Resolves when a drain that STARTED after this call has finished, so every row
+   * saved before the call is in it (drain() takes the whole queue).
+   */
+  private scheduleDrain(): Promise<void> {
+    if (this.next) return this.next;
+    const prev = this.running ?? Promise.resolve();
+    const run: Promise<void> = prev
+      .catch(() => {})
+      .then(() => {
+        this.next = null;
+        this.running = run;
+        return this.drain();
+      })
+      .finally(() => {
+        if (this.running === run) this.running = null;
+      });
+    this.next = run;
+    return run;
+  }
   /** Owners whose rows failed, and how. Read (and cleared) by that owner's flush(). */
   private readonly failedOwners = new WeakMap<object, PersistenceError>();
   /** Most recent quarantined rows, newest last. */
@@ -247,9 +275,7 @@ export class PostgresPersistence implements Persistence {
 
   flush(): Promise<void> {
     const owner = currentTrace() ?? null;
-    const run = this.chain.then(() => this.drain());
-    this.chain = run.catch(() => {});
-    return run.then(
+    return this.scheduleDrain().then(
       () => this.raiseFor(owner),
       (err) => {
         // This drain failed transiently; rows from an earlier drain may also be ours.
@@ -281,10 +307,10 @@ export class PostgresPersistence implements Persistence {
     }
     try {
       await client.query("BEGIN");
-      for (const p of batch) {
-        const { text, values } = this.buildUpsert(p.table, p.row);
-        await client.query(text, values);
-      }
+      // One multi-row upsert per table (and chunk), not one round trip per row: a
+      // drain carries every concurrent request's rows, so this is what group commit
+      // costs. No foreign keys exist (0001_core.sql), so table order is free.
+      for (const s of this.statements(batch)) await client.query(s.text, s.values);
       await client.query("COMMIT");
       this.committed(batch);
     } catch (err) {
@@ -366,18 +392,50 @@ export class PostgresPersistence implements Persistence {
     }
   }
 
-  private buildUpsert(table: string, row: Record<string, unknown>): { text: string; values: unknown[] } {
+  /**
+   * The batch as multi-row upserts: grouped per table (first-seen order), one row per
+   * primary key. A key saved twice in one batch keeps what sequential statements would
+   * leave: the LAST snapshot for an upsert, the FIRST for an append-only table (DO
+   * NOTHING). One statement can't touch the same key twice (Postgres 21000), hence
+   * the dedupe. Chunked under Postgres' 65,535 bind-parameter limit.
+   */
+  private statements(batch: PendingRow[]): Array<{ text: string; values: unknown[] }> {
+    const byTable = new Map<string, Map<string, Record<string, unknown>>>();
+    for (const p of batch) {
+      const t = TABLES[p.table];
+      let rows = byTable.get(p.table);
+      if (!rows) byTable.set(p.table, (rows = new Map()));
+      const key = JSON.stringify(t.pk.map((c) => p.row[fieldForColumn(t, c)] ?? null));
+      if (t.appendOnly && rows.has(key)) continue;
+      rows.delete(key); // re-insert so Map order follows the latest save
+      rows.set(key, p.row);
+    }
+    const out: Array<{ text: string; values: unknown[] }> = [];
+    for (const [table, rows] of byTable) {
+      const all = [...rows.values()];
+      const per = Math.max(1, Math.min(MAX_ROWS_PER_STATEMENT, Math.floor(MAX_BIND_PARAMS / TABLES[table].columns.length)));
+      for (let i = 0; i < all.length; i += per) out.push(this.buildUpsert(table, all.slice(i, i + per)));
+    }
+    return out;
+  }
+
+  private buildUpsert(table: string, rowOrRows: Record<string, unknown> | Record<string, unknown>[]): { text: string; values: unknown[] } {
     const t = TABLES[table];
+    const rows = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
     const values: unknown[] = [];
-    const placeholders: string[] = [];
-    t.columns.forEach((col, i) => {
-      const field = fieldForColumn(t, col);
-      let v = row[field];
-      if (v === undefined) v = null;
-      if (t.jsonb.has(col) && v !== null) v = JSON.stringify(v);
-      values.push(v);
-      placeholders.push(t.jsonb.has(col) ? `$${i + 1}::jsonb` : `$${i + 1}`);
-    });
+    const tuples: string[] = [];
+    for (const row of rows) {
+      const placeholders: string[] = [];
+      for (const col of t.columns) {
+        const field = fieldForColumn(t, col);
+        let v = row[field];
+        if (v === undefined) v = null;
+        if (t.jsonb.has(col) && v !== null) v = JSON.stringify(v);
+        values.push(v);
+        placeholders.push(t.jsonb.has(col) ? `$${values.length}::jsonb` : `$${values.length}`);
+      }
+      tuples.push(`(${placeholders.join(", ")})`);
+    }
     const cols = t.columns.join(", ");
     const conflict = t.pk.join(", ");
     let onConflict: string;
@@ -388,7 +446,7 @@ export class PostgresPersistence implements Persistence {
       onConflict = updates ? `DO UPDATE SET ${updates}` : "DO NOTHING";
       if (updates && t.version) onConflict += ` WHERE ${table}.${t.version} < EXCLUDED.${t.version}`;
     }
-    const text = `INSERT INTO ${table} (${cols}) VALUES (${placeholders.join(", ")}) ON CONFLICT (${conflict}) ${onConflict}`;
+    const text = `INSERT INTO ${table} (${cols}) VALUES ${tuples.join(", ")} ON CONFLICT (${conflict}) ${onConflict}`;
     return { text, values };
   }
 
