@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { SESSION_TOKEN_TTL_S } from "../modules/session/session.service";
 import { gameBearerAuth } from "./auth";
 import { envelope, sendDomainError } from "./errors";
 import { checkBody, isIdempotencyKey, SPIN_BODY, BUY_BODY } from "./validation";
@@ -27,7 +28,7 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       const sessionToken = signToken(
         app.container.config.sessionSecret,
         { session_id: session.id, operator_id: session.operator_id },
-        3600
+        SESSION_TOKEN_TTL_S
       );
       return { session_token: sessionToken, ...(await sessionState(session, resumed)) };
     } catch (err) {
@@ -222,6 +223,7 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
   // Round lookup is tenant-scoped to the session's operator.
   app.get("/game/v1/rounds/:ref", { preHandler: bearer }, async (req, reply) => {
     const ref = (req.params as { ref: string }).ref;
+    await app.container.history.ensureRound(ref);
     const round = app.container.ledger.getRound(ref);
     let operatorId: string | null = null;
     try {

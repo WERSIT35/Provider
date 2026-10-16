@@ -78,9 +78,16 @@ export interface SpinOutcome {
  */
 const ENGINE_BALANCE_SENTINEL = Number.MAX_SAFE_INTEGER / 1000;
 
+/** How long a round's outcome stays cached for an idempotent replay (client retries). */
+export const IDEMPOTENCY_CACHE_MS = 15 * 60_000;
+
 export class RoundOrchestrator {
-  /** Outcomes by idempotency key, with the session that played them (see claimKey). */
-  private readonly idem = new Map<string, { sessionId: string; outcome: SpinOutcome }>();
+  /**
+   * Outcomes by idempotency key, with the session that played them (see claimKey), for
+   * IDEMPOTENCY_CACHE_MS: long enough for any client retry. An evicted key is still
+   * single-use: claimKey finds its round or debit (and, with Postgres, keyUsed does).
+   */
+  private readonly idem = new Map<string, { sessionId: string; outcome: SpinOutcome; at: number }>();
   private readonly inflight = new Set<string>();
   /** Sessions with a round in progress (see exclusive). */
   private readonly busySessions = new Set<string>();
@@ -101,9 +108,22 @@ export class RoundOrchestrator {
     /** Jurisdiction rules (round pacing, reality check, feature-buy switch); none = no limits. */
     private readonly regulatory?: RegulatoryService,
     /** Write-ahead intents + a way to commit them (Postgres); none = in-memory only. */
-    private readonly durability?: { intents: RoundIntentStore; commit: () => Promise<void> }
+    private readonly durability?: {
+      intents: RoundIntentStore;
+      commit: () => Promise<void>;
+      /** Postgres mode: has this key ever been used (beyond what memory still holds)? */
+      keyUsed?: (key: string) => Promise<boolean>;
+    }
   ) {
     this.debits = debits ?? new DebitReconciler(wallet, transactions);
+  }
+
+  /** Drop cached outcomes older than the retry window (Map order = insertion = age). */
+  private evictIdem(now = Date.now()): void {
+    for (const [key, v] of this.idem) {
+      if (now - v.at <= IDEMPOTENCY_CACHE_MS) break;
+      this.idem.delete(key);
+    }
   }
 
   /** True while a round for this idempotency key is running (recovery leaves it alone). */
@@ -182,7 +202,13 @@ export class RoundOrchestrator {
     return null;
   }
 
+  /** A key is single-use for good: refuse one Postgres has seen even if memory forgot it. */
+  private async assertKeyUnused(key: string): Promise<void> {
+    if (this.durability?.keyUsed && (await this.durability.keyUsed(key))) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+  }
+
   private async spinOnce(sessionId: string, req: SpinRequest): Promise<SpinOutcome> {
+    await this.assertKeyUnused(req.idempotency_key);
     const session = this.sessions.get(sessionId);
     this.mgmt.assertOperatorActive(session.operator_id);
 
@@ -369,6 +395,7 @@ export class RoundOrchestrator {
   }
 
   private async buyOnce(sessionId: string, req: BuyFeatureRequest): Promise<SpinOutcome> {
+    await this.assertKeyUnused(req.idempotency_key);
     const session = this.sessions.get(sessionId);
     this.mgmt.assertOperatorActive(session.operator_id);
     if (session.free_spins_left > 0) throw new Error("FEATURE_IN_PROGRESS");
@@ -656,7 +683,8 @@ export class RoundOrchestrator {
         : null,
       result: resolved.result
     };
-    this.idem.set(idempotencyKey, { sessionId: session.id, outcome });
+    this.idem.set(idempotencyKey, { sessionId: session.id, outcome, at: Date.now() });
+    this.evictIdem();
     return outcome;
   }
 

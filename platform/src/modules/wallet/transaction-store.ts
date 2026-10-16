@@ -52,15 +52,81 @@ function clone<T>(v: T): T {
 export class InMemoryTransactionStore {
   private readonly entries: TxRecord[] = [];
   private readonly byKey = new Map<string, TxRecord>();
+  /** Older rows pulled from Postgres for a request (bounded; see addCold). */
+  private readonly cold = new Map<string, TxRecord>();
+  private readonly retain: number | null;
+  private readonly coldCapacity: number;
+  private nextSeq = 0;
+  /**
+   * The two operational queues, kept as rows are recorded so they never need a scan of
+   * the whole ledger: unknown debits not yet reversed (by round), and failed win
+   * credits whose round has no confirmed credit yet (by round).
+   */
+  private readonly pendingReversals = new Map<string, TxRecord>();
+  private readonly failedWins = new Map<string, TxRecord[]>();
 
-  constructor(private readonly persistence: Persistence = NullPersistence) {}
+  /**
+   * `retain` (Postgres mode): keep only the newest `retain` rows hot. Without it every
+   * row is kept, exactly as before (in-memory mode).
+   */
+  constructor(
+    private readonly persistence: Persistence = NullPersistence,
+    window: { retain?: number; cold?: number } = {}
+  ) {
+    this.retain = window.retain ?? null;
+    this.coldCapacity = window.cold ?? 15_000;
+  }
 
-  hydrate(rows: TxRecord[]): void {
+  /** Boot: rows oldest first. In windowed mode `nextSeq` continues the ledger past rows not loaded. */
+  hydrate(rows: TxRecord[], nextSeq?: number): void {
     for (const r of rows) {
       this.entries.push(r);
       this.byKey.set(r.idempotency_key, r);
+      this.track(r);
+    }
+    const last = rows[rows.length - 1];
+    this.nextSeq = Math.max(this.nextSeq, nextSeq ?? (last ? last.seq + 1 : 0));
+  }
+
+  /** Boot (windowed): queue rows older than the window (pending reversals, failed credits). */
+  hydrateQueues(rows: TxRecord[]): void {
+    for (const r of rows.sort((a, b) => a.seq - b.seq)) {
+      if (!this.byKey.has(r.idempotency_key)) this.cold.set(r.idempotency_key, r);
+      this.track(r);
     }
   }
+
+  /** Older rows pulled from Postgres for a request (an inspector open, a void, an export). */
+  addCold(rows: TxRecord[]): void {
+    for (const r of rows) {
+      if (this.byKey.has(r.idempotency_key)) continue;
+      this.cold.delete(r.idempotency_key);
+      this.cold.set(r.idempotency_key, r);
+    }
+    while (this.cold.size > this.coldCapacity) this.cold.delete(this.cold.keys().next().value as string);
+  }
+
+  /** Keep the queues current with one new (or hydrated) row. */
+  private track(r: TxRecord): void {
+    if (BET_TX_TYPES.has(r.type) && r.status === "failed" && r.error_code === DEBIT_OUTCOME_UNKNOWN) {
+      if (!this.reversedRounds.has(r.round_ref)) this.pendingReversals.set(r.round_ref, r);
+    } else if (r.type === "ROLLBACK") {
+      this.reversedRounds.add(r.round_ref);
+      this.pendingReversals.delete(r.round_ref);
+    } else if (WIN_TX_TYPES.has(r.type) && r.status === "failed") {
+      if (!this.creditedRounds.has(r.round_ref)) this.failedWins.set(r.round_ref, [...(this.failedWins.get(r.round_ref) ?? []), r]);
+    } else if (WIN_TX_TYPES.has(r.type) && r.status === "confirmed") {
+      this.creditedRounds.add(r.round_ref);
+      this.failedWins.delete(r.round_ref);
+    }
+  }
+  /**
+   * Rounds already reversed / credited, so a LATER failure row for the same round does
+   * not re-enter a queue. Bounded in practice by the queues themselves in windowed mode
+   * (only rounds that ever had an unknown debit or a failed credit are recorded).
+   */
+  private readonly reversedRounds = new BoundedSet(50_000);
+  private readonly creditedRounds = new BoundedSet(50_000);
 
   /** Append a transaction. Idempotent: a repeated idempotency_key returns the stored row. */
   private readonly listeners: Array<(tx: TxRecord) => void> = [];
@@ -78,12 +144,16 @@ export class InMemoryTransactionStore {
       ...input,
       ...(traceId ? { trace_id: traceId } : {}),
       id: randomUUID(),
-      seq: this.entries.length,
+      seq: this.nextSeq++,
       created_at: new Date().toISOString()
     };
     this.entries.push(record);
     this.byKey.set(record.idempotency_key, record);
+    this.track(record);
     this.persistence.save("wallet_transactions", record);
+    if (this.retain !== null && this.entries.length > this.retain * 1.25) {
+      for (const gone of this.entries.splice(0, this.entries.length - this.retain)) this.byKey.delete(gone.idempotency_key);
+    }
     for (const fn of this.listeners) {
       try { fn(clone(record)); } catch { /* an observer must never fail a money move */ }
     }
@@ -91,12 +161,18 @@ export class InMemoryTransactionStore {
   }
 
   getByKey(key: string): TxRecord | null {
-    const r = this.byKey.get(key);
+    const r = this.byKey.get(key) ?? this.cold.get(key);
     return r ? clone(r) : null;
   }
 
+  /** Rows held in memory (hot + cold), oldest first. */
+  private held(): TxRecord[] {
+    if (this.cold.size === 0) return this.entries;
+    return [...this.cold.values(), ...this.entries].sort((a, b) => a.seq - b.seq);
+  }
+
   list(filter: TxFilter = {}): TxRecord[] {
-    return this.entries
+    return this.held()
       .filter((t) => (filter.operator_id ? t.operator_id === filter.operator_id : true))
       .filter((t) => (filter.round_ref ? t.round_ref === filter.round_ref : true))
       .filter((t) => (filter.type ? t.type === filter.type : true))
@@ -106,15 +182,10 @@ export class InMemoryTransactionStore {
 
   /** Rounds whose win credit failed and was never later confirmed (the settlement queue). */
   listFailedSettlements(operatorId?: string): TxRecord[] {
-    const confirmedCreditRounds = new Set(
-      this.entries
-        .filter((t) => WIN_TX_TYPES.has(t.type) && t.status === "confirmed")
-        .map((t) => t.round_ref)
-    );
-    return this.entries
-      .filter((t) => WIN_TX_TYPES.has(t.type) && t.status === "failed")
-      .filter((t) => !confirmedCreditRounds.has(t.round_ref))
+    return [...this.failedWins.values()]
+      .flat()
       .filter((t) => (operatorId ? t.operator_id === operatorId : true))
+      .sort((a, b) => a.seq - b.seq)
       .map(clone);
   }
 
@@ -123,15 +194,33 @@ export class InMemoryTransactionStore {
    * reversal the casino has not yet acknowledged: the debit-reconciliation queue.
    */
   listPendingReversals(operatorId?: string): TxRecord[] {
-    const reversedRounds = new Set(this.entries.filter((t) => t.type === "ROLLBACK").map((t) => t.round_ref));
-    return this.entries
-      .filter((t) => BET_TX_TYPES.has(t.type) && t.status === "failed" && t.error_code === DEBIT_OUTCOME_UNKNOWN)
-      .filter((t) => !reversedRounds.has(t.round_ref))
+    return [...this.pendingReversals.values()]
       .filter((t) => (operatorId ? t.operator_id === operatorId : true))
+      .sort((a, b) => a.seq - b.seq)
       .map(clone);
   }
 
+  /** Total rows in the ledger (not just the ones held in memory). */
   size(): number {
-    return this.entries.length;
+    return this.nextSeq;
+  }
+
+  /** Rows held in memory (hot + cold). */
+  heldCount(): number {
+    return this.entries.length + this.cold.size;
+  }
+}
+
+/** A Set that forgets its oldest members past `capacity`. */
+class BoundedSet {
+  private readonly set = new Set<string>();
+  constructor(private readonly capacity: number) {}
+  has(v: string): boolean {
+    return this.set.has(v);
+  }
+  add(v: string): void {
+    this.set.delete(v);
+    this.set.add(v);
+    if (this.set.size > this.capacity) this.set.delete(this.set.values().next().value as string);
   }
 }
