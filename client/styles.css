@@ -2676,8 +2676,8 @@ pre {
   border: 0;
   /* Relative path (see .bet-stepper) so this matches the URL main.js preloads.
      This panel lives inside a display:none subtree until it is shown, so the
-     browser will not fetch this background on its own — the preload is the
-     only reason it is warm by the time the panel appears. */
+     browser will not fetch this background on its own: main.js loads it right
+     after the reveal (deferredUiAssets) and showFeature() waits for it. */
   background:
     url("assets/symbols/FREESPINS_INFO-removebg-preview.webp") center / contain no-repeat;
   text-align: center;

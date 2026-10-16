@@ -158,6 +158,8 @@ try {
     },
     longTasks: { n: st.long.length, maxMs: st.long.length ? Math.max(...st.long) : 0, totalMs: Math.round(st.long.reduce((s, x) => s + x, 0)) },
     heap: heapSamples,
+    // Every request before playable, in order: what the critical path is made of.
+    requestsBeforePlayableList: all.filter((r) => r.beforeReady).map((r) => `${(r.bytes / 1024).toFixed(1)} KB ${r.url.replace(/^https?:\/\/[^/]+/, "").replace(/\?.*/, "")}`),
     biggestDownloads: all.sort((x, y) => y.bytes - x.bytes).slice(0, 8)
       .map((r) => ({ kb: +(r.bytes / 1024).toFixed(0), path: r.url.replace(/^https?:\/\/[^/]+/, "").replace(/\?.*/, ""), beforePlayable: r.beforeReady }))
   };

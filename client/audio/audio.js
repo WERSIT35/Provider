@@ -637,16 +637,18 @@
   }
   if (typeof root.addEventListener === "function") installAutoUnlock();
 
-  // Fetch and decode every sound as soon as the page loads, not at the first
+  // Fetch and decode every sound as soon as the page has loaded, not at the first
   // gesture: decoding works on a context that has not started yet, so by the
   // time the player taps Spin everything is ready and the very first spin is
-  // fully voiced (the gesture only starts the output, in unlock()).
+  // fully voiced (the gesture only starts the output, in unlock()). Not earlier
+  // (DOMContentLoaded): on a slow phone the sound files then compete with the
+  // board's own images and fonts for the same connections and delay the reveal.
   function preloadOnLoad() {
     if (!ensureContext()) return;
     loadManifest();
   }
   if (root.document) {
-    if (root.document.readyState === "loading") root.document.addEventListener("DOMContentLoaded", preloadOnLoad, { once: true });
+    if (root.document.readyState !== "complete") root.addEventListener("load", preloadOnLoad, { once: true });
     else preloadOnLoad();
   }
 

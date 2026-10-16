@@ -188,7 +188,14 @@ const symbolAssets = {
 // otherwise the browser treats them as different resources and the preload is
 // wasted. See the note on <base href> in index.html.
 const uiAssets = {
-  UI_BACKGROUND: "assets/symbols/Background.webp",
+  UI_BACKGROUND: "assets/symbols/Background.webp"
+};
+
+// Art first shown well after the reveal (the free-spins award screen): loaded right
+// after the game is playable instead of holding a slow phone behind the splash for
+// it. Never painted in progressively either: showFeature() waits for it (capped)
+// before the screen opens, and it is warm long before a first bonus in practice.
+const deferredUiAssets = {
   UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
 };
 
@@ -1317,7 +1324,18 @@ class ReelCanvasRenderer {
     // first time they are shown. Their HTMLImageElements go into `this.images`
     // too, so they stay referenced and cannot be evicted mid-session.
     this.imageLoads = new Map();
-    Object.entries({ ...symbolAssets, ...uiAssets }).forEach(([name, src]) => {
+    this.loadImages({ ...symbolAssets, ...uiAssets });
+  }
+
+  /** The deferred art (deferredUiAssets), once; resolves when all of it is ready to paint. */
+  preloadDeferred() {
+    this.loadImages(deferredUiAssets);
+    return Promise.all(Object.keys(deferredUiAssets).map((name) => this.imageLoads.get(name)));
+  }
+
+  loadImages(entries) {
+    Object.entries(entries).forEach(([name, src]) => {
+      if (this.imageLoads.has(name)) return;
       const image = new Image();
       image.decoding = "async";
       this.imageLoads.set(name, new Promise((resolve) => {
@@ -7025,7 +7043,9 @@ async function buyFreeSpins() {
 
 /** The feature screen (a VxNotify "feature"): resolves when it is dismissed
  *  (a tap anywhere on it, or dismissFeature()). */
-function showFeature(title, copy) {
+async function showFeature(title, copy) {
+  // Its panel art is deferred (deferredUiAssets): never open it half-painted.
+  await Promise.race([reelRenderer.preloadDeferred(), sleep(1500)]);
   return VxNotify.open("feature", { kicker: "Feature", title, body: copy });
 }
 
@@ -7970,6 +7990,7 @@ function runBootLoader() {
 // The hero <img> is currently commented out in index.html, so this is a no-op
 // until the art is re-enabled.
 function loadDeferredAssets() {
+  reelRenderer.preloadDeferred();
   const hero = document.getElementById("stageCharacter");
   if (hero && hero.dataset.src && !document.body.classList.contains("perf-low")) {
     hero.src = hero.dataset.src;
