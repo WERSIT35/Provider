@@ -13,7 +13,7 @@ Measured 2026-10-16 on `main` @ `803d3e2`. No product code was changed. Every nu
 | Locked 60 FPS | **15 FPS avg**, 35% of frames > 50 ms (4× CPU) · 18 FPS unthrottled (software rendering, see limits) | **FAIL** |
 | Zero memory growth | JS heap **+0.77 MB over 475 spins** after forced GC (≈1.7 KB/spin); DOM nodes and listeners flat | **FAIL** (small) |
 | Input response ≤ 100 ms | Tap → spin request **226 ms**; input event p50 **328 ms**, max 1,520 ms (4× CPU) | **FAIL** |
-| Spin p99 ≤ 50 ms at 500 players, excl. casino wallet | In-memory **17.8 ms** · Postgres **83.9 ms** · Postgres + wallet calls **294.6 ms** | **FAIL** (prod config) |
+| Spin p99 ≤ 50 ms at 500 players, excl. casino wallet | In memory **33 ms** · Postgres **133 ms** · Postgres + wallet calls **962 ms** (server core at 97%) | **FAIL** (prod config) |
 | 500 players, no errors | 0 errors in every config (60 s runs) | PASS (short run) |
 | No lost/duplicated rounds on kill -9 | **642 acknowledged rounds lost**, **779 casino debits with no round and no refund**, 0 duplicates | **FAIL** |
 
@@ -28,36 +28,34 @@ Measured 2026-10-16 on `main` @ `803d3e2`. No product code was changed. Every nu
 
 ## Server
 
-Setup: compiled `dist/`, real Fastify app, `info` JSON logging, Ed25519-signed ledger. The server process is pinned to **1 core** (Node is single-threaded). The load generator, Postgres and mock casino share the other core. Players are launched through the signed operator API and spin with real session tokens. "Real" = 2–4 s think time between spins.
+Measured with `npm run bench:load -- --matrix` (raw: `qa/bench/load-matrix.json`). Real Fastify app from `platform/dist`, `info` logging, Ed25519-signed ledger. Players launch through the HMAC operator API and spin with real session tokens; "2–4 s" is a player's think time between spins. The mock casino answers in 0 ms, so wallet latency here is the platform's own cost. **Topology (`BENCH_PIN=1`): core 0 runs the platform alone; core 1 runs the load generator, mock casino and Postgres.** The generator never used more than 24% of its core, so these are server numbers.
 
-| Config | Players | Spins/s | p50 ms | p95 ms | p99 ms | Max ms | Errors | Server RSS |
-|---|---|---|---|---|---|---|---|---|
-| In-memory, sandbox wallet | 50 | 15.6 | 3.5 | 7.2 | 11.0 | 29 | 0 | 110 MB |
-| | 200 | 62.6 | 2.9 | 6.3 | 14.4 | 38 | 0 | 128 MB |
-| | 500 | 155.4 | 2.4 | 7.1 | 17.8 | 47 | 0 | 164 MB |
-| Postgres, sandbox wallet | 500 | 154.5 | 13.8 | 52.4 | 83.9 | 151 | 0 | 210 MB |
-| Postgres + wallet calls (casino answers in 0 ms) | 50 | 15.6 | 11.4 | 23.5 | 40.3 | 72 | 0 | 143 MB |
-| | 200 | 62.0 | 10.9 | 35.4 | 81.3 | 199 | 0 | 212 MB |
-| | 500 | 154.5 | 13.4 | 82.5 | 294.6 | 590 | 0 | 336 MB |
+| Config | Players | Think | Spins/s | p50 ms | p95 ms | p99 ms | Max ms | Errors | Server CPU | Server RSS |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Sandbox wallet, in memory | 50 | 2–4 s | 15.7 | 3.8 | 7.73 | 10.92 | 16.27 | 0 | 15.3% | 110 MB |
+| Sandbox wallet, in memory | 200 | 2–4 s | 62.2 | 3.15 | 7.08 | 10.9 | 28.24 | 0 | 35.3% | 132 MB |
+| Sandbox wallet, in memory | 500 | 2–4 s | 155.4 | 2.66 | 9.69 | 33.02 | 95.53 | 0 | 63.5% | 165 MB |
+| Sandbox wallet, in memory | 100 | no think time | 780 | 116.8 | 161.53 | 233.76 | 8453.31 | 0 | 99.1% | 424 MB |
+| Casino wallet, in memory | 500 | 2–4 s | 153.8 | 8.89 | 101.53 | 343.45 | 1011.67 | 0 | 95.4% | 322 MB |
+| Casino wallet, in memory | 100 | no think time | 273.8 | 327.71 | 513.15 | 816.35 | 8158.23 | 0 | 99.6% | 469 MB |
+| Sandbox wallet + Postgres | 500 | 2–4 s | 153.2 | 17.41 | 82.77 | 132.88 | 246.32 | 0 | 80.8% | 183 MB |
+| Sandbox wallet + Postgres | 100 | no think time | 259.4 | 374.84 | 486.76 | 580.42 | 1082.63 | 0 | 88% | 279 MB |
+| Casino wallet + Postgres | 50 | 2–4 s | 15.4 | 13.33 | 29.63 | 50.18 | 104.4 | 0 | 31.5% | 147 MB |
+| Casino wallet + Postgres | 200 | 2–4 s | 61.1 | 14.62 | 65.63 | 156.01 | 295.55 | 0 | 66.8% | 225 MB |
+| Casino wallet + Postgres | 500 | 2–4 s | 150.8 | 32.27 | 365.63 | 961.79 | 1532.89 | 0 | 96.8% | 318 MB |
 
-**Ceiling (no think time, server core at ~95%):**
-
-| Config | Max spins/s | Bottleneck |
-|---|---|---|
-| In-memory, sandbox wallet | **1,058** | Node CPU |
-| Wallet calls, no DB | **344** | HTTP wallet round-trips on the event loop |
-| Postgres, no wallet calls | **322** | DB writes (Node at 65% CPU) |
+**Read this as:** in memory with the sandbox wallet the server is fast (p99 33 ms at 500 players). The production path (casino wallet + Postgres) is what's slow: at 500 players it already burns 97% of its core, with p99 962 ms. The casino-wallet calls alone take the server from 64% to 95% CPU at the same load.
 
 **Spin path cost (microbenchmarks, 1 core):** engine resolve **0.19 ms**, ledger signature **0.046 ms** per row. The engine isn't the problem. HTTP wallet calls and DB writes are.
 
 **Chaos test:** 200 players with 0.2–0.6 s think time, Postgres + wallet calls, kill -9 three times 20 s apart, restart, 45 s for the debit reconciler, then a comparison of the casino's ledger with ours.
 
-| Check | Result |
-|---|---|
-| Rounds shown to players (HTTP 200) | 14,267 |
-| Of those, missing from our DB | **642** |
-| Casino debits with no round and no rollback | **779** |
-| Duplicate round refs / double debits / double credits | 0 / 0 / 0 |
+| Check | Run 1 | Run 2 (`npm run bench:chaos`) |
+|---|---|---|
+| Rounds shown to players (HTTP 200) | 14,267 | 10,703 |
+| Of those, missing from our DB | **642** | **501** |
+| Casino debits with no round and no rollback | **779** | **835** |
+| Duplicate round refs / double debits / double credits | 0 / 0 / 0 | 0 / 0 / 0 |
 
 ## Client
 

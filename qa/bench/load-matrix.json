@@ -1,6 +1,6 @@
 {
   "name": "load-matrix",
-  "at": "2026-10-16T17:21:14.808Z",
+  "at": "2026-10-16T17:38:10.327Z",
   "node": "v22.22.0",
   "runs": [
     {
@@ -15,21 +15,23 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 992,
-      "spinsPerSec": 15.5,
+      "spins": 993,
+      "spinsPerSec": 15.7,
       "errors": {},
       "latencyMs": {
-        "n": 992,
-        "p50": 4.93,
-        "p95": 9.23,
-        "p99": 15.39,
-        "max": 34.28
+        "n": 993,
+        "p50": 3.8,
+        "p95": 7.73,
+        "p99": 10.92,
+        "max": 16.27
       },
       "serverRssMB": {
-        "start": 84,
-        "max": 107
+        "start": 90,
+        "max": 110
       },
-      "serverCpuPctMax": 15.4
+      "serverCpuPctMax": 15.3,
+      "generatorCpuPct": 2.4,
+      "generatorBound": false
     },
     {
       "label": "sandbox-200",
@@ -43,21 +45,23 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 3971,
+      "spins": 3959,
       "spinsPerSec": 62.2,
       "errors": {},
       "latencyMs": {
-        "n": 3971,
-        "p50": 3.72,
-        "p95": 8.26,
-        "p99": 13.2,
-        "max": 33.61
+        "n": 3959,
+        "p50": 3.15,
+        "p95": 7.08,
+        "p99": 10.9,
+        "max": 28.24
       },
       "serverRssMB": {
-        "start": 92,
-        "max": 129
+        "start": 95,
+        "max": 132
       },
-      "serverCpuPctMax": 38.8
+      "serverCpuPctMax": 35.3,
+      "generatorCpuPct": 6.6,
+      "generatorBound": false
     },
     {
       "label": "sandbox-500",
@@ -71,21 +75,23 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 9930,
-      "spinsPerSec": 155.9,
+      "spins": 9907,
+      "spinsPerSec": 155.4,
       "errors": {},
       "latencyMs": {
-        "n": 9930,
-        "p50": 3.83,
-        "p95": 13.16,
-        "p99": 24.29,
-        "max": 44.97
+        "n": 9907,
+        "p50": 2.66,
+        "p95": 9.69,
+        "p99": 33.02,
+        "max": 95.53
       },
       "serverRssMB": {
-        "start": 90,
-        "max": 158
+        "start": 97,
+        "max": 165
       },
-      "serverCpuPctMax": 64.5
+      "serverCpuPctMax": 63.5,
+      "generatorCpuPct": 9.8,
+      "generatorBound": false
     },
     {
       "label": "sandbox-100-sat",
@@ -99,21 +105,23 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 27589,
-      "spinsPerSec": 458.2,
+      "spins": 46900,
+      "spinsPerSec": 780,
       "errors": {},
       "latencyMs": {
-        "n": 27589,
-        "p50": 189.26,
-        "p95": 332.07,
-        "p99": 467.04,
-        "max": 9776.21
+        "n": 46900,
+        "p50": 116.8,
+        "p95": 161.53,
+        "p99": 233.76,
+        "max": 8453.31
       },
       "serverRssMB": {
-        "start": 106,
-        "max": 290
+        "start": 118,
+        "max": 424
       },
-      "serverCpuPctMax": 87.1
+      "serverCpuPctMax": 99.1,
+      "generatorCpuPct": 23.6,
+      "generatorBound": false
     },
     {
       "label": "webhook-500",
@@ -127,21 +135,23 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 9371,
-      "spinsPerSec": 146.4,
+      "spins": 9820,
+      "spinsPerSec": 153.8,
       "errors": {},
       "latencyMs": {
-        "n": 9371,
-        "p50": 88.32,
-        "p95": 559.61,
-        "p99": 876.17,
-        "max": 1923.79
+        "n": 9820,
+        "p50": 8.89,
+        "p95": 101.53,
+        "p99": 343.45,
+        "max": 1011.67
       },
       "serverRssMB": {
-        "start": 117,
-        "max": 336
+        "start": 124,
+        "max": 322
       },
-      "serverCpuPctMax": 88.2
+      "serverCpuPctMax": 95.4,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
     },
     {
       "label": "webhook-100-sat",
@@ -155,21 +165,23 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 12047,
-      "spinsPerSec": 199.8,
+      "spins": 16476,
+      "spinsPerSec": 273.8,
       "errors": {},
       "latencyMs": {
-        "n": 12047,
-        "p50": 447.26,
-        "p95": 690.36,
-        "p99": 817.85,
-        "max": 11154.87
+        "n": 16476,
+        "p50": 327.71,
+        "p95": 513.15,
+        "p99": 816.35,
+        "max": 8158.23
       },
       "serverRssMB": {
-        "start": 120,
-        "max": 412
+        "start": 129,
+        "max": 469
       },
-      "serverCpuPctMax": 94.5
+      "serverCpuPctMax": 99.6,
+      "generatorCpuPct": 10.5,
+      "generatorBound": false
     },
     {
       "label": "sandbox+pg-500",
@@ -183,21 +195,23 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 8907,
-      "spinsPerSec": 139.6,
+      "spins": 9800,
+      "spinsPerSec": 153.2,
       "errors": {},
       "latencyMs": {
-        "n": 8907,
-        "p50": 200.1,
-        "p95": 1253.48,
-        "p99": 1492.52,
-        "max": 2038.71
+        "n": 9800,
+        "p50": 17.41,
+        "p95": 82.77,
+        "p99": 132.88,
+        "max": 246.32
       },
       "serverRssMB": {
-        "start": 94,
-        "max": 172
+        "start": 116,
+        "max": 183
       },
-      "serverCpuPctMax": 65.6
+      "serverCpuPctMax": 80.8,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
     },
     {
       "label": "sandbox+pg-100-sat",
@@ -211,21 +225,23 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 9014,
-      "spinsPerSec": 149.2,
+      "spins": 15624,
+      "spinsPerSec": 259.4,
       "errors": {},
       "latencyMs": {
-        "n": 9014,
-        "p50": 649.99,
-        "p95": 855.92,
-        "p99": 1013.79,
-        "max": 1599
+        "n": 15624,
+        "p50": 374.84,
+        "p95": 486.76,
+        "p99": 580.42,
+        "max": 1082.63
       },
       "serverRssMB": {
-        "start": 108,
-        "max": 191
+        "start": 117,
+        "max": 279
       },
-      "serverCpuPctMax": 72.3
+      "serverCpuPctMax": 88,
+      "generatorCpuPct": 8.4,
+      "generatorBound": false
     },
     {
       "label": "webhook+pg-50",
@@ -239,21 +255,23 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 991,
-      "spinsPerSec": 15.6,
+      "spins": 978,
+      "spinsPerSec": 15.4,
       "errors": {},
       "latencyMs": {
-        "n": 991,
-        "p50": 14.17,
-        "p95": 37.34,
-        "p99": 62.59,
-        "max": 92.14
+        "n": 978,
+        "p50": 13.33,
+        "p95": 29.63,
+        "p99": 50.18,
+        "max": 104.4
       },
       "serverRssMB": {
-        "start": 96,
-        "max": 127
+        "start": 99,
+        "max": 147
       },
-      "serverCpuPctMax": 32.8
+      "serverCpuPctMax": 31.5,
+      "generatorCpuPct": 1.5,
+      "generatorBound": false
     },
     {
       "label": "webhook+pg-200",
@@ -267,21 +285,23 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 3925,
-      "spinsPerSec": 61.5,
+      "spins": 3900,
+      "spinsPerSec": 61.1,
       "errors": {},
       "latencyMs": {
-        "n": 3925,
-        "p50": 18.49,
-        "p95": 118.72,
-        "p99": 267.47,
-        "max": 542.59
+        "n": 3900,
+        "p50": 14.62,
+        "p95": 65.63,
+        "p99": 156.01,
+        "max": 295.55
       },
       "serverRssMB": {
-        "start": 118,
-        "max": 181
+        "start": 117,
+        "max": 225
       },
-      "serverCpuPctMax": 70.1
+      "serverCpuPctMax": 66.8,
+      "generatorCpuPct": 4.8,
+      "generatorBound": false
     },
     {
       "label": "webhook+pg-500",
@@ -295,21 +315,23 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 8158,
-      "spinsPerSec": 127.4,
+      "spins": 9642,
+      "spinsPerSec": 150.8,
       "errors": {},
       "latencyMs": {
-        "n": 8158,
-        "p50": 414.7,
-        "p95": 2055.01,
-        "p99": 2481.49,
-        "max": 4619.75
+        "n": 9642,
+        "p50": 32.27,
+        "p95": 365.63,
+        "p99": 961.79,
+        "max": 1532.89
       },
       "serverRssMB": {
-        "start": 124,
-        "max": 315
+        "start": 125,
+        "max": 318
       },
-      "serverCpuPctMax": 81.4
+      "serverCpuPctMax": 96.8,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
     }
   ]
 }
