@@ -535,6 +535,7 @@
       </div>
     </div>
 
+    <!-- bundle:start  The platform's /play serves these as ONE file (app.bundle.js, same code, same order: platform/src/http/play-page.ts); static hosting loads them one by one. -->
     <script src="engine/rng.js?v=20260523-1"></script>
     <script src="engine/config.js?v=20261004-1"></script>
     <script src="engine/symbols.js?v=20260523-1"></script>
@@ -553,5 +554,6 @@
     <script src="big-win.js?v=20261001-1"></script>
     <script src="embed-bridge.js?v=20261005-1"></script>
     <script src="main.js?v=20261010-3"></script>
+    <!-- bundle:end -->
   </body>
 </html>

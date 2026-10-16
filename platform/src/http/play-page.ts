@@ -1,5 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import zlib from "node:zlib";
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import { verifyToken } from "../lib/tokens";
 
@@ -42,8 +44,14 @@ const MIME: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
-  ".map": "application/json; charset=utf-8"
+  ".map": "application/json; charset=utf-8",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg"
 };
+
+/** Text worth compressing (images, fonts and audio are compressed formats already). */
+const COMPRESSIBLE = new Set([".html", ".htm", ".js", ".mjs", ".css", ".json", ".svg", ".map"]);
 
 function clientRoot(): string {
   // platform/src/http/*.ts -> ../../../client  (tsx)
@@ -77,9 +85,117 @@ function framingHeaders(app: FastifyInstance, launchToken: unknown): Record<stri
   return { "content-security-policy": `frame-ancestors ${hosts.join(" ")}` };
 }
 
+/**
+ * A served file, kept in memory: its bytes, ETag and (for text) brotli / gzip forms,
+ * made once. Re-validated against the file's mtime at most every RECHECK_MS, so an
+ * edit still shows up (dev) without a stat per request.
+ */
+interface Asset {
+  mtimeMs: number;
+  type: string;
+  ext: string;
+  body: Buffer;
+  etag: string;
+  br?: Buffer;
+  gz?: Buffer;
+  checkedAt: number;
+}
+const RECHECK_MS = 2_000;
+const assets = new Map<string, Asset>();
+
+function makeAsset(ext: string, body: Buffer, mtimeMs: number): Asset {
+  const etag = `"${createHash("sha256").update(body).digest("base64url").slice(0, 22)}"`;
+  return { mtimeMs, type: MIME[ext] ?? "application/octet-stream", ext, body, etag, checkedAt: Date.now() };
+}
+
+/** The file under `root`, or null (missing, a directory, or outside the root). */
+async function loadAsset(root: string, rel: string): Promise<Asset | null> {
+  const target = path.resolve(root, rel);
+  if (target !== root && !target.startsWith(root + path.sep)) return null;
+  const cached = assets.get(target);
+  if (cached && Date.now() - cached.checkedAt < RECHECK_MS) return cached;
+  let stat;
+  try {
+    stat = await fs.stat(target);
+  } catch {
+    assets.delete(target);
+    return null;
+  }
+  if (stat.isDirectory()) return null;
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    cached.checkedAt = Date.now();
+    return cached;
+  }
+  const asset = makeAsset(path.extname(target).toLowerCase(), await fs.readFile(target), stat.mtimeMs);
+  assets.set(target, asset);
+  return asset;
+}
+
+/**
+ * One request for the whole client code instead of 18 (Slow 4G pays ~560 ms per
+ * round trip): the scripts between the `bundle:start` / `bundle:end` markers in
+ * index.html, concatenated in the same order. They are classic scripts sharing one
+ * global scope, so one script with the same code in the same order behaves the same
+ * (`;` between files guards against ASI). The HTML gets one tag, versioned by content.
+ */
+const BUNDLE_BLOCK = /<!-- bundle:start[\s\S]*?<!-- bundle:end -->/;
+const BUNDLE_PATH = "app.bundle.js";
+let bundle: { key: string; asset: Asset; html: Asset } | null = null;
+
+async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; html: Asset } | null> {
+  const html = index.body.toString("utf8");
+  const block = BUNDLE_BLOCK.exec(html);
+  if (!block) return null;
+  const srcs = [...block[0].matchAll(/<script src="([^"?]+)(?:\?[^"]*)?"><\/script>/g)].map((m) => m[1]);
+  const parts = await Promise.all(srcs.map((src) => loadAsset(root, src)));
+  if (parts.some((p) => !p)) return null; // a missing file: serve the page unbundled
+  const key = index.etag + parts.map((p) => (p as Asset).etag).join("");
+  if (bundle?.key !== key) {
+    const code = Buffer.from(parts.map((p) => (p as Asset).body.toString("utf8")).join("\n;\n"));
+    const asset = makeAsset(".js", code, 0);
+    const tag = `<script src="${BUNDLE_PATH}?v=${asset.etag.slice(1, 13)}"></script>`;
+    bundle = { key, asset, html: makeAsset(".html", Buffer.from(html.replace(BUNDLE_BLOCK, tag)), 0) };
+  }
+  return { asset: bundle.asset, html: bundle.html };
+}
+
+/** Pick brotli / gzip from Accept-Encoding; made once per asset, then served from memory. */
+function encodingFor(req: FastifyRequest, asset: Asset): { body: Buffer; encoding: string | null } {
+  if (!COMPRESSIBLE.has(asset.ext) || asset.body.length < 1024) return { body: asset.body, encoding: null };
+  const accept = String(req.headers["accept-encoding"] ?? "");
+  if (/\bbr\b/.test(accept)) {
+    asset.br ??= zlib.brotliCompressSync(asset.body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: asset.body.length } });
+    return { body: asset.br, encoding: "br" };
+  }
+  if (/\bgzip\b/.test(accept)) {
+    asset.gz ??= zlib.gzipSync(asset.body, { level: 9 });
+    return { body: asset.gz, encoding: "gzip" };
+  }
+  return { body: asset.body, encoding: null };
+}
+
+function send(req: FastifyRequest, reply: import("fastify").FastifyReply, asset: Asset, htmlHeaders: Record<string, string>) {
+  const isHtml = asset.ext === ".html" || asset.ext === ".htm";
+  // The HTML shell never caches (a fresh launch token always lands). A URL with a
+  // version (?v=…) never changes: cache it for good. Anything else: an hour, then
+  // revalidate by ETag.
+  const versioned = /[?&]v=/.test(req.raw.url ?? "");
+  const cache = isHtml ? "no-store" : versioned ? "public, max-age=31536000, immutable" : "public, max-age=3600";
+  if (isHtml) reply.headers(htmlHeaders);
+  reply.header("cache-control", cache).header("etag", asset.etag);
+  if (COMPRESSIBLE.has(asset.ext)) reply.header("vary", "accept-encoding");
+  if (!isHtml && req.headers["if-none-match"] === asset.etag) return reply.code(304).send();
+  const { body, encoding } = encodingFor(req, asset);
+  if (encoding) reply.header("content-encoding", encoding);
+  return reply.type(asset.type).send(body);
+}
+
+const notFound = (reply: import("fastify").FastifyReply) => reply.code(404).send({ error: { code: "NOT_FOUND", message: "file not found" } });
+
 async function serveFile(
   root: string,
   rel: string,
+  req: FastifyRequest,
   reply: import("fastify").FastifyReply,
   htmlHeaders: Record<string, string> = {}
 ): Promise<unknown> {
@@ -88,22 +204,15 @@ async function serveFile(
   if (target !== root && !target.startsWith(root + path.sep)) {
     return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "invalid path" } });
   }
-  try {
-    const stat = await fs.stat(target);
-    if (stat.isDirectory()) {
-      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "not a file" } });
-    }
-    const data = await fs.readFile(target);
-    const ext = path.extname(target).toLowerCase();
-    const type = MIME[ext] ?? "application/octet-stream";
-    // The HTML shell should never cache (so a fresh launch token always lands);
-    // hashed/static assets can be short-cached for the session.
-    const cache = ext === ".html" ? "no-store" : "public, max-age=3600";
-    if (ext === ".html" || ext === ".htm") reply.headers(htmlHeaders);
-    return reply.type(type).header("cache-control", cache).send(data);
-  } catch {
-    return reply.code(404).send({ error: { code: "NOT_FOUND", message: "file not found" } });
+  if (rel === "index.html" || rel === BUNDLE_PATH) {
+    const index = await loadAsset(root, "index.html");
+    if (!index) return notFound(reply);
+    const bundled = await bundleFor(root, index);
+    if (rel === BUNDLE_PATH) return bundled ? send(req, reply, bundled.asset, htmlHeaders) : notFound(reply);
+    return send(req, reply, bundled ? bundled.html : index, htmlHeaders);
   }
+  const asset = await loadAsset(root, rel);
+  return asset ? send(req, reply, asset, htmlHeaders) : notFound(reply);
 }
 
 const playPageRoutes: FastifyPluginAsync = async (app) => {
@@ -117,11 +226,11 @@ const playPageRoutes: FastifyPluginAsync = async (app) => {
 
   const launchToken = (req: FastifyRequest): unknown => (req.query as Record<string, unknown> | undefined)?.lt;
 
-  app.get("/play/", async (req, reply) => serveFile(root, "index.html", reply, framingHeaders(app, launchToken(req))));
+  app.get("/play/", async (req, reply) => serveFile(root, "index.html", req, reply, framingHeaders(app, launchToken(req))));
 
   app.get("/play/*", async (req, reply) => {
     const rel = (req.params as { "*": string })["*"] || "index.html";
-    return serveFile(root, rel, reply, framingHeaders(app, launchToken(req)));
+    return serveFile(root, rel, req, reply, framingHeaders(app, launchToken(req)));
   });
 };
 

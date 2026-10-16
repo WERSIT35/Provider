@@ -288,7 +288,7 @@
     return p;
   }
 
-  // The first spin's sounds first, then the rest, then the music.
+  // The first spin's sounds first, then the rest, then the current music mood.
   const FIRST = ["spin_start", "reel_stop", "tick", "ui_click", "explode", "refill", "win_tick", "win_small", "scatter"];
   function preloadAll() {
     const m = state.manifest;
@@ -301,9 +301,12 @@
       const batch = ordered.slice(i, i + 4);
       chain = chain.then(() => Promise.all(batch.flatMap((k) => m.sounds[k].map(loadFile))));
     }
+    // Only the current music mood is preloaded. The others (free spins, big win:
+    // ~1 MB that most sessions never play) load when the game first switches to them
+    // (playMood fetches on demand), not while a slow phone is starting to play.
     chain.then(() => {
       if (m.music && m.music[music.mood]) return loadFile(m.music[music.mood]).then(() => { if (music.wanted) playMood(music.mood); });
-    }).then(() => Promise.all(Object.values(m.music || {}).map(loadFile)))
+    })
       .then(() => (m.ir ? loadFile(m.ir) : null))
       .then((ir) => { if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; } });
   }

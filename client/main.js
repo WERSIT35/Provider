@@ -7801,50 +7801,72 @@ reelRenderer.onAnticipation = (phase, ms) => {
 // through spin(), which stops autoplay (the current round still finishes) and
 // fast-stops — the #28 rule that a press can only ever accelerate.
 // Dragging off the button cancels a press, as with any button.
+//
+// Tap or hold is decided from the input events' OWN timestamps, never from when a
+// timer happens to run: on a busy main thread the 400 ms timer can fire after the
+// finger already lifted (the release is queued behind a long frame), and a tap used
+// to become endless autoplay (1.6% of taps under load, docs/perf-baseline.md). So
+// the timer first yields once (a queued release is dispatched before it decides),
+// and if it still lost the race, the release's timestamp shows a tap: autoplay is
+// cancelled and turbo restored. The round already started is that tap's one spin.
 const SPIN_HOLD_MS = 400;
-const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0 };
+const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0, downAt: 0, turboBefore: false, autoplayByHold: false };
+const yieldTask = (fn) => { const ch = new MessageChannel(); ch.port1.onmessage = fn; ch.port2.postMessage(0); };
 
-function spinHoldStart(source) {
+function spinHoldStart(source, at = performance.now()) {
   if (spinHold.active || el.spinBtn.disabled) return;
   spinHold.active = true;
   spinHold.source = source;
   spinHold.fired = false;
+  spinHold.autoplayByHold = false;
+  spinHold.downAt = at;
   if (isRoundInFlight()) {
     spinHold.fired = true;
     spin();
     return;
   }
-  spinHold.timer = setTimeout(() => {
+  spinHold.timer = setTimeout(() => yieldTask(() => {
+    if (!spinHold.active || spinHold.fired) return; // released meanwhile: a tap
     spinHold.fired = true;
     if (isRoundInFlight()) {
       spin();
       return;
     }
+    spinHold.turboBefore = state.turbo;
+    spinHold.autoplayByHold = true;
     if (!state.turbo) setTurbo(true);
     startAutoplay(Infinity);
-  }, SPIN_HOLD_MS);
+  }), SPIN_HOLD_MS);
 }
 
-function spinHoldEnd(commit) {
+function spinHoldEnd(commit, at = performance.now()) {
   if (!spinHold.active) return;
   clearTimeout(spinHold.timer);
   spinHold.active = false;
   spinHold.endedAt = performance.now();
+  // The hold timer won a race it should have lost: by the events' own clock this
+  // press was a tap. One spin (already running), no autoplay, turbo as it was.
+  if (spinHold.autoplayByHold && at - spinHold.downAt < SPIN_HOLD_MS) {
+    stopAutoplay();
+    if (state.turbo !== spinHold.turboBefore) setTurbo(spinHold.turboBefore);
+    spinHold.autoplayByHold = false;
+    return;
+  }
   if (commit && !spinHold.fired) spin();
 }
 
 el.spinBtn.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && e.button !== 0) return;
-  spinHoldStart("pointer");
+  spinHoldStart("pointer", e.timeStamp);
 });
-el.spinBtn.addEventListener("pointerup", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(true);
+el.spinBtn.addEventListener("pointerup", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(true, e.timeStamp);
 });
-el.spinBtn.addEventListener("pointerleave", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(false);
+el.spinBtn.addEventListener("pointerleave", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(false, e.timeStamp);
 });
-el.spinBtn.addEventListener("pointercancel", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(false);
+el.spinBtn.addEventListener("pointercancel", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(false, e.timeStamp);
 });
 // No long-press context menu on touch: a hold here means autoplay.
 el.spinBtn.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -7864,12 +7886,12 @@ window.addEventListener("keydown", (e) => {
   if (typing && t !== el.spinBtn) return;
   e.preventDefault();
   if (e.repeat) return;
-  spinHoldStart("key");
+  spinHoldStart("key", e.timeStamp);
 });
 window.addEventListener("keyup", (e) => {
   if (e.code !== "Space" || spinHold.source !== "key") return;
   e.preventDefault();
-  spinHoldEnd(true);
+  spinHoldEnd(true, e.timeStamp);
 });
 // Losing focus mid-hold (alt-tab) must not leave a hold armed.
 window.addEventListener("blur", () => spinHoldEnd(false));
