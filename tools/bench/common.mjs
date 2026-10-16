@@ -117,11 +117,15 @@ export async function startServer(env = {}) {
     env: { ...process.env, ...env },
     stdio: ["ignore", "ignore", "pipe", "ipc"]
   });
+  // BENCH_MEM_CGROUP=/sys/fs/cgroup/memory/<group> (cgroup v1, limit set beforehand):
+  // the server runs under a real memory cap, like a 2 GB box.
+  const cg = env.BENCH_MEM_CGROUP ?? process.env.BENCH_MEM_CGROUP;
+  if (cg) writeFileSync(join(cg, "cgroup.procs"), String(child.pid));
   const samples = [];
   let stderr = "";
   child.stderr.on("data", (d) => (stderr += d));
   const cred = await new Promise((res, rej) => {
-    const t = setTimeout(() => rej(new Error(`bench server did not start:\n${stderr}`)), 60_000);
+    const t = setTimeout(() => rej(new Error(`bench server did not start:\n${stderr}`)), Number(env.BENCH_START_TIMEOUT_MS ?? 60_000));
     child.on("message", (m) => {
       if (m.type === "ready") { clearTimeout(t); res(m.cred); }
       if (m.type === "sample") samples.push(m);

@@ -4,6 +4,9 @@ import type { ManagementService } from "../management/management.service";
 import type { SpinResult } from "../engine/engine.types";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
+/** Life of a session token (http/game.routes.ts mints it with this TTL). */
+export const SESSION_TOKEN_TTL_S = 3600;
+
 export interface Session {
   id: string;
   operator_id: string;
@@ -86,6 +89,31 @@ export class SessionService {
 
   hydrate(rows: Session[]): void {
     for (const s of rows) this.sessions.set(s.id, s);
+  }
+
+  /**
+   * Bounded memory: forget sessions nobody can use any more — older than a session
+   * token's life (SESSION_TOKEN_TTL_S) plus a margin, and not holding an unfinished
+   * bonus (those must stay resumable). They stay in Postgres. Returns the evicted ids.
+   */
+  evictIdle(nowMs = Date.now(), maxAgeMs = (SESSION_TOKEN_TTL_S + 300) * 1000): string[] {
+    const gone: string[] = [];
+    for (const [id, s] of this.sessions) {
+      if (s.free_spins_left > 0) continue;
+      if (nowMs - Date.parse(s.created_at) > maxAgeMs) {
+        this.sessions.delete(id);
+        gone.push(id);
+      }
+    }
+    return gone;
+  }
+
+  size(): number {
+    return this.sessions.size;
+  }
+
+  has(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
   }
 
   /**
