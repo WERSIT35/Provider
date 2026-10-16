@@ -5,7 +5,7 @@ import { GENESIS_HASH, hashPayload, chainHash } from "../ledger/hash-chain";
 import type { RoundLedgerService, IntegrityReport } from "../ledger/round-ledger.service";
 import type { InMemoryTransactionStore, TxRecord } from "../wallet/transaction-store";
 import type { InMemoryRoundAdjustmentStore } from "../rounds/round-adjustment.store";
-import type { SessionService } from "../session/session.service";
+import type { Session, SessionService } from "../session/session.service";
 import type { PostgresPersistence } from "../../persistence/persistence";
 import type { SignatureStatus, SignatureSummary } from "../../lib/security/signing-keyring";
 import {
@@ -66,6 +66,11 @@ export interface HistoryReads {
   ensureRound(roundRef: string): Promise<boolean>;
   /** Make a session's reality-check totals complete (all its rounds) before it plays. */
   ensureSessionStats(sessionId: string): Promise<void>;
+  /**
+   * Before a game request: the session itself in memory (an evicted one, or one a
+   * restart did not load, whose token is still valid), with complete totals.
+   */
+  ensureSession(sessionId: string): Promise<void>;
   /** Both ledgers' chains and signatures, end to end. */
   verifyIntegrity(): Promise<IntegrityReport & { checked_at: string; scope: "full" }>;
   /** Has this idempotency key ever made a round, an intent or a money move? */
@@ -89,6 +94,7 @@ export class MemoryHistory implements HistoryReads {
   async transactionsForRound(ref: string) { return this.reporting.transactionsForRound(ref); }
   async ensureRound(ref: string) { return this.ledger.getRound(ref) !== null; }
   async ensureSessionStats() { /* memory mode holds every round */ }
+  async ensureSession() { /* memory mode holds every session */ }
   async keyUsed(key: string) {
     return this.ledger.getRound(`r_${key}`) !== null || this.transactions.getByKey(`${key}:debit`) !== null;
   }
@@ -134,7 +140,9 @@ export class PgHistory implements HistoryReads {
     private readonly rounds: InMemoryRoundRepository,
     private readonly transactions: InMemoryTransactionStore,
     private readonly adjustments: InMemoryRoundAdjustmentStore,
-    private readonly verifier?: { verifyLedger(table: "rounds" | "audit_records", row: { seq: number; chain_hash: string; signature?: string | null; signing_key_id?: string | null }): SignatureStatus }
+    private readonly verifier?: { verifyLedger(table: "rounds" | "audit_records", row: { seq: number; chain_hash: string; signature?: string | null; signing_key_id?: string | null }): SignatureStatus },
+    /** For ensureSession (re-loading a session memory dropped). */
+    private readonly sessions?: SessionService
   ) {}
 
   /** SQL for the rounds that count financially (voided ones excluded), with its params. */
@@ -295,6 +303,31 @@ export class PgHistory implements HistoryReads {
   }
 
   private readonly statsLoading = new Map<string, Promise<void>>();
+  private readonly sessionLoading = new Map<string, Promise<void>>();
+
+  /**
+   * A valid token can name a session memory no longer holds: evicted by age (a
+   * session resumed mid-bonus keeps its old created_at, and its token was issued at
+   * the resume), or not loaded by a restart. Load it from Postgres (one row by key),
+   * shared by concurrent requests, then complete its totals.
+   */
+  ensureSession(sessionId: string): Promise<void> {
+    if (!this.sessions || this.sessions.has(sessionId)) return this.ensureSessionStats(sessionId);
+    let p = this.sessionLoading.get(sessionId);
+    if (!p) {
+      p = this.db
+        .loadRows("player_sessions", { where: "id = $1", params: [sessionId] })
+        .then((rows) => {
+          if (rows.length && !this.sessions!.has(sessionId)) {
+            this.sessions!.hydrate(rows as unknown as Session[]);
+            this.rounds.markStatsPending([sessionId]);
+          }
+        })
+        .finally(() => this.sessionLoading.delete(sessionId));
+      this.sessionLoading.set(sessionId, p);
+    }
+    return p.then(() => this.ensureSessionStats(sessionId));
+  }
 
   /**
    * After a restart a session's totals miss its rounds older than the window. Its first

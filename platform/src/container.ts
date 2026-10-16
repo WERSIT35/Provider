@@ -163,7 +163,7 @@ export function buildContainer(
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
   const history: HistoryReads & Partial<PgHistory> = pg
-    ? new PgHistory(pg, rounds, transactions, adjustments, signingKeyring)
+    ? new PgHistory(pg, rounds, transactions, adjustments, signingKeyring, sessions)
     : new MemoryHistory(reporting, ledger, transactions, sessions);
   const verification = new RoundVerificationService(
     ledger,

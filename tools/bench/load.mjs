@@ -30,7 +30,7 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
     const startedAt = Date.now(); const end = startedAt + duration * 1000;
     const cpu0 = process.cpuUsage();
     const think = () => thinkMin + Math.random() * (thinkMax - thinkMin);
-    const player = async (tok) => {
+    const player = async (tok, n) => {
       if (thinkMax > 0) await sleep(Math.random() * thinkMax); // stagger
       while (Date.now() < end) {
         const t0 = performance.now();
@@ -39,13 +39,19 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
             headers: { authorization: `Bearer ${tok}`, "content-type": "application/json", "idempotency-key": randomUUID() } });
           const j = r.json;
           if (r.status === 200) ok++;
-          else errors[`${r.status}:${j?.error?.code}`] = (errors[`${r.status}:${j?.error?.code}`] ?? 0) + 1;
+          else {
+            errors[`${r.status}:${j?.error?.code}`] = (errors[`${r.status}:${j?.error?.code}`] ?? 0) + 1;
+            // What a real client does on a long run: the casino relaunches an expired
+            // session (tokens live 1 h); the player acknowledges a reality check.
+            if (r.status === 401) tok = await openSession(srv.cred, await launchPlayer(srv.cred, `p${n}`));
+            else if (j?.error?.code === "REALITY_CHECK_REQUIRED") await request(`${base}/game/v1/reality-check/ack`, { method: "POST", headers: { authorization: `Bearer ${tok}` } });
+          }
         } catch (e) { errors[`net:${e.cause?.code ?? e.message}`] = (errors[`net:${e.cause?.code ?? e.message}`] ?? 0) + 1; }
         lat.push(performance.now() - t0);
         if (thinkMax > 0) await sleep(think());
       }
     };
-    await Promise.all(tokens.map(player));
+    await Promise.all(tokens.map((t, n) => player(t, n)));
     const secs = (Date.now() - startedAt) / 1000;
     const cpu = process.cpuUsage(cpu0);
     // The generator's own CPU: near a full core, the ceiling measured is the generator's, not the server's.

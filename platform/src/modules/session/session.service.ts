@@ -112,6 +112,10 @@ export class SessionService {
     return this.sessions.size;
   }
 
+  has(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   /**
    * Operator-side: produce a signed launch token after validating access.
    * Defaults to a short 60s single-use handoff (production semantics); demo

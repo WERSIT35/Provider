@@ -164,4 +164,17 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     expect(res.statusCode, res.body).toBe(200);
     expect(c.roundsRepo.sessionStats(sessionId).rounds).toBe(61);
   });
+
+  it("a session evicted from memory while its token is still valid comes back on its next request", async () => {
+    // A bonus resumed after an hour keeps the session's old created_at, and the token
+    // issued at the resume outlives the age-based eviction (seen in the 2 h soak).
+    const sessionId = (await persistence.loadRows("rounds", { where: "operator_player_id = $1", params: ["p3"], limit: 1 }))[0].session_id as string;
+    expect(c.sessions.evictIdle(Date.now() + 2 * 3600_000)).toContain(sessionId);
+    expect(c.sessions.has(sessionId)).toBe(false);
+    const status = await app.inject({ method: "GET", url: "/game/v1/reality-check", headers: { authorization: `Bearer ${tokens.p3}` } });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json().stats).toMatchObject({ rounds: 61 });
+    const res = await spin(tokens.p3, randomUUID());
+    expect(res.statusCode, res.body).toBe(200);
+  });
 });
