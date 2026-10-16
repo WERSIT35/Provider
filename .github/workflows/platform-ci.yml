@@ -89,9 +89,12 @@ jobs:
       - run: |
           set -o pipefail
           npm run verify:browser 2>&1 | tee "$RUNNER_TEMP/verify-browser.log"
-      - name: Failure tail as annotations
+      # GitHub keeps 10 annotations per step: post the failing lines, then the last two.
+      - name: Failure lines as annotations
         if: failure()
-        run: tail -n 40 "$RUNNER_TEMP/verify-browser.log" | sed 's/^/::error title=verify:browser::/'
+        run: |
+          grep -nE "FAIL|Error|not ok|timed out|Timeout" "$RUNNER_TEMP/verify-browser.log" | head -n 8 | sed 's/^/::error title=verify:browser::/'
+          tail -n 2 "$RUNNER_TEMP/verify-browser.log" | sed 's/^/::error title=verify:browser (end)::/'
       - name: Upload screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4
