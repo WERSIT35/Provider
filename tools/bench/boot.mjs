@@ -1,18 +1,20 @@
 // Boot time against a large ledger (Phase 2 gate: 1M rounds, boot < 10 s).
 //
 //   node tools/bench/boot.mjs --seed 1000000 [--players 300]   wipe the bench DB, fill it with N real rounds
-//   node tools/bench/boot.mjs [--runs 3]                         time restarts against what is there
+//   node tools/bench/boot.mjs [--runs 3] [--wallet webhook]       time restarts against what is there
 //
 // Seeding plays real rounds through the real API (signed launch, session, spin):
 // every row is chained, signed and written through, exactly as in production. A boot
 // is timed from process spawn to "listening" (migrations + hydrate included), then one
-// spin proves the restarted server serves and continues the chain. Needs
+// spin proves the restarted server serves and continues the chain. Seeding uses the
+// sandbox wallet (fastest); restarts boot as production by default (--wallet webhook:
+// the casino holds the money, so the sandbox wallet's own tables are never loaded). Needs
 // BENCH_DATABASE_URL. Writes qa/bench/boot.json.
 import { randomUUID } from "node:crypto";
-import { args, benchDbUrl, launchPlayer, openSession, queryBenchDb, request, resetBenchDb, sleep, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
+import { args, benchDbUrl, launchPlayer, openSession, queryBenchDb, request, resetBenchDb, sleep, startMockCasino, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
 
 pinGeneratorSide();
-const a = args({ seed: 0, players: 300, runs: 3 });
+const a = args({ seed: 0, players: 300, runs: 3, wallet: "webhook" });
 const db = benchDbUrl();
 if (!db) { console.error("boot needs BENCH_DATABASE_URL (see tools/bench/README.md)"); process.exit(2); }
 const count = async (table) => Number((await queryBenchDb(db, `SELECT count(*)::bigint AS n FROM ${table}`))[0].n);
@@ -59,9 +61,10 @@ const rounds = await count("rounds");
 const txs = await count("wallet_transactions");
 const audits = await count("audit_records");
 const boots = [];
+const casino = a.wallet === "webhook" ? await startMockCasino() : null;
 for (let i = 0; i < a.runs; i++) {
   const t0 = performance.now();
-  const srv = await startServer({ DATABASE_URL: db, BENCH_RESUME: "1", BENCH_START_TIMEOUT_MS: "600000" });
+  const srv = await startServer({ DATABASE_URL: db, BENCH_RESUME: "1", BENCH_WALLET: a.wallet, BENCH_START_TIMEOUT_MS: "600000" });
   const bootMs = Math.round(performance.now() - t0);
   try {
     await sleep(2500); // one RSS sample after boot
@@ -76,7 +79,8 @@ for (let i = 0; i < a.runs; i++) {
     await sleep(1000);
   }
 }
-const result = { rounds, walletTransactions: txs, auditRecords: audits, boots, bootMsMax: Math.max(...boots.map((b) => b.bootMs)), pass: boots.every((b) => b.bootMs < 10_000 && b.firstSpin === 200) };
+casino?.kill();
+const result = { wallet: a.wallet, rounds, walletTransactions: txs, auditRecords: audits, boots, bootMsMax: Math.max(...boots.map((b) => b.bootMs)), pass: boots.every((b) => b.bootMs < 10_000 && b.firstSpin === 200) };
 console.log(result);
 console.log("→", writeResult("boot", result));
 process.exit(result.pass ? 0 : 1);

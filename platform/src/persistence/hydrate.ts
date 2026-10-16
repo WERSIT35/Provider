@@ -100,8 +100,9 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
     const r = (await p.query(`SELECT seq, chain_hash FROM ${table} ORDER BY seq DESC LIMIT 1`)).rows[0];
     return r ? { nextSeq: Number(r.seq) + 1, lastHash: String(r.chain_hash) } : undefined;
   };
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, adjustments, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns, signingKeys] =
-    await Promise.all([
+  const hasSandbox = sandboxOf(c.wallet) !== null;
+  // Config tables and ledger windows load concurrently.
+  const config = Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
       p.loadTable("operator_api_credentials"),
@@ -111,15 +112,17 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
       p.loadTable("operator_webhooks"),
       p.loadTable("round_adjustments"),
       p.loadTable("disputes"),
-      p.loadTable("wallet_balances"),
-      p.loadTable("wallet_applied"),
-      p.loadTable("wallet_debit_refs"),
+      // The provider-held sandbox wallet (local/test only): production has none, and its
+      // applied-keys table grows with every round.
+      hasSandbox ? p.loadTable("wallet_balances") : [],
+      hasSandbox ? p.loadTable("wallet_applied") : [],
+      hasSandbox ? p.loadTable("wallet_debit_refs") : [],
       p.loadTable("admin_accounts"),
       p.loadTable("campaigns"),
       p.loadTable("player_campaigns"),
       p.loadTable("signing_keys")
     ]);
-  const [roundTip, auditTip, rounds, audit, txs, txTip, queueRows, sessions, intents] = await Promise.all([
+  const ledger = Promise.all([
     tipOf("rounds"),
     tipOf("audit_records"),
     p.loadRows("rounds", { newestFirst: true, limit: win.rounds }),
@@ -134,6 +137,8 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
     p.loadRows("player_sessions", { where: `created_at > now() - make_interval(secs => $1) OR free_spins_left > 0`, params: [SESSION_TOKEN_TTL_S + 300] }),
     p.loadRows("round_intents", { where: "status IN ('open', 'committed')" })
   ]);
+  const [[operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, adjustments, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns, signingKeys], [roundTip, auditTip, rounds, audit, txs, txTip, queueRows, sessions, intents]] =
+    await Promise.all([config, ledger]);
 
   c.signingKeyring.hydrate(signingKeys as unknown as SigningKeyRecord[]);
   c.mgmt.hydrate({
@@ -156,16 +161,10 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
   c.campaigns.hydrate({ campaigns: campaigns as unknown as Campaign[], grants: playerCampaigns as unknown as PlayerCampaign[] });
   c.intents.hydrate(intents as unknown as RoundIntent[]);
 
-  // Reality-check totals of the sessions in memory: from ALL their rounds, not only the
-  // ones in the window (overwrites what hydrating the window counted).
-  const ids = (sessions as unknown as Session[]).map((s) => s.id);
-  if (ids.length) {
-    const stats = await p.query(
-      "SELECT session_id, count(*)::bigint AS rounds, coalesce(sum(bet_charged),0) AS wagered, coalesce(sum(total_win),0) AS won FROM rounds WHERE session_id = ANY($1) GROUP BY session_id",
-      [ids]
-    );
-    c.roundsRepo.seedSessionStats(stats.rows.map((r) => ({ session_id: String(r.session_id), rounds: Number(r.rounds), wagered: Number(r.wagered), won: Number(r.won) })));
-  }
+  // Reality-check totals of the sessions in memory come from ALL their rounds, not only
+  // the window: loaded per session on its next request (history.ensureSessionStats).
+  // Aggregating every live session's rounds here was the slowest part of a restart.
+  c.roundsRepo.markStatsPending((sessions as unknown as Session[]).map((s) => s.id));
 
   const sandbox = sandboxOf(c.wallet);
   if (sandbox) {

@@ -142,7 +142,23 @@ export class InMemoryRoundRepository implements RoundRepository {
 
   /** Seed the reality-check totals of sessions whose early rounds are not in the window. */
   seedSessionStats(rows: Array<{ session_id: string } & SessionStatsAcc>): void {
-    for (const r of rows) this.stats.set(r.session_id, { rounds: r.rounds, wagered: r.wagered, won: r.won });
+    for (const r of rows) {
+      this.stats.set(r.session_id, { rounds: r.rounds, wagered: r.wagered, won: r.won });
+      this.statsPending.delete(r.session_id);
+    }
+  }
+
+  /**
+   * Boot (windowed): these sessions' totals still need their rounds older than the
+   * window. Loaded on the session's next request (history.ensureSessionStats), not at
+   * boot: aggregating every live session's rounds is the slowest part of a restart.
+   */
+  private readonly statsPending = new Set<string>();
+  markStatsPending(sessionIds: string[]): void {
+    for (const id of sessionIds) this.statsPending.add(id);
+  }
+  statsArePending(sessionId: string): boolean {
+    return this.statsPending.has(sessionId);
   }
 
   /** Rounds, money wagered and money won in one session so far. */
@@ -154,6 +170,7 @@ export class InMemoryRoundRepository implements RoundRepository {
   /** Forget an evicted session's running totals. */
   dropSessionStats(sessionId: string): void {
     this.stats.delete(sessionId);
+    this.statsPending.delete(sessionId);
   }
 
   private count(r: RoundRecord): void {

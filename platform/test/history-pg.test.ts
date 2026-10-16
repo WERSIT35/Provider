@@ -39,6 +39,7 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
   let app: FastifyInstance;
   let opId: string;
   const keys: string[] = [];
+  const tokens: Record<string, string> = {};
 
   async function boot(resume: boolean) {
     persistence = new PostgresPersistence(pool);
@@ -73,6 +74,7 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     await persistence.flush();
     for (const p of ["p1", "p2", "p3"]) {
       const tok = await sessionFor(p);
+      tokens[p] = tok;
       for (let i = 0; i < 60; i++) {
         const k = randomUUID();
         const res = await spin(tok, k);
@@ -148,5 +150,18 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     const replay = await spin(tok, keys[7]);
     expect(replay.statusCode).toBe(409);
     expect(replay.json().error.code).toBe("IDEMPOTENCY_KEY_CONFLICT");
+  });
+
+  it("after a restart a session's reality-check totals cover ALL its rounds, loaded on its first request", async () => {
+    // p3's session survived the restart above; its 60 rounds are mostly outside the window.
+    const sessionId = (await persistence.loadRows("rounds", { where: "operator_player_id = $1", params: ["p3"], limit: 1 }))[0].session_id as string;
+    expect(c.roundsRepo.statsArePending(sessionId)).toBe(true); // boot did not aggregate it
+    const status = await app.inject({ method: "GET", url: "/game/v1/reality-check", headers: { authorization: `Bearer ${tokens.p3}` } });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json().stats).toMatchObject({ rounds: 60, wagered: 60 });
+    expect(c.roundsRepo.statsArePending(sessionId)).toBe(false);
+    const res = await spin(tokens.p3, randomUUID());
+    expect(res.statusCode, res.body).toBe(200);
+    expect(c.roundsRepo.sessionStats(sessionId).rounds).toBe(61);
   });
 });

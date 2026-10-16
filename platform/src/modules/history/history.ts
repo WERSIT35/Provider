@@ -64,6 +64,8 @@ export interface HistoryReads {
   transactionsForRound(roundRef: string): Promise<TxRecord[]>;
   /** Make one round (and what its views read) available to the synchronous services. False = no such round. */
   ensureRound(roundRef: string): Promise<boolean>;
+  /** Make a session's reality-check totals complete (all its rounds) before it plays. */
+  ensureSessionStats(sessionId: string): Promise<void>;
   /** Both ledgers' chains and signatures, end to end. */
   verifyIntegrity(): Promise<IntegrityReport & { checked_at: string; scope: "full" }>;
   /** Has this idempotency key ever made a round, an intent or a money move? */
@@ -86,6 +88,7 @@ export class MemoryHistory implements HistoryReads {
   async reconcile(op?: string, range: DateRange = {}) { return this.reporting.reconcile(op, range); }
   async transactionsForRound(ref: string) { return this.reporting.transactionsForRound(ref); }
   async ensureRound(ref: string) { return this.ledger.getRound(ref) !== null; }
+  async ensureSessionStats() { /* memory mode holds every round */ }
   async keyUsed(key: string) {
     return this.ledger.getRound(`r_${key}`) !== null || this.transactions.getByKey(`${key}:debit`) !== null;
   }
@@ -289,6 +292,29 @@ export class PgHistory implements HistoryReads {
 
   async transactionsForRound(ref: string): Promise<TxRecord[]> {
     return (await this.db.loadRows("wallet_transactions", { where: "round_ref = $1", params: [ref] })) as unknown as TxRecord[];
+  }
+
+  private readonly statsLoading = new Map<string, Promise<void>>();
+
+  /**
+   * After a restart a session's totals miss its rounds older than the window. Its first
+   * request loads them (one index-only aggregate), shared by concurrent requests and
+   * before any round of the session starts, so no uncommitted round is overwritten.
+   */
+  ensureSessionStats(sessionId: string): Promise<void> {
+    if (!this.rounds.statsArePending(sessionId)) return Promise.resolve();
+    let p = this.statsLoading.get(sessionId);
+    if (!p) {
+      p = this.db
+        .query("SELECT count(*)::bigint AS rounds, coalesce(sum(bet_charged),0) AS wagered, coalesce(sum(total_win),0) AS won FROM rounds WHERE session_id = $1", [sessionId])
+        .then((r) => {
+          const row = r.rows[0] as { rounds: string; wagered: string; won: string };
+          this.rounds.seedSessionStats([{ session_id: sessionId, rounds: Number(row.rounds), wagered: Number(row.wagered), won: Number(row.won) }]);
+        })
+        .finally(() => this.statsLoading.delete(sessionId));
+      this.statsLoading.set(sessionId, p);
+    }
+    return p;
   }
 
   async ensureRound(ref: string): Promise<boolean> {

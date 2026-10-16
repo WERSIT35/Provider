@@ -82,5 +82,11 @@ export function gameBearerAuth(container: Container): preHandlerHookHandler {
     if (!container.rateLimiter.allow(`sess:${req.sessionId}`)) {
       return deny(reply, req, 429, "RATE_LIMITED", "rate limit exceeded");
     }
+    try {
+      await container.history.ensureSessionStats(req.sessionId as string);
+    } catch {
+      reply.header("retry-after", "1");
+      return deny(reply, req, 503, "PERSISTENCE_UNAVAILABLE", "session history unavailable, retry");
+    }
   };
 }

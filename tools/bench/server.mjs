@@ -66,6 +66,15 @@ if (DB) {
 let cred;
 if (RESUME) {
   cred = JSON.parse(readFileSync(CRED_FILE, "utf8"));
+  // A database seeded through the sandbox wallet, booted as production (casino wallet):
+  // point the bench operator at the mock casino.
+  if (WALLET === "webhook") {
+    const op = container.mgmt.listOperators().find((o) => o.slug === "bench");
+    if (op && !container.mgmt.getWebhookConfig(op.id)) {
+      container.mgmt.setWebhook(op.id, process.env.BENCH_CASINO_URL ?? "http://127.0.0.1:8091/wallet");
+      if (persistence) await persistence.flush();
+    }
+  }
 } else {
   const op = container.mgmt.createOperator({ name: "Bench Casino", slug: "bench", default_currency: "GEL" });
   container.mgmt.setOperatorStatus(op.id, "live");
