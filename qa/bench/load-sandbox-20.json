@@ -1,0 +1,35 @@
+{
+  "name": "load-sandbox-20",
+  "at": "2026-10-16T15:12:10.950Z",
+  "node": "v22.22.0",
+  "runs": [
+    {
+      "label": "sandbox-20",
+      "config": {
+        "players": 20,
+        "durationS": 8,
+        "thinkMs": [
+          200,
+          400
+        ],
+        "wallet": "sandbox",
+        "postgres": false
+      },
+      "spins": 524,
+      "spinsPerSec": 63,
+      "errors": {},
+      "latencyMs": {
+        "n": 524,
+        "p50": 4.35,
+        "p95": 8.88,
+        "p99": 14.05,
+        "max": 18.26
+      },
+      "serverRssMB": {
+        "start": 91,
+        "max": 94
+      },
+      "serverCpuPctMax": 30.5
+    }
+  ]
+}

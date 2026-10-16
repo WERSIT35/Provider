@@ -1,0 +1,337 @@
+{
+  "name": "load-matrix",
+  "at": "2026-10-16T17:38:10.327Z",
+  "node": "v22.22.0",
+  "runs": [
+    {
+      "label": "sandbox-50",
+      "config": {
+        "players": 50,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "sandbox",
+        "postgres": false
+      },
+      "spins": 993,
+      "spinsPerSec": 15.7,
+      "errors": {},
+      "latencyMs": {
+        "n": 993,
+        "p50": 3.8,
+        "p95": 7.73,
+        "p99": 10.92,
+        "max": 16.27
+      },
+      "serverRssMB": {
+        "start": 90,
+        "max": 110
+      },
+      "serverCpuPctMax": 15.3,
+      "generatorCpuPct": 2.4,
+      "generatorBound": false
+    },
+    {
+      "label": "sandbox-200",
+      "config": {
+        "players": 200,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "sandbox",
+        "postgres": false
+      },
+      "spins": 3959,
+      "spinsPerSec": 62.2,
+      "errors": {},
+      "latencyMs": {
+        "n": 3959,
+        "p50": 3.15,
+        "p95": 7.08,
+        "p99": 10.9,
+        "max": 28.24
+      },
+      "serverRssMB": {
+        "start": 95,
+        "max": 132
+      },
+      "serverCpuPctMax": 35.3,
+      "generatorCpuPct": 6.6,
+      "generatorBound": false
+    },
+    {
+      "label": "sandbox-500",
+      "config": {
+        "players": 500,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "sandbox",
+        "postgres": false
+      },
+      "spins": 9907,
+      "spinsPerSec": 155.4,
+      "errors": {},
+      "latencyMs": {
+        "n": 9907,
+        "p50": 2.66,
+        "p95": 9.69,
+        "p99": 33.02,
+        "max": 95.53
+      },
+      "serverRssMB": {
+        "start": 97,
+        "max": 165
+      },
+      "serverCpuPctMax": 63.5,
+      "generatorCpuPct": 9.8,
+      "generatorBound": false
+    },
+    {
+      "label": "sandbox-100-sat",
+      "config": {
+        "players": 100,
+        "durationS": 60,
+        "thinkMs": [
+          0,
+          0
+        ],
+        "wallet": "sandbox",
+        "postgres": false
+      },
+      "spins": 46900,
+      "spinsPerSec": 780,
+      "errors": {},
+      "latencyMs": {
+        "n": 46900,
+        "p50": 116.8,
+        "p95": 161.53,
+        "p99": 233.76,
+        "max": 8453.31
+      },
+      "serverRssMB": {
+        "start": 118,
+        "max": 424
+      },
+      "serverCpuPctMax": 99.1,
+      "generatorCpuPct": 23.6,
+      "generatorBound": false
+    },
+    {
+      "label": "webhook-500",
+      "config": {
+        "players": 500,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "webhook",
+        "postgres": false
+      },
+      "spins": 9820,
+      "spinsPerSec": 153.8,
+      "errors": {},
+      "latencyMs": {
+        "n": 9820,
+        "p50": 8.89,
+        "p95": 101.53,
+        "p99": 343.45,
+        "max": 1011.67
+      },
+      "serverRssMB": {
+        "start": 124,
+        "max": 322
+      },
+      "serverCpuPctMax": 95.4,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
+    },
+    {
+      "label": "webhook-100-sat",
+      "config": {
+        "players": 100,
+        "durationS": 60,
+        "thinkMs": [
+          0,
+          0
+        ],
+        "wallet": "webhook",
+        "postgres": false
+      },
+      "spins": 16476,
+      "spinsPerSec": 273.8,
+      "errors": {},
+      "latencyMs": {
+        "n": 16476,
+        "p50": 327.71,
+        "p95": 513.15,
+        "p99": 816.35,
+        "max": 8158.23
+      },
+      "serverRssMB": {
+        "start": 129,
+        "max": 469
+      },
+      "serverCpuPctMax": 99.6,
+      "generatorCpuPct": 10.5,
+      "generatorBound": false
+    },
+    {
+      "label": "sandbox+pg-500",
+      "config": {
+        "players": 500,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "sandbox",
+        "postgres": true
+      },
+      "spins": 9800,
+      "spinsPerSec": 153.2,
+      "errors": {},
+      "latencyMs": {
+        "n": 9800,
+        "p50": 17.41,
+        "p95": 82.77,
+        "p99": 132.88,
+        "max": 246.32
+      },
+      "serverRssMB": {
+        "start": 116,
+        "max": 183
+      },
+      "serverCpuPctMax": 80.8,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
+    },
+    {
+      "label": "sandbox+pg-100-sat",
+      "config": {
+        "players": 100,
+        "durationS": 60,
+        "thinkMs": [
+          0,
+          0
+        ],
+        "wallet": "sandbox",
+        "postgres": true
+      },
+      "spins": 15624,
+      "spinsPerSec": 259.4,
+      "errors": {},
+      "latencyMs": {
+        "n": 15624,
+        "p50": 374.84,
+        "p95": 486.76,
+        "p99": 580.42,
+        "max": 1082.63
+      },
+      "serverRssMB": {
+        "start": 117,
+        "max": 279
+      },
+      "serverCpuPctMax": 88,
+      "generatorCpuPct": 8.4,
+      "generatorBound": false
+    },
+    {
+      "label": "webhook+pg-50",
+      "config": {
+        "players": 50,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "webhook",
+        "postgres": true
+      },
+      "spins": 978,
+      "spinsPerSec": 15.4,
+      "errors": {},
+      "latencyMs": {
+        "n": 978,
+        "p50": 13.33,
+        "p95": 29.63,
+        "p99": 50.18,
+        "max": 104.4
+      },
+      "serverRssMB": {
+        "start": 99,
+        "max": 147
+      },
+      "serverCpuPctMax": 31.5,
+      "generatorCpuPct": 1.5,
+      "generatorBound": false
+    },
+    {
+      "label": "webhook+pg-200",
+      "config": {
+        "players": 200,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "webhook",
+        "postgres": true
+      },
+      "spins": 3900,
+      "spinsPerSec": 61.1,
+      "errors": {},
+      "latencyMs": {
+        "n": 3900,
+        "p50": 14.62,
+        "p95": 65.63,
+        "p99": 156.01,
+        "max": 295.55
+      },
+      "serverRssMB": {
+        "start": 117,
+        "max": 225
+      },
+      "serverCpuPctMax": 66.8,
+      "generatorCpuPct": 4.8,
+      "generatorBound": false
+    },
+    {
+      "label": "webhook+pg-500",
+      "config": {
+        "players": 500,
+        "durationS": 60,
+        "thinkMs": [
+          2000,
+          4000
+        ],
+        "wallet": "webhook",
+        "postgres": true
+      },
+      "spins": 9642,
+      "spinsPerSec": 150.8,
+      "errors": {},
+      "latencyMs": {
+        "n": 9642,
+        "p50": 32.27,
+        "p95": 365.63,
+        "p99": 961.79,
+        "max": 1532.89
+      },
+      "serverRssMB": {
+        "start": 125,
+        "max": 318
+      },
+      "serverCpuPctMax": 96.8,
+      "generatorCpuPct": 8.9,
+      "generatorBound": false
+    }
+  ]
+}

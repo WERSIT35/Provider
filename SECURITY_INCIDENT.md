@@ -1,5 +1,7 @@
 # Security: API Token Exposure Incident
 
+> **Status 2026-10-16: assessed, closed.** Both leaked tokens expired on 2026-06-05 and were signed with the public dev default secret, which staging, production and (since this date) sandbox refuse to boot with. Full-history audit and rotation steps: [docs/secrets-rotation.md](docs/secrets-rotation.md).
+
 ## What Happened
 The file `.claude/settings.local.json` was committed to the public repository containing:
 - **Hardcoded Bearer tokens** for API authentication

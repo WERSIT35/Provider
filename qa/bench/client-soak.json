@@ -1,0 +1,132 @@
+{
+  "name": "client-soak",
+  "at": "2026-10-16T16:25:35.811Z",
+  "node": "v22.22.0",
+  "mode": "soak",
+  "throttling": "none",
+  "chrome": "HeadlessChrome/153.0.8010.0",
+  "tier": "perf-low perf-handheld",
+  "spins": 500,
+  "spinsRequested": 500,
+  "stoppedByTimeBudget": false,
+  "roundMs": {
+    "p50": 1234,
+    "max": 99520
+  },
+  "tapsThatDidNotStartASpin": 0,
+  "tapsReadAsHoldStartingAutoplay": 8,
+  "timeToPlayableMs": 509,
+  "fcpMs": 224,
+  "domContentLoadedMs": 275,
+  "loadEventMs": 413,
+  "requestsBeforePlayable": 47,
+  "kbBeforePlayable": 1027,
+  "kbPerSession": 4883,
+  "kbByType": {
+    "Document": 33,
+    "Image": 268,
+    "Font": 76,
+    "Stylesheet": 122,
+    "Script": 494,
+    "Fetch": 3890
+  },
+  "firstTapToSpinRequestMs": 194,
+  "inputEventMs": {
+    "n": 1523,
+    "p50": 280,
+    "max": 1464
+  },
+  "frames": {
+    "n": 20711,
+    "avgFps": 17.6,
+    "p95Ms": 200,
+    "p99Ms": 316.7,
+    "over20msPct": 48.1,
+    "over50msPct": 30.1
+  },
+  "longTasks": {
+    "n": 15,
+    "maxMs": 329,
+    "totalMs": 1331
+  },
+  "heap": [
+    {
+      "spin": 25,
+      "heapMB": 2.73,
+      "nodes": 1652,
+      "listeners": 85
+    },
+    {
+      "spin": 100,
+      "heapMB": 2.95,
+      "nodes": 1657,
+      "listeners": 85
+    },
+    {
+      "spin": 200,
+      "heapMB": 3.03,
+      "nodes": 1661,
+      "listeners": 85
+    },
+    {
+      "spin": 300,
+      "heapMB": 3.1,
+      "nodes": 1673,
+      "listeners": 85
+    },
+    {
+      "spin": 400,
+      "heapMB": 3.15,
+      "nodes": 1662,
+      "listeners": 85
+    },
+    {
+      "spin": 500,
+      "heapMB": 3.5,
+      "nodes": 1665,
+      "listeners": 85
+    }
+  ],
+  "biggestDownloads": [
+    {
+      "kb": 754,
+      "path": "/play/assets/audio/music/free_spins.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 684,
+      "path": "/play/assets/audio/music/base.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 348,
+      "path": "/play/main.js",
+      "beforePlayable": true
+    },
+    {
+      "kb": 316,
+      "path": "/play/assets/audio/music/big_win.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 122,
+      "path": "/play/styles.css",
+      "beforePlayable": true
+    },
+    {
+      "kb": 109,
+      "path": "/play/assets/audio/sfx/riser_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 48,
+      "path": "/play/assets/symbols/Scatter.webp",
+      "beforePlayable": true
+    },
+    {
+      "kb": 48,
+      "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
+      "beforePlayable": true
+    }
+  ]
+}

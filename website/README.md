@@ -9,7 +9,6 @@ dependencies, no tracking. It uses the same fonts (Inter + Oswald, OFL) and art 
 | Placeholder | Where | What |
 |---|---|---|
 | `partners@example.com` | `index.html`, `games/vault-20k.html` (search for it) | The real partnerships email |
-| `[GLI REFERENCE NO.]` | `index.html` `#compliance` | The GLI certification report reference |
 
 The demo links point at `https://provider-flame.vercel.app/` (the standalone game client).
 
