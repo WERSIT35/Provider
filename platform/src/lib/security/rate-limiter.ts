@@ -17,8 +17,25 @@ export class RateLimiter {
     this.refillPerMs = perMinute / 60_000;
   }
 
+  private calls = 0;
+
+  /**
+   * A full bucket is the same as no bucket, so idle keys (every finished session, every
+   * login name tried) are forgotten instead of piling up forever.
+   */
+  private sweep(nowMs: number): void {
+    for (const [key, b] of this.buckets) {
+      if (b.tokens + (nowMs - b.lastRefillMs) * this.refillPerMs >= this.capacity) this.buckets.delete(key);
+    }
+  }
+
+  size(): number {
+    return this.buckets.size;
+  }
+
   /** Returns true if a token was available (request allowed). */
   allow(key: string, nowMs = Date.now()): boolean {
+    if (++this.calls % 4096 === 0) this.sweep(nowMs);
     const bucket = this.buckets.get(key) ?? { tokens: this.capacity, lastRefillMs: nowMs };
     const elapsed = nowMs - bucket.lastRefillMs;
     bucket.tokens = Math.min(this.capacity, bucket.tokens + elapsed * this.refillPerMs);

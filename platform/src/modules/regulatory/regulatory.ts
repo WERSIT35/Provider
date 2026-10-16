@@ -151,6 +151,11 @@ export class RegulatoryService {
     public now: () => number = () => Date.now()
   ) {}
 
+  /** An evicted session: drop its reality-check timer (housekeeping, app.ts). */
+  forgetSession(sessionId: string): void {
+    this.realityDueAt.delete(sessionId);
+  }
+
   profile(operatorId: string): RegulatoryProfile {
     return this.profileFor(operatorId);
   }
