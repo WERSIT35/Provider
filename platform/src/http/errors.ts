@@ -36,6 +36,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   CONFIG_NOT_APPROVED: 409,
   OPERATOR_GAME_NOT_FOUND: 404,
   WEBHOOK_NOT_CONFIGURED: 502,
+  // The round's write-ahead intent or result could not be made durable: nothing was
+  // promised; retryable (see app.ts onSend and round-orchestrator.ts durable()).
+  PERSISTENCE_UNAVAILABLE: 503,
   WEBHOOK_CALL_FAILED: 502,
   REQUEST_IN_PROGRESS: 409,
   // An idempotency key is single-use across the platform (round-orchestrator.ts claimKey).
@@ -69,5 +72,6 @@ export function sendDomainError(reply: FastifyReply, err: unknown, requestId: st
   // A domain error may carry machine-readable details (e.g. retry_after_ms, session stats).
   const details = err instanceof Error && "details" in err ? (err as { details?: Record<string, unknown> }).details : undefined;
   if (typeof details?.retry_after_ms === "number") reply.header("retry-after", String(Math.max(1, Math.ceil(details.retry_after_ms / 1000))));
+  if (code === "PERSISTENCE_UNAVAILABLE") reply.header("retry-after", "1");
   return reply.code(status).send(envelope(code, code, requestId, details));
 }

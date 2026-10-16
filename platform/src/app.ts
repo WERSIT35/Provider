@@ -7,6 +7,7 @@ import gameRoutes from "./http/game.routes";
 import adminRoutes from "./http/admin.routes";
 import adminCampaignRoutes from "./http/admin-campaigns.routes";
 import { startCampaignExpiry, type CampaignExpiryJob } from "./jobs/campaign-expiry";
+import { startRoundRecovery, type RoundRecoveryJob } from "./jobs/round-recovery";
 import { startDebitReconciliation, type DebitReconciliationJob } from "./jobs/debit-reconciliation";
 import { installObservability, traceForRaw } from "./http/observability";
 import { metrics } from "./lib/metrics";
@@ -89,12 +90,26 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   // stops when it closes.
   let expiryJob: CampaignExpiryJob | null = null;
   let reconcileJob: DebitReconciliationJob | null = null;
+  let recoveryJob: RoundRecoveryJob | null = null;
   app.addHook("onReady", async () => {
     expiryJob = startCampaignExpiry({
       campaigns: deps.container.campaigns,
       persistence: deps.container.persistence,
       logger: app.log,
       intervalMs: deps.campaignExpiryIntervalMs ?? 60_000
+    });
+    // Rounds a crash left between the casino and our ledger (write-ahead intents):
+    // reverse a stake whose round never committed, re-credit a committed win.
+    recoveryJob = startRoundRecovery({
+      intents: deps.container.intents,
+      ledger: deps.container.ledger,
+      transactions: deps.container.transactions,
+      debits: deps.container.debits,
+      wallet: deps.container.wallet,
+      persistence: deps.container.persistence,
+      isInFlight: (key) => deps.container.orchestrator.isInFlight(key),
+      logger: app.log,
+      intervalMs: deps.debitReconcileIntervalMs ?? 30_000
     });
     reconcileJob = startDebitReconciliation({
       debits: deps.container.debits,
@@ -107,21 +122,31 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   app.addHook("onClose", async () => {
     expiryJob?.stop();
     reconcileJob?.stop();
+    recoveryJob?.stop();
   });
 
-  // Durable write-through: after handling each request, flush any queued mutations
-  // to Postgres in one transaction. No-op when persistence is disabled (in-memory).
-  // A flush failure is logged, not surfaced — the batch is re-queued for the next
-  // request so a transient DB hiccup never fails an otherwise-successful spin.
+  // Durable write-through: before the response leaves, commit what this request
+  // changed (one flush at a time, group-committed; see persistence.ts). A response is
+  // a promise to the client, so a success is never sent for state that is not durable:
+  // if this request's rows did not commit, it answers 503 PERSISTENCE_UNAVAILABLE
+  // instead (retryable: a retry with the same idempotency key replays the round once
+  // its rows are in, and a crash before that is unwound by the boot-time recovery).
   const persistenceOn = deps.container.persistence !== NullPersistence;
-  app.addHook("onSend", async (req) => {
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (!persistenceOn) return payload;
     const started = performance.now();
     try {
       await deps.container.persistence.flush();
-      if (persistenceOn) metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "ok" });
+      metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "ok" });
+      return payload;
     } catch (err) {
-      if (persistenceOn) metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "failed" });
+      metrics.dbFlush.observe((performance.now() - started) / 1000, { outcome: "failed" });
       req.log.error({ err }, "persistence_flush_failed");
+      if (reply.statusCode >= 400) return payload; // already a failure: nothing was promised
+      reply.code(503).header("retry-after", "1").header("content-type", "application/json; charset=utf-8");
+      return JSON.stringify({
+        error: { code: "PERSISTENCE_UNAVAILABLE", message: "The result could not be saved yet; retry with the same idempotency key.", retryable: true, request_id: req.id }
+      });
     }
   });
 

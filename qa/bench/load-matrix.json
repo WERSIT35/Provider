@@ -1,6 +1,6 @@
 {
   "name": "load-matrix",
-  "at": "2026-10-16T17:38:10.327Z",
+  "at": "2026-10-16T18:28:31.351Z",
   "node": "v22.22.0",
   "runs": [
     {
@@ -15,21 +15,21 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 993,
+      "spins": 996,
       "spinsPerSec": 15.7,
       "errors": {},
       "latencyMs": {
-        "n": 993,
-        "p50": 3.8,
-        "p95": 7.73,
-        "p99": 10.92,
-        "max": 16.27
+        "n": 996,
+        "p50": 3.98,
+        "p95": 7.75,
+        "p99": 11.75,
+        "max": 20.52
       },
       "serverRssMB": {
-        "start": 90,
-        "max": 110
+        "start": 95,
+        "max": 116
       },
-      "serverCpuPctMax": 15.3,
+      "serverCpuPctMax": 13.6,
       "generatorCpuPct": 2.4,
       "generatorBound": false
     },
@@ -45,22 +45,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 3959,
-      "spinsPerSec": 62.2,
+      "spins": 3969,
+      "spinsPerSec": 62.4,
       "errors": {},
       "latencyMs": {
-        "n": 3959,
-        "p50": 3.15,
-        "p95": 7.08,
-        "p99": 10.9,
-        "max": 28.24
+        "n": 3969,
+        "p50": 3.39,
+        "p95": 7.42,
+        "p99": 14.96,
+        "max": 52.45
       },
       "serverRssMB": {
-        "start": 95,
+        "start": 94,
         "max": 132
       },
-      "serverCpuPctMax": 35.3,
-      "generatorCpuPct": 6.6,
+      "serverCpuPctMax": 36.3,
+      "generatorCpuPct": 7,
       "generatorBound": false
     },
     {
@@ -75,22 +75,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 9907,
-      "spinsPerSec": 155.4,
+      "spins": 9890,
+      "spinsPerSec": 155.2,
       "errors": {},
       "latencyMs": {
-        "n": 9907,
-        "p50": 2.66,
-        "p95": 9.69,
-        "p99": 33.02,
-        "max": 95.53
+        "n": 9890,
+        "p50": 2.74,
+        "p95": 8.72,
+        "p99": 29.62,
+        "max": 92.95
       },
       "serverRssMB": {
         "start": 97,
-        "max": 165
+        "max": 169
       },
-      "serverCpuPctMax": 63.5,
-      "generatorCpuPct": 9.8,
+      "serverCpuPctMax": 62.7,
+      "generatorCpuPct": 10,
       "generatorBound": false
     },
     {
@@ -105,22 +105,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 46900,
-      "spinsPerSec": 780,
+      "spins": 46609,
+      "spinsPerSec": 775.4,
       "errors": {},
       "latencyMs": {
-        "n": 46900,
-        "p50": 116.8,
-        "p95": 161.53,
-        "p99": 233.76,
-        "max": 8453.31
+        "n": 46609,
+        "p50": 115.67,
+        "p95": 165.35,
+        "p99": 282.31,
+        "max": 8182.24
       },
       "serverRssMB": {
-        "start": 118,
-        "max": 424
+        "start": 124,
+        "max": 411
       },
-      "serverCpuPctMax": 99.1,
-      "generatorCpuPct": 23.6,
+      "serverCpuPctMax": 99.7,
+      "generatorCpuPct": 24.4,
       "generatorBound": false
     },
     {
@@ -135,22 +135,22 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 9820,
-      "spinsPerSec": 153.8,
+      "spins": 9773,
+      "spinsPerSec": 153.3,
       "errors": {},
       "latencyMs": {
-        "n": 9820,
-        "p50": 8.89,
-        "p95": 101.53,
-        "p99": 343.45,
-        "max": 1011.67
+        "n": 9773,
+        "p50": 9.5,
+        "p95": 206.4,
+        "p99": 502.27,
+        "max": 1419.01
       },
       "serverRssMB": {
-        "start": 124,
-        "max": 322
+        "start": 120,
+        "max": 319
       },
-      "serverCpuPctMax": 95.4,
-      "generatorCpuPct": 8.9,
+      "serverCpuPctMax": 97.6,
+      "generatorCpuPct": 9.2,
       "generatorBound": false
     },
     {
@@ -165,22 +165,22 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 16476,
-      "spinsPerSec": 273.8,
+      "spins": 17224,
+      "spinsPerSec": 286.2,
       "errors": {},
       "latencyMs": {
-        "n": 16476,
-        "p50": 327.71,
-        "p95": 513.15,
-        "p99": 816.35,
-        "max": 8158.23
+        "n": 17224,
+        "p50": 311.42,
+        "p95": 512.42,
+        "p99": 700.72,
+        "max": 7455.83
       },
       "serverRssMB": {
-        "start": 129,
-        "max": 469
+        "start": 133,
+        "max": 470
       },
-      "serverCpuPctMax": 99.6,
-      "generatorCpuPct": 10.5,
+      "serverCpuPctMax": 99.7,
+      "generatorCpuPct": 10.6,
       "generatorBound": false
     },
     {
@@ -195,22 +195,22 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 9800,
-      "spinsPerSec": 153.2,
+      "spins": 9819,
+      "spinsPerSec": 153.5,
       "errors": {},
       "latencyMs": {
-        "n": 9800,
-        "p50": 17.41,
-        "p95": 82.77,
-        "p99": 132.88,
-        "max": 246.32
+        "n": 9819,
+        "p50": 25.98,
+        "p95": 73.8,
+        "p99": 119.03,
+        "max": 206.72
       },
       "serverRssMB": {
-        "start": 116,
-        "max": 183
+        "start": 105,
+        "max": 206
       },
-      "serverCpuPctMax": 80.8,
-      "generatorCpuPct": 8.9,
+      "serverCpuPctMax": 76.2,
+      "generatorCpuPct": 8.8,
       "generatorBound": false
     },
     {
@@ -225,22 +225,22 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 15624,
-      "spinsPerSec": 259.4,
+      "spins": 26132,
+      "spinsPerSec": 434.5,
       "errors": {},
       "latencyMs": {
-        "n": 15624,
-        "p50": 374.84,
-        "p95": 486.76,
-        "p99": 580.42,
-        "max": 1082.63
+        "n": 26132,
+        "p50": 211.59,
+        "p95": 340.81,
+        "p99": 440.3,
+        "max": 718.72
       },
       "serverRssMB": {
-        "start": 117,
-        "max": 279
+        "start": 130,
+        "max": 343
       },
-      "serverCpuPctMax": 88,
-      "generatorCpuPct": 8.4,
+      "serverCpuPctMax": 81.8,
+      "generatorCpuPct": 9.7,
       "generatorBound": false
     },
     {
@@ -255,21 +255,21 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 978,
+      "spins": 982,
       "spinsPerSec": 15.4,
       "errors": {},
       "latencyMs": {
-        "n": 978,
-        "p50": 13.33,
-        "p95": 29.63,
-        "p99": 50.18,
-        "max": 104.4
+        "n": 982,
+        "p50": 17.03,
+        "p95": 38.08,
+        "p99": 60.21,
+        "max": 102.41
       },
       "serverRssMB": {
-        "start": 99,
-        "max": 147
+        "start": 100,
+        "max": 145
       },
-      "serverCpuPctMax": 31.5,
+      "serverCpuPctMax": 33.4,
       "generatorCpuPct": 1.5,
       "generatorBound": false
     },
@@ -285,22 +285,22 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 3900,
-      "spinsPerSec": 61.1,
+      "spins": 3929,
+      "spinsPerSec": 61.5,
       "errors": {},
       "latencyMs": {
-        "n": 3900,
-        "p50": 14.62,
-        "p95": 65.63,
-        "p99": 156.01,
-        "max": 295.55
+        "n": 3929,
+        "p50": 19.68,
+        "p95": 60.29,
+        "p99": 109.09,
+        "max": 311.17
       },
       "serverRssMB": {
-        "start": 117,
-        "max": 225
+        "start": 120,
+        "max": 226
       },
-      "serverCpuPctMax": 66.8,
-      "generatorCpuPct": 4.8,
+      "serverCpuPctMax": 68,
+      "generatorCpuPct": 4.2,
       "generatorBound": false
     },
     {
@@ -315,22 +315,22 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 9642,
-      "spinsPerSec": 150.8,
+      "spins": 9717,
+      "spinsPerSec": 152,
       "errors": {},
       "latencyMs": {
-        "n": 9642,
-        "p50": 32.27,
-        "p95": 365.63,
-        "p99": 961.79,
-        "max": 1532.89
+        "n": 9717,
+        "p50": 40.42,
+        "p95": 233.43,
+        "p99": 406.09,
+        "max": 629.45
       },
       "serverRssMB": {
-        "start": 125,
-        "max": 318
+        "start": 122,
+        "max": 321
       },
-      "serverCpuPctMax": 96.8,
-      "generatorCpuPct": 8.9,
+      "serverCpuPctMax": 90.4,
+      "generatorCpuPct": 7.6,
       "generatorBound": false
     }
   ]

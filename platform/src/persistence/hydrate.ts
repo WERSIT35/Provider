@@ -1,6 +1,7 @@
 import type { Container } from "../container";
 import type { Persistence } from "./persistence";
-import { SandboxWallet } from "../modules/wallet/sandbox-wallet";
+import { sandboxOf } from "../modules/wallet/routing-wallet";
+import type { RoundIntent } from "../modules/rounds/round-intents";
 import type { RoundRecord } from "../modules/ledger/ledger.types";
 import type { AuditRecord } from "../modules/ledger/ledger.types";
 import type { TxRecord } from "../modules/wallet/transaction-store";
@@ -19,7 +20,7 @@ import type { SigningKeyRecord } from "../lib/security/signing-keyring";
  * chains and seq counters continue seamlessly.
  */
 export async function hydrateContainer(c: Container, p: Persistence): Promise<void> {
-  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns, signingKeys] =
+  const [operators, domains, credentials, games, mathConfigs, operatorGames, webhooks, sessions, rounds, txs, adjustments, audit, disputes, balances, applied, debitRefs, adminAccounts, campaigns, playerCampaigns, signingKeys, roundIntents] =
     await Promise.all([
       p.loadTable("operators"),
       p.loadTable("operator_domains"),
@@ -40,7 +41,8 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
       p.loadTable("admin_accounts"),
       p.loadTable("campaigns"),
       p.loadTable("player_campaigns"),
-      p.loadTable("signing_keys")
+      p.loadTable("signing_keys"),
+      p.loadTable("round_intents")
     ]);
 
   // Every key that ever signed, so retired keys keep verifying; the previous active key
@@ -68,8 +70,12 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
     grants: playerCampaigns as unknown as PlayerCampaign[]
   });
 
-  if (c.wallet instanceof SandboxWallet) {
-    c.wallet.hydrate({
+  // Unfinished write-ahead intents: boot recovery (jobs/round-recovery.ts) finishes them.
+  c.intents.hydrate(roundIntents as unknown as RoundIntent[]);
+
+  const sandbox = sandboxOf(c.wallet);
+  if (sandbox) {
+    sandbox.hydrate({
       balances: balances as unknown as Array<{ balance_key: string; amount: number }>,
       applied: applied as unknown as Array<{ idempotency_key: string; result: WalletTxResult | WalletRollbackResult }>,
       debitRefs: debitRefs as unknown as Array<{ operator_tx_ref: string; balance_key: string; amount: number }>

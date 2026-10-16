@@ -4,6 +4,7 @@ import type { AuthoritativeRound } from "../rng/authoritative-resolver";
 import type { SessionService, Session, FeatureLock } from "../session/session.service";
 import type { ManagementService } from "../management/management.service";
 import type { RoundLedgerService } from "../ledger/round-ledger.service";
+import type { OpenIntentInput, RoundIntentStore } from "./round-intents";
 import type { InMemoryTransactionStore } from "../wallet/transaction-store";
 import { type WalletAdapter, type Money, WalletDeclinedError } from "../wallet/wallet.types";
 import type { InMemoryCampaignRepository, ConsumedSpin } from "../campaigns/campaign.repository";
@@ -55,7 +56,13 @@ export interface SpinOutcome {
  * validation, the operator wallet, the seeded RNG resolver, and the immutable
  * ledger:
  *
- *   validate → debit → resolve → record round → credit → settle
+ *   validate → [intent] → debit → resolve → record round → [commit] → credit → settle
+ *
+ * Crash safety (with Postgres, `durability` wired): an intent is COMMITTED before the
+ * casino is asked for the stake, and a round with a win is COMMITTED before the casino
+ * is asked to pay it. So after a crash every debit has either a committed round or an
+ * open intent that boot recovery reverses, and every committed win is either credited
+ * or re-credited under the same idempotency key (src/jobs/round-recovery.ts).
  *
  * Every money move is idempotent (keyed by the request's idempotency key), so
  * retries never double-charge. A failure AFTER a confirmed debit but BEFORE a
@@ -92,9 +99,34 @@ export class RoundOrchestrator {
     /** Lost-debit handling (in-line retry, then void + reversal); a default one if omitted. */
     debits?: DebitReconciler,
     /** Jurisdiction rules (round pacing, reality check, feature-buy switch); none = no limits. */
-    private readonly regulatory?: RegulatoryService
+    private readonly regulatory?: RegulatoryService,
+    /** Write-ahead intents + a way to commit them (Postgres); none = in-memory only. */
+    private readonly durability?: { intents: RoundIntentStore; commit: () => Promise<void> }
   ) {
     this.debits = debits ?? new DebitReconciler(wallet, transactions);
+  }
+
+  /** True while a round for this idempotency key is running (recovery leaves it alone). */
+  isInFlight(key: string): boolean {
+    return this.inflight.has(key);
+  }
+
+  /**
+   * Make everything queued so far durable. Retries a transient failure in line (the
+   * group-commit chain re-queues the rows); still failing → PERSISTENCE_UNAVAILABLE,
+   * before any (further) money moves.
+   */
+  private async durable(retryDelaysMs: number[] = []): Promise<void> {
+    if (!this.durability) return;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.durability.commit();
+        return;
+      } catch {
+        if (attempt >= retryDelaysMs.length) throw new Error("PERSISTENCE_UNAVAILABLE");
+        await new Promise((r) => setTimeout(r, retryDelaysMs[attempt]));
+      }
+    }
   }
 
   async spin(sessionId: string, req: SpinRequest): Promise<SpinOutcome> {
@@ -195,11 +227,36 @@ export class RoundOrchestrator {
     const restoreFreeRound = () => {
       if (freeRound) this.campaigns?.restoreSpin(freeRound.grant.id);
     };
+    const intents = this.durability?.intents;
+    const intent: OpenIntentInput = {
+      idempotency_key: req.idempotency_key,
+      round_ref: roundRef,
+      operator_id: session.operator_id,
+      session_id: session.id,
+      operator_player_id: session.operator_player_id,
+      currency: session.currency,
+      debit_type: charge > 0 || freeRound ? (freeRound ? "FREE_ROUND_BET" : "DEBIT") : null,
+      debit_amount: charge,
+      campaign_id: freeRound?.campaign.id ?? null,
+      game_code: session.game_code,
+      round_type: freeRound ? "free_round" : isFreeSpin ? "free_spin" : "paid"
+    };
 
     // 1) DEBIT. Cash: the stake (decline aborts the round). Free round: a tagged
     // 0.00 FREE_ROUND_BET so the casino sees the promo round. Engine free spins: none.
     let debitTxRef: string | null = null;
     if (charge > 0 || freeRound) {
+      // Write-ahead: the intent is durable BEFORE the casino is asked for money.
+      if (intents) {
+        intents.open(intent);
+        try {
+          await this.durable();
+        } catch (err) {
+          intents.close(req.idempotency_key, "voided");
+          restoreFreeRound();
+          throw err;
+        }
+      }
       let debit;
       try {
         // A lost response is retried in line; one that stays unknown voids the round
@@ -224,6 +281,8 @@ export class RoundOrchestrator {
           }
         );
       } catch (err) {
+        // Declined, or unknown and already voided + reversed by the reconciler.
+        intents?.close(req.idempotency_key, "voided");
         restoreFreeRound();
         throw err;
       }
@@ -272,6 +331,8 @@ export class RoundOrchestrator {
           ...(freeRound ? { campaign_id: freeRound.campaign.id } : {})
         });
       }
+      // A failed rollback (thrown above) leaves the intent open for recovery to reverse.
+      intents?.close(req.idempotency_key, "voided");
       restoreFreeRound();
       throw err;
     }
@@ -286,6 +347,7 @@ export class RoundOrchestrator {
       anteEnabled,
       resolveMode: "spin",
       resolved,
+      intent,
       featureRef: featureLock?.feature_ref ?? null,
       freeRound,
       campaign: freeRound
@@ -320,7 +382,32 @@ export class RoundOrchestrator {
     // 1) DEBIT the buy cost. Decline aborts the buy entirely; an outcome that stays
     // unknown voids it and reverses the debit (DebitReconciler).
     const debitKey = `${req.idempotency_key}:debit`;
-    const debit = await this.debits.debit(
+    const intents = this.durability?.intents;
+    const intent: OpenIntentInput = {
+      idempotency_key: req.idempotency_key,
+      round_ref: roundRef,
+      operator_id: session.operator_id,
+      session_id: session.id,
+      operator_player_id: session.operator_player_id,
+      currency: session.currency,
+      debit_type: "DEBIT",
+      debit_amount: charge,
+      campaign_id: null,
+      game_code: session.game_code,
+      round_type: "buy"
+    };
+    if (intents) {
+      intents.open(intent);
+      try {
+        await this.durable();
+      } catch (err) {
+        intents.close(req.idempotency_key, "voided");
+        throw err;
+      }
+    }
+    let debit;
+    try {
+      debit = await this.debits.debit(
       ctx,
       {
         idempotencyKey: debitKey,
@@ -332,7 +419,11 @@ export class RoundOrchestrator {
         roundType: "buy"
       },
       { operator_id: session.operator_id, session_id: session.id, type: "DEBIT" }
-    );
+      );
+    } catch (err) {
+      intents?.close(req.idempotency_key, "voided");
+      throw err;
+    }
     const debitTxRef = debit.operatorTxRef;
     this.transactions.record({
       operator_id: session.operator_id,
@@ -370,6 +461,7 @@ export class RoundOrchestrator {
         idempotency_key: `${req.idempotency_key}:rollback`,
         status: "rolled_back"
       });
+      intents?.close(req.idempotency_key, "voided");
       throw err;
     }
 
@@ -382,6 +474,7 @@ export class RoundOrchestrator {
       anteEnabled: false,
       resolveMode: "buy",
       resolved,
+      intent,
       featureRef: null,
       freeRound: null,
       campaign: null
@@ -406,6 +499,8 @@ export class RoundOrchestrator {
       anteEnabled: boolean;
       resolveMode: "spin" | "buy";
       resolved: AuthoritativeRound;
+      /** The round's write-ahead intent (opened before the debit, if there was one). */
+      intent: OpenIntentInput;
       /** Inside the feature: the triggering round's ref (bonus group key). Else null. */
       featureRef: string | null;
       /** The free round this spin consumed (null for cash and feature spins). */
@@ -414,7 +509,7 @@ export class RoundOrchestrator {
       campaign: { campaign_id: string; grant_id: string } | null;
     }
   ): Promise<SpinOutcome> {
-    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, featureRef, freeRound, campaign } = args;
+    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, intent, featureRef, freeRound, campaign } = args;
     metrics.rounds.inc({ kind: resolveMode === "buy" ? "buy" : isFreeSpin ? "free_spin" : freeRound ? "free_round" : "paid" });
 
     // Snapshot the exact pre-spin state BEFORE applyResult mutates the session, so
@@ -456,11 +551,36 @@ export class RoundOrchestrator {
       throw err;
     }
 
-    // 4) CREDIT the win. Failure keeps the round and flags settlement. A campaign-
-    // funded win (the free round itself, or any spin of a feature it triggered) goes
-    // out as a tagged FREE_ROUND_WIN carrying the campaign id.
+    // 4) Sync engine-driven game state back onto the session (before any commit, so
+    // the round and the session state it leaves behind become durable together).
+    // The terms this round was played at: if it triggered the feature, they become
+    // the feature lock (bet, currency, ante, the funding campaign, and this round's ref
+    // as the bonus group key). Inside the feature the existing lock is kept as is.
+    this.sessions.applyResult(session.id, resolved.result, {
+      bet: betAmount,
+      currency: session.currency,
+      ante_enabled: anteEnabled,
+      campaign_id: campaign?.campaign_id ?? null,
+      grant_id: campaign?.grant_id ?? null,
+      feature_ref: featureRef ?? roundRef
+    });
+
     const win = Number(resolved.result.total_win ?? 0);
     const creditType = campaign ? "FREE_ROUND_WIN" : "CREDIT";
+    const roundType = freeRound ? "free_round" : isFreeSpin ? "free_spin" : resolveMode === "buy" ? "buy" : "paid";
+    const intents = this.durability?.intents;
+    if (intents && win > 0) {
+      // COMMIT the round before the casino pays it: a crash after this point is
+      // finished by recovery (re-credit, same key), never unwound.
+      intents.commit(idempotencyKey, intent, { credit_type: creditType, win_amount: win, feature_ref: isFreeSpin ? featureRef : null, round_type: roundType });
+      // Not durable → no credit and no success: the rows stay queued; recovery credits
+      // the win once they commit, or reverses the stake if they never do.
+      await this.durable([150, 600]);
+    }
+
+    // 5) CREDIT the win. Failure keeps the round and flags settlement. A campaign-
+    // funded win (the free round itself, or any spin of a feature it triggered) goes
+    // out as a tagged FREE_ROUND_WIN carrying the campaign id.
     const freeRoundCreditTag = campaign ? { txType: "FREE_ROUND_WIN" as const, campaignId: campaign.campaign_id } : {};
     const freeRoundTxTag = campaign ? { campaign_id: campaign.campaign_id } : {};
     let settlement: Settlement = "settled";
@@ -474,7 +594,7 @@ export class RoundOrchestrator {
           amount: win,
           currency: session.currency,
           gameCode: session.game_code,
-          roundType: freeRound ? "free_round" : isFreeSpin ? "free_spin" : resolveMode === "buy" ? "buy" : "paid",
+          roundType,
           ...(isFreeSpin && featureRef ? { featureRef } : {}),
           ...freeRoundCreditTag
         });
@@ -509,19 +629,8 @@ export class RoundOrchestrator {
     // The win is owed whether or not the credit landed yet (failed credits go to the
     // settlement queue), so it counts toward the grant's promotional liability now.
     const grantAfter = campaign ? this.campaigns?.recordWin(campaign.grant_id, win) : null;
-
-    // 5) Sync engine-driven game state back onto the session.
-    // The terms this round was played at: if it triggered the feature, they become
-    // the feature lock (bet, currency, ante, the funding campaign, and this round's ref
-    // as the bonus group key). Inside the feature the existing lock is kept as is.
-    this.sessions.applyResult(session.id, resolved.result, {
-      bet: betAmount,
-      currency: session.currency,
-      ante_enabled: anteEnabled,
-      campaign_id: campaign?.campaign_id ?? null,
-      grant_id: campaign?.grant_id ?? null,
-      feature_ref: featureRef ?? roundRef
-    });
+    // Done with the casino for this round (a failed credit is in the settlement queue).
+    intents?.close(idempotencyKey, "settled");
 
     const balance = await this.wallet.balance(ctx, {
       operatorPlayerId: session.operator_player_id,

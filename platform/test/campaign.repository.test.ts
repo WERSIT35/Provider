@@ -183,7 +183,8 @@ describe("campaign persistence", () => {
 
   it("emits a version-guarded upsert so a stale flush can't resurrect spins", async () => {
     const queries: string[] = [];
-    const client = { query: async (text: string) => void queries.push(text), release: () => {} };
+    const params: unknown[][] = [];
+    const client = { query: async (text: string, values?: unknown[]) => void (queries.push(text), params.push(values ?? [])), release: () => {} };
     const pg = new PostgresPersistence({ connect: async () => client } as unknown as Pool);
     const { repo, campaign } = (() => {
       const r = new InMemoryCampaignRepository(pg);
@@ -197,9 +198,14 @@ describe("campaign persistence", () => {
     repo.consumeSpin(CTX, NOW);
     await pg.flush();
 
-    const grantUpserts = queries.filter((q) => q.startsWith("INSERT INTO player_campaigns"));
-    expect(grantUpserts).toHaveLength(2);
-    for (const q of grantUpserts) expect(q).toMatch(/WHERE player_campaigns\.version < EXCLUDED\.version$/);
+    // Granted, then a spin consumed: saved twice in one flush → ONE row in the
+    // multi-row upsert, the newest snapshot (1 spin left).
+    const grantIdx = queries.findIndex((q) => q.startsWith("INSERT INTO player_campaigns"));
+    expect(queries.filter((q) => q.startsWith("INSERT INTO player_campaigns"))).toHaveLength(1);
+    expect(queries[grantIdx]).toMatch(/WHERE player_campaigns\.version < EXCLUDED\.version$/);
+    const cols = /\(([^)]+)\) VALUES/.exec(queries[grantIdx])![1].split(", ");
+    expect(params[grantIdx]).toHaveLength(cols.length);
+    expect(params[grantIdx][cols.indexOf("spins_remaining")]).toBe(1);
     expect(queries.find((q) => q.startsWith("INSERT INTO campaigns"))).toMatch(/WHERE campaigns\.version < EXCLUDED\.version$/);
   });
 });

@@ -120,6 +120,41 @@ jobs:
         run: node tools/rtp-parity.js
         env: { MODE: buy, STEPS: "500000", MAX_SE: "0.25" }
 
+  # Crash-safety gate (tools/bench/chaos.mjs): 200 players, the platform kill -9'd three
+  # times under load and restarted on Postgres, then the mock casino's own ledger is
+  # compared with ours. Fails on any lost acknowledged round, any debit with neither a
+  # round nor a refund, or anything paid twice.
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: vault20k_bench }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bench" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: platform/package-lock.json
+      - run: npm ci
+        working-directory: platform
+      - run: npm run build
+        working-directory: platform
+      - name: kill -9 under load, then compare ledgers
+        run: node tools/bench/chaos.mjs
+        env: { BENCH_DATABASE_URL: "postgres://bench:bench@127.0.0.1:5432/vault20k_bench" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-result
+          path: qa/bench/chaos.json
+          retention-days: 14
+
   # Deploys main to the single RGS server (infra/README.md) once every check passed.
   # Off until the server exists: set the repo variable DEPLOY_ENABLED=true and the
   # secrets DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY (a key allowed to run the commands below)
@@ -127,7 +162,7 @@ jobs:
   # host key means a spoofed server never receives the deploy).
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
-    needs: [release-check, browser-checks, rtp-parity]
+    needs: [release-check, browser-checks, rtp-parity, chaos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
