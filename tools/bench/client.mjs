@@ -95,7 +95,8 @@ try {
   if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
   await page.evaluate(() => { window.__bench.frames = []; window.__bench.long = []; window.__bench.events = []; });
 
-  const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0;
+  const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0; let tapsReadAsHold = 0;
+  let autoBefore = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
   const deadline = Date.now() + a.minutes * 60_000;
   let stoppedEarly = false;
   for (let i = 0; i < SPINS; i++) {
@@ -115,6 +116,16 @@ try {
     if (!sent) { log("giving up at spin", i); break; }
     if (i === 0) tapToRequestMs = Date.now() - s0;
     await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 5000, polling: 16 }).catch(() => {});
+    // A tap read as a HOLD starts infinite autoplay (client/main.js SPIN_HOLD_MS timer
+    // fires when the main thread is too busy to handle the release in time). Count it
+    // (a real defect on slow phones) and stop the autoplay with another press.
+    const autoNow = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
+    if (autoNow > autoBefore) {
+      tapsReadAsHold++;
+      log("tap was read as a hold: autoplay started; stopping it");
+      await page.tap("#spinBtn").catch(() => {});
+      autoBefore = autoNow;
+    }
     await waitIdle();
     roundMs.push(Date.now() - s0);
     if (i % 100 === 0 || i < 2) log("spin", i, roundMs.at(-1), "ms");
@@ -133,7 +144,7 @@ try {
     tier: await page.evaluate(() => [...document.body.classList].filter((c) => c.startsWith("perf-")).join(" ")),
     spins: roundMs.length, spinsRequested: SPINS, stoppedByTimeBudget: stoppedEarly,
     roundMs: roundMs.length ? { p50: q([...roundMs].sort((x, y) => x - y), 0.5), max: Math.max(...roundMs) } : null,
-    tapsThatDidNotStartASpin: stuck,
+    tapsThatDidNotStartASpin: stuck, tapsReadAsHoldStartingAutoplay: tapsReadAsHold,
     timeToPlayableMs: timeToReadyMs, fcpMs: nav.fcp, domContentLoadedMs: nav.dcl, loadEventMs: nav.load,
     requestsBeforePlayable: all.filter((r) => r.beforeReady).length, kbBeforePlayable: kb(all.filter((r) => r.beforeReady)), kbPerSession: kb(all),
     kbByType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, +(v / 1024).toFixed(0)])),

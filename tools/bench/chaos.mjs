@@ -22,8 +22,15 @@ const casinoLog = join(work, "casino-ledger.jsonl");
 const keyFile = join(work, "signing-key.pem");
 await resetBenchDb(db);
 const casino = await startMockCasino({ CASINO_LOG: casinoLog });
+// Never leave a server or casino behind if anything below throws.
+let srvRef = null;
+const cleanup = () => { try { srvRef?.child.kill("SIGKILL"); } catch {} try { casino.kill("SIGKILL"); } catch {} };
+process.on("exit", cleanup);
+process.on("uncaughtException", (e) => { console.error(e); cleanup(); process.exit(1); });
+process.on("unhandledRejection", (e) => { console.error(e); cleanup(); process.exit(1); });
 const serverEnv = { BENCH_WALLET: "webhook", DATABASE_URL: db, BENCH_KEY_FILE: keyFile, BENCH_RECON_MS: "2000" };
 let srv = await startServer(serverEnv);
+srvRef = srv;
 const cred = srv.cred;
 const base = `http://127.0.0.1:${cred.port}`;
 
@@ -56,6 +63,7 @@ for (let k = 1; k <= a.kills; k++) {
   console.log(`kill -9 #${k} (${acknowledged.length} rounds acknowledged so far)`);
   await sleep(2000);
   srv = await startServer({ ...serverEnv, BENCH_RESUME: "1" });
+  srvRef = srv;
 }
 await sleep(a.interval * 1000);
 running = false;

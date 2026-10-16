@@ -1,6 +1,8 @@
 # Performance baseline — Step 0
 
-Measured 2026-10-16 on `main` @ `803d3e2`. No product code was changed. Every number below comes from a run; nothing is estimated.
+Measured 2026-10-16 on `main` @ `803d3e2`. No product code was changed. Every number below comes from a run; nothing is estimated. Re-run any row with `tools/bench` (`tools/bench/README.md`); the raw results are in `qa/bench/*.json`.
+
+> **Correction (same day).** The first client run used players with no sandbox balance, so every spin was declined (`402 INSUFFICIENT_FUNDS`) and the reels never moved. That made FPS, input delay and memory look far better than they are. The client spin metrics below were re-measured with funded players through `tools/bench/client.mjs`. Load time, bytes and every server number were unaffected.
 
 ## Verdict
 
@@ -8,14 +10,14 @@ Measured 2026-10-16 on `main` @ `803d3e2`. No product code was changed. Every nu
 |---|---|---|
 | First spin ≤ 2.5 s on 4G | Playable at **9.4 s** (FCP 4.1 s), Slow-4G + 4× CPU | **FAIL** |
 | Initial download ≤ 3 MB | **1.0 MB** before playable · 3.5 MB per session incl. music | PASS (initial) |
-| Locked 60 FPS | **19 FPS avg**, 20% of frames > 50 ms (4× CPU) · 59 FPS unthrottled | **FAIL** |
-| Zero memory growth | JS heap **+0.92 MB over 475 spins** after forced GC (≈1.9 KB/spin); DOM nodes and listeners flat | **FAIL** (small) |
-| Input response ≤ 100 ms | Tap → spin request **385 ms**; input event p50 **256 ms**, max 728 ms (4× CPU) | **FAIL** |
+| Locked 60 FPS | **15 FPS avg**, 35% of frames > 50 ms (4× CPU) · 18 FPS unthrottled (software rendering, see limits) | **FAIL** |
+| Zero memory growth | JS heap **+0.77 MB over 475 spins** after forced GC (≈1.7 KB/spin); DOM nodes and listeners flat | **FAIL** (small) |
+| Input response ≤ 100 ms | Tap → spin request **226 ms**; input event p50 **328 ms**, max 1,520 ms (4× CPU) | **FAIL** |
 | Spin p99 ≤ 50 ms at 500 players, excl. casino wallet | In-memory **17.8 ms** · Postgres **83.9 ms** · Postgres + wallet calls **294.6 ms** | **FAIL** (prod config) |
 | 500 players, no errors | 0 errors in every config (60 s runs) | PASS (short run) |
 | No lost/duplicated rounds on kill -9 | **642 acknowledged rounds lost**, **779 casino debits with no round and no refund**, 0 duplicates | **FAIL** |
 
-**4 critical defects found** (below). They outrank every performance target.
+**4 critical defects found** (below). They outrank every performance target. Plus one player-facing bug: a normal tap sometimes starts **infinite autoplay** (client section).
 
 ## Critical defects (fix before any casino traffic)
 
@@ -59,21 +61,24 @@ Setup: compiled `dist/`, real Fastify app, `info` JSON logging, Ed25519-signed l
 
 ## Client
 
-Setup: the real `/play` page with a signed launch token. Phone viewport is 412×823 @1.75x. "Mobile" = Lighthouse Slow-4G values (562.5 ms latency, 1.47 Mbps down) plus 4× CPU slowdown. Cache disabled. 20 manual spins with a 300 ms human pause.
+Setup: the real `/play` page with a signed launch token and a **funded** player. Phone viewport is 412×823 @1.75x. "Mobile" = Lighthouse Slow-4G values (562.5 ms latency, 1.47 Mbps down) plus 4× CPU slowdown, 20 manual spins. "Soak" = no throttling, turbo on, 500 manual spins. Cache disabled, 300 ms human pause before each tap. The client picked its `perf-low perf-handheld` quality tier in both.
 
-| Metric | Mobile (Slow 4G, 4× CPU) | Unthrottled |
+| Metric | Mobile (Slow 4G, 4× CPU) | Soak (unthrottled) |
 |---|---|---|
-| First contentful paint | 4.1 s | 0.3 s |
-| Playable (`app-ready`) | **9.4 s** | 0.6 s |
-| Downloaded before playable | 1.0 MB, 47 requests | 1.1 MB |
-| Downloaded per session | 3.5 MB (2.6 MB is music) | 3.8 MB |
-| Tap → spin request sent | 385 ms | 201 ms |
-| Input event duration p50 / max | 256 / 728 ms | 56 / 496 ms |
-| Avg FPS during spins | 19.3 | 59.0 |
-| Frames > 50 ms | 20.3% | 0.3% |
-| Long tasks | 7, max 337 ms | 0 |
+| First contentful paint | 3.8 s | 0.2 s |
+| Playable (`app-ready`) | **9.4 s** | 0.5 s |
+| Downloaded before playable | 1.0 MB, 47 requests | 1.0 MB |
+| Downloaded per session | 3.5 MB (2.6 MB is music) | 4.8 MB (music + free-spins assets) |
+| Tap → spin request sent | 226 ms | 194 ms |
+| Input event duration p50 / max | 328 / 1,520 ms | 280 / 1,464 ms |
+| Avg FPS during play | 14.9 | 17.6 |
+| Frames > 50 ms | 35.5% | 30.1% |
+| Long tasks | 37, max 172 ms | 15, max 329 ms |
+| Round time p50 (tap → board settled) | 2.4 s | 1.2 s (turbo) |
 
-**Memory soak (500 spins, turbo, forced GC before each sample):** heap 1.95 MB at spin 25, then 2.06 → 2.31 → 2.33 → 2.55 → 2.87 MB at 100/200/300/400/500. DOM nodes held at 1,571 and listeners at 85. It's a slow, steady leak in JS objects, not in DOM.
+**Memory soak (500 spins, forced GC before each sample):** heap 2.73 MB at spin 25, then 2.95 → 3.03 → 3.10 → 3.15 → 3.50 MB at 100/200/300/400/500. DOM nodes held at ~1,660 and listeners at 85. It's a slow, steady leak in JS objects, not in DOM.
+
+**A tap can start infinite autoplay.** The spin button decides "hold = autoplay" with a 400 ms `setTimeout` (`SPIN_HOLD_MS`, `client/main.js`). When the main thread is busy for a long frame between finger-down and finger-up, the timer fires first and a normal tap becomes endless turbo autoplay. Seen on **8 of 500 taps (1.6%)** in the soak. On a weak phone it's worse. Players would see the game spinning their money on its own.
 
 **Where the bytes go:** `main.js` 348 KB, `styles.css` 122 KB, symbols 268 KB, fonts 76 KB. Then, right after boot, the music: `free_spins.ogg` 754 KB, `base.ogg` 684 KB, `big_win.ogg` 316 KB, all fetched and decoded eagerly even though most sessions never reach free spins or a big win. JS+CSS is 608 KB raw / 184 KB gzipped. Production Caddy gzips (`encode gzip`), the platform alone does not, so the text sizes above are worst case.
 
@@ -83,9 +88,9 @@ Setup: the real `/play` page with a signed launch token. Phone viewport is 412×
 
 - **Hardware:** 2 vCPU / 8 GB cloud VM, not a DigitalOcean droplet. RAM was not capped at 2 GB, so the memory figures are growth rates, not OOM points.
 - **Network:** loopback. Real wallet calls add the casino's own latency on top.
-- **Mobile:** headless Chromium 153 with software rendering, throttled on a server CPU. The client auto-selected its `perf-low` tier. This isn't a real Android phone, so treat FPS and input numbers as a relative baseline for Step 1, not absolute.
+- **Mobile:** headless Chromium 153 with **software rendering** (SwiftShader) on a server CPU. Even unthrottled it renders far slower than a phone GPU would, so the absolute FPS and input numbers are pessimistic. They're a same-machine baseline: Phase 4 re-runs the identical probe and must beat them.
 - **Not measured yet:** the Lighthouse score (CDP throttling was used with Lighthouse's values instead), FPS during a forced big win (no way to force one on `/play`), and 1,000-spin memory (500 run).
-- The harness (load generator, mock casino, crash test, client probe) lives outside the repo. Step 1 should commit it under `tools/bench/` so CI can re-run every row.
+- The harness is committed in `tools/bench/` (Phase 0), so every row can be re-run.
 
 ## Priority order for Step 1
 
@@ -93,4 +98,4 @@ Setup: the real `/play` page with a signed launch token. Phone viewport is 412×
 2. Make an acknowledged round durable: commit before responding, one writer per session (no cross-request deadlocks), and have the reconciler roll back any casino debit with no round.
 3. Bound memory: keep only open sessions/rounds in memory, read history from Postgres, and stop hydrating all of history on boot.
 4. Then latency: wallet calls with keep-alive pooling and a timeout budget, batched DB writes. Re-run the 500-player table.
-5. Client: lazy-load music by game state, stream `base.ogg` only, split `main.js`, find the per-spin heap leak, and cut main-thread work on tap.
+5. Client: decide tap vs hold from the input events' own timestamps (not a timer), lazy-load music by game state, stream `base.ogg` only, split `main.js`, find the per-spin heap leak, and cut main-thread work on tap.
