@@ -62,7 +62,7 @@ export class InMemoryTransactionStore {
    * the whole ledger: unknown debits not yet reversed (by round), and failed win
    * credits whose round has no confirmed credit yet (by round).
    */
-  private readonly pendingReversals = new Map<string, TxRecord>();
+  private readonly pendingReversals = new Map<string, TxRecord[]>();
   private readonly failedWins = new Map<string, TxRecord[]>();
 
   /**
@@ -109,12 +109,14 @@ export class InMemoryTransactionStore {
   /** Keep the queues current with one new (or hydrated) row. */
   private track(r: TxRecord): void {
     if (BET_TX_TYPES.has(r.type) && r.status === "failed" && r.error_code === DEBIT_OUTCOME_UNKNOWN) {
-      if (!this.reversedRounds.has(r.round_ref)) this.pendingReversals.set(r.round_ref, r);
+      // Every unknown debit of the round (a round normally has one; the full-scan
+      // definition this replaces listed them all).
+      if (!this.reversedRounds.has(r.round_ref)) addOnce(this.pendingReversals, r);
     } else if (r.type === "ROLLBACK") {
       this.reversedRounds.add(r.round_ref);
       this.pendingReversals.delete(r.round_ref);
     } else if (WIN_TX_TYPES.has(r.type) && r.status === "failed") {
-      if (!this.creditedRounds.has(r.round_ref)) this.failedWins.set(r.round_ref, [...(this.failedWins.get(r.round_ref) ?? []), r]);
+      if (!this.creditedRounds.has(r.round_ref)) addOnce(this.failedWins, r);
     } else if (WIN_TX_TYPES.has(r.type) && r.status === "confirmed") {
       this.creditedRounds.add(r.round_ref);
       this.failedWins.delete(r.round_ref);
@@ -195,6 +197,7 @@ export class InMemoryTransactionStore {
    */
   listPendingReversals(operatorId?: string): TxRecord[] {
     return [...this.pendingReversals.values()]
+      .flat()
       .filter((t) => (operatorId ? t.operator_id === operatorId : true))
       .sort((a, b) => a.seq - b.seq)
       .map(clone);
@@ -209,6 +212,13 @@ export class InMemoryTransactionStore {
   heldCount(): number {
     return this.entries.length + this.cold.size;
   }
+}
+
+/** Queue a row under its round, once (boot may present a row both in the window and as a queue row). */
+function addOnce(queue: Map<string, TxRecord[]>, r: TxRecord): void {
+  const rows = queue.get(r.round_ref) ?? [];
+  if (rows.some((x) => x.idempotency_key === r.idempotency_key)) return;
+  queue.set(r.round_ref, [...rows, r]);
 }
 
 /** A Set that forgets its oldest members past `capacity`. */

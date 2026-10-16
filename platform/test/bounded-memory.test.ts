@@ -103,6 +103,18 @@ describe("windowed money ledger: the operational queues match a full scan", () =
     expect(windowed.heldCount()).toBeLessThanOrEqual(63);
     expect(windowed.size()).toBe(5000);
   });
+
+  it("a row presented at boot both in the window and as a queue row is queued once", () => {
+    const src = new InMemoryTransactionStore();
+    src.record({ operator_id: "op", session_id: "s", round_ref: "r1", type: "DEBIT", amount: 1, currency: "GEL", idempotency_key: "r1:debit", status: "failed", error_code: DEBIT_OUTCOME_UNKNOWN });
+    src.record({ operator_id: "op", session_id: "s", round_ref: "r2", type: "CREDIT", amount: 2, currency: "GEL", idempotency_key: "r2:credit", status: "failed", error_code: "WALLET_CREDIT_FAILED" });
+    const rows = src.list();
+    const booted = new InMemoryTransactionStore(undefined, { retain: 50 });
+    booted.hydrate(rows, 2);
+    booted.hydrateQueues(rows);
+    expect(booted.listPendingReversals().map((t) => t.idempotency_key)).toEqual(["r1:debit"]);
+    expect(booted.listFailedSettlements().map((t) => t.idempotency_key)).toEqual(["r2:credit"]);
+  });
 });
 
 describe("caches with no end", () => {
