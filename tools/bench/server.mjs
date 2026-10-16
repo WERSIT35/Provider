@@ -114,3 +114,5 @@ setInterval(() => {
 }, 2000).unref();
 process.send?.({ type: "ready", cred });
 process.on("disconnect", () => process.exit(0));
+// A normal exit on SIGTERM, so --cpu-prof (BENCH_NODE_ARGS) writes its profile.
+process.on("SIGTERM", () => process.exit(0));

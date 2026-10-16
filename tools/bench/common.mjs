@@ -112,7 +112,9 @@ export function pinned(cmd, argv, core) {
 export async function startServer(env = {}) {
   requireDist();
   // spawn + "ipc" (not fork) so the Linux-only taskset wrapper still gets the IPC fd.
-  const [cmd, argv] = pinned(process.execPath, [join(BENCH_DIR, "server.mjs")], 0);
+  // BENCH_NODE_ARGS: extra node flags for the server, e.g. "--cpu-prof --cpu-prof-dir=/tmp/prof".
+  const nodeArgs = String(env.BENCH_NODE_ARGS ?? process.env.BENCH_NODE_ARGS ?? "").split(" ").filter(Boolean);
+  const [cmd, argv] = pinned(process.execPath, [...nodeArgs, join(BENCH_DIR, "server.mjs")], 0);
   const child = spawn(cmd, argv, {
     env: { ...process.env, ...env },
     stdio: ["ignore", "ignore", "pipe", "ipc"]
