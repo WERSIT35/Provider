@@ -20,7 +20,7 @@ Build the platform first: `npm --prefix platform run build`. The suite runs the 
 
 `load.mjs`: `--players`, `--duration` (s), `--think-min` / `--think-max` (ms; `0` = no think time, finds the ceiling), `--wallet sandbox|webhook`, `--pg`.
 `chaos.mjs`: `--players` (200), `--kills` (3), `--interval` (s between kills, 18), `--settle` (s for the reconciler, 45).
-`client.mjs`: `--mode mobile|soak`, `--spins`, `--pause` (ms before each tap, 300).
+`client.mjs`: `--mode mobile|soak`, `--spins`, `--pause` (ms before each tap, 300), `--profile <file>` (the page's JS CPU profile across the spins), `--trace <file>` (a Chrome timeline trace: style, layout, paint, raster).
 
 ## Environment
 

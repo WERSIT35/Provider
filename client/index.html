@@ -19,6 +19,24 @@
         document.write('<base href="' + path + '">');
       })();
     </script>
+    <script>
+      // Start the session handshake while the code downloads instead of after it
+      // (one Slow-4G round trip, ~0.6 s, off the critical path). The same requests
+      // main.js platformInitSession() would make, in the same order; it consumes
+      // this instead of fetching (window.__vxEarlySession, taken once).
+      (function () {
+        try {
+          var lt = new URLSearchParams(location.search).get("lt");
+          if (!lt || !window.fetch) return;
+          var saved = null;
+          try { saved = sessionStorage.getItem("vx.platformSession:" + lt); } catch (e) {}
+          window.__vxEarlySession = saved
+            ? { lt: lt, saved: saved, res: fetch("/game/v1/session", { headers: { authorization: "Bearer " + saved } }) }
+            : { lt: lt, saved: null, res: fetch("/game/v1/session/init", { method: "POST", headers: { authorization: "Bearer " + lt } }) };
+          window.__vxEarlySession.res.catch(function () {});
+        } catch (e) {}
+      })();
+    </script>
     <link rel="icon" href="data:," />
     <!-- Start these fetches during HTML parse instead of waiting for main.js to
          run. Paths are relative so they resolve through the <base href> above to
@@ -26,6 +44,29 @@
          free-spins panel art is NOT here: it loads right after the reveal
          (deferredUiAssets in main.js), and the panel waits for it. -->
     <link rel="preload" as="image" href="assets/symbols/Background.webp" />
+    <!-- The reel symbols, fetched alongside the code instead of after it (they used
+         to start only once main.js ran). Phones get the 160 px art: the media
+         queries match PHONE_ART in main.js exactly, so nothing is fetched twice. -->
+    <link rel="preload" as="image" href="assets/symbols/sm/Crown.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/HourGlass.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/Ring.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/Chaile.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/RedGem.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/PurpleGem.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/YellowGem.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/GreenGem.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/BlueGem.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/sm/Scatter.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/Crown.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/HourGlass.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/Ring.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/Chaile.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/RedGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/PurpleGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/YellowGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/GreenGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/BlueGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
+    <link rel="preload" as="image" href="assets/symbols/Scatter.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin-wght-normal.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-latin-wght-normal.woff2" crossorigin />
     <link rel="stylesheet" href="styles.css?v=20261008-5" />

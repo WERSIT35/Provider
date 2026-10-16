@@ -8,12 +8,12 @@
 // BENCH_HEADLESS=shell for a chrome-headless-shell binary (default: new headless).
 // --minutes N (default 20): stop starting new spins after N minutes and report what was measured.
 // Writes qa/bench/client-<mode>.json.
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { args, launchPlayer, sleep, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
 pinGeneratorSide();
 
-const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20 });
+const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20, profile: "", trace: "", perf: "" });
 const MODE = a.mode;
 const SPINS = a.spins || (MODE === "soak" ? 500 : 20);
 
@@ -50,15 +50,25 @@ try {
   cdp.on("Network.loadingFinished", (e) => { const r = reqs.get(e.requestId); if (r) r.bytes = e.encodedDataLength; });
 
   await page.evaluateOnNewDocument(() => {
-    window.__bench = { frames: [], long: [], events: [] }; let last = 0;
-    const tick = (t) => { if (last) window.__bench.frames.push(t - last); last = t; requestAnimationFrame(tick); };
+    window.__bench = { frames: [], animFrames: [], long: [], events: [] }; let last = 0;
+    // animFrames: only frames while a round is in flight (the reels moving); idle
+    // frames between spins say nothing about animation smoothness.
+    const tick = (t) => {
+      if (last) {
+        window.__bench.frames.push(t - last);
+        if (window.__spinLifecycle?.inFlight) window.__bench.animFrames.push(t - last);
+      }
+      last = t;
+      requestAnimationFrame(tick);
+    };
     requestAnimationFrame(tick);
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__bench.long.push(e.duration); }).observe({ type: "longtask", buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) if (/^(click|pointerdown|pointerup)$/.test(e.name)) window.__bench.events.push(e.duration); })
       .observe({ type: "event", durationThreshold: 16, buffered: true });
   });
 
-  const url = `http://127.0.0.1:${srv.cred.port}/play?lt=${await launchPlayer(srv.cred, `bench-client-${Date.now()}`)}`;
+  // --perf low|mid|high forces the client's quality tier (?perf=, client/main.js tierOverride).
+  const url = `http://127.0.0.1:${srv.cred.port}/play?lt=${await launchPlayer(srv.cred, `bench-client-${Date.now()}`)}${a.perf ? `&perf=${a.perf}` : ""}`;
   const navStart = Date.now();
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 0 });
   await page.waitForFunction(() => document.body.classList.contains("app-ready"), { timeout: 180_000, polling: 50 });
@@ -94,10 +104,18 @@ try {
     }
   };
   if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
-  await page.evaluate(() => { window.__bench.frames = []; window.__bench.long = []; window.__bench.events = []; });
+  await page.evaluate(() => { window.__bench.frames = []; window.__bench.animFrames = []; window.__bench.long = []; window.__bench.events = []; });
 
-  const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0; let tapsReadAsHold = 0;
+  const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0; let tapsReadAsHold = 0; let holdRacesRecovered = 0;
   let autoBefore = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
+  // --profile <file>: a JS CPU profile of the page across the spins (.cpuprofile).
+  // --trace <file>: a Chrome timeline trace (style, layout, paint, raster, GPU) across the spins.
+  const traceEvents = [];
+  if (a.trace) {
+    cdp.on("Tracing.dataCollected", (e) => traceEvents.push(...e.value));
+    await cdp.send("Tracing.start", { transferMode: "ReportEvents", traceConfig: { includedCategories: ["devtools.timeline", "disabled-by-default-devtools.timeline", "blink", "cc", "gpu", "v8.execute", "toplevel"] } });
+  }
+  if (a.profile) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 500 }); await cdp.send("Profiler.start"); }
   const deadline = Date.now() + a.minutes * 60_000;
   let stoppedEarly = false;
   for (let i = 0; i < SPINS; i++) {
@@ -120,11 +138,18 @@ try {
     // A tap read as a HOLD starts infinite autoplay (client/main.js SPIN_HOLD_MS timer
     // fires when the main thread is too busy to handle the release in time). Count it
     // (a real defect on slow phones) and stop the autoplay with another press.
-    const autoNow = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
+    // Counted only if autoplay is still running once the release was handled: the
+    // client may lose the timer race for an instant and then cancel by the events'
+    // own timestamps (that is the fix; counted separately as recovered).
+    // The release may still be queued behind a long frame: give it up to 1 s.
+    await page.waitForFunction(() => !window.__spinLifecycle.autoplayActive, { timeout: 1000, polling: 16 }).catch(() => {});
+    const { autoNow, active } = await page.evaluate(() => ({ autoNow: window.__spinLifecycle.stats.startedAuto, active: window.__spinLifecycle.autoplayActive }));
     if (autoNow > autoBefore) {
-      tapsReadAsHold++;
-      log("tap was read as a hold: autoplay started; stopping it");
-      await page.tap("#spinBtn").catch(() => {});
+      if (active) {
+        tapsReadAsHold++;
+        log("tap was read as a hold: autoplay started; stopping it");
+        await page.tap("#spinBtn").catch(() => {});
+      } else holdRacesRecovered++;
       autoBefore = autoNow;
     }
     await waitIdle();
@@ -132,9 +157,18 @@ try {
     if (i % 100 === 0 || i < 2) log("spin", i, roundMs.at(-1), "ms");
   }
   if (MODE === "soak") heapSamples.push({ spin: roundMs.length, ...(await heap()) });
+  if (a.trace) {
+    const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+    await cdp.send("Tracing.end");
+    await done;
+    writeFileSync(a.trace, JSON.stringify({ traceEvents }));
+    log("trace →", a.trace, traceEvents.length, "events");
+  }
+  if (a.profile) { const { profile } = await cdp.send("Profiler.stop"); writeFileSync(a.profile, JSON.stringify(profile)); log("profile →", a.profile); }
 
   const st = await page.evaluate(() => window.__bench);
   const f = st.frames.filter((x) => x < 1000).sort((x, y) => x - y);
+  const af = st.animFrames.filter((x) => x < 1000).sort((x, y) => x - y);
   const q = (arr, p) => (arr.length ? +arr[Math.min(arr.length - 1, Math.floor(p * arr.length))].toFixed(1) : null);
   const ev = [...st.events].sort((x, y) => x - y);
   const all = [...reqs.values()]; const kb = (xs) => +(xs.reduce((s, r) => s + r.bytes, 0) / 1024).toFixed(0);
@@ -145,7 +179,7 @@ try {
     tier: await page.evaluate(() => [...document.body.classList].filter((c) => c.startsWith("perf-")).join(" ")),
     spins: roundMs.length, spinsRequested: SPINS, stoppedByTimeBudget: stoppedEarly,
     roundMs: roundMs.length ? { p50: q([...roundMs].sort((x, y) => x - y), 0.5), max: Math.max(...roundMs) } : null,
-    tapsThatDidNotStartASpin: stuck, tapsReadAsHoldStartingAutoplay: tapsReadAsHold,
+    tapsThatDidNotStartASpin: stuck, tapsReadAsHoldStartingAutoplay: tapsReadAsHold, holdRacesRecovered,
     timeToPlayableMs: timeToReadyMs, fcpMs: nav.fcp, domContentLoadedMs: nav.dcl, loadEventMs: nav.load,
     requestsBeforePlayable: all.filter((r) => r.beforeReady).length, kbBeforePlayable: kb(all.filter((r) => r.beforeReady)), kbPerSession: kb(all),
     kbByType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, +(v / 1024).toFixed(0)])),
@@ -155,6 +189,10 @@ try {
       n: f.length, avgFps: f.length ? +(1000 / (f.reduce((s, x) => s + x, 0) / f.length)).toFixed(1) : null, p95Ms: q(f, 0.95), p99Ms: q(f, 0.99),
       over20msPct: f.length ? +(100 * f.filter((x) => x > 20).length / f.length).toFixed(1) : null,
       over50msPct: f.length ? +(100 * f.filter((x) => x > 50).length / f.length).toFixed(2) : null
+    },
+    animatingFrames: {
+      n: af.length, avgFps: af.length ? +(1000 / (af.reduce((s, x) => s + x, 0) / af.length)).toFixed(1) : null, p95Ms: q(af, 0.95),
+      over50msPct: af.length ? +(100 * af.filter((x) => x > 50).length / af.length).toFixed(2) : null
     },
     longTasks: { n: st.long.length, maxMs: st.long.length ? Math.max(...st.long) : 0, totalMs: Math.round(st.long.reduce((s, x) => s + x, 0)) },
     heap: heapSamples,

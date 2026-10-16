@@ -164,18 +164,23 @@ const payouts = {
 // All art is WebP, generated from the source PNGs by `npm run assets:optimize`
 // (tools/optimize-assets.js). The PNGs stay in the repo as the authoring
 // originals; only the .webp files are ever fetched by the game.
+// Phones get 160 px art (a cell is drawn at ≤ ~130 px there; 256 px files are a
+// third of a slow phone's whole first download). The SAME media query is on the
+// <link rel="preload"> tags in index.html, so each image is fetched exactly once.
+const PHONE_ART = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (max-width: 600px)").matches;
+const symbolArt = (file) => `assets/symbols/${PHONE_ART ? "sm/" : ""}${file}`;
 const symbolAssets = {
-  TOP_CROWN: "assets/symbols/Crown.webp",
-  HOURGLASS: "assets/symbols/HourGlass.webp",
-  RING: "assets/symbols/Ring.webp",
-  CHALICE: "assets/symbols/Chaile.webp",
-  RED_GEM: "assets/symbols/RedGem.webp",
-  PURPLE_TRIANGLE: "assets/symbols/PurpleGem.webp",
-  YELLOW_HEX: "assets/symbols/YellowGem.webp",
-  GREEN_TRIANGLE: "assets/symbols/GreenGem.webp",
-  BLUE_DIAMOND: "assets/symbols/BlueGem.webp",
+  TOP_CROWN: symbolArt("Crown.webp"),
+  HOURGLASS: symbolArt("HourGlass.webp"),
+  RING: symbolArt("Ring.webp"),
+  CHALICE: symbolArt("Chaile.webp"),
+  RED_GEM: symbolArt("RedGem.webp"),
+  PURPLE_TRIANGLE: symbolArt("PurpleGem.webp"),
+  YELLOW_HEX: symbolArt("YellowGem.webp"),
+  GREEN_TRIANGLE: symbolArt("GreenGem.webp"),
+  BLUE_DIAMOND: symbolArt("BlueGem.webp"),
   // Multipliers have no art file: they are drawn in code (MULTI_EMBLEM).
-  SCATTER: "assets/symbols/Scatter.webp"
+  SCATTER: symbolArt("Scatter.webp")
 };
 
 // Art that is NOT drawn on the canvas: <img> buttons and CSS backgrounds. None
@@ -4785,22 +4790,32 @@ function platformSaveToken(token) {
   } catch { /* storage unavailable: a reload falls back to the launch token */ }
 }
 
+/** The request index.html already sent for exactly this call, if any (taken once). */
+function takeEarlySession(saved) {
+  const early = window.__vxEarlySession;
+  window.__vxEarlySession = null;
+  if (!early || early.lt !== _platform.launchToken || early.saved !== saved) return null;
+  return early.res;
+}
+
 async function platformInitSession() {
   let body = null;
   const saved = platformSavedToken();
+  const early = takeEarlySession(saved);
   if (saved) {
     // Reload: read the existing session's state; opens nothing new.
     try {
-      const res = await fetch("/game/v1/session", { headers: { authorization: `Bearer ${saved}` } });
+      const res = await (early ?? fetch("/game/v1/session", { headers: { authorization: `Bearer ${saved}` } }));
       if (res.ok) body = { ...(await res.json()), session_token: saved };
       else platformSaveToken(null); // expired or closed: start over from the launch token
     } catch { /* network: fall back to the launch token below */ }
   }
   if (!body) {
-    const res = await fetch("/game/v1/session/init", {
+    // The early request is used only when it WAS the launch-token init (no saved token).
+    const res = await ((!saved && early) || fetch("/game/v1/session/init", {
       method: "POST",
       headers: { authorization: `Bearer ${_platform.launchToken}` }
-    });
+    }));
     body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw platformError(body, res.status, "session init failed");
@@ -5057,6 +5072,7 @@ const lifecycleStats = { startedManual: 0, startedAuto: 0, blockedPresses: 0 };
 window.__spinLifecycle = {
   get phase() { return spinLock.phase; },
   get inFlight() { return isRoundInFlight(); },
+  get autoplayActive() { return Boolean(state.autoplayActive); },
   get stats() { return { ...lifecycleStats }; }
 };
 
