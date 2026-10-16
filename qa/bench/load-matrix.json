@@ -1,6 +1,6 @@
 {
   "name": "load-matrix",
-  "at": "2026-10-16T17:01:48.380Z",
+  "at": "2026-10-16T17:21:14.808Z",
   "node": "v22.22.0",
   "runs": [
     {
@@ -15,21 +15,21 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 996,
-      "spinsPerSec": 15.7,
+      "spins": 992,
+      "spinsPerSec": 15.5,
       "errors": {},
       "latencyMs": {
-        "n": 996,
-        "p50": 4.57,
-        "p95": 8.78,
-        "p99": 14.24,
-        "max": 36.89
+        "n": 992,
+        "p50": 4.93,
+        "p95": 9.23,
+        "p99": 15.39,
+        "max": 34.28
       },
       "serverRssMB": {
-        "start": 85,
-        "max": 109
+        "start": 84,
+        "max": 107
       },
-      "serverCpuPctMax": 15.2
+      "serverCpuPctMax": 15.4
     },
     {
       "label": "sandbox-200",
@@ -43,21 +43,21 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 3946,
-      "spinsPerSec": 61.9,
+      "spins": 3971,
+      "spinsPerSec": 62.2,
       "errors": {},
       "latencyMs": {
-        "n": 3946,
-        "p50": 3.7,
-        "p95": 8.32,
-        "p99": 13.46,
-        "max": 52.84
+        "n": 3971,
+        "p50": 3.72,
+        "p95": 8.26,
+        "p99": 13.2,
+        "max": 33.61
       },
       "serverRssMB": {
-        "start": 89,
-        "max": 127
+        "start": 92,
+        "max": 129
       },
-      "serverCpuPctMax": 37.5
+      "serverCpuPctMax": 38.8
     },
     {
       "label": "sandbox-500",
@@ -71,21 +71,21 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 9892,
-      "spinsPerSec": 155.2,
+      "spins": 9930,
+      "spinsPerSec": 155.9,
       "errors": {},
       "latencyMs": {
-        "n": 9892,
-        "p50": 3.33,
-        "p95": 10.64,
-        "p99": 20.63,
-        "max": 132.07
+        "n": 9930,
+        "p50": 3.83,
+        "p95": 13.16,
+        "p99": 24.29,
+        "max": 44.97
       },
       "serverRssMB": {
-        "start": 87,
-        "max": 161
+        "start": 90,
+        "max": 158
       },
-      "serverCpuPctMax": 59.8
+      "serverCpuPctMax": 64.5
     },
     {
       "label": "sandbox-100-sat",
@@ -99,21 +99,21 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 29956,
-      "spinsPerSec": 498.1,
+      "spins": 27589,
+      "spinsPerSec": 458.2,
       "errors": {},
       "latencyMs": {
-        "n": 29956,
-        "p50": 177.48,
-        "p95": 292.95,
-        "p99": 410.75,
-        "max": 10183.12
+        "n": 27589,
+        "p50": 189.26,
+        "p95": 332.07,
+        "p99": 467.04,
+        "max": 9776.21
       },
       "serverRssMB": {
-        "start": 109,
-        "max": 307
+        "start": 106,
+        "max": 290
       },
-      "serverCpuPctMax": 86
+      "serverCpuPctMax": 87.1
     },
     {
       "label": "webhook-500",
@@ -127,21 +127,21 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 9702,
-      "spinsPerSec": 151.9,
+      "spins": 9371,
+      "spinsPerSec": 146.4,
       "errors": {},
       "latencyMs": {
-        "n": 9702,
-        "p50": 19.84,
-        "p95": 341.44,
-        "p99": 541.6,
-        "max": 925.52
+        "n": 9371,
+        "p50": 88.32,
+        "p95": 559.61,
+        "p99": 876.17,
+        "max": 1923.79
       },
       "serverRssMB": {
-        "start": 121,
-        "max": 343
+        "start": 117,
+        "max": 336
       },
-      "serverCpuPctMax": 84.3
+      "serverCpuPctMax": 88.2
     },
     {
       "label": "webhook-100-sat",
@@ -155,21 +155,21 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 12305,
-      "spinsPerSec": 204.1,
+      "spins": 12047,
+      "spinsPerSec": 199.8,
       "errors": {},
       "latencyMs": {
-        "n": 12305,
-        "p50": 452.61,
-        "p95": 671.43,
-        "p99": 810.61,
-        "max": 9752.33
+        "n": 12047,
+        "p50": 447.26,
+        "p95": 690.36,
+        "p99": 817.85,
+        "max": 11154.87
       },
       "serverRssMB": {
-        "start": 126,
-        "max": 424
+        "start": 120,
+        "max": 412
       },
-      "serverCpuPctMax": 91.2
+      "serverCpuPctMax": 94.5
     },
     {
       "label": "sandbox+pg-500",
@@ -183,21 +183,21 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 9578,
-      "spinsPerSec": 149.8,
+      "spins": 8907,
+      "spinsPerSec": 139.6,
       "errors": {},
       "latencyMs": {
-        "n": 9578,
-        "p50": 41.14,
-        "p95": 480.18,
-        "p99": 914.09,
-        "max": 1036.71
+        "n": 8907,
+        "p50": 200.1,
+        "p95": 1253.48,
+        "p99": 1492.52,
+        "max": 2038.71
       },
       "serverRssMB": {
-        "start": 100,
-        "max": 169
+        "start": 94,
+        "max": 172
       },
-      "serverCpuPctMax": 73.6
+      "serverCpuPctMax": 65.6
     },
     {
       "label": "sandbox+pg-100-sat",
@@ -211,21 +211,21 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 11966,
-      "spinsPerSec": 198.6,
+      "spins": 9014,
+      "spinsPerSec": 149.2,
       "errors": {},
       "latencyMs": {
-        "n": 11966,
-        "p50": 485.42,
-        "p95": 641.26,
-        "p99": 724.6,
-        "max": 1515.06
+        "n": 9014,
+        "p50": 649.99,
+        "p95": 855.92,
+        "p99": 1013.79,
+        "max": 1599
       },
       "serverRssMB": {
-        "start": 114,
-        "max": 273
+        "start": 108,
+        "max": 191
       },
-      "serverCpuPctMax": 87
+      "serverCpuPctMax": 72.3
     },
     {
       "label": "webhook+pg-50",
@@ -239,21 +239,21 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 981,
+      "spins": 991,
       "spinsPerSec": 15.6,
       "errors": {},
       "latencyMs": {
-        "n": 981,
-        "p50": 16.44,
-        "p95": 36.57,
-        "p99": 59.79,
-        "max": 87.78
+        "n": 991,
+        "p50": 14.17,
+        "p95": 37.34,
+        "p99": 62.59,
+        "max": 92.14
       },
       "serverRssMB": {
-        "start": 102,
-        "max": 144
+        "start": 96,
+        "max": 127
       },
-      "serverCpuPctMax": 39.1
+      "serverCpuPctMax": 32.8
     },
     {
       "label": "webhook+pg-200",
@@ -267,21 +267,21 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 3919,
+      "spins": 3925,
       "spinsPerSec": 61.5,
       "errors": {},
       "latencyMs": {
-        "n": 3919,
-        "p50": 18.9,
-        "p95": 77.37,
-        "p99": 146.26,
-        "max": 362.41
+        "n": 3925,
+        "p50": 18.49,
+        "p95": 118.72,
+        "p99": 267.47,
+        "max": 542.59
       },
       "serverRssMB": {
-        "start": 116,
-        "max": 176
+        "start": 118,
+        "max": 181
       },
-      "serverCpuPctMax": 74
+      "serverCpuPctMax": 70.1
     },
     {
       "label": "webhook+pg-500",
@@ -295,21 +295,21 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 8012,
-      "spinsPerSec": 125.4,
+      "spins": 8158,
+      "spinsPerSec": 127.4,
       "errors": {},
       "latencyMs": {
-        "n": 8012,
-        "p50": 285.59,
-        "p95": 2360.16,
-        "p99": 2910.33,
-        "max": 4011.82
+        "n": 8158,
+        "p50": 414.7,
+        "p95": 2055.01,
+        "p99": 2481.49,
+        "max": 4619.75
       },
       "serverRssMB": {
-        "start": 116,
-        "max": 322
+        "start": 124,
+        "max": 315
       },
-      "serverCpuPctMax": 91.1
+      "serverCpuPctMax": 81.4
     }
   ]
 }
