@@ -1,0 +1,44 @@
+{
+  "name": "chaos",
+  "at": "2026-10-16T15:15:10.683Z",
+  "node": "v22.22.0",
+  "config": {
+    "players": 200,
+    "kills": 3,
+    "intervalS": 18,
+    "thinkMs": [
+      200,
+      600
+    ],
+    "reconcilerMs": 2000
+  },
+  "kills": [
+    {
+      "at": "2026-10-16T15:13:18.359Z",
+      "acknowledgedSoFar": 2881
+    },
+    {
+      "at": "2026-10-16T15:13:39.663Z",
+      "acknowledgedSoFar": 5447
+    },
+    {
+      "at": "2026-10-16T15:14:01.158Z",
+      "acknowledgedSoFar": 7939
+    }
+  ],
+  "acknowledgedRounds": 10703,
+  "roundsInDb": 10219,
+  "lostAcknowledgedRounds": 501,
+  "duplicateRoundRefsInDb": 0,
+  "duplicateAcknowledgements": 0,
+  "casinoDebitedRounds": 10524,
+  "debitsWithNoRoundAndNoRollback": 835,
+  "doubleDebitedRounds": 0,
+  "doubleCreditedRounds": 0,
+  "clientNetworkErrors": 5272,
+  "pass": false,
+  "failures": [
+    "lostAcknowledgedRounds",
+    "debitsWithNoRoundAndNoRollback"
+  ]
+}

@@ -86,6 +86,16 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ...parsed.data,
     ADMIN_TOTP_REQUIRED: parsed.data.ADMIN_TOTP_REQUIRED ?? !TOTP_OFF_BY_DEFAULT.has(parsed.data.NODE_ENV)
   };
+  // Sandbox is reachable by casinos over the internet: the public default token
+  // secrets would let anyone mint a provider_super_admin token there.
+  if (env.NODE_ENV === "sandbox") {
+    const unsafe = Object.entries(LOCAL_ONLY_DEFAULTS)
+      .filter(([key, value]) => env[key as keyof typeof LOCAL_ONLY_DEFAULTS] === value)
+      .map(([key]) => key);
+    if (unsafe.length > 0) {
+      throw new Error(`Unsafe sandbox environment: override ${unsafe.join(", ")}`);
+    }
+  }
   if (isProd(env)) {
     const unsafe = Object.entries(LOCAL_ONLY_DEFAULTS)
       .filter(([key, value]) => env[key as keyof typeof LOCAL_ONLY_DEFAULTS] === value)

@@ -25,26 +25,26 @@ is byte-identical to that tree):
 
 | Area | State |
 |---|---|
-| Game + math | Ready. Certified math build; the user holds GLI certification and the provider licences (reference number not yet recorded here). |
+| Game + math | Math verified internally (230M+ simulated spins, `qa/rtp-certification-report.md`). **Not lab-certified yet; no provider licence held.** Certification is planned and will be funded from revenue. |
 | RGS / integration API | Ready. HMAC operator API, seamless wallet, free rounds, embedding, exports, tracing, signed ledgers. |
 | Security (code) | Phase 0 done; 57 abuse tests in CI. **Tool-based pentest (Phase 3B) not run yet.** |
 | Hosting | **Not done.** Kit ready; no server yet. The Docker image has never been built or booted, and migrations 0011/0012 have never run on a real Postgres (Docker Desktop was off). |
 | Staging tests (load, resilience, restore) | Not done (needs the server). |
-| Website | Built, **not published**: placeholders `partners@example.com` and `[GLI REFERENCE NO.]`. |
+| Website | Built, **not published**: placeholder `partners@example.com`. It makes no certification claims until a certificate exists. |
 | Scale | One server, no failover: fine for a pilot (~30 concurrent players), not for a big SLA. |
 
 ## Decisions (user, 2026-10-09)
 - Hosting on free student credit: one DigitalOcean droplet, `NODE_ENV=staging` first.
 - Website: separate Vercel project, Vault 20K look, email contact only.
 - Per-row ledger signing (not checkpoints); one rotating key for v1 (no per-jurisdiction keys yet).
-- The user is a game provider with the required provider certifications and licences.
+- No lab certification or provider licence is held yet. Nothing (code, docs, website, pitch) may claim otherwise.
 
 ## Lessons
 - **Stacked PRs:** merging the base PR with branch deletion CLOSES the stacked PR (GitHub doesn't retarget it). Retarget it to `main` first, or reopen it from the same branch (#80 → #81).
 - **Combined check before merging:** merge every open PR into a throwaway local branch and run `verify:release` + `verify:browser` on the result; `main` must end up identical to the tested tree.
 
 ## Resume here (next session)
-1. **User:** claim the GitHub Student Pack, create the droplet (Ubuntu LTS, 2 GB, SSH key only), point `rgs.<domain>` (and `casino.<domain>`) at it. Send the real partners email and the GLI reference number.
+1. **User:** claim the GitHub Student Pack, create the droplet (Ubuntu LTS, 2 GB, SSH key only), point `rgs.<domain>` (and `casino.<domain>`) at it. Send the real partners email. (No certificate reference exists yet; add one only once a certificate is issued.)
 2. **Claude:** `ROADMAP.md` step 2 (deploy staging per `infra/README.md`), then steps 3–4.
 3. Local leftovers: the user's old `stash@{0}` ("WIP on main: 55959ca"), untouched.
 
@@ -128,7 +128,7 @@ merged to `main`.
 
 **Milestone status:** the cinematic client overhaul (§1), Platform Phase 3 (§1b), **Phase 4,
 math certification (§1c)**, the **Demo Casino integration** and the **Campaign Manager UI +
-expiry job (§1d)** are complete; the branch is merged to `main`. The certified math build is
+expiry job (§1d)** are complete; the branch is merged to `main`. The lab-submission math build is
 commit `6d75826` (engine 1.2.0, rules 3.1.0); the lab report is
 `qa/rtp-certification-report.md`. Lab-submission items O1–O4 are closed on branch
 `chore/lab-submission-o1-o4` (rules 3.2.0, §5); reports for all three profiles are in `qa/`.
@@ -174,7 +174,7 @@ standard error. Calibration is linear in the two scalers: measure coefficients a
 on seed `calib`, solve per profile, then raise the free-spin scaler ~0.16% for the cap's trim.
 Never calibrate on the default seed.
 
-**Certified results (96.38 profile, `qa/rtp-certification-report.md`):**
+**Verified simulation results (96.38 profile, `qa/rtp-certification-report.md`):**
 
 | Mode | 30M (seed `vault20k`) | Pooled with 200M independent | Declared |
 |---|---|---|---|

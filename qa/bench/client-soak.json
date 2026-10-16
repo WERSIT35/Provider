@@ -1,0 +1,101 @@
+{
+  "name": "client-soak",
+  "at": "2026-10-16T15:39:41.776Z",
+  "node": "v22.22.0",
+  "mode": "soak",
+  "throttling": "none",
+  "chrome": "HeadlessChrome/153.0.8010.0",
+  "tier": "perf-low perf-handheld",
+  "spins": 30,
+  "tapsThatDidNotStartASpin": 0,
+  "timeToPlayableMs": 546,
+  "fcpMs": 384,
+  "domContentLoadedMs": 331,
+  "loadEventMs": 460,
+  "requestsBeforePlayable": 47,
+  "kbBeforePlayable": 1027,
+  "kbPerSession": 3651,
+  "kbByType": {
+    "Document": 33,
+    "Image": 268,
+    "Font": 76,
+    "Stylesheet": 122,
+    "Script": 494,
+    "Fetch": 2658
+  },
+  "firstTapToSpinRequestMs": 177,
+  "inputEventMs": {
+    "n": 90,
+    "p50": 128,
+    "max": 728
+  },
+  "frames": {
+    "n": 1407,
+    "avgFps": 23.3,
+    "p95Ms": 166.6,
+    "p99Ms": 233.2,
+    "over20msPct": 36,
+    "over50msPct": 20.82
+  },
+  "longTasks": {
+    "n": 0,
+    "maxMs": 0,
+    "totalMs": 0
+  },
+  "heap": [
+    {
+      "spin": 25,
+      "heapMB": 2.52,
+      "nodes": 1640,
+      "listeners": 85
+    },
+    {
+      "spin": 30,
+      "heapMB": 2.56,
+      "nodes": 1652,
+      "listeners": 85
+    }
+  ],
+  "biggestDownloads": [
+    {
+      "kb": 754,
+      "path": "/play/assets/audio/music/free_spins.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 684,
+      "path": "/play/assets/audio/music/base.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 348,
+      "path": "/play/main.js",
+      "beforePlayable": true
+    },
+    {
+      "kb": 316,
+      "path": "/play/assets/audio/music/big_win.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 122,
+      "path": "/play/styles.css",
+      "beforePlayable": true
+    },
+    {
+      "kb": 109,
+      "path": "/play/assets/audio/sfx/riser_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 48,
+      "path": "/play/assets/symbols/Scatter.webp",
+      "beforePlayable": true
+    },
+    {
+      "kb": 48,
+      "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
+      "beforePlayable": true
+    }
+  ]
+}

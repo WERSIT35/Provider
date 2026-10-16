@@ -24,3 +24,6 @@ infra/.env.prod
 art-src/audio/candidates/*.ogg
 art-src/audio/incoming/*
 !art-src/audio/incoming/README.md
+
+# Bench history (latest results live in qa/bench/*.json)
+qa/bench/runs/
