@@ -1,4 +1,5 @@
-import { createHmac, randomBytes, webcrypto } from "node:crypto";
+import * as crypto from "node:crypto";
+import { createHash, createHmac, randomBytes, webcrypto } from "node:crypto";
 
 /**
  * Server-authoritative, reproducible RNG.
@@ -19,33 +20,63 @@ import { createHmac, randomBytes, webcrypto } from "node:crypto";
 
 export const RNG_ALGO = "hmac-sha256-ctr/v1";
 
+/**
+ * HMAC-SHA256(seed, u64le(counter)) blocks, computed as RFC 2104 spells it out —
+ * H((K ^ opad) || H((K ^ ipad) || m)) — with the padded keys prepared once per seed and
+ * Node's one-shot hash, instead of a new Hmac object (three native calls) per 32-byte
+ * block. Byte-identical to createHmac (test/seeded-rng.test.ts compares the streams).
+ */
+const oneShot = (crypto as unknown as { hash?: (alg: string, data: Buffer, enc: "buffer") => Buffer }).hash;
+
 class SeededStream {
   private readonly key: Buffer;
   private counter = 0n;
   private pool: Buffer = Buffer.alloc(0);
   private poolPos = 0;
+  /** ipad-key || counter, and opad-key || inner digest (one-shot path). */
+  private readonly inner: Buffer | null = null;
+  private readonly outer: Buffer | null = null;
   bytesDrawn = 0;
 
   constructor(seed: Buffer) {
     this.key = seed;
+    if (oneShot) {
+      // HMAC-SHA256 block size 64; a key longer than that is hashed first (RFC 2104).
+      const k = seed.length > 64 ? createHash("sha256").update(seed).digest() : seed;
+      this.inner = Buffer.alloc(64 + 8, 0x36);
+      this.outer = Buffer.alloc(64 + 32, 0x5c);
+      for (let i = 0; i < k.length; i++) {
+        this.inner[i] ^= k[i];
+        this.outer[i] ^= k[i];
+      }
+    }
   }
 
   private refill(): void {
-    const ctr = Buffer.alloc(8);
-    ctr.writeBigUInt64LE(this.counter);
+    if (this.inner && this.outer && oneShot) {
+      this.inner.writeBigUInt64LE(this.counter, 64);
+      oneShot("sha256", this.inner, "buffer").copy(this.outer, 64);
+      this.pool = oneShot("sha256", this.outer, "buffer"); // 32 bytes
+    } else {
+      const ctr = Buffer.alloc(8);
+      ctr.writeBigUInt64LE(this.counter);
+      this.pool = createHmac("sha256", this.key).update(ctr).digest(); // 32 bytes
+    }
     this.counter += 1n;
-    this.pool = createHmac("sha256", this.key).update(ctr).digest(); // 32 bytes
     this.poolPos = 0;
   }
 
   fill(view: ArrayBufferView): void {
     const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-    for (let i = 0; i < bytes.length; i += 1) {
+    let i = 0;
+    while (i < bytes.length) {
       if (this.poolPos >= this.pool.length) this.refill();
-      bytes[i] = this.pool[this.poolPos];
-      this.poolPos += 1;
-      this.bytesDrawn += 1;
+      const n = Math.min(bytes.length - i, this.pool.length - this.poolPos);
+      bytes.set(this.pool.subarray(this.poolPos, this.poolPos + n), i);
+      this.poolPos += n;
+      i += n;
     }
+    this.bytesDrawn += bytes.length;
   }
 }
 
