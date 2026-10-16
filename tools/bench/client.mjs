@@ -10,7 +10,8 @@
 // Writes qa/bench/client-<mode>.json.
 import { existsSync } from "node:fs";
 import puppeteer from "puppeteer-core";
-import { args, launchPlayer, sleep, startServer, writeResult } from "./common.mjs";
+import { args, launchPlayer, sleep, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
+pinGeneratorSide();
 
 const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20 });
 const MODE = a.mode;

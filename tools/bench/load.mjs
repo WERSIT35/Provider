@@ -5,7 +5,8 @@
 //
 // --think-max 0 = no think time (finds the ceiling). --pg needs BENCH_DATABASE_URL
 // (a database whose name contains "bench"; it is wiped). Writes qa/bench/load*.json.
-import { args, benchDbUrl, launchPlayer, openSession, quantiles, resetBenchDb, sleep, startMockCasino, startServer, writeResult } from "./common.mjs";
+import { args, benchDbUrl, launchPlayer, openSession, quantiles, resetBenchDb, sleep, startMockCasino, startServer, writeResult, request, pinGeneratorSide } from "./common.mjs";
+pinGeneratorSide();
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
@@ -33,9 +34,9 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
       while (Date.now() < end) {
         const t0 = performance.now();
         try {
-          const r = await fetch(`${base}/game/v1/spin`, { method: "POST", body: '{"bet_amount":1}',
+          const r = await request(`${base}/game/v1/spin`, { method: "POST", body: '{"bet_amount":1}',
             headers: { authorization: `Bearer ${tok}`, "content-type": "application/json", "idempotency-key": randomUUID() } });
-          const j = await r.json();
+          const j = r.json;
           if (r.status === 200) ok++;
           else errors[`${r.status}:${j?.error?.code}`] = (errors[`${r.status}:${j?.error?.code}`] ?? 0) + 1;
         } catch (e) { errors[`net:${e.cause?.code ?? e.message}`] = (errors[`net:${e.cause?.code ?? e.message}`] ?? 0) + 1; }

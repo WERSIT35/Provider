@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  args, benchDbUrl, launchPlayer, openSession, queryBenchDb, resetBenchDb, sleep, startMockCasino, startServer, writeResult
+  args, benchDbUrl, launchPlayer, openSession, queryBenchDb, resetBenchDb, sleep, startMockCasino, startServer, writeResult, request, pinGeneratorSide
 } from "./common.mjs";
+pinGeneratorSide();
 
 const a = args({ players: 200, kills: 3, interval: 18, "think-min": 200, "think-max": 600, settle: 45 });
 const db = benchDbUrl();
@@ -45,9 +46,9 @@ const think = () => a["think-min"] + Math.random() * (a["think-max"] - a["think-
 const player = async (tok) => {
   while (running) {
     try {
-      const r = await fetch(`${base}/game/v1/spin`, { method: "POST", body: '{"bet_amount":1}',
+      const r = await request(`${base}/game/v1/spin`, { method: "POST", body: '{"bet_amount":1}',
         headers: { authorization: `Bearer ${tok}`, "content-type": "application/json", "idempotency-key": randomUUID() } });
-      const j = await r.json();
+      const j = r.json;
       if (r.status === 200) acknowledged.push(j.round_ref);
     } catch { netErrors++; }
     await sleep(think());
