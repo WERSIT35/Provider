@@ -1,6 +1,6 @@
 // Shared helpers for the bench suite (tools/bench). Node 22+, no extra deps:
 // it reuses the built platform (platform/dist) and the platform's own `pg`.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -52,6 +52,20 @@ export function writeResult(name, data) {
   return join(OUT_DIR, `${name}.json`);
 }
 
+/**
+ * Linux only, opt-in: BENCH_PIN=1 pins the server to core 0 and everything else —
+ * including the process running the load generator itself — to core 1, so the load
+ * never steals the server's core (emulates a 2-vCPU box with a remote client).
+ */
+if (process.env.BENCH_PIN === "1" && process.platform === "linux") {
+  try { execFileSync("taskset", ["-pc", "1", String(process.pid)], { stdio: "ignore" }); } catch { /* taskset missing: unpinned */ }
+  // A local Postgres goes to core 1 too, so the platform's core is its own (best effort:
+  // needs permission over the postgres processes; a containerised DB is left alone).
+  try {
+    const pids = execFileSync("pgrep", ["-u", "postgres"], { encoding: "utf8" }).split("\n").filter(Boolean);
+    for (const pid of pids) try { execFileSync("taskset", ["-pc", "1", pid], { stdio: "ignore" }); } catch { /* not ours */ }
+  } catch { /* no local postgres */ }
+}
 /** Linux only, opt-in: BENCH_PIN=1 pins the server to core 0 and the rest to core 1. */
 export function pinned(cmd, argv, core) {
   if (process.env.BENCH_PIN === "1" && process.platform === "linux") return ["taskset", ["-c", String(core), cmd, ...argv]];

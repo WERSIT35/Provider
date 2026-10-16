@@ -26,6 +26,7 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
 
     const lat = []; const errors = {}; let ok = 0;
     const startedAt = Date.now(); const end = startedAt + duration * 1000;
+    const cpu0 = process.cpuUsage();
     const think = () => thinkMin + Math.random() * (thinkMax - thinkMin);
     const player = async (tok) => {
       if (thinkMax > 0) await sleep(Math.random() * thinkMax); // stagger
@@ -44,13 +45,18 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
     };
     await Promise.all(tokens.map(player));
     const secs = (Date.now() - startedAt) / 1000;
-    const rss = srv.samples.map((s) => s.rss); const cpu = srv.samples.map((s) => s.cpuPct);
+    const cpu = process.cpuUsage(cpu0);
+    // The generator's own CPU: near a full core, the ceiling measured is the generator's, not the server's.
+    const generatorCpuPct = +(((cpu.user + cpu.system) / 1000 / (secs * 1000)) * 100).toFixed(1);
+    const rss = srv.samples.map((s) => s.rss); const serverCpu = srv.samples.map((s) => s.cpuPct);
     return {
       label: label ?? `${wallet}${pg ? "+pg" : ""}-${players}${thinkMax > 0 ? "" : "-sat"}`,
       config: { players, durationS: duration, thinkMs: [thinkMin, thinkMax], wallet, postgres: !!pg },
       spins: ok, spinsPerSec: +(ok / secs).toFixed(1), errors, latencyMs: quantiles(lat),
       serverRssMB: { start: rss.length ? +(rss[0] / 1048576).toFixed(0) : null, max: rss.length ? +(Math.max(...rss) / 1048576).toFixed(0) : null },
-      serverCpuPctMax: cpu.length ? Math.max(...cpu) : null
+      serverCpuPctMax: serverCpu.length ? Math.max(...serverCpu) : null,
+      generatorCpuPct,
+      generatorBound: generatorCpuPct > 85
     };
   } finally {
     srv.child.kill(); casino?.kill();
@@ -80,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   for (const p of plan) {
     const r = await runLoad({ duration: a.duration, ...p });
     runs.push(r);
-    console.log(`${r.label.padEnd(22)} ${String(r.spinsPerSec).padStart(7)} spins/s  p50 ${r.latencyMs.p50}  p95 ${r.latencyMs.p95}  p99 ${r.latencyMs.p99}  max ${r.latencyMs.max} ms  errors ${Object.values(r.errors).reduce((x, y) => x + y, 0)}  rss ${r.serverRssMB.max} MB`);
+    console.log(`${r.label.padEnd(22)} ${String(r.spinsPerSec).padStart(7)} spins/s  p50 ${r.latencyMs.p50}  p95 ${r.latencyMs.p95}  p99 ${r.latencyMs.p99}  max ${r.latencyMs.max} ms  errors ${Object.values(r.errors).reduce((x, y) => x + y, 0)}  rss ${r.serverRssMB.max} MB  server cpu ${r.serverCpuPctMax}%  gen cpu ${r.generatorCpuPct}%${r.generatorBound ? " (GENERATOR-BOUND)" : ""}`);
   }
   console.log("→", writeResult(a.matrix ? "load-matrix" : `load-${runs[0].label}`, { runs }));
   process.exit(0);

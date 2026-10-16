@@ -78,7 +78,9 @@ await sleep(1000);
 const dbRounds = await queryBenchDb(db, "select round_ref from rounds");
 const dbCount = new Map();
 for (const { round_ref } of dbRounds) dbCount.set(round_ref, (dbCount.get(round_ref) ?? 0) + 1);
-const casinoRows = readFileSync(casinoLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+// Money the casino actually APPLIED (a replayed idempotency key moves nothing).
+const allCasinoRows = readFileSync(casinoLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+const casinoRows = allCasinoRows.filter((e) => !e.replay);
 const byRound = new Map();
 const keyToRound = new Map();
 const g = (r) => { if (!byRound.has(r)) byRound.set(r, { debitKeys: new Set(), credits: 0, rollbacks: 0 }); return byRound.get(r); };
@@ -104,6 +106,7 @@ const result = {
   debitsWithNoRoundAndNoRollback: debitNoRoundNoRollback,
   doubleDebitedRounds: doubleDebited,
   doubleCreditedRounds: doubleCredited,
+  casinoReplaysAnswered: allCasinoRows.length - casinoRows.length,
   clientNetworkErrors: netErrors
 };
 const failures = ["lostAcknowledgedRounds", "duplicateRoundRefsInDb", "duplicateAcknowledgements", "debitsWithNoRoundAndNoRollback", "doubleDebitedRounds", "doubleCreditedRounds"]

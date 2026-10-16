@@ -27,7 +27,7 @@ Build the platform first: `npm --prefix platform run build`. The suite runs the 
 | `CHROME_PATH` | Chrome/Chromium binary if not in a standard place |
 | `CHROME_ARGS` | Extra Chrome flags, space-separated |
 | `BENCH_HEADLESS=shell` | When `CHROME_PATH` is a `chrome-headless-shell` build |
-| `BENCH_PIN=1` | Linux only: pin the server to core 0, load generator, casino and Postgres to core 1 (emulates a 2-vCPU box) |
+| `BENCH_PIN=1` | Linux only. Fixed topology: **core 0 = the platform alone; core 1 = load generator, mock casino and a local Postgres**. Every published table uses it, so runs compare like for like |
 
 ## Rules for honest numbers
 
