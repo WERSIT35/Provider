@@ -19,6 +19,7 @@
     "bench:load": "node tools/bench/load.mjs",
     "bench:chaos": "node tools/bench/chaos.mjs",
     "bench:client": "node tools/bench/client.mjs",
+    "bench:boot": "node tools/bench/boot.mjs",
     "bench:micro": "node tools/bench/micro.mjs",
     "operator:launch": "node tools/operator-launch.js",
     "verify:platform": "npm --prefix platform run typecheck && npm --prefix platform test && npm --prefix platform run build",

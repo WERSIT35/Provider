@@ -14,7 +14,7 @@ import { buildContainer } from "../src/container";
 import { buildApp } from "../src/app";
 import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
-import { IDEMPOTENCY_CACHE_MS } from "../src/modules/rounds/round-orchestrator";
+import { IDEMPOTENCY_CACHE_MS, IDEMPOTENCY_CACHE_PER_SESSION } from "../src/modules/rounds/round-orchestrator";
 
 const CONFIG = { launchSecret: "s1", sessionSecret: "s2", adminSecret: "s3", hmacSkewSeconds: 30, rateLimitPerMin: 100_000 };
 
@@ -167,5 +167,13 @@ describe("caches with no end", () => {
     expect(again.json().error.code).toBe("IDEMPOTENCY_KEY_CONFLICT");
     const cache = (c.orchestrator as unknown as { idem: Map<string, unknown> }).idem;
     expect(cache.size).toBe(1);
+
+    // Within the window, a session keeps only its latest few outcomes: the cache is
+    // bounded by live sessions, not by spins per 15 minutes.
+    const keys = Array.from({ length: 30 }, () => randomUUID());
+    for (const k of keys) expect((await spin(k)).statusCode).toBe(200);
+    expect(c.orchestrator.idemSize()).toBe(IDEMPOTENCY_CACHE_PER_SESSION);
+    expect((await spin(keys[29])).json().idempotent_replay).toBe(true); // the latest replays
+    expect((await spin(keys[0])).json().error.code).toBe("IDEMPOTENCY_KEY_CONFLICT"); // an old one stays single-use
   });
 });

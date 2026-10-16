@@ -12,6 +12,9 @@ Build the platform first: `npm --prefix platform run build`. The suite runs the 
 | `npm run bench:client -- --mode mobile` | `/play` on Slow-4G + 4x CPU: time to playable, bytes, FPS, input delay, long tasks | Chrome |
 | `npm run bench:client -- --mode soak --spins 1000` | Heap and DOM growth over many spins (forced GC before each sample) | Chrome |
 | `npm run bench:micro` | Engine resolve and ledger-row signature cost per call | — |
+| `npm run bench:boot -- --seed 1000000` | Fill the bench DB with N real rounds (signed launch → spin, chained and signed), then time restarts: spawn → listening, plus one spin. **Exits 1** if a boot takes ≥ 10 s | `BENCH_DATABASE_URL` |
+| `npm run bench:boot` | Time restarts against what the bench DB holds (run it from another branch for a before/after on the same data) | `BENCH_DATABASE_URL` |
+| `npm run bench:load -- --players 500 --duration 7200 --wallet webhook --pg` | Soak: RSS per minute and a verdict (last 10 min vs minutes 10–20, flat within ±10%) | `BENCH_DATABASE_URL`; `BENCH_MEM_CGROUP` for a real cap |
 
 ## Options
 
@@ -27,6 +30,7 @@ Build the platform first: `npm --prefix platform run build`. The suite runs the 
 | `CHROME_PATH` | Chrome/Chromium binary if not in a standard place |
 | `CHROME_ARGS` | Extra Chrome flags, space-separated |
 | `BENCH_HEADLESS=shell` | When `CHROME_PATH` is a `chrome-headless-shell` build |
+| `BENCH_MEM_CGROUP` | Linux cgroup v1 memory group the server joins, e.g. `/sys/fs/cgroup/memory/benchsrv` with `memory.limit_in_bytes` = 2 GB set beforehand: a real 2 GB box |
 | `BENCH_PIN=1` | Linux only. Fixed topology: **core 0 = the platform alone; core 1 = load generator, mock casino and a local Postgres**. Every published table uses it, so runs compare like for like |
 
 ## Rules for honest numbers

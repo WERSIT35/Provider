@@ -119,7 +119,10 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
     if (deps.container.historyWindow) {
       const c = deps.container;
       housekeeping.push(setInterval(() => {
-        for (const id of c.sessions.evictIdle()) c.roundsRepo.dropSessionStats(id);
+        for (const id of c.sessions.evictIdle()) {
+          c.roundsRepo.dropSessionStats(id);
+          c.regulatory.forgetSession(id);
+        }
       }, 60_000));
       const sweepEvery = deps.integritySweepIntervalMs ?? 3_600_000;
       if (sweepEvery > 0) {

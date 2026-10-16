@@ -3,6 +3,7 @@
 //   node tools/bench/load.mjs --players 500 --duration 60 --think-min 2000 --think-max 4000 [--wallet webhook] [--pg]
 //   node tools/bench/load.mjs --matrix          # the docs/perf-baseline.md server table
 //
+// Soak: --duration 7200 (RSS per minute + a flatness verdict; BENCH_MEM_CGROUP caps memory).
 // --think-max 0 = no think time (finds the ceiling). --pg needs BENCH_DATABASE_URL
 // (a database whose name contains "bench"; it is wiped). Writes qa/bench/load*.json.
 import { args, benchDbUrl, launchPlayer, openSession, quantiles, resetBenchDb, sleep, startMockCasino, startServer, writeResult, request, pinGeneratorSide } from "./common.mjs";
@@ -50,12 +51,23 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
     // The generator's own CPU: near a full core, the ceiling measured is the generator's, not the server's.
     const generatorCpuPct = +(((cpu.user + cpu.system) / 1000 / (secs * 1000)) * 100).toFixed(1);
     const rss = srv.samples.map((s) => s.rss); const serverCpu = srv.samples.map((s) => s.cpuPct);
+    // RSS per minute (median of the 2 s samples). On long runs, the soak verdict: the
+    // last 10 minutes vs minutes 10–20 (after warm-up), flat within ±10%.
+    const perMin = [];
+    for (let i = 0; i < rss.length; i += 30) perMin.push(+(median(rss.slice(i, i + 30)) / 1048576).toFixed(0));
+    const soak = perMin.length >= 30 ? (() => {
+      const warm = median(perMin.slice(10, 20)); const last = median(perMin.slice(-10));
+      const driftPct = +(((last - warm) / warm) * 100).toFixed(1);
+      return { warmMB: warm, lastMB: last, driftPct, flat: Math.abs(driftPct) <= 10, serverAlive: srv.child.exitCode === null };
+    })() : undefined;
     return {
       label: label ?? `${wallet}${pg ? "+pg" : ""}-${players}${thinkMax > 0 ? "" : "-sat"}`,
       config: { players, durationS: duration, thinkMs: [thinkMin, thinkMax], wallet, postgres: !!pg },
       spins: ok, spinsPerSec: +(ok / secs).toFixed(1), errors, latencyMs: quantiles(lat),
       serverRssMB: { start: rss.length ? +(rss[0] / 1048576).toFixed(0) : null, max: rss.length ? +(Math.max(...rss) / 1048576).toFixed(0) : null },
       serverCpuPctMax: serverCpu.length ? Math.max(...serverCpu) : null,
+      ...(duration >= 600 ? { serverRssPerMinMB: perMin } : {}),
+      ...(soak ? { soak } : {}),
       generatorCpuPct,
       generatorBound: generatorCpuPct > 85
     };
@@ -64,6 +76,8 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
     await sleep(500);
   }
 }
+
+const median = (xs) => { const v = [...xs].sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
 
 const MATRIX = [
   { players: 50, thinkMin: 2000, thinkMax: 4000 },
@@ -89,6 +103,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     runs.push(r);
     console.log(`${r.label.padEnd(22)} ${String(r.spinsPerSec).padStart(7)} spins/s  p50 ${r.latencyMs.p50}  p95 ${r.latencyMs.p95}  p99 ${r.latencyMs.p99}  max ${r.latencyMs.max} ms  errors ${Object.values(r.errors).reduce((x, y) => x + y, 0)}  rss ${r.serverRssMB.max} MB  server cpu ${r.serverCpuPctMax}%  gen cpu ${r.generatorCpuPct}%${r.generatorBound ? " (GENERATOR-BOUND)" : ""}`);
   }
-  console.log("→", writeResult(a.matrix ? "load-matrix" : `load-${runs[0].label}`, { runs }));
+  if (runs[0].soak) console.log("soak:", runs[0].soak);
+  console.log("→", writeResult(a.matrix ? "load-matrix" : `${runs[0].soak ? "soak" : "load"}-${runs[0].label}`, { runs }));
   process.exit(0);
 }
