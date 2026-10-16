@@ -6,12 +6,13 @@
 //
 // Chrome: CHROME_PATH, or a standard install. CHROME_ARGS adds launch flags (space-separated).
 // BENCH_HEADLESS=shell for a chrome-headless-shell binary (default: new headless).
+// --minutes N (default 20): stop starting new spins after N minutes and report what was measured.
 // Writes qa/bench/client-<mode>.json.
 import { existsSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { args, launchPlayer, sleep, startServer, writeResult } from "./common.mjs";
 
-const a = args({ mode: "mobile", spins: 0, pause: 300 });
+const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20 });
 const MODE = a.mode;
 const SPINS = a.spins || (MODE === "soak" ? 500 : 20);
 
@@ -76,18 +77,29 @@ try {
     const f = document.getElementById("featureScreen"); if (f && !f.classList.contains("hidden")) f.click();
     for (const b of document.querySelectorAll("[data-vx-close], .ps-modal__close")) if (b.offsetParent) b.click();
   });
+  let shots = 0;
   const waitIdle = async () => {
+    const t = Date.now();
     for (;;) {
       const idle = await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 3000, polling: 50 }).then(() => true, () => false);
       if (idle) return;
       await dismiss(); // a bonus feature screen holds the round until it is clicked
+      if (Date.now() - t > 60_000 && shots < 3) {
+        shots++;
+        const file = `qa/bench/runs/client-${MODE}-slow-round-${Date.now()}.png`;
+        await page.screenshot({ path: file }).catch(() => {});
+        log("round still running after", Math.round((Date.now() - t) / 1000), "s; screenshot", file);
+      }
     }
   };
   if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
   await page.evaluate(() => { window.__bench.frames = []; window.__bench.long = []; window.__bench.events = []; });
 
   const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0;
+  const deadline = Date.now() + a.minutes * 60_000;
+  let stoppedEarly = false;
   for (let i = 0; i < SPINS; i++) {
+    if (Date.now() > deadline) { stoppedEarly = true; log(`time budget (${a.minutes} min) reached after ${i} spins`); break; }
     await waitIdle();
     await dismiss();
     await sleep(a.pause); // a human never re-taps inside SPIN_SETTLE_GUARD_MS (250 ms): such a press is dropped by design
@@ -119,7 +131,9 @@ try {
     mode: MODE, throttling: MODE === "mobile" ? "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU" : "none",
     chrome: await browser.version(),
     tier: await page.evaluate(() => [...document.body.classList].filter((c) => c.startsWith("perf-")).join(" ")),
-    spins: roundMs.length, tapsThatDidNotStartASpin: stuck,
+    spins: roundMs.length, spinsRequested: SPINS, stoppedByTimeBudget: stoppedEarly,
+    roundMs: roundMs.length ? { p50: q([...roundMs].sort((x, y) => x - y), 0.5), max: Math.max(...roundMs) } : null,
+    tapsThatDidNotStartASpin: stuck,
     timeToPlayableMs: timeToReadyMs, fcpMs: nav.fcp, domContentLoadedMs: nav.dcl, loadEventMs: nav.load,
     requestsBeforePlayable: all.filter((r) => r.beforeReady).length, kbBeforePlayable: kb(all.filter((r) => r.beforeReady)), kbPerSession: kb(all),
     kbByType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, +(v / 1024).toFixed(0)])),
