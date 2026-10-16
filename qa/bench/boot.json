@@ -1,0 +1,28 @@
+{
+  "name": "boot",
+  "at": "2026-10-16T19:43:37.796Z",
+  "node": "v22.22.0",
+  "wallet": "webhook",
+  "rounds": 1000302,
+  "walletTransactions": 1185095,
+  "auditRecords": 1000311,
+  "boots": [
+    {
+      "bootMs": 3064,
+      "rssMB": 320,
+      "firstSpin": 200
+    },
+    {
+      "bootMs": 3032,
+      "rssMB": 334,
+      "firstSpin": 200
+    },
+    {
+      "bootMs": 3260,
+      "rssMB": 333,
+      "firstSpin": 200
+    }
+  ],
+  "bootMsMax": 3260,
+  "pass": true
+}

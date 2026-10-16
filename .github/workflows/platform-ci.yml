@@ -148,6 +148,12 @@ jobs:
         working-directory: platform
       - run: npm run build
         working-directory: platform
+      # History served from SQL (bounded memory) must equal the full in-memory
+      # recomputation; restart, chain tip, sweep and export from cold rows.
+      - name: Postgres integration tests
+        run: npx vitest run test/history-pg.test.ts
+        working-directory: platform
+        env: { TEST_DATABASE_URL: "postgres://bench:bench@127.0.0.1:5432/vault20k_bench" }
       - name: kill -9 under load, then compare ledgers
         run: node tools/bench/chaos.mjs
         env: { BENCH_DATABASE_URL: "postgres://bench:bench@127.0.0.1:5432/vault20k_bench" }

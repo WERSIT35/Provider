@@ -1,6 +1,6 @@
 {
   "name": "load-matrix",
-  "at": "2026-10-16T18:28:31.351Z",
+  "at": "2026-10-16T22:36:27.142Z",
   "node": "v22.22.0",
   "runs": [
     {
@@ -20,17 +20,17 @@
       "errors": {},
       "latencyMs": {
         "n": 996,
-        "p50": 3.98,
-        "p95": 7.75,
-        "p99": 11.75,
-        "max": 20.52
+        "p50": 3.97,
+        "p95": 7.63,
+        "p99": 11.13,
+        "max": 31.18
       },
       "serverRssMB": {
-        "start": 95,
-        "max": 116
+        "start": 89,
+        "max": 111
       },
-      "serverCpuPctMax": 13.6,
-      "generatorCpuPct": 2.4,
+      "serverCpuPctMax": 12.5,
+      "generatorCpuPct": 2.5,
       "generatorBound": false
     },
     {
@@ -45,22 +45,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 3969,
-      "spinsPerSec": 62.4,
+      "spins": 3971,
+      "spinsPerSec": 62.2,
       "errors": {},
       "latencyMs": {
-        "n": 3969,
-        "p50": 3.39,
-        "p95": 7.42,
-        "p99": 14.96,
-        "max": 52.45
+        "n": 3971,
+        "p50": 3.19,
+        "p95": 6.81,
+        "p99": 13.12,
+        "max": 41.92
       },
       "serverRssMB": {
-        "start": 94,
-        "max": 132
+        "start": 93,
+        "max": 130
       },
-      "serverCpuPctMax": 36.3,
-      "generatorCpuPct": 7,
+      "serverCpuPctMax": 36.2,
+      "generatorCpuPct": 6.6,
       "generatorBound": false
     },
     {
@@ -75,22 +75,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 9890,
-      "spinsPerSec": 155.2,
+      "spins": 9895,
+      "spinsPerSec": 155,
       "errors": {},
       "latencyMs": {
-        "n": 9890,
-        "p50": 2.74,
-        "p95": 8.72,
-        "p99": 29.62,
-        "max": 92.95
+        "n": 9895,
+        "p50": 2.66,
+        "p95": 7.27,
+        "p99": 25.08,
+        "max": 111.48
       },
       "serverRssMB": {
-        "start": 97,
-        "max": 169
+        "start": 99,
+        "max": 164
       },
-      "serverCpuPctMax": 62.7,
-      "generatorCpuPct": 10,
+      "serverCpuPctMax": 60.3,
+      "generatorCpuPct": 9.8,
       "generatorBound": false
     },
     {
@@ -105,22 +105,22 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 46609,
-      "spinsPerSec": 775.4,
+      "spins": 47609,
+      "spinsPerSec": 792.1,
       "errors": {},
       "latencyMs": {
-        "n": 46609,
-        "p50": 115.67,
-        "p95": 165.35,
-        "p99": 282.31,
-        "max": 8182.24
+        "n": 47609,
+        "p50": 114.21,
+        "p95": 163.27,
+        "p99": 223.21,
+        "max": 8092.33
       },
       "serverRssMB": {
-        "start": 124,
-        "max": 411
+        "start": 121,
+        "max": 435
       },
-      "serverCpuPctMax": 99.7,
-      "generatorCpuPct": 24.4,
+      "serverCpuPctMax": 99.9,
+      "generatorCpuPct": 24,
       "generatorBound": false
     },
     {
@@ -135,22 +135,22 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 9773,
-      "spinsPerSec": 153.3,
+      "spins": 9875,
+      "spinsPerSec": 154.5,
       "errors": {},
       "latencyMs": {
-        "n": 9773,
-        "p50": 9.5,
-        "p95": 206.4,
-        "p99": 502.27,
-        "max": 1419.01
+        "n": 9875,
+        "p50": 9.59,
+        "p95": 92.95,
+        "p99": 254.28,
+        "max": 628.46
       },
       "serverRssMB": {
-        "start": 120,
+        "start": 129,
         "max": 319
       },
-      "serverCpuPctMax": 97.6,
-      "generatorCpuPct": 9.2,
+      "serverCpuPctMax": 94.7,
+      "generatorCpuPct": 8.9,
       "generatorBound": false
     },
     {
@@ -165,22 +165,22 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 17224,
-      "spinsPerSec": 286.2,
+      "spins": 17029,
+      "spinsPerSec": 282.8,
       "errors": {},
       "latencyMs": {
-        "n": 17224,
-        "p50": 311.42,
-        "p95": 512.42,
-        "p99": 700.72,
-        "max": 7455.83
+        "n": 17029,
+        "p50": 316.55,
+        "p95": 503.56,
+        "p99": 678.71,
+        "max": 7714.5
       },
       "serverRssMB": {
-        "start": 133,
-        "max": 470
+        "start": 131,
+        "max": 449
       },
-      "serverCpuPctMax": 99.7,
-      "generatorCpuPct": 10.6,
+      "serverCpuPctMax": 99.8,
+      "generatorCpuPct": 11,
       "generatorBound": false
     },
     {
@@ -195,22 +195,22 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 9819,
-      "spinsPerSec": 153.5,
+      "spins": 9793,
+      "spinsPerSec": 153.3,
       "errors": {},
       "latencyMs": {
-        "n": 9819,
-        "p50": 25.98,
-        "p95": 73.8,
-        "p99": 119.03,
-        "max": 206.72
+        "n": 9793,
+        "p50": 33.08,
+        "p95": 102.74,
+        "p99": 179.02,
+        "max": 282.44
       },
       "serverRssMB": {
-        "start": 105,
-        "max": 206
+        "start": 100,
+        "max": 175
       },
-      "serverCpuPctMax": 76.2,
-      "generatorCpuPct": 8.8,
+      "serverCpuPctMax": 76.4,
+      "generatorCpuPct": 8.7,
       "generatorBound": false
     },
     {
@@ -225,22 +225,22 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 26132,
-      "spinsPerSec": 434.5,
+      "spins": 24192,
+      "spinsPerSec": 402.3,
       "errors": {},
       "latencyMs": {
-        "n": 26132,
-        "p50": 211.59,
-        "p95": 340.81,
-        "p99": 440.3,
-        "max": 718.72
+        "n": 24192,
+        "p50": 231.37,
+        "p95": 369.18,
+        "p99": 439.11,
+        "max": 637.7
       },
       "serverRssMB": {
         "start": 130,
-        "max": 343
+        "max": 334
       },
-      "serverCpuPctMax": 81.8,
-      "generatorCpuPct": 9.7,
+      "serverCpuPctMax": 84.6,
+      "generatorCpuPct": 8.8,
       "generatorBound": false
     },
     {
@@ -255,21 +255,21 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 982,
+      "spins": 973,
       "spinsPerSec": 15.4,
       "errors": {},
       "latencyMs": {
-        "n": 982,
-        "p50": 17.03,
-        "p95": 38.08,
-        "p99": 60.21,
-        "max": 102.41
+        "n": 973,
+        "p50": 18.95,
+        "p95": 39.17,
+        "p99": 82.58,
+        "max": 139.34
       },
       "serverRssMB": {
-        "start": 100,
-        "max": 145
+        "start": 109,
+        "max": 154
       },
-      "serverCpuPctMax": 33.4,
+      "serverCpuPctMax": 29,
       "generatorCpuPct": 1.5,
       "generatorBound": false
     },
@@ -285,22 +285,22 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 3929,
-      "spinsPerSec": 61.5,
+      "spins": 3928,
+      "spinsPerSec": 61.8,
       "errors": {},
       "latencyMs": {
-        "n": 3929,
-        "p50": 19.68,
-        "p95": 60.29,
-        "p99": 109.09,
-        "max": 311.17
+        "n": 3928,
+        "p50": 25.74,
+        "p95": 78.99,
+        "p99": 134.18,
+        "max": 258.99
       },
       "serverRssMB": {
-        "start": 120,
-        "max": 226
+        "start": 119,
+        "max": 223
       },
-      "serverCpuPctMax": 68,
-      "generatorCpuPct": 4.2,
+      "serverCpuPctMax": 78.7,
+      "generatorCpuPct": 4.7,
       "generatorBound": false
     },
     {
@@ -315,22 +315,22 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 9717,
-      "spinsPerSec": 152,
+      "spins": 9636,
+      "spinsPerSec": 150.6,
       "errors": {},
       "latencyMs": {
-        "n": 9717,
-        "p50": 40.42,
-        "p95": 233.43,
-        "p99": 406.09,
-        "max": 629.45
+        "n": 9636,
+        "p50": 62.81,
+        "p95": 308.32,
+        "p99": 526.89,
+        "max": 838.82
       },
       "serverRssMB": {
-        "start": 122,
-        "max": 321
+        "start": 127,
+        "max": 314
       },
-      "serverCpuPctMax": 90.4,
-      "generatorCpuPct": 7.6,
+      "serverCpuPctMax": 92.1,
+      "generatorCpuPct": 8,
       "generatorBound": false
     }
   ]

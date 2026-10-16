@@ -1,3 +1,4 @@
+import type { ChainVerification } from "../ledger/ledger.types";
 import type { RoundLedgerService } from "../ledger/round-ledger.service";
 import type { AuthoritativeResolver } from "../rng/authoritative-resolver";
 import type { SignatureStatus } from "../../lib/security/signing-keyring";
@@ -43,7 +44,13 @@ export interface VerificationResult {
 export class RoundVerificationService {
   constructor(
     private readonly ledger: RoundLedgerService,
-    private readonly resolver: AuthoritativeResolver
+    private readonly resolver: AuthoritativeResolver,
+    /**
+     * The chain check for one round. Default: the whole rounds chain (memory mode holds
+     * it all). Postgres mode passes the round's own links + the last full sweep
+     * (PgHistory.roundChainHeld), so an inspector open is not O(history).
+     */
+    private readonly chainFor: (roundRef: string) => ChainVerification = () => this.ledger.verifyIntegrity({ signatures: false }).rounds
   ) {}
 
   /** Returns null when the round does not exist (caller maps to 404). */
@@ -52,7 +59,7 @@ export class RoundVerificationService {
     if (!round) return null;
 
     // This round's own signature is checked below; no full signature sweep per round.
-    const chainCheck = this.ledger.verifyIntegrity({ signatures: false }).rounds;
+    const chainCheck = this.chainFor(roundRef);
     const notes: string[] = [];
     if (!chainCheck.ok) {
       notes.push(`ledger chain broken at seq ${chainCheck.brokenAtSeq} (${chainCheck.reason})`);

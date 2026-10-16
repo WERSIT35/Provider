@@ -223,6 +223,7 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
   // Round lookup is tenant-scoped to the session's operator.
   app.get("/game/v1/rounds/:ref", { preHandler: bearer }, async (req, reply) => {
     const ref = (req.params as { ref: string }).ref;
+    await app.container.history.ensureRound(ref);
     const round = app.container.ledger.getRound(ref);
     let operatorId: string | null = null;
     try {
