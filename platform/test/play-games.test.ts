@@ -39,7 +39,11 @@ describe("/play serves each game its own client", () => {
     const direct = await app.inject({ method: "GET", url: `/play?lt=${lt}` });
     expect(direct.statusCode).toBe(302);
     expect(direct.headers.location).toBe(`/play/g/classic-5x3/?lt=${lt}`);
-    expect((await app.inject({ method: "GET", url: `/play?lt=${launch("bananax")}` })).headers.location).toMatch(/^\/play\/\?lt=/);
+    // Vault 20K's launch URL is served as it is (no redirect round trip).
+    const vaultDirect = await app.inject({ method: "GET", url: `/play?lt=${launch("bananax")}` });
+    expect(vaultDirect.statusCode).toBe(200);
+    expect(vaultDirect.body).toContain("app.bundle.js");
+    expect(vaultDirect.headers["content-security-policy"]).toContain("frame-ancestors");
     const vault = await app.inject({ method: "GET", url: `/play/?lt=${launch("bananax")}` });
     expect(vault.statusCode).toBe(200);
     expect(vault.body).toContain("app.bundle.js");

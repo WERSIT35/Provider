@@ -56,7 +56,8 @@
          the same URLs main.js preloads; a mismatch here would double-fetch. The
          free-spins panel art is NOT here: it loads right after the reveal
          (deferredUiAssets in main.js), and the panel waits for it. -->
-    <link rel="preload" as="image" href="assets/symbols/Background.webp" />
+    <link rel="preload" as="image" href="assets/symbols/sm/Background.webp" media="(pointer: coarse) and (max-width: 600px)" />
+    <link rel="preload" as="image" href="assets/symbols/Background.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
     <!-- The reel symbols, fetched alongside the code instead of after it (they used
          to start only once main.js ran). Phones get the 160 px art: the media
          queries match PHONE_ART in main.js exactly, so nothing is fetched twice. -->
@@ -80,8 +81,8 @@
     <link rel="preload" as="image" href="assets/symbols/GreenGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
     <link rel="preload" as="image" href="assets/symbols/BlueGem.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
     <link rel="preload" as="image" href="assets/symbols/Scatter.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
-    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin-wght-normal.woff2" crossorigin />
-    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-latin-wght-normal.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-sub-wght-400-900.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-sub-wght-400-700.woff2" crossorigin />
     <link rel="stylesheet" href="styles.css?v=20261008-5" />
   </head>
   <body>
