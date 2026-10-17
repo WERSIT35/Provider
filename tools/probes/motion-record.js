@@ -252,8 +252,8 @@ async function writeWebp(frames, file, speed, width) {
 
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
-  const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
+  const chrome = spawn(process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", [
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, ...(process.platform === "linux" ? ["--no-sandbox"] : []),
     "--no-first-run", "--hide-scrollbars", `--force-device-scale-factor=${DPR}`, "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const base = await new Promise((resolve) => {
@@ -367,6 +367,9 @@ async function writeWebp(frames, file, speed, width) {
       .composite(tiles.map((input, i) => ({ input, left: (i % cols) * meta.width, top: Math.floor(i / cols) * meta.height })))
       .jpeg({ quality: 80 }).toFile(path.join(OUT, `${NAME}-sheet.jpg`));
   }
+  // One SHA-256 per captured frame: two builds recording the same seeded round show the
+  // same motion exactly when the lists match (diff the two files).
+  fs.writeFileSync(path.join(OUT, `${NAME}-frames.sha256`), frames.map((f) => require("crypto").createHash("sha256").update(f.buf).digest("hex")).join("\n") + "\n");
   await writeWebp(frames, path.join(OUT, `${NAME}.webp`), 1, width);
   await writeWebp(frames, path.join(OUT, `${NAME}-slow4x.webp`), 0.25, width);
   console.log(`${NAME}: ${frames.length} frames over ${(span / 1000).toFixed(1)}s (${fps.toFixed(0)} fps) -> ${OUT}`);
