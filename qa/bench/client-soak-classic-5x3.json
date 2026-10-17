@@ -1,0 +1,176 @@
+{
+  "name": "client-soak-classic-5x3",
+  "at": "2026-10-17T09:05:16.905Z",
+  "node": "v22.22.0",
+  "mode": "soak",
+  "throttling": "none",
+  "chrome": "HeadlessChrome/153.0.8010.0",
+  "tier": "",
+  "spins": 1000,
+  "spinsRequested": 1000,
+  "stoppedByTimeBudget": false,
+  "roundMs": {
+    "p50": 2139,
+    "max": 108740
+  },
+  "tapsThatDidNotStartASpin": 0,
+  "tapsReadAsHoldStartingAutoplay": 0,
+  "holdRacesRecovered": 5,
+  "timeToPlayableMs": 260,
+  "playableMarkMs": 225,
+  "fcpMs": null,
+  "domContentLoadedMs": 188,
+  "loadEventMs": 188,
+  "requestsBeforePlayable": 6,
+  "kbBeforePlayable": 30,
+  "kbPerSession": 3840,
+  "kbByType": {
+    "Document": 4,
+    "Other": 1,
+    "Script": 24,
+    "Fetch": 3811
+  },
+  "firstTapToSpinRequestMs": 46,
+  "inputEventMs": {
+    "n": 1916,
+    "p50": 168,
+    "max": 1496
+  },
+  "frames": {
+    "n": 108762,
+    "avgFps": 39.2,
+    "p95Ms": 16.8,
+    "p99Ms": 500,
+    "over20msPct": 1.9,
+    "over50msPct": 1.86
+  },
+  "animatingFrames": {
+    "n": 93937,
+    "avgFps": 40.7,
+    "p95Ms": 16.8,
+    "over50msPct": 1.73
+  },
+  "longTasks": {
+    "n": 1,
+    "maxMs": 60,
+    "totalMs": 60
+  },
+  "heap": [
+    {
+      "spin": 25,
+      "heapMB": 1.17,
+      "nodes": 266,
+      "listeners": 15
+    },
+    {
+      "spin": 100,
+      "heapMB": 1.2,
+      "nodes": 266,
+      "listeners": 15
+    },
+    {
+      "spin": 200,
+      "heapMB": 1.23,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 300,
+      "heapMB": 1.24,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 400,
+      "heapMB": 1.24,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 500,
+      "heapMB": 1.24,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 600,
+      "heapMB": 1.25,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 700,
+      "heapMB": 1.26,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 800,
+      "heapMB": 1.27,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 900,
+      "heapMB": 1.27,
+      "nodes": 269,
+      "listeners": 15
+    },
+    {
+      "spin": 1000,
+      "heapMB": 1.3,
+      "nodes": 271,
+      "listeners": 15
+    }
+  ],
+  "requestsBeforePlayableList": [
+    "4.0 KB /play/g/classic-5x3/",
+    "1.2 KB /play/g/classic-5x3/rules.json",
+    "10.9 KB /play/g/classic-5x3/game.js",
+    "2.7 KB /play/embed-bridge.js",
+    "10.1 KB /play/audio/audio.js",
+    "1.2 KB /game/v1/session/init"
+  ],
+  "biggestDownloads": [
+    {
+      "kb": 754,
+      "path": "/play/assets/audio/music/free_spins.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 684,
+      "path": "/play/assets/audio/music/base.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 109,
+      "path": "/play/assets/audio/sfx/riser_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 46,
+      "path": "/play/assets/audio/sfx/feature_award_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 45,
+      "path": "/play/assets/audio/sfx/max_win_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_2.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 40,
+      "path": "/play/assets/audio/sfx/fs_outro_1.ogg",
+      "beforePlayable": false
+    }
+  ]
+}

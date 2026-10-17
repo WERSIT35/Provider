@@ -1,0 +1,109 @@
+{
+  "name": "client-mobile",
+  "at": "2026-10-17T07:49:29.851Z",
+  "node": "v22.22.0",
+  "mode": "mobile",
+  "throttling": "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU",
+  "chrome": "HeadlessChrome/153.0.8010.0",
+  "tier": "",
+  "spins": 20,
+  "spinsRequested": 20,
+  "stoppedByTimeBudget": false,
+  "roundMs": {
+    "p50": 3769,
+    "max": 10173
+  },
+  "tapsThatDidNotStartASpin": 0,
+  "tapsReadAsHoldStartingAutoplay": 0,
+  "holdRacesRecovered": 0,
+  "timeToPlayableMs": 2293,
+  "playableMarkMs": 2204,
+  "fcpMs": 2220,
+  "domContentLoadedMs": 2176,
+  "loadEventMs": 2176,
+  "requestsBeforePlayable": 6,
+  "kbBeforePlayable": 30,
+  "kbPerSession": 1564,
+  "kbByType": {
+    "Document": 4,
+    "Other": 1,
+    "Script": 24,
+    "Fetch": 1535
+  },
+  "firstTapToSpinRequestMs": 93,
+  "inputEventMs": {
+    "n": 29,
+    "p50": 72,
+    "max": 344
+  },
+  "frames": {
+    "n": 4714,
+    "avgFps": 51.4,
+    "p95Ms": 16.8,
+    "p99Ms": 33.3,
+    "over20msPct": 1.4,
+    "over50msPct": 0.66
+  },
+  "animatingFrames": {
+    "n": 4167,
+    "avgFps": 51,
+    "p95Ms": 16.8,
+    "over50msPct": 0.72
+  },
+  "longTasks": {
+    "n": 3,
+    "maxMs": 123,
+    "totalMs": 242
+  },
+  "heap": [],
+  "requestsBeforePlayableList": [
+    "4.0 KB /play/g/classic-5x3/",
+    "1.2 KB /play/g/classic-5x3/rules.json",
+    "10.8 KB /play/g/classic-5x3/game.js",
+    "2.7 KB /play/embed-bridge.js",
+    "10.1 KB /play/audio/audio.js",
+    "1.2 KB /game/v1/session/init"
+  ],
+  "biggestDownloads": [
+    {
+      "kb": 684,
+      "path": "/play/assets/audio/music/base.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 109,
+      "path": "/play/assets/audio/sfx/riser_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 46,
+      "path": "/play/assets/audio/sfx/feature_award_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 45,
+      "path": "/play/assets/audio/sfx/max_win_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_2.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 40,
+      "path": "/play/assets/audio/sfx/fs_outro_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 38,
+      "path": "/play/assets/audio/sfx/fs_intro_1.ogg",
+      "beforePlayable": false
+    }
+  ]
+}
