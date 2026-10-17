@@ -100,7 +100,9 @@ const MATRIX = [
   { players: 100, thinkMin: 0, thinkMax: 0, pg: true },
   { players: 50, thinkMin: 2000, thinkMax: 4000, wallet: "webhook", pg: true },
   { players: 200, thinkMin: 2000, thinkMax: 4000, wallet: "webhook", pg: true },
-  { players: 500, thinkMin: 2000, thinkMax: 4000, wallet: "webhook", pg: true }
+  { players: 500, thinkMin: 2000, thinkMax: 4000, wallet: "webhook", pg: true },
+  // The production path's ceiling (casino wallet + Postgres, no think time).
+  { players: 100, thinkMin: 0, thinkMax: 0, wallet: "webhook", pg: true }
 ];
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
