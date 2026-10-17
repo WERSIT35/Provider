@@ -201,7 +201,8 @@
           feature: inForge ? { free_spins_left: forge.spins_left, locked_bet: s.bet, locked_ante: false, feature_state: s.feature_state } : null,
           player_states: s.player_states || {}
         },
-        regulatory: { turbo_enabled: false, slam_stop_enabled: false },
+        // The game's own caps (no turbo, no slam stop) win over any market switch.
+        regulatory: Object.assign({ jurisdiction: "DEFAULT" }, demoMarket || {}, { turbo_enabled: false, slam_stop_enabled: false }),
         embed: { allowed_hosts: [] }
       };
     };

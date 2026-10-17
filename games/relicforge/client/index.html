@@ -124,6 +124,24 @@
     .cell.mark::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--verd); }
     .cell .sp { position: absolute; right: 2%; top: 2%; width: 38%; height: 38%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.18); font-weight: 700; color: var(--parch);
       background: radial-gradient(circle at 40% 35%, #6fc3ae, var(--verd) 60%, #1f4f44); box-shadow: 0 0 0 1.5px var(--ink); }
+    /* Explanations: a cluster's engraved burr outline and its pay; Embers flying to the crucible;
+       anticipation (landed Anvils glow, the rest steps back); relic plates engraving in. */
+    .burr { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; overflow: visible; }
+    .burr path { fill: none; stroke: #ffb000; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.9)); }
+    .burr.quiet path { stroke: rgba(28, 22, 17, 0.7); stroke-width: 2; filter: none; }
+    .camt { position: absolute; z-index: 5; transform: translate(-50%, -50%); padding: 1px 8px; border-radius: 2px; pointer-events: none; white-space: nowrap;
+      background: var(--grain), #f3e8cf; color: #8a3a00; font: 600 calc(var(--cell) * 0.26) var(--num); box-shadow: 0 0 0 1.5px var(--ink), 0 2px 0 rgba(0, 0, 0, 0.35); }
+    .camt.quiet { color: var(--ink); }
+    .cell.win-quiet::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(28, 22, 17, 0.55); }
+    .charge { position: fixed; left: 0; top: 0; z-index: 40; width: 12px; height: 12px; border-radius: 50%; pointer-events: none;
+      background: radial-gradient(circle at 40% 35%, #fff4cc, #ffb000 55%, #ff5e1a); box-shadow: 0 0 10px 3px rgba(255, 176, 0, 0.8); }
+    .cell.tease svg { filter: drop-shadow(0 0 calc(var(--cell) * 0.12) rgba(255, 176, 0, 0.95)); }
+    .cell.tease { animation: rf-tease 0.6s ease-in-out infinite alternate; }
+    .cell.dim { opacity: 0.8; }
+    @keyframes rf-tease { from { transform: scale(1); } to { transform: scale(1.05); } }
+    .lsh-sheet .card { animation: rf-engrave 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 120ms); }
+    @keyframes rf-engrave { from { opacity: 0; transform: translateY(6px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+    @media (prefers-reduced-motion: reduce) { .cell.tease, .lsh-sheet .card { animation: none; } }
     .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 176, 0, 0.55), transparent); pointer-events: none; }
     /* Meltdown: the page tints gold and the margins glow. */
     body.meltdown .board-wrap { box-shadow: 0 0 0 3px var(--iron), 0 0 0 5px var(--ink), 0 0 0 6px #5a4f45, 0 0 40px 8px rgba(255, 176, 0, 0.55); }
