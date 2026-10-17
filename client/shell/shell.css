@@ -1,0 +1,316 @@
+/*
+ * Lumina Shell: the shared player interface (client/shell/shell.js). One frame, one set of
+ * controls, the same positions in every game. Spec: reports/Slot provider UI and motion.md,
+ * Part 3. A game themes it ONLY through the --lsh-* custom properties below (set them on
+ * :root or on .lsh[data-game="<code>"]); it never restyles positions or sizes.
+ *
+ * Zero layout thrash: every track is sized from tokens, never from content; the only
+ * flexible track is the stage. State changes swap looks (opacity, colour, icons), never
+ * geometry. Controls a market switches off keep their cell (.is-off = visibility hidden).
+ *
+ * Three layouts, chosen by the viewport (not by the game):
+ *   portrait   phones and tablets held upright: stage on top, then the feature rail, the
+ *              ticker with Menu / Info at its ends, the readouts, the control row.
+ *   landscape  short landscape (phones): stage between a left rail (Menu, Info, readouts,
+ *              bet −/+) and a right rail (autoplay, Spin, speed). Left-hand mode swaps them.
+ *   desktop    wide and tall enough: stage, ticker, one control bar with Spin centred.
+ */
+
+:root {
+  /* Theme tokens (each game overrides these). */
+  --lsh-bg: #0b0f14;                       /* page background behind the stage */
+  --lsh-deck: rgba(10, 14, 20, 0.86);      /* deck / rail surface */
+  --lsh-deck-line: rgba(255, 255, 255, 0.10);
+  --lsh-face: rgba(255, 255, 255, 0.06);   /* button face */
+  --lsh-face-hover: rgba(255, 255, 255, 0.12);
+  --lsh-ink: #eef1f4;                      /* text and icons */
+  --lsh-muted: #9aa7ad;                    /* labels */
+  --lsh-accent: #f2c14e;                   /* spin face, pressed toggles, focus */
+  --lsh-accent-ink: #1d1300;               /* icon on the spin face */
+  --lsh-accent-2: #d9a334;                 /* spin face lower stop */
+  --lsh-win: #ffe7a3;                      /* celebrated win text */
+  --lsh-sheet: #10161d;                    /* sheet panel */
+  --lsh-radius: 14px;
+  --lsh-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --lsh-font-num: var(--lsh-font-ui);
+  --lsh-texture: none;                     /* optional deck texture (url or gradient) */
+  --lsh-spin-glyph: var(--lsh-accent-ink);
+  --lsh-face-ink: var(--lsh-ink);          /* icon colour on a button face */
+  --lsh-read-bg: transparent;              /* readout surface */
+  --lsh-read-ink: var(--lsh-ink);          /* readout value */
+  --lsh-read-k: var(--lsh-muted);          /* readout label */
+  --lsh-spin-ring: 0 6px 18px rgba(0, 0, 0, 0.45);  /* outer shadow / glow of the spin face */
+  --lsh-spin-face: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--lsh-accent) 70%, #fff) 0%, var(--lsh-accent) 46%, var(--lsh-accent-2) 100%);
+
+  /* Fixed geometry (not themable: identical in every game). */
+  --lsh-gutter: 16px;
+  --lsh-gap: 8px;
+  --lsh-hit: 44px;                         /* secondary controls: hit area */
+  --lsh-spin: 72px;
+  --lsh-strip: 18px;                       /* session strip: reserved in EVERY market (empty when unused) */
+}
+
+/* ── frame ─────────────────────────────────────────────────────────────── */
+.lsh {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  gap: var(--lsh-gap);
+  padding:
+    max(4px, env(safe-area-inset-top))
+    max(var(--lsh-gutter), env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(var(--lsh-gutter), env(safe-area-inset-left));
+  color: var(--lsh-ink);
+  font: 500 14px/1.2 var(--lsh-font-ui);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overflow: hidden;
+}
+.lsh [hidden] { display: none !important; }
+/* Every control sits in its NAMED area (never auto-placed: order and hiding can never move it). */
+.lsh > [data-area="menu"] { grid-area: menu; } .lsh > [data-area="info"] { grid-area: info; }
+.lsh > [data-area="bal"] { grid-area: bal; } .lsh > [data-area="bet"] { grid-area: bet; } .lsh > [data-area="win"] { grid-area: win; }
+.lsh > [data-area="autop"] { grid-area: autop; } .lsh > [data-area="minus"] { grid-area: minus; } .lsh > [data-area="spin"] { grid-area: spin; }
+.lsh > [data-area="plus"] { grid-area: plus; } .lsh > [data-area="turbo"] { grid-area: turbo; }
+.lsh .is-off { visibility: hidden; pointer-events: none; }
+
+.lsh-strip { grid-area: strip; height: var(--lsh-strip); display: flex; align-items: center; gap: 14px; overflow: hidden; font: 600 11px/1 var(--lsh-font-num); letter-spacing: 0.04em; color: var(--lsh-muted); font-variant-numeric: tabular-nums; }
+.lsh-host { margin-left: auto; width: var(--lsh-strip); height: var(--lsh-strip); }
+.lsh-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.lsh-rail { grid-area: rail; display: flex; gap: var(--lsh-gap); align-items: stretch; justify-content: center; min-height: 0; }
+.lsh-ticker {
+  grid-area: tick; min-width: 0; display: flex; align-items: center; justify-content: center;
+  font: 600 13px/1 var(--lsh-font-ui); letter-spacing: 0.02em; color: var(--lsh-muted);
+  overflow: hidden; white-space: nowrap;
+}
+.lsh-ticker__text { overflow: hidden; text-overflow: ellipsis; }
+.lsh-ticker[data-state="spin"], .lsh-ticker[data-state="say"], .lsh-ticker[data-state="neutral"], .lsh-ticker[data-state="flash-info"] { color: var(--lsh-ink); }
+.lsh-ticker[data-state="win"], .lsh-ticker[data-state="flash-win"] { color: var(--lsh-win); font-weight: 800; }
+.lsh-ticker[data-state="flash-bonus"] { color: var(--lsh-accent); font-weight: 800; }
+
+/* ── buttons ───────────────────────────────────────────────────────────── */
+.lsh-btn, .lsh-spin, .lsh-chip, .lsh-read--bet, .lsh-pill {
+  font: inherit; color: inherit; cursor: pointer; border: 0; padding: 0; background: none;
+  touch-action: manipulation;
+}
+.lsh-btn {
+  position: relative; display: grid; place-items: center;
+  width: var(--lsh-hit); height: var(--lsh-hit); align-self: center; justify-self: center;
+  border-radius: 50%;
+  color: var(--lsh-face-ink);
+  background: var(--lsh-face);
+  box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
+  transition: background-color 120ms, transform 80ms;
+}
+.lsh-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lsh-btn:hover:not(:disabled) { background: var(--lsh-face-hover); }
+.lsh-btn:active:not(:disabled) { transform: scale(0.94); }
+.lsh-btn:disabled { opacity: 0.38; cursor: default; }
+.lsh-btn[aria-pressed="true"] { color: var(--lsh-accent); box-shadow: inset 0 0 0 2px var(--lsh-accent); }
+.lsh-btn[data-speed="turbo"] svg { fill: currentColor; }
+.lsh-btn__count { position: absolute; right: -2px; bottom: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--lsh-accent); color: var(--lsh-accent-ink); font: 800 11px/18px var(--lsh-font-num); text-align: center; }
+.lsh-btn__count:empty { display: none; }
+.lsh :focus-visible { outline: 2px solid var(--lsh-accent); outline-offset: 3px; }
+
+/* Spin: a round face; the icon swaps by data-mode, the size never changes. */
+.lsh-spin {
+  position: relative; display: grid; place-items: center;
+  width: var(--lsh-spin); height: var(--lsh-spin); align-self: center; justify-self: center;
+  border-radius: 50%;
+  color: var(--lsh-spin-glyph);
+  background: var(--lsh-spin-face);
+  box-shadow: var(--lsh-spin-ring), inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 80ms, filter 120ms;
+}
+.lsh-spin:active { transform: scale(0.95); }
+.lsh-spin > svg { grid-area: 1 / 1; width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 120ms; }
+.lsh-spin .lsh-head { fill: currentColor; stroke: none; }
+.lsh-spin__stop rect { fill: currentColor; stroke: none; }
+.lsh-spin[data-mode="spin"] .lsh-spin__go,
+.lsh-spin[data-mode="wait"] .lsh-spin__go { opacity: 1; }
+.lsh-spin[data-mode="stop"] .lsh-spin__stop { opacity: 1; }
+.lsh-spin[data-mode="skip"] .lsh-spin__skip { opacity: 1; }
+.lsh-spin__label { grid-area: 1 / 1; font: 800 14px/1 var(--lsh-font-ui); letter-spacing: 0.08em; }
+.lsh-spin__label:not(:empty) ~ svg { opacity: 0 !important; }
+.lsh-spin[data-mode="pick"] .lsh-spin__label:empty::before { content: "✓"; font-size: 26px; }
+.lsh-spin.is-broke, .lsh-spin:disabled { filter: grayscale(0.7) brightness(0.75); }
+.lsh-spin__ring { grid-area: 1 / 1; position: absolute; inset: -6px; width: calc(100% + 12px) !important; height: calc(100% + 12px) !important; opacity: 0 !important; stroke: var(--lsh-accent) !important; stroke-width: 3 !important; stroke-dasharray: 48 140; transform-origin: 50% 50%; }
+.lsh-spin.is-waiting .lsh-spin__ring { opacity: 1 !important; animation: lsh-ring 1s linear infinite; }
+@keyframes lsh-ring { to { transform: rotate(360deg); } }
+
+/* Feature chips (Buy, Ante). */
+.lsh-chip {
+  display: grid; align-content: center; justify-items: center; gap: 2px;
+  min-width: 120px; min-height: 48px; padding: 6px 16px;
+  border-radius: var(--lsh-radius);
+  background: var(--lsh-face); box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
+}
+.lsh-chip__k { font: 700 11px/1 var(--lsh-font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-chip__v { font: 800 15px/1 var(--lsh-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.lsh-chip--buy { background: linear-gradient(180deg, var(--lsh-accent), var(--lsh-accent-2)); color: var(--lsh-accent-ink); }
+.lsh-chip--buy .lsh-chip__k { color: inherit; opacity: 0.75; }
+.lsh-chip[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--lsh-accent); color: var(--lsh-accent); }
+.lsh-chip:disabled { opacity: 0.4; cursor: default; }
+
+/* Readouts: one line each, tabular, clipped: a value can never resize the deck. */
+.lsh-read { min-width: 0; display: grid; align-content: center; justify-items: center; gap: 3px; text-align: center; padding: 2px 6px; border-radius: 8px; background: var(--lsh-read-bg); }
+.lsh-read__k { font: 700 11px/1 var(--lsh-font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--lsh-read-k); white-space: nowrap; }
+.lsh-read__v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--lsh-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--lsh-read-ink); }
+.lsh-read--bet { border-radius: 10px; min-height: var(--lsh-hit); }
+.lsh-read--bet:hover:not(:disabled) { filter: brightness(1.08); }
+.lsh-read--bet:disabled { cursor: default; }
+.lsh.is-feature .lsh-read--bet .lsh-read__v, .lsh.is-feature .lsh-read--win .lsh-read__v { color: var(--lsh-accent); }
+
+/* ── portrait (default) ───────────────────────────────────────────────── */
+.lsh {
+  grid-template-columns: var(--lsh-hit) var(--lsh-hit) minmax(0, 1fr) var(--lsh-spin) minmax(0, 1fr) var(--lsh-hit) var(--lsh-hit);
+  grid-template-rows: var(--lsh-strip) minmax(0, 1fr) auto var(--lsh-hit) 42px var(--lsh-spin);
+  grid-template-areas:
+    "strip strip strip strip strip strip strip"
+    "stage stage stage stage stage stage stage"
+    "rail  rail  rail  rail  rail  rail  rail"
+    "menu  tick  tick  tick  tick  tick  info"
+    "bal   bal   bal   bet   win   win   win"
+    "autop  minus .     spin  .     plus  turbo";
+  column-gap: 6px;
+}
+.lsh[data-hand="left"] {
+  grid-template-areas:
+    "strip strip strip strip strip strip strip"
+    "stage stage stage stage stage stage stage"
+    "rail  rail  rail  rail  rail  rail  rail"
+    "info  tick  tick  tick  tick  tick  menu"
+    "bal   bal   bal   bet   win   win   win"
+    "turbo minus .     spin  .     plus  autop";
+}
+.lsh::before {
+  /* The deck surface behind the bottom three rows (decoration: no layout role). */
+  content: ""; grid-row: 4 / 7; grid-column: 1 / -1; margin: -6px calc(-1 * var(--lsh-gutter) + 6px) -6px;
+  border-radius: var(--lsh-radius); background: var(--lsh-texture), var(--lsh-deck); box-shadow: inset 0 1px 0 var(--lsh-deck-line); z-index: -1;
+}
+.lsh-rail:not([hidden]) { height: 48px; }
+.lsh-read__v { font-size: 16px; }
+
+@media (max-width: 359px) {
+  .lsh { --lsh-gutter: 10px; --lsh-spin: 64px; column-gap: 4px; }
+  .lsh-read__v { font-size: 15px; }
+}
+
+/* Tablets upright: same layout, a little more air. */
+@media (orientation: portrait) and (min-width: 700px) {
+  .lsh { --lsh-gutter: 28px; --lsh-spin: 80px; column-gap: 14px; }
+  .lsh-read__v { font-size: 19px; }
+}
+
+/* ── landscape phones (short) ─────────────────────────────────────────── */
+@media (orientation: landscape) and (max-height: 520px) {
+  .lsh {
+    --lsh-spin: 64px;
+    grid-template-columns: 68px 68px minmax(0, 1fr) 96px;
+    grid-template-rows: var(--lsh-strip) var(--lsh-hit) 40px 40px 40px var(--lsh-hit) minmax(0, 1fr) 22px;
+    grid-template-areas:
+      "strip strip strip strip"
+      "menu  info  stage autop"
+      "bal   bal   stage spin"
+      "bet   bet   stage spin"
+      "win   win   stage turbo"
+      "minus plus  stage ."
+      "rail  rail  stage ."
+      ".     .     tick  .";
+    column-gap: 10px; row-gap: 6px;
+    padding-top: max(4px, env(safe-area-inset-top));
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+  }
+  .lsh[data-hand="left"] {
+    grid-template-columns: 96px minmax(0, 1fr) 68px 68px;
+    grid-template-areas:
+      "strip strip strip strip"
+      "autop  stage menu  info"
+      "spin  stage bal   bal"
+      "spin  stage bet   bet"
+      "turbo stage win   win"
+      ".     stage minus plus"
+      ".     stage rail  rail"
+      ".     tick  .     .";
+  }
+  .lsh::before { display: none; }
+  .lsh-rail:not([hidden]) { height: 44px; align-self: end; flex-direction: row; }
+  .lsh-chip { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 4px 6px; }
+  .lsh-chip__v { font-size: 12px; }
+  .lsh-chip__k { font-size: 11px; letter-spacing: 0.1em; }
+  .lsh-read--bet { min-height: 40px; }
+  .lsh-read { justify-items: start; text-align: left; }
+  .lsh-read__v { font-size: 15px; }
+  .lsh-ticker { font-size: 12px; }
+}
+
+/* ── desktop ──────────────────────────────────────────────────────────── */
+@media (min-width: 1000px) and (min-height: 600px) and (orientation: landscape) {
+  .lsh {
+    --lsh-gutter: 24px; --lsh-spin: 80px;
+    grid-template-columns: 48px 48px minmax(0, 1fr) minmax(0, 1fr) 48px 96px 48px minmax(0, 1fr) minmax(0, 1fr) 48px 48px;
+    grid-template-rows: var(--lsh-strip) minmax(0, 1fr) 30px 96px;
+    grid-template-areas:
+      "strip strip strip strip strip strip strip strip strip strip strip"
+      "stage stage stage stage stage stage stage stage stage rail  rail"
+      "tick  tick  tick  tick  tick  tick  tick  tick  tick  tick  tick"
+      "menu  info  bal   bet   minus spin  plus  win   win   autop  turbo";
+    column-gap: 12px;
+  }
+  .lsh[data-hand="left"] {
+    grid-template-areas:
+      "strip strip strip strip strip strip strip strip strip strip strip"
+      "rail  rail  stage stage stage stage stage stage stage stage stage"
+      "tick  tick  tick  tick  tick  tick  tick  tick  tick  tick  tick"
+      "autop  turbo bal   bet   minus spin  plus  win   win   menu  info";
+  }
+  .lsh::before { grid-row: 4; margin: 0 -12px; }
+  .lsh-rail:not([hidden]) { height: auto; flex-direction: column; justify-content: center; }
+  .lsh-read__v { font-size: 20px; }
+  .lsh-read { justify-self: center; width: min(100%, 240px); }
+  .lsh-ticker { font-size: 14px; }
+}
+
+/* ── sheets (VxNotify modals) ─────────────────────────────────────────── */
+.lsh-sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: end center; background: rgba(0, 0, 0, 0.55); padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+.lsh-sheet.hidden { display: none; }
+.lsh-sheet__panel {
+  width: min(560px, 100%); max-height: min(86vh, 720px); overflow: auto; overscroll-behavior: contain;
+  border-radius: 18px 18px 14px 14px; background: var(--lsh-texture), var(--lsh-sheet); color: var(--lsh-ink);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 var(--lsh-deck-line);
+  font: 500 15px/1.45 var(--lsh-font-ui);
+}
+@media (min-width: 700px) { .lsh-sheet { place-items: center; } .lsh-sheet__panel { border-radius: 18px; } }
+.lsh-sheet__head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px 20px; background: inherit; }
+.lsh-sheet__title { margin: 0; font: 800 18px/1.2 var(--lsh-font-ui); letter-spacing: 0.02em; }
+.lsh-sheet__body { padding: 4px 20px 20px; }
+.lsh-sheet__body p { margin: 0 0 12px; }
+.lsh-sheet__body table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
+.lsh-sheet__body th, .lsh-sheet__body td { padding: 6px 4px; border-bottom: 1px solid var(--lsh-deck-line); text-align: right; }
+.lsh-sheet__body th:first-child, .lsh-sheet__body td:first-child { text-align: left; }
+.lsh-sheet__body h3 { margin: 16px 0 6px; font-size: 15px; letter-spacing: 0.04em; }
+.lsh-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--lsh-deck-line); }
+.lsh-row__t { display: grid; gap: 2px; }
+.lsh-row__t small { color: var(--lsh-muted); font-size: 12px; }
+.lsh-row input[type="checkbox"] { appearance: none; width: 48px; height: 28px; border-radius: 14px; background: var(--lsh-face-hover); position: relative; cursor: pointer; flex: none; }
+.lsh-row input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--lsh-ink); transition: transform 140ms; }
+.lsh-row input[type="checkbox"]:checked { background: var(--lsh-accent); }
+.lsh-row input[type="checkbox"]:checked::after { transform: translateX(20px); background: var(--lsh-accent-ink); }
+.lsh-row select { min-height: 40px; border-radius: 10px; border: 0; padding: 0 10px; background: var(--lsh-face-hover); color: var(--lsh-ink); font: inherit; }
+.lsh-seg { display: inline-flex; border-radius: 12px; background: var(--lsh-face); padding: 3px; gap: 3px; }
+.lsh-seg button { min-height: 40px; min-width: 64px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--lsh-muted); font: 700 13px/1 var(--lsh-font-ui); cursor: pointer; }
+.lsh-seg button[aria-checked="true"] { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
+.lsh-pill { display: inline-grid; place-items: center; min-height: 44px; min-width: 64px; padding: 0 16px; border-radius: 12px; background: var(--lsh-face-hover); color: var(--lsh-ink); font: 700 15px/1 var(--lsh-font-num); text-decoration: none; }
+.lsh-pill[aria-pressed="true"] { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
+.lsh-pill:disabled { opacity: 0.35; cursor: default; }
+.lsh-pill--primary { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
+.lsh-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.lsh-presets, .lsh-ladder { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.lsh-market { color: var(--lsh-muted); font-size: 13px; }
+.lsh-controls { color: var(--lsh-muted); font-size: 13px; }
+.lsh-build { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--lsh-deck-line); color: var(--lsh-muted); font: 600 11px/1.4 var(--lsh-font-num); letter-spacing: 0.04em; }
+
+/* Reduced motion (OS or menu) and battery saver: the shell's own motion stops. */
+.lsh-reduced .lsh *, .lsh-reduced .lsh-sheet * { transition: none !important; }
+.lsh-reduced .lsh-spin.is-waiting .lsh-spin__ring { animation: none; stroke-dasharray: none; }
