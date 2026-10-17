@@ -1,0 +1,29 @@
+{
+  "code": "relicforge",
+  "title": "Relic Forge",
+  "engine": {
+    "dir": "engine",
+    "namespace": "RelicForge",
+    "files": [
+      "rng.js",
+      "grid.js",
+      "cluster.js",
+      "cascade.js",
+      "paytable.js",
+      "specials.js",
+      "mult.js",
+      "forge-meter.js",
+      "relics.js",
+      "ev-table.js",
+      "draft.js",
+      "round.js",
+      "spin-engine.js"
+    ]
+  },
+  "rules": "math/rules.json",
+  "client": "client",
+  "presentation": {
+    "turbo": false,
+    "slam_stop": false
+  }
+}

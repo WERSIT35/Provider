@@ -140,7 +140,8 @@ async function loadAsset(root: string, rel: string): Promise<Asset | null> {
  */
 const BUNDLE_BLOCK = /<!-- bundle:start[\s\S]*?<!-- bundle:end -->/;
 const BUNDLE_PATH = "app.bundle.js";
-let bundle: { key: string; asset: Asset; html: Asset } | null = null;
+/** One bundle per client root (Vault 20K at /play/, every other game at /play/g/<code>/). */
+const bundles = new Map<string, { key: string; asset: Asset; html: Asset }>();
 
 async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; html: Asset } | null> {
   const html = index.body.toString("utf8");
@@ -150,12 +151,15 @@ async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; ht
   const parts = await Promise.all(srcs.map((src) => loadAsset(root, src)));
   if (parts.some((p) => !p)) return null; // a missing file: serve the page unbundled
   const key = index.etag + parts.map((p) => (p as Asset).etag).join("");
+  let bundle = bundles.get(root);
   if (bundle?.key !== key) {
     const code = await minify(parts.map((p) => (p as Asset).body.toString("utf8")).join("\n;\n"));
+    bundle = bundles.get(root);
     if (bundle?.key === key) return { asset: bundle.asset, html: bundle.html }; // another request built it meanwhile
     const asset = makeAsset(".js", Buffer.from(code), 0);
     const tag = `<script src="${BUNDLE_PATH}?v=${asset.etag.slice(1, 13)}"></script>`;
     bundle = { key, asset, html: makeAsset(".html", Buffer.from(html.replace(BUNDLE_BLOCK, tag)), 0) };
+    bundles.set(root, bundle);
   }
   return { asset: bundle.asset, html: bundle.html };
 }
@@ -283,6 +287,14 @@ const playPageRoutes: FastifyPluginAsync = async (app) => {
   app.get("/play/*", async (req, reply) => {
     const rel = (req.params as { "*": string })["*"] || "index.html";
     return serveFile(root, rel, req, reply, framingHeaders(app, launchToken(req)));
+  });
+
+  // /play/g/<code> (no slash) → /play/g/<code>/ so the client's relative paths resolve.
+  app.get("/play/g/:game", (req, reply) => {
+    const { game } = req.params as { game: string };
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(game) || !app.container.games.clientDir(game) || game === app.container.games.default.gameCode) return notFound(reply);
+    const url = req.raw.url ?? "";
+    return reply.code(302).header("location", `/play/g/${game}/${url.includes("?") ? url.slice(url.indexOf("?")) : ""}`).send();
   });
 };
 

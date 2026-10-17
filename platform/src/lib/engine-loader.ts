@@ -29,6 +29,11 @@ export interface GameManifest {
   engine: { dir: string; namespace: string; files: string[] };
   rules: string;
   client: string;
+  /**
+   * Player-facing controls the game allows at most (a market can only switch them off):
+   * turbo and slam-stop. Missing = allowed (Vault 20K); Relic Forge ships both false.
+   */
+  presentation?: { turbo?: boolean; slam_stop?: boolean };
   /** Absolute folder of the manifest (paths above are relative to it). */
   root: string;
 }

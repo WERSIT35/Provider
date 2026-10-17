@@ -13,6 +13,7 @@ import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
 import { DebitReconciler } from "./modules/wallet/debit-reconciler";
 import { RegulatoryService, type SessionStats } from "./modules/regulatory/regulatory";
+import { PlayerStateStore } from "./modules/player-state/player-state.store";
 import { ReportingService } from "./modules/reporting/reporting.service";
 import { AdminAuthService } from "./modules/admin/admin-auth";
 import { AdminAccountService } from "./modules/admin/admin-account";
@@ -89,6 +90,7 @@ export interface Container {
   disputes: DisputeService;
   // Operator-granted Free Rounds (NOT the engine scatter feature).
   campaigns: InMemoryCampaignRepository;
+  playerStates: PlayerStateStore;
   adminAuth: AdminAuthService;
   adminAccounts: AdminAccountService;
   nonceStore: NonceStore;
@@ -159,11 +161,26 @@ export function buildContainer(
   );
   // Write-ahead round intents, committed through the same write-through (no-op in memory).
   const intents = new RoundIntentStore(persistence);
-  const orchestrator = new RoundOrchestrator(games, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory, {
-    intents,
-    commit: () => persistence.flush(),
-    ...(pg ? { keyUsed: (key: string) => history.keyUsed(key) } : {})
-  });
+  // State stateful games keep per player across sessions (Relic Forge's Forge meter).
+  const playerStates = new PlayerStateStore(persistence);
+  const orchestrator = new RoundOrchestrator(
+    games,
+    resolver,
+    sessions,
+    mgmt,
+    wallet,
+    ledger,
+    transactions,
+    campaigns,
+    debits,
+    regulatory,
+    {
+      intents,
+      commit: () => persistence.flush(),
+      ...(pg ? { keyUsed: (key: string) => history.keyUsed(key) } : {})
+    },
+    playerStates
+  );
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
@@ -202,6 +219,7 @@ export function buildContainer(
     signingKeyring,
     disputes,
     campaigns,
+    playerStates,
     adminAuth: new AdminAuthService(config.adminSecret),
     adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
     nonceStore: new NonceStore(config.hmacSkewSeconds * 4 * 1000),

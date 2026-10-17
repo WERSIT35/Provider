@@ -21,6 +21,14 @@ export interface SessionSnapshot {
   freeSpinPersistentMultiplier?: number;
   bonusRoundWin?: number;
   anteEnabled?: boolean;
+  /**
+   * Stateful games (USES_FEATURE_STATE): the session's opaque feature state, e.g. Relic
+   * Forge's relics and pending draft offer. Never set for Vault 20K, whose session
+   * object therefore keeps exactly its old keys.
+   */
+  featureState?: unknown;
+  /** Stateful games (USES_PLAYER_STATE): the player's state for this game, currency and bet. */
+  playerState?: unknown;
 }
 
 /**
@@ -32,12 +40,17 @@ export interface SessionSnapshot {
  * input is rebuilt from this allow-list here, at the engine boundary, and crazy mode and
  * forced multipliers are pinned off on every session object (buildSessionObject).
  */
-function engineInput(input: { bet_amount: number; ante_enabled?: boolean; spin_id?: string }): SpinInput {
+function engineInput(input: { bet_amount: number; ante_enabled?: boolean; spin_id?: string; choice?: number }): SpinInput {
   return {
     bet_amount: input.bet_amount,
     ...(input.ante_enabled !== undefined ? { ante_enabled: Boolean(input.ante_enabled) } : {}),
-    ...(input.spin_id !== undefined ? { spin_id: String(input.spin_id) } : {})
+    ...(input.spin_id !== undefined ? { spin_id: String(input.spin_id) } : {}),
+    ...(input.choice !== undefined ? { choice: Number(input.choice) } : {})
   };
+}
+
+function jsonCopy<T>(value: T): T {
+  return value === null || value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
 }
 
 /**
@@ -147,6 +160,28 @@ export class EngineService implements EngineSource {
     return (this.template as { SUPPORTS_ANTE?: boolean }).SUPPORTS_ANTE !== false;
   }
 
+  /**
+   * Stateful-game capabilities (opt-in; Vault 20K declares none, so none of its paths
+   * change): a per-session feature state, a per-player state that outlives sessions,
+   * and player choices between rounds.
+   */
+  usesFeatureState(): boolean {
+    return (this.template as { USES_FEATURE_STATE?: boolean }).USES_FEATURE_STATE === true;
+  }
+  usesPlayerState(): boolean {
+    return (this.template as { USES_PLAYER_STATE?: boolean }).USES_PLAYER_STATE === true;
+  }
+  supportsChoice(): boolean {
+    return (this.template as { SUPPORTS_CHOICE?: boolean }).SUPPORTS_CHOICE === true;
+  }
+
+  /** How many options the next round must pick from (0 = no choice pending). */
+  choiceOptions(featureState: unknown): number {
+    if (!this.supportsChoice()) return 0;
+    const n = Number((this.template as { choiceOptions?: (s: unknown) => number }).choiceOptions?.(featureState ?? null) ?? 0);
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  }
+
   getAllowedBets(): number[] {
     return this.template.getAllowedBets();
   }
@@ -222,7 +257,11 @@ export class EngineService implements EngineSource {
       anteEnabled: Boolean(snapshot.anteEnabled),
       crazyMode: false,
       spinHistory: new Map(),
-      createdAt: "1970-01-01T00:00:00.000Z"
+      createdAt: "1970-01-01T00:00:00.000Z",
+      // Stateful games only: absent keys keep Vault 20K's session object unchanged. Deep
+      // copies, so an engine can never mutate the session or the stored pre-state.
+      ...(snapshot.featureState !== undefined ? { featureState: jsonCopy(snapshot.featureState) } : {}),
+      ...(snapshot.playerState !== undefined ? { playerState: jsonCopy(snapshot.playerState) } : {})
     };
   }
 

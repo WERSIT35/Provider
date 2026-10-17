@@ -51,7 +51,11 @@ const STATUS_BY_CODE: Record<string, number> = {
   CAMPAIGN_NOT_ACTIVE: 409,
   FEATURE_IN_PROGRESS: 409,
   SESSION_LOCK_MISMATCH: 409,
-  SESSION_LOCK_MISSING: 409
+  SESSION_LOCK_MISSING: 409,
+  // Stateful games (round-orchestrator.ts): the draft pick, and one round per player state.
+  INVALID_CHOICE: 422,
+  CHOICE_REQUIRED: 422,
+  PLAYER_STATE_BUSY: 409
 };
 
 /** Code-shaped errors that are still internal faults, never shown to a caller. */
