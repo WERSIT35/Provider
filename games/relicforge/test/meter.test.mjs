@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadEngine, board, letters, scriptedRng, floatFor, LETTERS, rules as loadRules, plain } from "./helpers.mjs";
+import { loadEngine, board, letters, scriptedRng, floatFor, LETTERS, rules as loadRules, plain, forgeState } from "./helpers.mjs";
 
 const RF = loadEngine();
 const R = loadRules();
@@ -59,7 +59,12 @@ test("a full meter triggers the Forge (10 spins) and empties; the state goes bac
   assert.equal(r.forge_trigger, "meter");
   assert.deepEqual([r.free_spins_awarded, r.free_spins_left], [10, 10]);
   assert.deepEqual(r.player_state, { embers: 0 });
-  assert.deepEqual(r.feature_state.forge, { spins_total: 10, spins_left: 10, trigger: "meter", round_x: r.win_x, pending_offer: null });
+  const f = r.feature_state.forge;
+  assert.deepEqual([f.spins_total, f.spins_left, f.trigger, f.round_x, f.relic_bonus, f.evolutions, f.stuck], [10, 10, "meter", r.win_x, 1, [], []]);
+  assert.ok(Object.values(f.relics).every((lv) => lv === 0));
+  // The first draft comes with the trigger: 3 different relics.
+  assert.equal(new Set(f.pending_offer).size, 3);
+  assert.deepEqual(r.offer_next.map((o) => [o.relic, o.level_next]), f.pending_offer.map((x) => [x, 1]));
 });
 
 test("3+ Scatters trigger the Forge and leave the meter as it was", () => {
@@ -73,10 +78,10 @@ test("3+ Scatters trigger the Forge and leave the meter as it was", () => {
 
 test("the Forge plays its spins for free, at the trigger's bet, without moving the meter", () => {
   const rules = loadRules();
-  let featureState = { forge: { spins_total: 10, spins_left: 10, trigger: "scatter", round_x: 1.5, pending_offer: null } };
+  let featureState = forgeState({ round_x: 1.5 });
   let roundX = 1.5;
   for (let i = 1; i <= 10; i++) {
-    const r = plain(engine(rules, { seed: `fs-${i}`, featureState, playerState: { embers: 12 } }).spin({ bet_amount: 2 }));
+    const r = plain(engine(rules, { seed: `fs-${i}`, featureState, playerState: { embers: 12 } }).spin({ bet_amount: 2, choice: 0 }));
     assert.deepEqual([r.is_free_spin, r.bet_charged, r.forge_spin, r.free_spins_left], [true, 0, i, 10 - i]);
     assert.deepEqual(r.player_state, { embers: 12 });
     roundX += r.win_x;
@@ -95,6 +100,6 @@ test("the max win covers the trigger and the whole Forge", () => {
   const t = plain(engine(rules, { playerState: { embers: 49 } }).spin({ bet_amount: 1 }));
   assert.deepEqual([t.cap_reached, t.forge_trigger, t.feature_state], [true, null, null]);
   // A Forge spin pays only what is left under the cap, and the Forge ends there.
-  const f = plain(engine(rules, { featureState: { forge: { spins_total: 10, spins_left: 6, trigger: "meter", round_x: 9999.5, pending_offer: null } } }).spin({ bet_amount: 1 }));
+  const f = plain(engine(rules, { featureState: forgeState({ spins_left: 6, trigger: "meter", round_x: 9999.5 }) }).spin({ bet_amount: 1, choice: 1 }));
   assert.deepEqual([f.win_x, f.cap_reached, f.free_spins_left, f.feature_state, f.forge_round_x], [0.5, true, 0, null, 10000]);
 });

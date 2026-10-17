@@ -32,7 +32,101 @@
   },
   "forge": {
     "free_spins": 10,
-    "scatters_to_trigger": 3
+    "scatters_to_trigger": 3,
+    "offer_size": 3,
+    "max_stuck_specials": 6
+  },
+  "relics": {
+    "IGNITE": {
+      "wilds": [
+        1,
+        2,
+        3
+      ]
+    },
+    "CHAIN": {
+      "inc": [
+        2,
+        3,
+        4
+      ]
+    },
+    "EXPAND": {
+      "rows": [
+        6,
+        7,
+        8
+      ]
+    },
+    "MAGNET": {
+      "stick_spins": [
+        2,
+        2,
+        3
+      ],
+      "rune_min": [
+        7,
+        6,
+        6
+      ]
+    },
+    "HOARD": {
+      "remove": [
+        [
+          "COPPER"
+        ],
+        [
+          "COPPER",
+          "IRON"
+        ],
+        [
+          "COPPER",
+          "IRON",
+          "BRONZE"
+        ]
+      ]
+    },
+    "SURGE": {
+      "carry_bonus": [
+        0,
+        1,
+        1
+      ],
+      "burst": [
+        2,
+        2,
+        3
+      ]
+    }
+  },
+  "evolutions": {
+    "INFERNO": {
+      "from": [
+        "IGNITE",
+        "CHAIN"
+      ],
+      "wild_mult": 2
+    },
+    "CATHEDRAL": {
+      "from": [
+        "EXPAND",
+        "HOARD"
+      ],
+      "rows": 8,
+      "premium_only": true
+    },
+    "SINGULARITY": {
+      "from": [
+        "MAGNET",
+        "SURGE"
+      ]
+    }
+  },
+  "ev_table": {
+    "version": "none",
+    "note": "phase 7 fills factors and volatility (docs/relic-forge/02-tech-plan.md section 4); a missing entry is factor 1",
+    "factors": {},
+    "volatility": {}
   },
   "symbols": {
     "low": [

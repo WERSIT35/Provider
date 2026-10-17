@@ -13,6 +13,9 @@
       "specials.js",
       "mult.js",
       "forge-meter.js",
+      "relics.js",
+      "ev-table.js",
+      "draft.js",
       "round.js",
       "spin-engine.js"
     ]

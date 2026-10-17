@@ -25,6 +25,11 @@ test("the rule's numbers drive it (Chain: +2 per step; Surge: a carried start; Ã
   assert.deepEqual(sequence([false, true], { start: 7, inc: 1, burst: 3 }), [7, 24]);
 });
 
+test("an optional ceiling bounds the Mult (off by default)", () => {
+  assert.deepEqual(sequence([true, true, true, true], { start: 1, inc: 1, burst: 2, max: 20 }), [2, 6, 14, 20]);
+  assert.deepEqual(sequence([true, true, true, true]), [2, 6, 14, 30]);
+});
+
 test("fullRows: only rows with every cell cleared, once each", () => {
   const cells = (row, cols) => cols.map((col) => ({ row, col }));
   assert.deepEqual(plain(RF.Mult.fullRows([...cells(0, [0, 1, 2, 3, 4, 5]), ...cells(2, [0, 1, 2, 3, 4])], 5, 6)), [0]);

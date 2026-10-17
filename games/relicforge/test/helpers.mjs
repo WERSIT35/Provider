@@ -73,3 +73,8 @@ export function letters(symbolRows) {
 
 /** Engine objects come from another realm; compare their JSON (deepStrictEqual checks prototypes). */
 export const plain = (x) => JSON.parse(JSON.stringify(x));
+
+/** A Forge in progress (the trigger state, with overrides). */
+export function forgeState(over = {}) {
+  return { forge: Object.assign({ spins_total: 10, spins_left: 10, trigger: "scatter", round_x: 0, relics: { IGNITE: 0, CHAIN: 0, EXPAND: 0, MAGNET: 0, HOARD: 0, SURGE: 0 }, evolutions: [], relic_bonus: 1, carried_mult: null, stuck: [], pending_offer: ["IGNITE", "CHAIN", "EXPAND"] }, over) };
+}

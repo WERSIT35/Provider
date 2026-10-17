@@ -21,7 +21,13 @@
     const { Grid, Cluster, Cascade, Specials, Mult } = root.RelicForge;
     const multRule = ctx.mult || { start: 1, inc: 1, burst: 2 };
     let board = Grid.createBoard(ctx.cols, ctx.rows, ctx.table, rng);
+    const dealt = Grid.symbolsOf(board);
+    // The Forge's extras on the dealt board: Ignite's Wilds (RNG-placed), then Magnet's
+    // stuck specials (they win a cell over a Wild).
+    const wildsPlaced = placeWilds(board, ctx.wilds || 0, ctx.wild, rng);
+    const stuckPlaced = placeStuck(board, ctx.stuck || []);
     const initial = Grid.symbolsOf(board);
+    const createdAll = [];
     const steps = [];
     let totalX = 0;
     let mult = null;
@@ -37,12 +43,21 @@
         truncated = true;
         break;
       }
-      const clusters = found.map((c) => ({ symbol: c.symbol, size: c.size, wilds: c.wilds, cells: c.cells, pay_x: ctx.paytable.clusterPay(c.symbol, c.size) }));
+      // Inferno: each Wild in a cluster multiplies its pay (×2 · ×2 · …).
+      const wildMult = ctx.wildMult || 1;
+      const clusters = found.map((c) => ({
+        symbol: c.symbol,
+        size: c.size,
+        wilds: c.wilds,
+        cells: c.cells,
+        pay_x: ctx.paytable.clusterPay(c.symbol, c.size) * (wildMult > 1 ? Math.pow(wildMult, c.wilds) : 1)
+      }));
       // A Wild shared by two clusters is removed once.
       const clusterCells = uniqueCells(clusters.flatMap((c) => c.cells));
       const detonation = pending.length ? Specials.detonateAll(board, ctx.paying) : { cleared: [], events: [] };
       const collected = pending.length ? Specials.collect(board, detonation.cleared, clusterCells, ctx.paying, ctx.minCluster, ctx.paytable) : [];
       const created = Specials.createSpecials(board, found, ctx.specialBands, ctx.wild, rng);
+      createdAll.push(...created);
       // Embers next to an exploding cluster or inside a detonation are collected (they
       // leave the board with the step's other cleared cells).
       const embers = ctx.ember ? root.RelicForge.ForgeMeter.collectEmbers(board, clusterCells, detonation.cleared, ctx.ember) : [];
@@ -76,7 +91,50 @@
       });
     }
     // final_mult: the Mult the spin ended on (null = no step), which Surge carries over.
-    return { initial, steps, total_x: totalX, final: Grid.symbolsOf(board), final_mult: mult, embers: embersTotal, truncated };
+    return {
+      dealt,
+      initial,
+      wilds_placed: wildsPlaced,
+      stuck_placed: stuckPlaced,
+      steps,
+      total_x: totalX,
+      final: Grid.symbolsOf(board),
+      final_mult: mult,
+      embers: embersTotal,
+      // Every special the spin created, where it was created (Magnet keeps them).
+      specials_created: createdAll,
+      truncated
+    };
+  }
+
+  /** Ignite: `n` Wilds on distinct cells, one randomInt each over the cells still free. */
+  function placeWilds(board, n, wild, rng) {
+    if (!n) return [];
+    const free = [];
+    for (let r = 0; r < board.length; r += 1) for (let c = 0; c < board[r].length; c += 1) free.push({ row: r, col: c });
+    const out = [];
+    for (let i = 0; i < n && free.length; i += 1) {
+      const at = free.splice(rng.randomInt(free.length), 1)[0];
+      board[at.row][at.col] = { s: wild };
+      out.push(at);
+    }
+    return out;
+  }
+
+  /**
+   * Magnet: specials kept from earlier spins come back where they were made. Positions
+   * are kept from the bottom row up (`up`), so they stay put when Expand adds rows.
+   */
+  function placeStuck(board, stuck) {
+    const rows = board.length;
+    const out = [];
+    for (const s of stuck) {
+      const row = rows - 1 - s.up;
+      if (row < 0 || s.col < 0 || s.col >= board[0].length) continue;
+      board[row][s.col] = { s: s.symbol, sp: s.kind };
+      out.push({ row, col: s.col, kind: s.kind, symbol: s.symbol });
+    }
+    return out;
   }
 
   function uniqueCells(cells) {

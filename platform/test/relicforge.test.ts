@@ -79,6 +79,39 @@ describe("Relic Forge on the RGS", () => {
     expect(again.json().resume.player_states["1.00"]).toEqual(meter);
     expect((meter as { embers: number }).embers).toBeGreaterThanOrEqual(0);
 
+    // A whole Forge over HTTP (entered directly, as if a trigger spin had just won it).
+    const sessionId = init.json().session_id as string;
+    c.sessions.applyResult(
+      sessionId,
+      {
+        free_spins_left: 10,
+        feature_state: {
+          forge: {
+            spins_total: 10, spins_left: 10, trigger: "scatter", round_x: 0,
+            relics: { IGNITE: 0, CHAIN: 0, EXPAND: 0, MAGNET: 0, HOARD: 0, SURGE: 0 },
+            evolutions: [], relic_bonus: 1, carried_mult: null, stuck: [], pending_offer: ["IGNITE", "CHAIN", "EXPAND"]
+          }
+        }
+      } as never,
+      { bet: 1, currency: "GEL", ante_enabled: false, campaign_id: null, grant_id: null, feature_ref: "r_trigger" }
+    );
+    const noPick = await app.inject({ method: "POST", url: "/game/v1/spin", headers: { authorization: `Bearer ${token}`, "idempotency-key": "rf-np" }, payload: { bet_amount: 1 } });
+    expect(noPick.json().error.code).toBe("CHOICE_REQUIRED");
+    let spins = 0;
+    for (let i = 0; i < 10; i++) {
+      const res = await app.inject({ method: "POST", url: "/game/v1/spin", headers: { authorization: `Bearer ${token}`, "idempotency-key": `rf-f${i}` }, payload: { bet_amount: 5, choice: i % 3 } });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      spins += 1;
+      expect([body.is_free_spin, body.bet_charged, body.bet_amount, body.forge_spin]).toEqual([true, 0, 1, i + 1]);
+      expect(c.verification.verify(body.round_ref)?.verdict).toBe("legitimate");
+      if (body.cap_reached) break;
+      expect(body.meltdown).toBe(i === 9);
+    }
+    expect(spins).toBeGreaterThan(0);
+    const after = await app.inject({ method: "GET", url: "/game/v1/session", headers: { authorization: `Bearer ${token}` } });
+    expect(after.json().resume.feature).toBeNull();
+
     const page = await app.inject({ method: "GET", url: "/play/g/relicforge/" });
     expect(page.statusCode).toBe(200);
     expect(page.body).toContain("Relic Forge");

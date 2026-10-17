@@ -5,13 +5,14 @@
   // base game) on the spin's first evaluation, and every later cascade step adds `inc`
   // (+1; the Chain relic raises it). A step that clears at least one full row is a Line
   // Burst: the running Mult is multiplied by `burst` (×2; Surge Lv3 makes it ×3) from
-  // that step on, once per step however many rows it clears.
+  // that step on, once per step however many rows it clears. An optional ceiling (`max`)
+  // bounds runaway chains (a phase-7 tuning lever; none by default).
 
   /** The Mult a step pays at, given the previous step's (null on the first step). */
   function stepMult(prev, burstRows, rule) {
     let mult = prev === null ? rule.start : prev + rule.inc;
     if (burstRows.length) mult *= rule.burst;
-    return mult;
+    return rule.max ? Math.min(mult, rule.max) : mult;
   }
 
   /** Rows whose every cell is in `cleared` (the Line Bursts of a step). */
