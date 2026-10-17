@@ -302,6 +302,7 @@ export class RoundOrchestrator {
     // 1) DEBIT. Cash: the stake (decline aborts the round). Free round: a tagged
     // 0.00 FREE_ROUND_BET so the casino sees the promo round. Engine free spins: none.
     let debitTxRef: string | null = null;
+    let balanceAfterDebit: Money | undefined;
     if (charge > 0 || freeRound) {
       // Write-ahead: the intent is durable BEFORE the casino is asked for money.
       if (intents) {
@@ -344,6 +345,7 @@ export class RoundOrchestrator {
         throw err;
       }
       debitTxRef = debit.operatorTxRef;
+      balanceAfterDebit = debit.balanceAfter;
       this.transactions.record({
         operator_id: session.operator_id,
         session_id: session.id,
@@ -405,6 +407,7 @@ export class RoundOrchestrator {
       resolveMode: "spin",
       resolved,
       intent,
+      balanceAfterDebit,
       featureRef: featureLock?.feature_ref ?? null,
       freeRound,
       campaign: freeRound
@@ -533,6 +536,7 @@ export class RoundOrchestrator {
       resolveMode: "buy",
       resolved,
       intent,
+      balanceAfterDebit: debit.balanceAfter,
       featureRef: null,
       freeRound: null,
       campaign: null
@@ -559,6 +563,8 @@ export class RoundOrchestrator {
       resolved: AuthoritativeRound;
       /** The round's write-ahead intent (opened before the debit, if there was one). */
       intent: OpenIntentInput;
+      /** The casino's balance after this round's debit, when it said (balanceAfter). */
+      balanceAfterDebit?: Money;
       /** Inside the feature: the triggering round's ref (bonus group key). Else null. */
       featureRef: string | null;
       /** The free round this spin consumed (null for cash and feature spins). */
@@ -568,6 +574,9 @@ export class RoundOrchestrator {
     }
   ): Promise<SpinOutcome> {
     const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, intent, featureRef, freeRound, campaign } = args;
+    // The balance after the round's LAST money move, as the casino reported it on that
+    // move (the debit; then the credit, if any). Unknown → one balance call at the end.
+    let balanceAfterRound: Money | undefined = args.balanceAfterDebit;
     metrics.rounds.inc({ kind: resolveMode === "buy" ? "buy" : isFreeSpin ? "free_spin" : freeRound ? "free_round" : "paid" });
 
     // Snapshot the exact pre-spin state BEFORE applyResult mutates the session, so
@@ -645,6 +654,7 @@ export class RoundOrchestrator {
     if (win > 0) {
       const creditKey = `${idempotencyKey}:credit`;
       try {
+        balanceAfterRound = undefined; // a credit is due: only ITS answer is the round's balance
         const credit = await this.wallet.credit(ctx, {
           idempotencyKey: creditKey,
           roundRef,
@@ -656,6 +666,7 @@ export class RoundOrchestrator {
           ...(isFreeSpin && featureRef ? { featureRef } : {}),
           ...freeRoundCreditTag
         });
+        balanceAfterRound = credit.balanceAfter;
         this.transactions.record({
           operator_id: session.operator_id,
           session_id: session.id,
@@ -690,10 +701,16 @@ export class RoundOrchestrator {
     // Done with the casino for this round (a failed credit is in the settlement queue).
     intents?.close(idempotencyKey, "settled");
 
-    const balance = await this.wallet.balance(ctx, {
-      operatorPlayerId: session.operator_player_id,
-      currency: session.currency
-    });
+    // The casino already said the balance on the round's last move (a debit or credit
+    // response's balanceAfter, part of the wallet protocol): no third call per round.
+    // Asked only when no move answered it: a free spin with no win, a failed credit,
+    // or a casino that leaves balanceAfter out.
+    const balance =
+      balanceAfterRound ??
+      (await this.wallet.balance(ctx, {
+        operatorPlayerId: session.operator_player_id,
+        currency: session.currency
+      }));
 
     const outcome: SpinOutcome = {
       round_ref: roundRef,

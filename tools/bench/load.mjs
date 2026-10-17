@@ -72,6 +72,10 @@ export async function runLoad({ players, duration, thinkMin, thinkMax, wallet = 
       spins: ok, spinsPerSec: +(ok / secs).toFixed(1), errors, latencyMs: quantiles(lat),
       serverRssMB: { start: rss.length ? +(rss[0] / 1048576).toFixed(0) : null, max: rss.length ? +(Math.max(...rss) / 1048576).toFixed(0) : null },
       serverCpuPctMax: serverCpu.length ? Math.max(...serverCpu) : null,
+      // Main-thread stalls (per 2 s sample): the median sample's p99, and the worst stall seen.
+      eventLoopDelayMs: srv.samples.length ? { p99Median: median(srv.samples.map((x) => x.loopDelayP99Ms ?? 0)), max: Math.max(...srv.samples.map((x) => x.loopDelayMaxMs ?? 0)) } : null,
+      gc: srv.samples.length ? { pauseMaxMs: Math.max(...srv.samples.map((x) => x.gcMaxMs ?? 0)), pctMedian: median(srv.samples.map((x) => x.gcPct ?? 0)),
+        maxByKind: srv.samples.reduce((acc, x) => { for (const [k, v] of Object.entries(x.gcMaxByKind ?? {})) acc[k] = Math.max(acc[k] ?? 0, v); return acc; }, {}) } : null,
       ...(duration >= 600 ? { serverRssPerMinMB: perMin } : {}),
       ...(soak ? { soak } : {}),
       generatorCpuPct,

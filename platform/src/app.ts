@@ -60,7 +60,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
     requestIdHeader: "x-request-id",
     logController: new LogController({ requestIdLogLabel: "request_id" }),
     genReqId: () => randomUUID(),
-    // Every log line of a request (Fastify's own "incoming request" / "request completed"
+    // Every log line of a request (the "request completed" line below
     // included) carries its W3C trace: the context is built here, when the request's
     // logger is, and the onRequest hook (http/observability.ts) makes it current.
     childLoggerFactory: (logger, bindings, opts, rawReq) => {
@@ -68,7 +68,13 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
       return logger.child({ ...bindings, trace_id: ctx.traceId, span_id: ctx.spanId }, opts);
     },
     trustProxy: true,
-    bodyLimit: BODY_LIMIT_BYTES
+    bodyLimit: BODY_LIMIT_BYTES,
+    // One line per request (below), not Fastify's two ("incoming request" + "request
+    // completed"): half the log volume on the hottest path, nothing lost.
+    disableRequestLogging: true
+  });
+  app.addHook("onResponse", async (req, reply) => {
+    req.log.info({ req: { method: req.method, url: req.url }, res: { statusCode: reply.statusCode }, responseTime: reply.elapsedTime }, "request completed");
   });
   installSecurityHeaders(app);
 

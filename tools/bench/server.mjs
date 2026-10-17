@@ -106,10 +106,27 @@ if (WALLET !== "webhook") {
 
 await app.listen({ host: "127.0.0.1", port: PORT });
 
+// Event-loop delay: how long a ready callback waited for the main thread (GC pauses,
+// long synchronous work). Latency tails that are not in the database live here.
+const { monitorEventLoopDelay } = await import("node:perf_hooks");
+const eld = monitorEventLoopDelay({ resolution: 5 });
+eld.enable();
+const { PerformanceObserver } = await import("node:perf_hooks");
+let gcMax = 0; let gcTotal = 0; const gcKinds = {};
+new PerformanceObserver((list) => {
+  for (const e of list.getEntries()) {
+    gcMax = Math.max(gcMax, e.duration); gcTotal += e.duration;
+    const k = { 1: "minor", 2: "major", 4: "incremental", 8: "weak" }[e.detail?.kind] ?? "other";
+    gcKinds[k] = Math.max(gcKinds[k] ?? 0, e.duration);
+  }
+}).observe({ entryTypes: ["gc"] });
 let lastCpu = process.cpuUsage(); let lastT = performance.now();
 setInterval(() => {
   const cpu = process.cpuUsage(lastCpu); const t = performance.now();
-  process.send?.({ type: "sample", rss: process.memoryUsage().rss, cpuPct: +(((cpu.user + cpu.system) / 1000) / (t - lastT) * 100).toFixed(1) });
+  process.send?.({ type: "sample", rss: process.memoryUsage().rss, cpuPct: +(((cpu.user + cpu.system) / 1000) / (t - lastT) * 100).toFixed(1),
+    loopDelayP99Ms: +(eld.percentile(99) / 1e6).toFixed(1), loopDelayMaxMs: +(eld.max / 1e6).toFixed(1),
+    gcMaxMs: +gcMax.toFixed(1), gcPct: +((gcTotal / (t - lastT)) * 100).toFixed(1), gcMaxByKind: { ...gcKinds } });
+  eld.reset(); gcMax = 0; gcTotal = 0; for (const k of Object.keys(gcKinds)) delete gcKinds[k];
   lastCpu = process.cpuUsage(); lastT = t;
 }, 2000).unref();
 process.send?.({ type: "ready", cred });

@@ -225,6 +225,26 @@ interface PendingRow {
 }
 
 const QUARANTINE_KEEP = 200;
+
+/**
+ * Several upserts as ONE statement (`WITH s0 AS (INSERT …), s1 AS (…) SELECT 1`),
+ * placeholders renumbered; null when it would exceed the bind-parameter limit (the
+ * caller then runs them in an explicit transaction). A lone statement is returned as is.
+ */
+export function atomicStatement(statements: Array<{ text: string; values: unknown[] }>): { text: string; values: unknown[] } | null {
+  if (statements.length === 0) return null;
+  if (statements.length === 1) return statements[0];
+  const total = statements.reduce((n, st) => n + st.values.length, 0);
+  if (total > MAX_BIND_PARAMS) return null;
+  const values: unknown[] = [];
+  const parts = statements.map((st, i) => {
+    const offset = values.length;
+    values.push(...st.values);
+    // Table and column names never contain "$", and values travel separately.
+    return `s${i} AS (${st.text.replace(/\$(\d+)/g, (_m, n: string) => `$${Number(n) + offset}`)})`;
+  });
+  return { text: `WITH ${parts.join(", ")} SELECT 1`, values };
+}
 /** Postgres caps one statement at 65,535 bind parameters. */
 const MAX_BIND_PARAMS = 60_000;
 const MAX_ROWS_PER_STATEMENT = 500;
@@ -305,16 +325,28 @@ export class PostgresPersistence implements Persistence {
       this.requeue(batch, err);
       throw new PersistenceError("PERSISTENCE_UNAVAILABLE", "transient", err);
     }
+    let inTx = false;
     try {
-      await client.query("BEGIN");
       // One multi-row upsert per table (and chunk), not one round trip per row: a
       // drain carries every concurrent request's rows, so this is what group commit
       // costs. No foreign keys exist (0001_core.sql), so table order is free.
-      for (const s of this.statements(batch)) await client.query(s.text, s.values);
-      await client.query("COMMIT");
+      const statements = this.statements(batch);
+      const atomic = atomicStatement(statements);
+      if (atomic) {
+        // ONE round trip: a single statement is its own transaction (all or nothing,
+        // one commit), and Postgres runs every data-modifying CTE in it exactly once.
+        // The drain was ~5 round trips (BEGIN, a statement per table, COMMIT), and the
+        // one committer was busy 88% of the time at 500 players.
+        await client.query(atomic.text, atomic.values);
+      } else {
+        inTx = true;
+        await client.query("BEGIN");
+        for (const st of statements) await client.query(st.text, st.values);
+        await client.query("COMMIT");
+      }
       this.committed(batch);
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      if (inTx) await client.query("ROLLBACK").catch(() => {});
       if (isTransient(err)) {
         this.requeue(batch, err);
         throw new PersistenceError("PERSISTENCE_UNAVAILABLE", "transient", err);

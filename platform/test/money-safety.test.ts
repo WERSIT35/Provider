@@ -52,17 +52,54 @@ class FakePg {
   private client() {
     let staged: Array<{ table: string; key: string; row: Row }> = [];
     let savepoint = 0;
+    let inTx = false;
     const db = this;
-    return {
-      release() {},
-      async query(sql: string, values: unknown[] = []) {
-        if (sql === "BEGIN") { db.openTx++; db.maxConcurrentTx = Math.max(db.maxConcurrentTx, db.openTx); staged = []; return; }
-        if (sql === "COMMIT") {
-          if (db.commitDelayMs) await new Promise((r) => setTimeout(r, db.commitDelayMs));
-          for (const s of staged) { if (!db.tables.has(s.table)) db.tables.set(s.table, new Map()); db.tables.get(s.table)!.set(s.key, s.row); }
-          db.openTx--; db.log.push(`commit ${staged.length}`); staged = []; return;
+    const commitStaged = async () => {
+      if (db.commitDelayMs) await new Promise((r) => setTimeout(r, db.commitDelayMs));
+      for (const st of staged) { if (!db.tables.has(st.table)) db.tables.set(st.table, new Map()); db.tables.get(st.table)!.set(st.key, st.row); }
+      db.log.push(`commit ${staged.length}`); staged = [];
+    };
+    /** `WITH s0 AS (…), s1 AS (…) SELECT 1` → each sub-statement with its own values, renumbered. */
+    const splitCtes = (sql: string, values: unknown[]) => {
+      const out: Array<{ sql: string; values: unknown[] }> = [];
+      let i = sql.indexOf("(") + 1, depth = 1, start = i;
+      while (i < sql.length) {
+        const ch = sql[i];
+        if (ch === "(") depth++;
+        else if (ch === ")" && --depth === 0) {
+          const sub = sql.slice(start, i);
+          const nums = [...sub.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+          const lo = Math.min(...nums), hi = Math.max(...nums);
+          out.push({ sql: sub.replace(/\$(\d+)/g, (_m, n: string) => `$${Number(n) - lo + 1}`), values: values.slice(lo - 1, hi) });
+          const next = sql.indexOf(" AS (", i);
+          if (next < 0) break;
+          i = next + 5; start = i; depth = 1; continue;
         }
-        if (sql === "ROLLBACK") { db.openTx--; staged = []; return; }
+        i++;
+      }
+      return out;
+    };
+    const client = {
+      release() {},
+      async query(sql: string, values: unknown[] = []): Promise<unknown> {
+        // A statement outside BEGIN … COMMIT is its own transaction (all or nothing).
+        if (!inTx && (sql.startsWith("INSERT") || sql.startsWith("WITH"))) {
+          db.openTx++; db.maxConcurrentTx = Math.max(db.maxConcurrentTx, db.openTx);
+          staged = [];
+          try {
+            if (sql.startsWith("WITH")) for (const sub of splitCtes(sql, values)) await applyStatement(sub.sql, sub.values);
+            else await applyStatement(sql, values);
+            await commitStaged();
+          } catch (e) { staged = []; throw e; } finally { db.openTx--; }
+          return;
+        }
+        return applyStatement(sql, values);
+      }
+    };
+    async function applyStatement(sql: string, values: unknown[]): Promise<unknown> {
+        if (sql === "BEGIN") { inTx = true; db.openTx++; db.maxConcurrentTx = Math.max(db.maxConcurrentTx, db.openTx); staged = []; return; }
+        if (sql === "COMMIT") { await commitStaged(); inTx = false; db.openTx--; return; }
+        if (sql === "ROLLBACK") { inTx = false; db.openTx--; staged = []; return; }
         if (sql.startsWith("SAVEPOINT")) { savepoint = staged.length; return; }
         if (sql.startsWith("RELEASE")) return;
         if (sql.startsWith("ROLLBACK TO")) { staged = staged.slice(0, savepoint); return; }
@@ -84,8 +121,8 @@ class FakePg {
           staged = staged.slice(0, before);
           throw e;
         }
-      }
-    };
+    }
+    return client;
     function applyRow(table: string, cols: string[], values: unknown[], sql: string) {
         const m = [sql, table] as const;
         const row: Row = Object.fromEntries(cols.map((c, i) => [c, values[i]]));
@@ -182,6 +219,36 @@ describe("write-through durability (PostgresPersistence)", () => {
     expect(pg.maxConcurrentTx).toBe(1);
     // One transaction per caller would be 250 commits; sharing gives about one per round.
     expect(pg.log.length).toBeLessThanOrEqual(12);
+  });
+
+  it("a drain over several tables is ONE atomic statement; a bad row in it is still salvaged", async () => {
+    const pg = new FakePg();
+    const sent: string[] = [];
+    const fail = pg.fail;
+    pg.fail = (sql, v) => { sent.push(sql.slice(0, 12)); return fail(sql, v); };
+    const p = new PostgresPersistence(pg.pool());
+    await inTrace(async () => {
+      p.save("disputes", { id: "d1" });
+      p.save("round_intents", { idempotency_key: "k1", status: "open", version: 1 });
+      p.save("disputes", { id: "d2" });
+      await p.flush();
+    });
+    expect(pg.tables.get("disputes")!.size).toBe(2);
+    expect(pg.tables.get("round_intents")!.size).toBe(1);
+    expect(pg.log).toEqual(["commit 3"]); // one transaction, no BEGIN/COMMIT round trips
+    // A permanent refusal anywhere in it: nothing of the statement commits, then the
+    // salvage pass keeps every good row and quarantines the bad one.
+    pg.fail = (sql, v) => (sql.startsWith("INSERT INTO disputes") && v[0] === "bad" ? { code: "23514", message: "check violation" } : null);
+    await expect(inTrace(async () => {
+      p.save("round_intents", { idempotency_key: "k2", status: "open", version: 1 });
+      p.save("disputes", { id: "bad" });
+      p.save("disputes", { id: "d3" });
+      await p.flush();
+    })).rejects.toThrow(/PERSISTENCE_REJECTED/);
+    expect(pg.tables.get("round_intents")!.has("k2")).toBe(true);
+    expect(pg.tables.get("disputes")!.has("d3")).toBe(true);
+    expect(pg.tables.get("disputes")!.has("bad")).toBe(false);
+    expect(p.quarantined.at(-1)?.row).toMatchObject({ id: "bad" });
   });
 
   it("one multi-row statement per table; a key saved twice keeps its newest snapshot; chunks stay under the bind limit", async () => {
