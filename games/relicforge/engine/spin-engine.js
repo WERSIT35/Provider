@@ -3,7 +3,7 @@
 
   // Bump on every change that alters what a seed resolves to (recorded on every RGS
   // round for replay verification, as for Vault 20K).
-  const ENGINE_VERSION = "rf-0.2.0";
+  const ENGINE_VERSION = "rf-0.3.0";
 
   function round2(n) {
     return Math.round(n * 100) / 100;
@@ -70,7 +70,8 @@
           paying: this.paying,
           wild: this.rules.symbols.wild,
           minCluster: layout.min_cluster,
-          maxSteps: layout.max_cascade_steps
+          maxSteps: layout.max_cascade_steps,
+          specialBands: this.rules.specials
         },
         root.RelicForge.RNG
       );

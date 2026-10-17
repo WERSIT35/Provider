@@ -6,7 +6,7 @@ const RF = loadEngine();
 const R = loadRules();
 const PAYING = [...R.symbols.low, ...R.symbols.premium];
 const table = RF.Grid.makeTable(Object.entries(R.weights.base).map(([symbol, weight]) => ({ symbol, weight })));
-const ctx = { cols: 6, rows: 5, table, paytable: RF.Paytable.makePaytable(R), paying: PAYING, wild: "WILD", minCluster: 5, maxSteps: 100 };
+const ctx = { cols: 6, rows: 5, table, paytable: RF.Paytable.makePaytable(R), paying: PAYING, wild: "WILD", minCluster: 5, maxSteps: 100, specialBands: R.specials };
 const draws = (s) => [...s].map((ch) => floatFor(table, LETTERS[ch]));
 
 test("a spin pays its clusters, explodes them, drops and refills until no cluster is left", () => {

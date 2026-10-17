@@ -4,9 +4,21 @@
   "engine": {
     "dir": "engine",
     "namespace": "RelicForge",
-    "files": ["rng.js", "grid.js", "cluster.js", "cascade.js", "paytable.js", "round.js", "spin-engine.js"]
+    "files": [
+      "rng.js",
+      "grid.js",
+      "cluster.js",
+      "cascade.js",
+      "paytable.js",
+      "specials.js",
+      "round.js",
+      "spin-engine.js"
+    ]
   },
   "rules": "math/rules.json",
   "client": "client",
-  "presentation": { "turbo": false, "slam_stop": false }
+  "presentation": {
+    "turbo": false,
+    "slam_stop": false
+  }
 }

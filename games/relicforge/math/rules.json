@@ -3,36 +3,160 @@
   "game_title": "Relic Forge",
   "provider": "Lumina Games",
   "status": "draft: pays and weights are placeholders until phase 7 (docs/relic-forge/02-tech-plan.md)",
-  "layout": { "cols": 6, "rows": 5, "min_cluster": 5, "max_cascade_steps": 100 },
+  "layout": {
+    "cols": 6,
+    "rows": 5,
+    "min_cluster": 5,
+    "max_cascade_steps": 100
+  },
+  "specials": {
+    "RUNE": {
+      "min": 7,
+      "max": 8
+    },
+    "BOMB": {
+      "min": 9,
+      "max": 11
+    },
+    "PRISM": {
+      "min": 12
+    }
+  },
   "symbols": {
-    "low": ["COPPER", "IRON", "BRONZE", "SILVER"],
-    "premium": ["RUBY", "SAPPHIRE", "EMERALD", "GOLD"],
+    "low": [
+      "COPPER",
+      "IRON",
+      "BRONZE",
+      "SILVER"
+    ],
+    "premium": [
+      "RUBY",
+      "SAPPHIRE",
+      "EMERALD",
+      "GOLD"
+    ],
     "wild": "WILD",
     "ember": "EMBER",
     "scatter": "SCATTER"
   },
   "weights": {
     "base": {
-      "COPPER": 22, "IRON": 20, "BRONZE": 18, "SILVER": 15,
-      "RUBY": 8, "SAPPHIRE": 6, "EMERALD": 5, "GOLD": 3,
-      "EMBER": 2, "SCATTER": 1
+      "COPPER": 22,
+      "IRON": 20,
+      "BRONZE": 18,
+      "SILVER": 15,
+      "RUBY": 8,
+      "SAPPHIRE": 6,
+      "EMERALD": 5,
+      "GOLD": 3,
+      "EMBER": 2,
+      "SCATTER": 1
     }
   },
   "paytable": {
-    "COPPER":   { "5": 0.1, "6": 0.15, "7-8": 0.25, "9-11": 0.5, "12-14": 1, "15+": 2.5 },
-    "IRON":     { "5": 0.12, "6": 0.2, "7-8": 0.3, "9-11": 0.6, "12-14": 1.2, "15+": 3 },
-    "BRONZE":   { "5": 0.15, "6": 0.25, "7-8": 0.4, "9-11": 0.8, "12-14": 1.5, "15+": 4 },
-    "SILVER":   { "5": 0.2, "6": 0.3, "7-8": 0.5, "9-11": 1, "12-14": 2, "15+": 5 },
-    "RUBY":     { "5": 0.4, "6": 0.6, "7-8": 1, "9-11": 2, "12-14": 5, "15+": 12 },
-    "SAPPHIRE": { "5": 0.5, "6": 0.8, "7-8": 1.5, "9-11": 3, "12-14": 7.5, "15+": 20 },
-    "EMERALD":  { "5": 0.75, "6": 1.2, "7-8": 2, "9-11": 5, "12-14": 12, "15+": 30 },
-    "GOLD":     { "5": 1, "6": 2, "7-8": 4, "9-11": 10, "12-14": 25, "15+": 60 }
+    "COPPER": {
+      "5": 0.1,
+      "6": 0.15,
+      "7-8": 0.25,
+      "9-11": 0.5,
+      "12-14": 1,
+      "15+": 2.5
+    },
+    "IRON": {
+      "5": 0.12,
+      "6": 0.2,
+      "7-8": 0.3,
+      "9-11": 0.6,
+      "12-14": 1.2,
+      "15+": 3
+    },
+    "BRONZE": {
+      "5": 0.15,
+      "6": 0.25,
+      "7-8": 0.4,
+      "9-11": 0.8,
+      "12-14": 1.5,
+      "15+": 4
+    },
+    "SILVER": {
+      "5": 0.2,
+      "6": 0.3,
+      "7-8": 0.5,
+      "9-11": 1,
+      "12-14": 2,
+      "15+": 5
+    },
+    "RUBY": {
+      "5": 0.4,
+      "6": 0.6,
+      "7-8": 1,
+      "9-11": 2,
+      "12-14": 5,
+      "15+": 12
+    },
+    "SAPPHIRE": {
+      "5": 0.5,
+      "6": 0.8,
+      "7-8": 1.5,
+      "9-11": 3,
+      "12-14": 7.5,
+      "15+": 20
+    },
+    "EMERALD": {
+      "5": 0.75,
+      "6": 1.2,
+      "7-8": 2,
+      "9-11": 5,
+      "12-14": 12,
+      "15+": 30
+    },
+    "GOLD": {
+      "5": 1,
+      "6": 2,
+      "7-8": 4,
+      "9-11": 10,
+      "12-14": 25,
+      "15+": 60
+    }
   },
   "max_win_cap_multiplier": 10000,
-  "allowed_bets": [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 250, 500],
+  "allowed_bets": [
+    0.2,
+    0.5,
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100,
+    250,
+    500
+  ],
   "rtp_profiles": [
-    { "key": "96", "game_id": "relicforge", "slug": "relic_forge_96", "theoretical_percent": 96, "payout_scaler": 1, "free_spin_payout_scaler": 1 },
-    { "key": "94", "game_id": "relicforge_94", "slug": "relic_forge_94", "theoretical_percent": 94, "payout_scaler": 1, "free_spin_payout_scaler": 1 },
-    { "key": "92", "game_id": "relicforge_92", "slug": "relic_forge_92", "theoretical_percent": 92, "payout_scaler": 1, "free_spin_payout_scaler": 1 }
+    {
+      "key": "96",
+      "game_id": "relicforge",
+      "slug": "relic_forge_96",
+      "theoretical_percent": 96,
+      "payout_scaler": 1,
+      "free_spin_payout_scaler": 1
+    },
+    {
+      "key": "94",
+      "game_id": "relicforge_94",
+      "slug": "relic_forge_94",
+      "theoretical_percent": 94,
+      "payout_scaler": 1,
+      "free_spin_payout_scaler": 1
+    },
+    {
+      "key": "92",
+      "game_id": "relicforge_92",
+      "slug": "relic_forge_92",
+      "theoretical_percent": 92,
+      "payout_scaler": 1,
+      "free_spin_payout_scaler": 1
+    }
   ]
 }
