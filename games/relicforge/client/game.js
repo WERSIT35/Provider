@@ -53,7 +53,44 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""));
   function say(text, win) { el.msg.textContent = text; el.msg.classList.toggle("win", Boolean(win)); }
-  function hook(name, detail) { dispatchEvent(new CustomEvent("relicforge:sound", { detail: Object.assign({ name }, detail || {}) })); }
+  // ── sound: Relic Forge's own set (audio/manifest.json), played by the shared engine ──
+  // Every hook keeps firing its `relicforge:sound` event; each also voices `rf_<name>`.
+  const Sound = window.Sound;
+  (function defineSounds() {
+    if (!Sound?.defineEvents) return;
+    const { semis, colPan } = Sound.util;
+    const WIN = { "Big win": "rf_win_big", "Mega win": "rf_win_mega", "Epic win": "rf_win_epic" };
+    Sound.defineEvents({
+      rf_click: { minGap: 30, voice: () => ({ key: "ui_click", bus: "ui" }) },
+      rf_confirm: { minGap: 60, voice: () => ({ key: "ui_confirm", bus: "ui" }) },
+      rf_spin: { minGap: 80, voice: () => ({ key: "rf_spin", db: -2 }) },
+      // One thud per column as the board drops in, panned left to right.
+      rf_land: { minGap: 25, voice: (o) => ({ key: "rf_land", pan: colPan(o.col, 6), rate: semis(-(Number(o.col) || 0) * 0.35), db: -4 }) },
+      rf_pop: { minGap: 40, voice: (o) => ({ key: "rf_pop", rate: semis(Math.min(6, Number(o.step) || 0)), db: -3 }) },
+      // The anvil rings higher with every cascade, unless the round is below the bet (flat).
+      rf_cascade_step: { minGap: 60, voice: (o) => ({ key: "rf_anvil", rate: o.flat ? 1 : semis(Math.min(10, ((Number(o.n) || 1) - 1) * 1.5)), jitter: Boolean(o.flat) }) },
+      rf_ember_collect: { minGap: 60, voice: (o) => ({ key: "rf_spark", rate: semis(Math.min(5, (Number(o.n) || 1) - 1)) }) },
+      rf_special_create: { minGap: 60, voice: () => ({ key: "rf_glint" }) },
+      rf_special_detonate: { minGap: 80, voice: () => ({ key: "rf_crunch", duck: true }) },
+      rf_combo: { minGap: 80, voice: () => ({ key: "rf_crunch", rate: semis(-2), duck: true }) },
+      rf_line_burst: { minGap: 120, voice: () => ({ key: "rf_burst", duck: true }) },
+      rf_mult_tier: { minGap: 100, voice: (o) => ({ key: "rf_mult", rate: semis((Number(o.tier) || 1) * 2 - 2), jitter: false }) },
+      rf_win: { minGap: 200, voice: () => ({ key: "rf_win" }) },
+      rf_win_tier: { minGap: 300, voice: (o) => ({ key: WIN[o.tier] || "rf_win_big", duck: true }) },
+      rf_max_win: { voice: () => ({ key: "rf_max_win", duck: true }) },
+      rf_meter_full: { minGap: 300, voice: () => ({ key: "rf_gong", duck: true }) },
+      rf_draft_open: { minGap: 300, voice: () => ({ key: "rf_gong_soft" }) },
+      rf_relic_pick: { minGap: 200, voice: () => ({ key: "rf_pick", duck: true }) },
+      rf_evolution: { voice: () => ({ key: "rf_evolve", duck: true }) },
+      rf_meltdown_start: { voice: () => ({ key: "rf_meltdown", duck: true }) },
+      rf_meltdown_fire: { minGap: 120, voice: () => ({ key: "rf_thunder", db: -4 }) }
+    });
+  })();
+  const sfx = (name, detail) => { try { Sound?.play?.(name, detail || {}); } catch { /* sound is never load-bearing */ } };
+  function hook(name, detail) {
+    dispatchEvent(new CustomEvent("relicforge:sound", { detail: Object.assign({ name }, detail || {}) }));
+    sfx("rf_" + name, detail);
+  }
   function fxOn() { return S.fx && !reduced.matches; }
   function syncFx() { document.body.classList.toggle("fx", fxOn()); }
   function shake(node) {
@@ -93,45 +130,76 @@
   }
 
   // ── symbols (inline SVG, no image files) ─────────────────────────────────
-  const METAL = { COPPER: ["#e08a5a", "#8a3f1d", "ᚠ"], IRON: ["#a9b0b6", "#4a5258", "ᚢ"], BRONZE: ["#d7a55a", "#7a5420", "ᚦ"], SILVER: ["#eef1f4", "#8c96a0", "ᚨ"] };
-  const GEM = { RUBY: ["#ff5a6e", "#8a0f22"], SAPPHIRE: ["#5aa8ff", "#0f2f8a"], EMERALD: ["#4fe08f", "#0d6b3a"], GOLD: ["#ffe08a", "#b07a12"] };
+  // Forged look: metals are stamped ingots in three-quarter view, gems are cut with facets,
+  // the specials glow. Every gradient id is per symbol, so a board of 30 shares 12 sets.
+  const METAL = { COPPER: ["#f0a074", "#b4592c", "#5e2810", "ᚠ"], IRON: ["#c4c9cd", "#6e767c", "#2c3236", "ᚢ"], BRONZE: ["#ecc27a", "#a5752c", "#4f3410", "ᚦ"], SILVER: ["#ffffff", "#bcc4cc", "#5f6a74", "ᚨ"] };
+  const GEM = {
+    RUBY: ["#ffb3bd", "#ff3352", "#7a0618", [[50, 6], [90, 34], [76, 92], [24, 92], [10, 34]]],
+    SAPPHIRE: ["#b8dcff", "#2f86ff", "#0a2370", [[50, 4], [94, 50], [50, 96], [6, 50]]],
+    EMERALD: ["#b6ffd6", "#21c46c", "#064a26", [[30, 8], [70, 8], [92, 30], [92, 70], [70, 92], [30, 92], [8, 70], [8, 30]]],
+    GOLD: ["#fff6c4", "#ffc23a", "#8a5a05", [[50, 4], [62, 36], [96, 38], [69, 59], [79, 94], [50, 74], [21, 94], [31, 59], [4, 38], [38, 36]]]
+  };
+  const pts = (a) => a.map((p) => p.join(",")).join(" ");
+  function facets(outer, cx, cy, k) {
+    // A table (the outer shape shrunk toward a point above the centre) and one facet per
+    // edge, alternately lit and shaded: reads as a cut stone at any size.
+    const inner = outer.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
+    let out = "";
+    for (let i = 0; i < outer.length; i += 1) {
+      const j = (i + 1) % outer.length;
+      const lit = (outer[i][0] + outer[j][0]) / 2 < cx || (outer[i][1] + outer[j][1]) / 2 < cy;
+      out += `<polygon points="${pts([outer[i], outer[j], inner[j], inner[i]])}" fill="${lit ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.28)"}"/>`;
+    }
+    return out + `<polygon points="${pts(inner)}" fill="rgba(255,255,255,.16)" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>`;
+  }
   function svgFor(sym) {
     const id = "g" + sym;
     if (METAL[sym]) {
-      const [hi, lo, glyph] = METAL[sym];
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></linearGradient></defs>` +
-        `<rect x="10" y="10" width="80" height="80" rx="18" fill="url(#${id})" stroke="rgba(0,0,0,.45)" stroke-width="3"/>` +
-        `<rect x="18" y="18" width="64" height="64" rx="12" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2"/>` +
-        `<text x="50" y="66" text-anchor="middle" font-size="46" font-weight="700" fill="rgba(20,10,4,.75)" font-family="serif">${glyph}</text></svg>`;
+      const [hi, mid, lo, glyph] = METAL[sym];
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>` +
+        `<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
+        `<linearGradient id="${id}t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".5" stop-color="${hi}"/><stop offset="1" stop-color="${mid}"/></linearGradient></defs>` +
+        `<path d="M24 20 H76 L90 40 H10 Z" fill="url(#${id}t)" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="M10 40 H90 L94 82 Q94 88 88 88 H12 Q6 88 6 82 Z" fill="url(#${id}f)" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="M10 40 L6 82 Q6 88 12 88 L18 44 Z" fill="rgba(0,0,0,.22)"/><path d="M90 40 L94 82 Q94 88 88 88 L82 44 Z" fill="rgba(255,255,255,.12)"/>` +
+        `<rect x="26" y="48" width="48" height="32" rx="5" fill="rgba(0,0,0,.18)" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>` +
+        `<text x="50" y="79" text-anchor="middle" font-size="40" font-weight="900" fill="rgba(255,255,255,.45)" font-family="serif">${glyph}</text>` +
+        `<text x="50" y="77" text-anchor="middle" font-size="40" font-weight="900" fill="#1a0803" font-family="serif">${glyph}</text></svg>`;
     }
     if (GEM[sym]) {
-      const [hi, lo] = GEM[sym];
-      const shapes = {
-        RUBY: "50,8 88,36 74,90 26,90 12,36",
-        SAPPHIRE: "50,6 92,50 50,94 8,50",
-        EMERALD: "30,8 70,8 92,30 92,70 70,92 30,92 8,70 8,30",
-        GOLD: "50,6 62,36 94,38 68,58 78,92 50,72 22,92 32,58 6,38 38,36"
-      };
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".25" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></radialGradient></defs>` +
-        `<polygon points="${shapes[sym]}" fill="url(#${id})" stroke="rgba(0,0,0,.5)" stroke-width="3" stroke-linejoin="round"/>` +
-        `<polygon points="${shapes[sym]}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2" transform="translate(50 50) scale(.62) translate(-50 -50)"/></svg>`;
+      const [hi, mid, lo, outer] = GEM[sym];
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".35" cy=".28" r=".85"><stop offset="0" stop-color="${hi}"/><stop offset=".45" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></radialGradient></defs>` +
+        `<polygon points="${pts(outer)}" fill="url(#${id})" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
+        facets(outer, 50, 46, 0.5) +
+        `<circle cx="36" cy="28" r="4" fill="#fff" opacity=".9"/><circle cx="36" cy="28" r="9" fill="#fff" opacity=".18"/></svg>`;
     }
     if (sym === "WILD") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset=".5" stop-color="#ff9a3d"/><stop offset="1" stop-color="#b3260c"/></linearGradient></defs>` +
-        `<circle cx="50" cy="50" r="42" fill="url(#${id})" stroke="#4fd8c0" stroke-width="4"/><text x="50" y="62" text-anchor="middle" font-size="30" font-weight="900" fill="#2a0c02" font-family="system-ui,sans-serif">WILD</text></svg>`;
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".4" r=".65"><stop offset="0" stop-color="#fff3d0"/><stop offset=".4" stop-color="#ffb347"/><stop offset=".8" stop-color="#e2470e"/><stop offset="1" stop-color="#7a1d06"/></radialGradient>` +
+        `<linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8e2dc"/><stop offset="1" stop-color="#5c524c"/></linearGradient></defs>` +
+        `<circle cx="50" cy="50" r="44" fill="url(#${id})" stroke="#120805" stroke-width="3"/>` +
+        `<circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,240,200,.5)" stroke-width="1.5" stroke-dasharray="3 5"/>` +
+        `<g transform="rotate(-35 50 46)"><rect x="46" y="30" width="8" height="46" rx="3" fill="#6b3a1a" stroke="#120805" stroke-width="2.5"/>` +
+        `<rect x="28" y="18" width="44" height="18" rx="3" fill="url(#${id}h)" stroke="#120805" stroke-width="2.5"/></g>` +
+        `<rect x="18" y="62" width="64" height="20" rx="4" fill="#1a0a04" stroke="#ffcf6b" stroke-width="2"/>` +
+        `<text x="50" y="78" text-anchor="middle" font-size="17" font-weight="900" fill="#ffcf6b" font-family="RF Carved, Georgia, serif" letter-spacing="1">WILD</text></svg>`;
     }
     if (sym === "EMBER") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".62" r=".6"><stop offset="0" stop-color="#fff2b0"/><stop offset=".4" stop-color="#ff8a3d"/><stop offset="1" stop-color="#7a1d08"/></radialGradient></defs>` +
-        `<path d="M50 8 C62 30 82 38 80 62 C78 82 64 92 50 92 C36 92 22 82 20 62 C19 46 32 40 34 26 C42 34 44 40 46 44 C48 30 46 20 50 8Z" fill="url(#${id})" stroke="rgba(0,0,0,.45)" stroke-width="3"/></svg>`;
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".7" r=".62"><stop offset="0" stop-color="#fff7d0"/><stop offset=".35" stop-color="#ffb347"/><stop offset=".75" stop-color="#ff5a14"/><stop offset="1" stop-color="#7a1d06"/></radialGradient>` +
+        `<radialGradient id="${id}c" cx=".5" cy=".7" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffe08a"/></radialGradient></defs>` +
+        `<path d="M50 6 C60 26 84 36 82 62 C80 84 66 94 50 94 C34 94 20 84 18 62 C17 46 30 40 33 24 C40 32 43 40 45 46 C48 30 45 18 50 6Z" fill="url(#${id})" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="M50 46 C56 56 66 62 64 74 C62 84 56 88 50 88 C44 88 37 84 36 74 C35 64 44 60 46 52 C48 56 49 58 50 60 Z" fill="url(#${id}c)" opacity=".95"/></svg>`;
     }
     if (sym === "SCATTER") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#9a5a12"/></linearGradient></defs>` +
-        `<circle cx="50" cy="50" r="44" fill="#2a1408" stroke="url(#${id})" stroke-width="5"/>` +
-        `<path d="M18 40 H70 C78 40 84 34 86 30 V46 C80 50 74 52 66 52 L62 62 H70 V70 H30 V62 H38 L34 52 C26 52 20 48 18 40Z" fill="url(#${id})"/></svg>`;
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1cf"/><stop offset=".45" stop-color="#ffc23a"/><stop offset="1" stop-color="#8a5205"/></linearGradient>` +
+        `<radialGradient id="${id}b" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#3d2a1e"/><stop offset="1" stop-color="#120805"/></radialGradient></defs>` +
+        `<circle cx="50" cy="50" r="45" fill="url(#${id}b)" stroke="url(#${id})" stroke-width="5"/>` +
+        `<path d="M16 38 H70 C79 38 86 33 88 28 V44 C82 49 76 51 67 51 L63 61 H71 V70 H29 V61 H37 L33 51 C25 51 18 46 16 38Z" fill="url(#${id})" stroke="#120805" stroke-width="2.5" stroke-linejoin="round"/>` +
+        `<g stroke="#ffcf6b" stroke-width="2.5" stroke-linecap="round"><path d="M50 24 V16"/><path d="M38 27 L33 20"/><path d="M62 27 L67 20"/></g></svg>`;
     }
     if (sym === "PRISM") {
+      const outer = [[50, 6], [94, 86], [6, 86]];
       return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6b6b"/><stop offset=".25" stop-color="#ffd36b"/><stop offset=".5" stop-color="#6bffb0"/><stop offset=".75" stop-color="#6bb8ff"/><stop offset="1" stop-color="#c36bff"/></linearGradient></defs>` +
-        `<polygon points="50,6 94,86 6,86" fill="url(#${id})" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg>`;
+        `<polygon points="${pts(outer)}" fill="url(#${id})" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>` + facets(outer, 50, 62, 0.45) + `</svg>`;
     }
     return `<svg viewBox="0 0 100 100" aria-hidden="true"></svg>`;
   }
@@ -139,7 +207,10 @@
   // ── board ────────────────────────────────────────────────────────────────
   function layout() {
     const r = el.stage.getBoundingClientRect();
-    const cell = Math.floor(Math.max(30, Math.min(120, Math.min(r.width / S.cols, (r.height - 34) / S.rows))));
+    // The iron plate's padding sits around the board; the stage's top padding keeps room for the step readout.
+    const cs = getComputedStyle(el.boardWrap);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const cell = Math.floor(Math.max(26, Math.min(120, Math.min((r.width - padX) / S.cols, (r.height - parseFloat(getComputedStyle(el.stage).paddingTop) - parseFloat(getComputedStyle(el.stage).paddingBottom) - padY - 4) / S.rows))));
     S.cell = cell;
     document.documentElement.style.setProperty("--cell", cell + "px");
     document.documentElement.style.setProperty("--rows", String(S.rows));
@@ -186,6 +257,7 @@
     const offsets = new Map();
     if (fall.mode === "enter") {
       for (const n of nodes) offsets.set(n, { rows: rows + 1, delay: Number(n.dataset.col) * 55 });
+      for (let c = 0; c < S.cols; c += 1) setTimeout(() => sfx("rf_land", { col: c }), c * 55 + 230);
     } else {
       for (const m of fall.moves || []) { const n = cellAt(m.to.row, m.to.col); if (n) offsets.set(n, { rows: m.to.row - m.from.row, delay: 0 }); }
       const perCol = {};
@@ -209,7 +281,8 @@
     await Promise.all(nodes.map((n) => n.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${S.rows * S.cell * 0.6}px)`, opacity: 0 }], { duration: 220, delay: Number(n.dataset.col) * 30, easing: "cubic-bezier(.5,0,1,.6)", fill: "forwards" }).finished));
   }
   function mark(cells, cls) { for (const p of cells) cellAt(p.row, p.col)?.classList.add(cls); }
-  async function pop(cells) {
+  async function pop(cells, step) {
+    if (cells.length) sfx("rf_pop", { step });
     const runs = [];
     for (const p of cells) {
       const n = cellAt(p.row, p.col);
@@ -399,6 +472,7 @@
       <p>All three choices are worth the same on average; they differ in how much the result can swing.${f.spins_left === 1 ? " <b>Next is Meltdown:</b> every relic fires." : ""}</p>
       <div class="cards">${cards}</div>`);
     el.sheet.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
+      sfx("rf_confirm");
       const choice = Number(b.dataset.pick);
       closeModal("pick");
       spin(choice);
@@ -495,7 +569,7 @@
       running += st.step_x * scaler * bonus * bet;
       el.winText.textContent = money(running);
       for (const s of st.specials_created) hook("special_create", { kind: s.kind });
-      await pop(st.removed);
+      await pop(st.removed, i);
       await render(st.board, st.specials, { moves: st.moves, drops: st.drops });
       await pace(120);
     }
@@ -510,7 +584,10 @@
       hook("win_tier", { tier: winTier(r.total_win / bet) });
       await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, 2600);
     }
+    if (r.total_win > 0 && !(celebrate && winTier(r.total_win / bet)) && !r.cap_reached) sfx("rf_win");
     if (r.total_win > 0) say(`Win ${money(r.total_win)}`, celebrate);
+    // The furnace drone starts once the first round has been shown (not during load).
+    if (Sound && !S.musicOn) { S.musicOn = true; Sound.warmMusic?.(); Sound.startMusic?.(); }
     else say(free ? "No win this spin" : `Clusters of ${S.rules.layout.min_cluster}+ pay`);
   }
 
@@ -532,6 +609,7 @@
       const wait = S.minRoundMs - (Date.now() - S.lastAnswerAt);
       if (!wasForge && wait > 0) await sleep(wait);
       if (!wasForge) { setBalance(S.balance - bet); say("Good luck!"); }
+      sfx("rf_spin");
       let r;
       try {
         r = await api("POST", "/game/v1/spin", Object.assign({ bet_amount: bet }, choice === undefined ? {} : { choice }), uuid());
@@ -560,6 +638,7 @@
       if (!r.is_free_spin && r.forge_trigger) {
         S.forge = next;
         S.forgeBet = bet;
+        Sound?.setMusic?.("freeSpins");
         S.lastOffer = r.offer_next;
         const why = r.forge_trigger === "scatter" ? "Anvil scatters" : r.forge_trigger === "meter" ? "The Forge meter is full" : "Meter full and Anvil scatters";
         await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why} · choose a relic before each spin</small>`, 2600);
@@ -581,6 +660,7 @@
         const total = totalX * S.forgeBet;
         S.forge = null;
         S.lastOffer = null;
+        Sound?.setMusic?.("base");
         showForge();
         showBet();
         const big = totalX >= 1 ? winTier(totalX) : null;
@@ -605,8 +685,8 @@
 
   // ── controls ─────────────────────────────────────────────────────────────
   el.spinBtn.addEventListener("click", onSpin);
-  el.betDown.addEventListener("click", () => { if (S.betIndex > 0) { S.betIndex -= 1; showBet(); setControls(); } });
-  el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex += 1; showBet(); setControls(); } });
+  el.betDown.addEventListener("click", () => { if (S.betIndex > 0) { S.betIndex -= 1; sfx("rf_click"); showBet(); setControls(); } });
+  el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex += 1; sfx("rf_click"); showBet(); setControls(); } });
   el.infoBtn.addEventListener("click", openInfo);
   el.settingsBtn.addEventListener("click", openSettings);
   reduced.addEventListener?.("change", syncFx);
@@ -662,6 +742,10 @@
     document.body.classList.add("app-ready");
     performance.mark("app-ready");
     setControls();
+    // Sounds load on the first touch or key (VX_AUDIO_PRELOAD = "manual"), never during load.
+    const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
+    addEventListener("pointerdown", startAudio, true);
+    addEventListener("keydown", startAudio, true);
     if (S.forge) { say("Your Forge continues"); openDraft(null); }
     else say(`Clusters of ${S.rules.layout.min_cluster}+ pay · good luck!`);
   }

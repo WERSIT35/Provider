@@ -676,8 +676,21 @@
     else preloadOnLoad();
   }
 
+  /**
+   * Another game's own events (games/<code>/client): `{ name: { minGap, voice(opts) } }`,
+   * voiced from that game's manifest (VX_AUDIO_BASE). Added names only: an event the
+   * engine already knows keeps its voice, so Vault 20K never changes.
+   */
+  function defineEvents(map) {
+    for (const [name, ev] of Object.entries(map || {})) {
+      if (!EVENTS[name] && ev && typeof ev.voice === "function") EVENTS[name] = ev;
+    }
+  }
+
   root.Sound = {
     preload: preloadOnLoad,
+    defineEvents,
+    util: { semis, colPan, clamp },
     play,
     unlock,
     setMuted,
