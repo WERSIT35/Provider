@@ -62,129 +62,162 @@
   function say(text, win = false) { el.msg.textContent = text; el.msg.classList.toggle("win", win); }
   const lineBet = () => S.bets[S.betIndex] / S.lines;
 
-  // ── symbols: fruit-machine art for ivory reels, drawn once per cell size into sprites ──
-  // Sticker style: rich gradient fills, a dark ink outline and one specular highlight, so
-  // every symbol reads at 40 px on a phone. Text symbols use the marquee face (Bungee).
-  const INK = "#2a1408";
-  const MARQUEE = '"C5 Marquee", "Arial Black", Impact, sans-serif';
+  // ── symbols: Moth & Lantern, cut paper (docs/brand/classic-5x3.md) ─────────
+  // Each symbol is built from flat paper layers with a hair of shadow between them. The low
+  // symbols are two-tone plants; the high ones get layered depth and a thin gold-leaf edge.
+  // Ids are the engine's (CHERRY … SCATTER); only the drawing is themed.
+  const NAMES = { CHERRY: "Fern", LEMON: "Clover", ORANGE: "Poppy", PLUM: "Iris", GRAPE: "Firefly jar", MELON: "Paper crane", BELL: "Barn owl", BAR: "Luna moth", SEVEN: "Moth Queen", WILD: "Lantern", SCATTER: "Full moon" };
+  const INK = "#0b1026", GOLD_LEAF = "#d9a441";
   function drawSymbol(g, sym, s) {
-    const c = s / 2, lw = Math.max(1.5, s * 0.035);
+    const c = s / 2;
     g.save();
     g.lineJoin = "round"; g.lineCap = "round";
-    const rg = (x, y, r, stops) => { const gr = g.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.05, x, y, r * 1.05); stops.forEach(([o, col]) => gr.addColorStop(o, col)); return gr; };
-    const lg = (x0, y0, x1, y1, stops) => { const gr = g.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, col]) => gr.addColorStop(o, col)); return gr; };
-    const ink = (w = lw) => { g.lineWidth = w; g.strokeStyle = INK; g.stroke(); };
-    const ball = (x, y, r, stops) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = rg(x, y, r, stops); g.fill(); ink(); };
-    const glint = (x, y, rx, ry, rot = -0.6, a = 0.75) => { g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); g.fillStyle = `rgba(255,255,255,${a})`; g.fill(); };
-    const leaf = (x, y, len, rot) => {
-      g.save(); g.translate(x, y); g.rotate(rot);
-      g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(len * 0.5, -len * 0.42, len, 0); g.quadraticCurveTo(len * 0.5, len * 0.42, 0, 0);
-      g.fillStyle = lg(0, -len * 0.3, 0, len * 0.3, [[0, "#8fe06a"], [1, "#2f8a2a"]]); g.fill(); ink(lw * 0.8);
-      g.beginPath(); g.moveTo(len * 0.1, 0); g.lineTo(len * 0.85, 0); g.lineWidth = lw * 0.5; g.strokeStyle = "rgba(20,60,10,0.6)"; g.stroke();
+    const P = (x, y) => [x * s, y * s];
+    // One paper layer: fill, a soft contact shadow, an optional gold-leaf edge.
+    const layer = (build, fill, { edge = false, depth = 1 } = {}) => {
+      g.save();
+      g.shadowColor = "rgba(11,16,38,0.38)"; g.shadowBlur = s * 0.022 * depth; g.shadowOffsetY = s * 0.014 * depth;
+      g.beginPath(); build(); g.fillStyle = fill; g.fill();
       g.restore();
+      if (edge) { g.beginPath(); build(); g.lineWidth = Math.max(1, s * 0.016); g.strokeStyle = GOLD_LEAF; g.stroke(); }
     };
-    const label = (text, y, size, fill, stroke) => {
-      g.font = `400 ${size}px ${MARQUEE}`; g.textAlign = "center"; g.textBaseline = "middle";
-      g.lineWidth = size * 0.22; g.strokeStyle = stroke; g.strokeText(text, c, y); g.fillStyle = fill; g.fillText(text, c, y);
-    };
-    // A soft contact shadow under every symbol: it sits on the reel, not floating.
-    g.beginPath(); g.ellipse(c, s * 0.9, s * 0.3, s * 0.05, 0, 0, Math.PI * 2); g.fillStyle = "rgba(60,30,10,0.16)"; g.fill();
+    const ell = (x, y, rx, ry, rot = 0) => () => g.ellipse(x * s, y * s, rx * s, ry * s, rot, 0, Math.PI * 2);
+    const circ = (x, y, r) => () => g.arc(x * s, y * s, r * s, 0, Math.PI * 2);
+    const poly = (pts) => () => { pts.forEach(([x, y], i) => (i ? g.lineTo(x * s, y * s) : g.moveTo(x * s, y * s))); g.closePath(); };
+    const stem = (pts, w, col) => { g.beginPath(); g.moveTo(...P(pts[0][0], pts[0][1])); g.quadraticCurveTo(...P(pts[1][0], pts[1][1]), ...P(pts[2][0], pts[2][1])); g.lineWidth = w * s; g.strokeStyle = col; g.stroke(); };
+    const glow = (x, y, r, col, a) => { const gr = g.createRadialGradient(x * s, y * s, 0, x * s, y * s, r * s); gr.addColorStop(0, col.replace("A", a)); gr.addColorStop(1, col.replace("A", 0)); g.fillStyle = gr; g.fillRect(0, 0, s, s); };
+    const lg = (y0, y1, stops) => { const gr = g.createLinearGradient(0, y0 * s, 0, y1 * s); stops.forEach(([o, col]) => gr.addColorStop(o, col)); return gr; };
     switch (sym) {
-      case "CHERRY": {
-        g.beginPath(); g.moveTo(s * 0.33, s * 0.62); g.quadraticCurveTo(s * 0.4, s * 0.3, s * 0.62, s * 0.16); g.moveTo(s * 0.68, s * 0.66); g.quadraticCurveTo(s * 0.64, s * 0.36, s * 0.62, s * 0.16);
-        g.lineWidth = s * 0.07; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.038; g.strokeStyle = "#5c8f2a"; g.stroke();
-        leaf(s * 0.62, s * 0.17, s * 0.26, -0.35);
-        const red = [[0, "#ff9aa2"], [0.35, "#e8243c"], [1, "#7a0716"]];
-        ball(s * 0.32, s * 0.68, s * 0.2, red); ball(s * 0.68, s * 0.71, s * 0.2, red);
-        glint(s * 0.26, s * 0.6, s * 0.05, s * 0.03); glint(s * 0.62, s * 0.63, s * 0.05, s * 0.03); break;
-      }
-      case "LEMON": {
-        g.beginPath(); g.moveTo(s * 0.12, s * 0.52); g.bezierCurveTo(s * 0.16, s * 0.2, s * 0.84, s * 0.2, s * 0.88, s * 0.48); g.bezierCurveTo(s * 0.84, s * 0.8, s * 0.16, s * 0.82, s * 0.12, s * 0.52); g.closePath();
-        g.fillStyle = rg(c, c, s * 0.42, [[0, "#fff9b0"], [0.45, "#ffe03a"], [1, "#c99a00"]]); g.fill(); ink();
-        g.fillStyle = "rgba(160,110,0,0.35)"; for (const [x, y] of [[0.55, 0.6], [0.66, 0.5], [0.45, 0.66], [0.72, 0.62], [0.36, 0.58]]) { g.beginPath(); g.arc(s * x, s * y, s * 0.012, 0, Math.PI * 2); g.fill(); }
-        glint(s * 0.34, s * 0.4, s * 0.1, s * 0.04, -0.3); break;
-      }
-      case "ORANGE": {
-        ball(c, s * 0.56, s * 0.32, [[0, "#ffd29a"], [0.4, "#ff8c1a"], [1, "#a8460a"]]);
-        g.fillStyle = "rgba(140,60,0,0.3)"; for (let i = 0; i < 14; i++) { const a = i * 2.4, r = s * (0.08 + (i % 5) * 0.045); g.beginPath(); g.arc(c + Math.cos(a) * r, s * 0.58 + Math.sin(a) * r, s * 0.011, 0, Math.PI * 2); g.fill(); }
-        g.beginPath(); g.arc(c, s * 0.25, s * 0.04, 0, Math.PI * 2); g.fillStyle = "#6b4a1a"; g.fill(); ink(lw * 0.7);
-        leaf(c + s * 0.02, s * 0.24, s * 0.24, -0.5); glint(s * 0.38, s * 0.44, s * 0.08, s * 0.05); break;
-      }
-      case "PLUM": {
-        g.beginPath(); g.ellipse(c, s * 0.57, s * 0.29, s * 0.33, 0.25, 0, Math.PI * 2);
-        g.fillStyle = rg(c, s * 0.57, s * 0.33, [[0, "#e2b8ff"], [0.35, "#9a52e0"], [1, "#3e1470"]]); g.fill(); ink();
-        g.beginPath(); g.moveTo(s * 0.5, s * 0.27); g.quadraticCurveTo(s * 0.62, s * 0.55, s * 0.56, s * 0.88); g.lineWidth = lw * 0.7; g.strokeStyle = "rgba(40,10,70,0.5)"; g.stroke();
-        g.beginPath(); g.moveTo(c, s * 0.26); g.lineTo(s * 0.56, s * 0.12); g.lineWidth = s * 0.05; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.025; g.strokeStyle = "#6b4a1a"; g.stroke();
-        leaf(s * 0.55, s * 0.15, s * 0.2, -0.2); glint(s * 0.4, s * 0.44, s * 0.06, s * 0.1, 0.3, 0.6); break;
-      }
-      case "GRAPE": {
-        g.beginPath(); g.moveTo(c, s * 0.24); g.lineTo(s * 0.54, s * 0.1); g.lineWidth = s * 0.05; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.025; g.strokeStyle = "#6b4a1a"; g.stroke();
-        leaf(s * 0.52, s * 0.18, s * 0.28, -0.15);
-        const pur = [[0, "#c9a4ff"], [0.4, "#7b3fd0"], [1, "#2c0d5c"]];
-        for (const [x, y] of [[0.33, 0.36], [0.5, 0.34], [0.67, 0.36], [0.41, 0.52], [0.59, 0.52], [0.33, 0.67], [0.5, 0.68], [0.67, 0.67], [0.42, 0.82], [0.58, 0.82]].reverse()) ball(s * x, s * y, s * 0.095, pur);
-        glint(s * 0.3, s * 0.33, s * 0.03, s * 0.02); glint(s * 0.47, s * 0.31, s * 0.03, s * 0.02); break;
-      }
-      case "MELON": {
-        g.beginPath(); g.moveTo(s * 0.1, s * 0.4); g.quadraticCurveTo(c, s * 1.06, s * 0.9, s * 0.4); g.closePath();
-        g.fillStyle = lg(0, s * 0.4, 0, s * 0.85, [[0, "#3fbf4f"], [1, "#1c6b26"]]); g.fill(); ink();
-        g.beginPath(); g.moveTo(s * 0.15, s * 0.4); g.quadraticCurveTo(c, s * 0.97, s * 0.85, s * 0.4); g.closePath(); g.fillStyle = "#f6f2d4"; g.fill();
-        g.beginPath(); g.moveTo(s * 0.19, s * 0.4); g.quadraticCurveTo(c, s * 0.9, s * 0.81, s * 0.4); g.closePath();
-        g.fillStyle = lg(0, s * 0.4, 0, s * 0.8, [[0, "#ff7a86"], [1, "#e0263c"]]); g.fill();
-        g.beginPath(); g.moveTo(s * 0.1, s * 0.4); g.lineTo(s * 0.9, s * 0.4); ink();
-        g.fillStyle = INK; for (const [x, y] of [[0.35, 0.5], [0.5, 0.56], [0.65, 0.5], [0.43, 0.64], [0.57, 0.64]]) { g.beginPath(); g.ellipse(s * x, s * y, s * 0.017, s * 0.03, 0, 0, Math.PI * 2); g.fill(); }
+      case "CHERRY": { // fern frond
+        stem([[0.46, 0.94], [0.44, 0.5], [0.6, 0.08]], 0.03, "#3f6b45");
+        for (let i = 0; i < 7; i++) {
+          const t = 0.12 + i * 0.12, x = 0.46 + (0.6 - 0.46) * t * t - 0.02 * Math.sin(t * 3), y = 0.94 - t * 0.84, len = 0.2 - i * 0.02;
+          for (const side of [-1, 1]) {
+            const rot = side * 0.95 - 0.25;
+            layer(ell(x + side * len * 0.55, y - 0.02, len * 0.55, 0.045, rot), "#5e8c61");
+            g.beginPath(); ell(x + side * len * 0.5, y - 0.03, len * 0.42, 0.02, rot)(); g.fillStyle = "#86b77f"; g.fill();
+          }
+        }
         break;
       }
-      case "BELL": {
-        g.beginPath(); g.moveTo(s * 0.16, s * 0.74); g.quadraticCurveTo(s * 0.24, s * 0.66, s * 0.26, s * 0.48); g.bezierCurveTo(s * 0.28, s * 0.2, s * 0.72, s * 0.2, s * 0.74, s * 0.48); g.quadraticCurveTo(s * 0.76, s * 0.66, s * 0.84, s * 0.74); g.closePath();
-        g.fillStyle = lg(s * 0.2, 0, s * 0.8, 0, [[0, "#9a6a08"], [0.3, "#ffe27a"], [0.55, "#f7b91c"], [1, "#8a5a05"]]); g.fill(); ink();
-        g.beginPath(); g.roundRect ? g.roundRect(s * 0.14, s * 0.72, s * 0.72, s * 0.08, s * 0.04) : g.rect(s * 0.14, s * 0.72, s * 0.72, s * 0.08);
-        g.fillStyle = lg(0, s * 0.72, 0, s * 0.8, [[0, "#ffe9a0"], [1, "#a8720a"]]); g.fill(); ink(lw * 0.8);
-        ball(c, s * 0.86, s * 0.065, [[0, "#fff2c0"], [1, "#a8720a"]]);
-        g.beginPath(); g.arc(c, s * 0.2, s * 0.05, Math.PI, 0); ink(lw * 1.1);
-        glint(s * 0.37, s * 0.42, s * 0.04, s * 0.11, 0.15, 0.6); break;
-      }
-      case "BAR": {
-        g.beginPath(); g.roundRect ? g.roundRect(s * 0.08, s * 0.3, s * 0.84, s * 0.4, s * 0.08) : g.rect(s * 0.08, s * 0.3, s * 0.84, s * 0.4);
-        g.fillStyle = lg(0, s * 0.3, 0, s * 0.7, [[0, "#3a3a3a"], [0.5, "#111"], [1, "#000"]]); g.fill(); ink(lw * 1.2);
-        g.beginPath(); g.roundRect ? g.roundRect(s * 0.13, s * 0.35, s * 0.74, s * 0.3, s * 0.05) : g.rect(s * 0.13, s * 0.35, s * 0.74, s * 0.3);
-        g.lineWidth = lw * 0.8; g.strokeStyle = "#f2c14e"; g.stroke();
-        label("BAR", s * 0.505, s * 0.25, "#fff4d6", "#000"); break;
-      }
-      case "SEVEN": {
-        g.font = `400 ${s * 0.86}px ${MARQUEE}`; g.textAlign = "center"; g.textBaseline = "middle";
-        g.lineWidth = s * 0.12; g.strokeStyle = INK; g.strokeText("7", c, s * 0.53);
-        g.lineWidth = s * 0.06; g.strokeStyle = "#ffd75a"; g.strokeText("7", c, s * 0.53);
-        g.fillStyle = lg(0, s * 0.15, 0, s * 0.9, [[0, "#ff8a7a"], [0.45, "#ff2a1f"], [1, "#9a0610"]]); g.fillText("7", c, s * 0.53);
+      case "LEMON": { // clover
+        stem([[0.5, 0.94], [0.56, 0.74], [0.5, 0.56]], 0.035, "#2f6b5c");
+        for (let i = 0; i < 4; i++) {
+          g.save(); g.translate(c, s * 0.42); g.rotate((i * Math.PI) / 2 + Math.PI / 4);
+          const heart = () => { g.moveTo(0, 0); g.bezierCurveTo(-s * 0.2, -s * 0.06, -s * 0.18, -s * 0.3, -s * 0.02, -s * 0.24); g.bezierCurveTo(s * 0.0, -s * 0.23, s * 0.0, -s * 0.23, s * 0.02, -s * 0.24); g.bezierCurveTo(s * 0.18, -s * 0.3, s * 0.2, -s * 0.06, 0, 0); g.closePath(); };
+          layer(heart, "#3d8b7a");
+          g.scale(0.62, 0.62); g.beginPath(); heart(); g.fillStyle = "#6fbfa6"; g.fill();
+          g.restore();
+        }
         break;
       }
-      case "WILD": {
-        star(g, c, s * 0.47, s * 0.43, s * 0.2, 5);
-        g.fillStyle = rg(c, s * 0.47, s * 0.43, [[0, "#fff6c4"], [0.45, "#ffc93a"], [1, "#b8730a"]]); g.fill(); ink(lw * 1.1);
-        g.beginPath(); g.roundRect ? g.roundRect(s * 0.1, s * 0.52, s * 0.8, s * 0.2, s * 0.05) : g.rect(s * 0.1, s * 0.52, s * 0.8, s * 0.2);
-        g.fillStyle = lg(0, s * 0.52, 0, s * 0.72, [[0, "#ff5a4a"], [1, "#a30d16"]]); g.fill(); ink();
-        label("WILD", s * 0.625, s * 0.15, "#fff6dc", "#5c0409"); break;
+      case "ORANGE": { // poppy
+        stem([[0.5, 0.95], [0.46, 0.74], [0.5, 0.56]], 0.03, "#3f6b45");
+        layer(ell(0.38, 0.8, 0.09, 0.035, -0.6), "#5e8c61");
+        for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 - Math.PI / 2; layer(circ(0.5 + Math.cos(a) * 0.15, 0.42 + Math.sin(a) * 0.15, 0.16), i % 2 ? "#d9452f" : "#e8583c"); }
+        g.beginPath(); circ(0.5, 0.42, 0.2)(); g.fillStyle = "#f07a52"; g.globalAlpha = 0.5; g.fill(); g.globalAlpha = 1;
+        layer(circ(0.5, 0.42, 0.075), "#24182c");
+        g.fillStyle = "#f3e6c8"; for (let i = 0; i < 6; i++) { const a = i * 1.05; g.beginPath(); circ(0.5 + Math.cos(a) * 0.045, 0.42 + Math.sin(a) * 0.045, 0.01)(); g.fill(); }
+        break;
       }
-      case "SCATTER": {
-        const pts = [[c, s * 0.1], [s * 0.86, s * 0.38], [c, s * 0.86], [s * 0.14, s * 0.38]];
-        g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
-        g.fillStyle = lg(s * 0.14, s * 0.1, s * 0.86, s * 0.86, [[0, "#c8f4ff"], [0.4, "#2fb8f0"], [1, "#0a3e8a"]]); g.fill(); ink(lw * 1.1);
-        // Facets.
-        g.beginPath(); g.moveTo(s * 0.14, s * 0.38); g.lineTo(s * 0.86, s * 0.38); g.moveTo(c, s * 0.1); g.lineTo(s * 0.35, s * 0.38); g.lineTo(c, s * 0.86); g.lineTo(s * 0.65, s * 0.38); g.lineTo(c, s * 0.1);
-        g.lineWidth = lw * 0.6; g.strokeStyle = "rgba(255,255,255,0.55)"; g.stroke();
-        g.beginPath(); g.moveTo(c, s * 0.1); g.lineTo(s * 0.35, s * 0.38); g.lineTo(s * 0.14, s * 0.38); g.closePath(); g.fillStyle = "rgba(255,255,255,0.45)"; g.fill();
-        label("SCATTER", s * 0.9, s * 0.12, "#e8fbff", "#062a4a"); break;
+      case "PLUM": { // iris
+        stem([[0.5, 0.95], [0.52, 0.78], [0.5, 0.6]], 0.03, "#3f6b45");
+        layer(poly([[0.36, 0.96], [0.42, 0.62], [0.47, 0.96]]), "#5e8c61");
+        for (const [x, rot] of [[0.3, -0.7], [0.7, 0.7], [0.5, 0]]) layer(ell(x, 0.58, 0.1, 0.17, rot), "#4f3fb0");
+        for (const [x, rot] of [[0.38, -0.35], [0.62, 0.35], [0.5, 0]]) layer(ell(x, 0.3, 0.08, 0.16, rot), "#7d6be0");
+        g.lineWidth = s * 0.03; g.strokeStyle = "#ffcc4d"; for (const [x0, x1] of [[0.32, 0.27], [0.68, 0.73], [0.5, 0.5]]) { g.beginPath(); g.moveTo(x0 * s, 0.5 * s); g.lineTo(x1 * s, 0.62 * s); g.stroke(); }
+        break;
+      }
+      case "GRAPE": { // firefly in a jar
+        layer(() => { g.roundRect ? g.roundRect(s * 0.24, s * 0.22, s * 0.52, s * 0.7, s * 0.14) : g.rect(s * 0.24, s * 0.22, s * 0.52, s * 0.7); }, "#efe2c2", { depth: 1.4 });
+        g.beginPath(); g.roundRect ? g.roundRect(s * 0.3, s * 0.3, s * 0.4, s * 0.56, s * 0.1) : g.rect(s * 0.3, s * 0.3, s * 0.4, s * 0.56); g.fillStyle = "#1b2350"; g.fill();
+        g.save(); g.beginPath(); g.roundRect ? g.roundRect(s * 0.3, s * 0.3, s * 0.4, s * 0.56, s * 0.1) : g.rect(s * 0.3, s * 0.3, s * 0.4, s * 0.56); g.clip();
+        for (const [x, y, r] of [[0.42, 0.5, 0.05], [0.58, 0.64, 0.045], [0.46, 0.76, 0.035]]) { glow(x, y, r * 4, "rgba(255,181,71,A)", 0.55); g.beginPath(); circ(x, y, r)(); g.fillStyle = "#fff1c8"; g.fill(); }
+        g.restore();
+        layer(() => { g.roundRect ? g.roundRect(s * 0.28, s * 0.12, s * 0.44, s * 0.12, s * 0.04) : g.rect(s * 0.28, s * 0.12, s * 0.44, s * 0.12); }, "#8a6b45");
+        break;
+      }
+      case "MELON": { // paper crane
+        const d = { depth: 1.4 };
+        layer(poly([[0.1, 0.56], [0.5, 0.48], [0.62, 0.7], [0.3, 0.72]]), "#c9677f", d);
+        layer(poly([[0.5, 0.48], [0.92, 0.6], [0.62, 0.7]]), "#d67990", d);
+        layer(poly([[0.3, 0.5], [0.46, 0.12], [0.58, 0.52]]), "#e98aa0", d);
+        layer(poly([[0.5, 0.5], [0.8, 0.18], [0.66, 0.56]]), "#f4a9ba", d);
+        layer(poly([[0.1, 0.56], [0.04, 0.34], [0.16, 0.52]]), "#e98aa0", d);
+        g.beginPath(); g.moveTo(...P(0.5, 0.48)); g.lineTo(...P(0.62, 0.7)); g.lineWidth = s * 0.008; g.strokeStyle = "rgba(11,16,38,0.35)"; g.stroke();
+        break;
+      }
+      case "BELL": { // barn owl
+        const e = { edge: true, depth: 1.5 };
+        layer(ell(0.5, 0.58, 0.3, 0.36), "#c78d4b", e);
+        layer(ell(0.26, 0.64, 0.1, 0.24, 0.25), "#9d6a33"); layer(ell(0.74, 0.64, 0.1, 0.24, -0.25), "#9d6a33");
+        layer(() => { g.moveTo(c, s * 0.62); g.bezierCurveTo(s * 0.24, s * 0.56, s * 0.22, s * 0.22, s * 0.38, s * 0.24); g.quadraticCurveTo(c, s * 0.3, s * 0.62, s * 0.24); g.bezierCurveTo(s * 0.78, s * 0.22, s * 0.76, s * 0.56, c, s * 0.62); g.closePath(); }, "#f6ead0");
+        for (const x of [0.4, 0.6]) { layer(circ(x, 0.4, 0.07), INK); g.beginPath(); circ(x - 0.02, 0.38, 0.02)(); g.fillStyle = "#ffb547"; g.fill(); }
+        layer(poly([[0.47, 0.47], [0.53, 0.47], [0.5, 0.56]]), "#e0a24a");
+        break;
+      }
+      case "BAR": { // luna moth
+        const e = { edge: true, depth: 1.5 };
+        for (const sd of [-1, 1]) {
+          layer(() => { g.moveTo(c, s * 0.5); g.bezierCurveTo(c + sd * s * 0.1, s * 0.66, c + sd * s * 0.22, s * 0.92, c + sd * s * 0.12, s * 0.96); g.bezierCurveTo(c + sd * s * 0.3, s * 0.8, c + sd * s * 0.34, s * 0.6, c, s * 0.5); g.closePath(); }, "#8fd09b", e);
+          layer(() => { g.moveTo(c, s * 0.46); g.bezierCurveTo(c + sd * s * 0.12, s * 0.1, c + sd * s * 0.46, s * 0.14, c + sd * s * 0.44, s * 0.36); g.bezierCurveTo(c + sd * s * 0.42, s * 0.5, c + sd * s * 0.2, s * 0.54, c, s * 0.46); g.closePath(); }, "#b6e4b0", e);
+          g.beginPath(); circ(0.5 + sd * 0.25, 0.34, 0.05)(); g.fillStyle = "#ffb547"; g.fill(); g.beginPath(); circ(0.5 + sd * 0.25, 0.34, 0.022)(); g.fillStyle = INK; g.fill();
+        }
+        layer(ell(0.5, 0.48, 0.04, 0.16), "#f3e6c8");
+        g.beginPath(); g.moveTo(...P(0.48, 0.32)); g.quadraticCurveTo(...P(0.42, 0.18), ...P(0.38, 0.16)); g.moveTo(...P(0.52, 0.32)); g.quadraticCurveTo(...P(0.58, 0.18), ...P(0.62, 0.16)); g.lineWidth = s * 0.012; g.strokeStyle = "#6d6150"; g.stroke();
+        break;
+      }
+      case "SEVEN": { // the golden Moth Queen
+        glow(0.5, 0.48, 0.5, "rgba(255,181,71,A)", 0.45);
+        const wing = lg(0.08, 0.9, [[0, "#fff1c8"], [0.45, "#ffb547"], [1, "#c8781a"]]);
+        const e = { edge: true, depth: 1.8 };
+        for (const sd of [-1, 1]) {
+          layer(() => { g.moveTo(c, s * 0.52); g.bezierCurveTo(c + sd * s * 0.08, s * 0.08, c + sd * s * 0.5, s * 0.06, c + sd * s * 0.47, s * 0.34); g.bezierCurveTo(c + sd * s * 0.45, s * 0.52, c + sd * s * 0.2, s * 0.58, c, s * 0.52); g.closePath(); }, wing, e);
+          layer(() => { g.moveTo(c, s * 0.54); g.bezierCurveTo(c + sd * s * 0.36, s * 0.56, c + sd * s * 0.4, s * 0.86, c + sd * s * 0.16, s * 0.86); g.bezierCurveTo(c + sd * s * 0.06, s * 0.84, c + sd * s * 0.02, s * 0.7, c, s * 0.54); g.closePath(); }, wing, e);
+          g.lineWidth = s * 0.012; g.strokeStyle = "rgba(11,16,38,0.55)";
+          g.beginPath(); g.moveTo(c + sd * s * 0.05, s * 0.48); g.quadraticCurveTo(c + sd * s * 0.2, s * 0.26, c + sd * s * 0.4, s * 0.26); g.moveTo(c + sd * s * 0.05, s * 0.56); g.quadraticCurveTo(c + sd * s * 0.22, s * 0.68, c + sd * s * 0.18, s * 0.8); g.stroke();
+          g.beginPath(); circ(0.5 + sd * 0.27, 0.32, 0.04)(); g.fillStyle = "#ff7a3d"; g.fill();
+        }
+        layer(ell(0.5, 0.52, 0.05, 0.2), "#ff7a3d");
+        for (const x of [0.44, 0.5, 0.56]) { g.beginPath(); circ(x, x === 0.5 ? 0.22 : 0.25, 0.022)(); g.fillStyle = "#fff1c8"; g.fill(); }
+        break;
+      }
+      case "WILD": { // the lit lantern
+        glow(0.5, 0.52, 0.56, "rgba(255,181,71,A)", 0.65);
+        const e = { edge: true, depth: 1.6 };
+        g.beginPath(); g.moveTo(...P(0.5, 0.02)); g.lineTo(...P(0.5, 0.16)); g.lineWidth = s * 0.012; g.strokeStyle = "#6d6150"; g.stroke();
+        layer(() => { g.roundRect ? g.roundRect(s * 0.36, s * 0.14, s * 0.28, s * 0.08, s * 0.03) : g.rect(s * 0.36, s * 0.14, s * 0.28, s * 0.08); }, "#2c2440");
+        const body = g.createRadialGradient(c, s * 0.52, s * 0.02, c, s * 0.52, s * 0.34); body.addColorStop(0, "#fff6dc"); body.addColorStop(0.45, "#ffb547"); body.addColorStop(1, "#e8642e");
+        layer(ell(0.5, 0.52, 0.3, 0.32), body, e);
+        g.save(); g.beginPath(); ell(0.5, 0.52, 0.3, 0.32)(); g.clip(); g.lineWidth = s * 0.012; g.strokeStyle = "rgba(140,50,10,0.45)";
+        for (const k of [-0.6, -0.3, 0, 0.3, 0.6]) { g.beginPath(); g.ellipse(c, s * 0.52, Math.abs(k) * s * 0.3 + 0.001, s * 0.32, 0, 0, Math.PI * 2); g.stroke(); }
+        g.restore();
+        layer(() => { g.roundRect ? g.roundRect(s * 0.38, s * 0.82, s * 0.24, s * 0.07, s * 0.03) : g.rect(s * 0.38, s * 0.82, s * 0.24, s * 0.07); }, "#2c2440");
+        g.beginPath(); g.moveTo(...P(0.5, 0.89)); g.lineTo(...P(0.5, 0.98)); g.lineWidth = s * 0.02; g.strokeStyle = "#ff7a3d"; g.stroke();
+        break;
+      }
+      case "SCATTER": { // full moon with a cloud strip
+        glow(0.5, 0.44, 0.52, "rgba(207,227,255,A)", 0.55);
+        const moon = g.createRadialGradient(s * 0.42, s * 0.36, s * 0.04, c, s * 0.44, s * 0.36); moon.addColorStop(0, "#ffffff"); moon.addColorStop(0.6, "#cfe3ff"); moon.addColorStop(1, "#8fa6d8");
+        layer(circ(0.5, 0.44, 0.34), moon, { depth: 1.6 });
+        g.fillStyle = "rgba(110,135,190,0.35)"; for (const [x, y, r] of [[0.4, 0.36, 0.06], [0.6, 0.5, 0.05], [0.56, 0.3, 0.03], [0.38, 0.56, 0.035]]) { g.beginPath(); circ(x, y, r)(); g.fill(); }
+        layer(() => { g.moveTo(s * 0.06, s * 0.78); g.bezierCurveTo(s * 0.08, s * 0.64, s * 0.24, s * 0.62, s * 0.3, s * 0.68); g.bezierCurveTo(s * 0.36, s * 0.56, s * 0.56, s * 0.56, s * 0.6, s * 0.66); g.bezierCurveTo(s * 0.7, s * 0.6, s * 0.92, s * 0.64, s * 0.94, s * 0.78); g.closePath(); }, "#f3e6c8", { depth: 1.4 });
+        break;
       }
     }
     g.restore();
   }
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-  function star(g, x, y, R, r, n) { g.beginPath(); for (let i = 0; i < n * 2; i++) { const a = (Math.PI * i) / n - Math.PI / 2; const d = i % 2 ? r : R; g.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); } g.closePath(); }
-  // Win-line colours: each line its own lamp colour, as on a real cabinet's line lamps.
-  const LINE_COLORS = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#bf5af2", "#ff9f0a", "#64d2ff", "#ff375f", "#30d158", "#5e5ce6"];
+  // Paper grain for the strips: one small noise tile, made once (Math.random is visual only).
+  const GRAIN = (() => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 96; const gg = cv.getContext("2d"), img = gg.createImageData(96, 96);
+    for (let i = 0; i < img.data.length; i += 4) { const v = 200 + Math.random() * 55; img.data[i] = v; img.data[i + 1] = v * 0.94; img.data[i + 2] = v * 0.82; img.data[i + 3] = 22; }
+    gg.putImageData(img, 0, 0); return cv;
+  })();
 
   // ── renderer ─────────────────────────────────────────────────────────────
   const R = {
-    ctx: el.canvas.getContext("2d", { alpha: false }), w: 0, h: 0, dpr: 1, cell: 0, sprites: new Map(),
+    ctx: el.canvas.getContext("2d"), w: 0, h: 0, dpr: 1, cell: 0, sprites: new Map(),
     reels: [], // { pos (cells, fractional), anim: { from, to, t0, dur } | null, spinning, speed }
     highlight: null, // { cells:Set("r,c"), line: [[row,col]...] | null }
     raf: 0, dirty: true
@@ -196,7 +229,7 @@
     if (w === R.w && h === R.h && dpr === R.dpr) return;
     R.w = el.canvas.width = w; R.h = el.canvas.height = h; R.dpr = dpr;
     R.cell = Math.min(w / 5, h / 3);
-    R.sprites.clear();
+    R.sprites.clear(); R.edges = null;
     R.dirty = true; kick();
   }
   function sprite(sym) {
@@ -209,22 +242,42 @@
     }
     return sp;
   }
-  function reelShade(g, x, y, w, h) {
-    // Ivory drum: darker at the top and bottom edges, so the reel reads as a cylinder.
-    const gr = g.createLinearGradient(0, y, 0, y + h);
-    gr.addColorStop(0, "rgba(90,55,25,0.55)"); gr.addColorStop(0.1, "rgba(90,55,25,0.12)"); gr.addColorStop(0.22, "rgba(90,55,25,0)");
-    gr.addColorStop(0.78, "rgba(90,55,25,0)"); gr.addColorStop(0.9, "rgba(90,55,25,0.12)"); gr.addColorStop(1, "rgba(90,55,25,0.55)");
-    g.fillStyle = gr; g.fillRect(x, y, w, h);
+  // Torn paper edges, one jagged profile per strip side, made per size (visual only).
+  function tornEdges() {
+    R.edges = [];
+    const n = 28;
+    for (let col = 0; col < 5; col++) R.edges.push([0, 1].map(() => Array.from({ length: n + 1 }, () => Math.random())));
+  }
+  function stripPath(g, col, x, y, w, h) {
+    const amp = R.cell * 0.022, e = R.edges[col], n = e[0].length - 1;
+    g.beginPath();
+    for (let i = 0; i <= n; i++) g.lineTo(x + e[0][i] * amp, y + (h * i) / n);
+    for (let i = n; i >= 0; i--) g.lineTo(x + w - e[1][i] * amp, y + (h * i) / n);
+    g.closePath();
   }
   function draw(now) {
     const g = R.ctx, cell = R.cell, ox = (R.w - cell * 5) / 2, oy = (R.h - cell * 3) / 2;
-    g.fillStyle = "#1a0507"; g.fillRect(0, 0, R.w, R.h);
-    const hl = R.highlight;
+    if (!R.edges) tornEdges();
+    g.clearRect(0, 0, R.w, R.h);
+    const hl = R.highlight, gap = cell * 0.07;
+    const resting = R.reels.every((r) => !r.anim && !r.spinning);
+    // Lanterns at rest light the paper around them.
+    const lamps = [];
+    if (resting) for (let col = 0; col < 5; col++) { const strip = S.rules.reels[col], L = strip.length, base = Math.round(R.reels[col].pos); for (let k = 0; k < 3; k++) if (strip[(((base + k) % L) + L) % L] === "WILD") lamps.push([col, k]); }
     for (let col = 0; col < 5; col++) {
       const strip = S.rules.reels[col], L = strip.length, reel = R.reels[col];
-      const x = ox + col * cell;
-      g.fillStyle = col % 2 ? "#f4ecda" : "#f8f2e4"; g.fillRect(x, oy, cell, cell * 3);
-      g.save(); g.beginPath(); g.rect(x, oy, cell, cell * 3); g.clip();
+      const sway = reel.spinning && !reduceMotion?.matches ? Math.sin(now / 85 + col * 1.7) * cell * 0.016 : 0;
+      const x = ox + col * cell + gap / 2 + sway, w = cell - gap;
+      g.save();
+      g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = cell * 0.06; g.shadowOffsetY = cell * 0.02;
+      stripPath(g, col, x, oy - cell * 0.02, w, cell * 3 + cell * 0.04); g.fillStyle = "#f3e6c8"; g.fill();
+      g.restore();
+      g.save(); stripPath(g, col, x, oy - cell * 0.02, w, cell * 3 + cell * 0.04); g.clip();
+      g.fillStyle = g.createPattern(GRAIN, "repeat"); g.fillRect(x, oy, w, cell * 3);
+      for (const [lc, lk] of lamps) {
+        const cx = ox + (lc + 0.5) * cell, cy = oy + (lk + 0.5) * cell, gr = g.createRadialGradient(cx, cy, cell * 0.1, cx, cy, cell * 1.35);
+        gr.addColorStop(0, "rgba(255,181,71,0.42)"); gr.addColorStop(1, "rgba(255,181,71,0)"); g.fillStyle = gr; g.fillRect(x, oy, w, cell * 3);
+      }
       const base = Math.floor(reel.pos), frac = reel.pos - base;
       const moving = reel.anim || reel.spinning;
       for (let k = -1; k <= 3; k++) {
@@ -233,38 +286,37 @@
         const sp = sprite(sym), pad = (cell - sp.width) / 2;
         const win = hl && !moving && hl.cells.has(`${k},${col}`);
         if (win) {
-          // A lit lamp-glass behind a winning symbol.
-          const gr = g.createRadialGradient(x + cell / 2, y + cell / 2, cell * 0.05, x + cell / 2, y + cell / 2, cell * 0.62);
-          gr.addColorStop(0, "rgba(255,236,150,0.95)"); gr.addColorStop(1, "rgba(255,170,40,0)");
-          g.fillStyle = gr; g.fillRect(x, y, cell, cell);
+          const gr = g.createRadialGradient(x + w / 2, y + cell / 2, cell * 0.05, x + w / 2, y + cell / 2, cell * 0.6);
+          gr.addColorStop(0, "rgba(255,181,71,0.7)"); gr.addColorStop(1, "rgba(255,181,71,0)");
+          g.fillStyle = gr; g.fillRect(x, y, w, cell);
         }
-        g.globalAlpha = !hl || moving || win ? 1 : 0.28;
+        g.globalAlpha = !hl || moving || win ? 1 : 0.3;
+        const sx = ox + col * cell + pad + sway;
         if (reel.spinning && !reduceMotion?.matches) {
-          // Motion blur: the sprite stretched and smeared down the drum.
-          g.globalAlpha = 0.55; g.drawImage(sp, x + pad, y + pad - cell * 0.12, sp.width, sp.height * 1.24);
-          g.globalAlpha = 0.35; g.drawImage(sp, x + pad, y + pad + cell * 0.1, sp.width, sp.height);
-        } else g.drawImage(sp, x + pad, y + pad);
+          g.globalAlpha = 0.5; g.drawImage(sp, sx, y + pad - cell * 0.1, sp.width, sp.height * 1.2);
+          g.globalAlpha = 0.3; g.drawImage(sp, sx, y + pad + cell * 0.1, sp.width, sp.height);
+        } else g.drawImage(sp, sx, y + pad);
         g.globalAlpha = 1;
-        if (win) { g.lineWidth = Math.max(2, cell * 0.04); g.strokeStyle = "#ffb000"; roundRect(g, x + cell * 0.05, y + cell * 0.05, cell * 0.9, cell * 0.9, cell * 0.12); g.stroke(); }
+      }
+      // The strip curls slightly away at the top and bottom of the window.
+      const sh = g.createLinearGradient(0, oy, 0, oy + cell * 3);
+      sh.addColorStop(0, "rgba(11,16,38,0.4)"); sh.addColorStop(0.1, "rgba(11,16,38,0)"); sh.addColorStop(0.9, "rgba(11,16,38,0)"); sh.addColorStop(1, "rgba(11,16,38,0.4)");
+      g.fillStyle = sh; g.fillRect(x, oy - cell * 0.02, w, cell * 3 + cell * 0.04);
+      g.restore();
+    }
+    // Win line: a dotted firefly trail.
+    if (hl?.line) {
+      const pts = hl.line.map(([row, c]) => [ox + (c + 0.5) * cell, oy + (row + 0.5) * cell]);
+      g.save();
+      g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py)));
+      g.lineWidth = Math.max(2, cell * 0.025); g.strokeStyle = "rgba(255,181,71,0.35)"; g.stroke();
+      g.shadowColor = "rgba(255,190,90,0.95)"; g.shadowBlur = cell * 0.18; g.fillStyle = "#fff1c8";
+      const step = cell * 0.16;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(len / step));
+        for (let j = 0; j < n; j++) { const t = j / n; g.beginPath(); g.arc(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, cell * (j % 3 === 0 ? 0.034 : 0.022), 0, Math.PI * 2); g.fill(); }
       }
       g.restore();
-      reelShade(g, x, oy, cell, cell * 3);
-    }
-    // Win line (one at a time), over the board, in that line's lamp colour.
-    if (hl?.line) {
-      const col = LINE_COLORS[((hl.lineNo || 1) - 1) % LINE_COLORS.length];
-      g.save(); g.lineJoin = "round"; g.lineCap = "round";
-      const path = () => { g.beginPath(); hl.line.forEach(([row, c], i) => { const px = ox + (c + 0.5) * cell, py = oy + (row + 0.5) * cell; i ? g.lineTo(px, py) : g.moveTo(px, py); }); };
-      path(); g.lineWidth = Math.max(5, cell * 0.12); g.strokeStyle = "rgba(42,20,8,0.75)"; g.stroke();
-      path(); g.lineWidth = Math.max(3, cell * 0.07); g.strokeStyle = col; g.shadowColor = col; g.shadowBlur = cell * 0.25; g.stroke();
-      g.restore();
-    }
-    // Chrome dividers between the drums.
-    for (let col = 1; col < 5; col++) {
-      const x = ox + col * cell, w = Math.max(3, cell * 0.045);
-      const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
-      gr.addColorStop(0, "#4a4f57"); gr.addColorStop(0.5, "#f4f6f8"); gr.addColorStop(1, "#4a4f57");
-      g.fillStyle = gr; g.fillRect(x - w / 2, oy, w, cell * 3);
     }
   }
   function step(now) {
@@ -274,8 +326,8 @@
       if (reel.spinning) { reel.pos -= (reel.speed * (now - (reel.last || now))) / 1000; reel.last = now; moving = true; }
       if (reel.anim) {
         const a = reel.anim, t = Math.min(1, (now - a.t0) / a.dur);
-        // Ease out with one small settle past the line (no wind-up, no shake).
-        const e = t < 1 ? 1 - Math.pow(1 - t, 3) * (1 - 1.6 * t * (1 - t)) : 1;
+        // A soft paper settle: ease-out, never past the line (no bounce, no shake).
+        const e = t < 1 ? 1 - Math.pow(1 - t, 3) : 1;
         reel.pos = a.from + (a.to - a.from) * e;
         if (t >= 1) { reel.pos = a.to; reel.anim = null; a.done(); } else moving = true;
       }
@@ -284,13 +336,11 @@
     draw(now);
     if (moving) kick();
   }
-  /** The marquee's bulbs chase while a win is on show (CSS only; off with reduced motion). */
-  function lights(on) { document.body.classList.toggle("lights", Boolean(on)); }
   function kick() { if (!R.raf) R.raf = requestAnimationFrame(step); }
 
   /** Spin all reels (strip scrolls downward: pos decreases). */
   function startReels() {
-    R.highlight = null; lights(false);
+    R.highlight = null;
     const now = performance.now();
     for (const reel of R.reels) { reel.spinning = true; reel.speed = (22 + Math.random() * 2) / speed(); reel.last = now; reel.anim = null; }
     kick();
@@ -329,7 +379,7 @@
   const Bridge = window.EmbedBridge;
   const emit = (type, data) => { try { Bridge?.emit(type, data); } catch { /* never breaks play */ } };
   Bridge?.on?.("pause", () => { S.paused = true; stopAutoplay("Paused by the casino"); });
-  Bridge?.on?.("resume", () => { S.paused = false; say("Ready"); });
+  Bridge?.on?.("resume", () => { S.paused = false; say("Lanterns lit."); });
   Bridge?.on?.("setMuted", (d) => Sound?.setMuted?.(Boolean(d.muted)));
   Bridge?.on?.("getState", () => emit("state", { paused: S.paused, in_round: S.inFlight, in_feature: S.freeSpinsLeft > 0, balance: S.balance, currency: S.currency }));
 
@@ -353,7 +403,7 @@
     sfx("spin_start");
     emit("roundStarted", { bet, ante: false, free_spin: free, free_round: false, buy: false });
     if (!free) { el.win.textContent = "0.00"; if (Number.isFinite(S.balance)) el.balance.textContent = fmt(S.balance - bet); }
-    say(free ? `Free spin · ${S.freeSpinsLeft} left` : "Good luck!");
+    say(free ? `Night · ${S.freeSpinsLeft} left` : "The moths take flight…");
     startReels();
     const minSpin = sleep(260 * speed());
     let r;
@@ -387,22 +437,23 @@
     emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
     S.inFlight = false; setControls();
     Sound?.warmMusic?.();
+    // The night bed starts once the first round has been shown (never during load).
+    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
     return r;
   }
 
   /** Lines one at a time (tap skips), the meter counts up, big wins get their screen. */
   async function presentWin(r, bet) {
     const total = Number(r.total_win || 0);
-    if (!(total > 0) && !(r.free_spins_awarded > 0)) { say(S.freeSpinsLeft > 0 ? `Free spin · ${r.free_spins_left} left` : "Spin again"); return; }
+    if (!(total > 0) && !(r.free_spins_awarded > 0)) { say(S.freeSpinsLeft > 0 ? `Night · ${r.free_spins_left} left` : "The garden is quiet."); return; }
     const cells = new Set();
     for (const w of r.line_wins || []) for (const p of w.positions) cells.add(`${p.row},${p.col}`);
     for (const p of r.scatter?.positions || []) if (r.scatter.count >= 3) cells.add(`${p.row},${p.col}`);
     R.highlight = { cells, line: null }; kick();
-    lights(true);
     const x = total / bet;
-    const tier = x >= 50 ? ["EPIC WIN", "win_epic"] : x >= 25 ? ["MEGA WIN", "win_mega"] : x >= 10 ? ["BIG WIN", "win_big"] : null;
+    const tier = x >= 50 ? ["The Queen's gift", "win_epic"] : x >= 25 ? ["Moonlit", "win_mega"] : x >= 10 ? ["Lanterns rise", "win_big"] : null;
     countUp(total, tier ? 300 : 500 * speed());
-    if (total > 0) say(`WIN ${fmt(total)}${r.multiplier_applied > 1 ? ` (×${r.multiplier_applied})` : ""}`, true);
+    if (total > 0) say(`Moonlight win: ${fmt(total)}`, true);
     sfx(x >= 5 ? "win_land" : total > 0 ? "win_small" : "click");
     if (tier) await celebrate(tier[0], total, tier[1]);
     // Walk the winning lines once (skipped by quick stop / turbo / autoplay pace).
@@ -412,7 +463,7 @@
     }
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
-      say(r.is_free_spin ? `+${r.free_spins_awarded} free spins!` : `${r.free_spins_awarded} FREE SPINS · every win ×${S.rules.free_spins.multiplier}`, true);
+      say(r.is_free_spin ? `More moths — +${r.free_spins_awarded} free spins` : `The moths gather — ${r.free_spins_awarded} free spins.`, true);
       await sleep(900 * speed());
     }
   }
@@ -423,9 +474,24 @@
     const tick = (now) => { const t = Math.min(1, (now - t0) / ms); el.win.textContent = fmt(to * (1 - Math.pow(1 - t, 3))); if (t < 1) sfx("win_tick", { progress: t }); if (t < 1 && !S.quickStop) countTimer = requestAnimationFrame(tick); else el.win.textContent = fmt(to); };
     countTimer = requestAnimationFrame(tick);
   }
+  /** Big win: paper moths spiral up out of the board toward the lanterns (not with reduced motion). */
+  const MOTH_SVG = '<svg viewBox="-26 -14 52 32" aria-hidden="true"><path d="M0 0 C-10 -12 -26 -10 -24 2 C-22 10 -10 8 0 2Z M0 0 C10 -12 26 -10 24 2 C22 10 10 8 0 2Z" fill="#ffd27a" stroke="#0b1026" stroke-width="1.5"/><path d="M0 2 C-6 6 -14 12 -10 16 C-6 18 -2 10 0 4Z M0 2 C6 6 14 12 10 16 C6 18 2 10 0 4Z" fill="#f3e6c8" stroke="#0b1026" stroke-width="1.2"/><ellipse cx="0" cy="4" rx="2" ry="7" fill="#0b1026"/></svg>';
+  function releaseMoths() {
+    if (reduceMotion?.matches || !el.cel.animate) return;
+    for (let i = 0; i < 14; i++) {
+      const m = document.createElement("div"); m.className = "moth"; m.innerHTML = MOTH_SVG; el.cel.appendChild(m);
+      const turns = 1.2 + Math.random() * 0.8, r0 = 20 + Math.random() * 60, dir = Math.random() < 0.5 ? -1 : 1, frames = [];
+      for (let k = 0; k <= 10; k++) {
+        const t = k / 10, a = dir * (t * turns * Math.PI * 2 + i), r = r0 * (1 - t * 0.4);
+        frames.push({ transform: `translate(${Math.cos(a) * r - 13}px, ${-t * 320 + Math.sin(a) * r * 0.4}px) rotate(${Math.cos(a) * 25}deg) scale(${0.6 + t * 0.6})`, opacity: t < 0.1 ? t * 10 : t > 0.85 ? (1 - t) / 0.15 : 1 });
+      }
+      m.animate(frames, { duration: 2200 + Math.random() * 900, delay: i * 70, easing: "ease-in-out", fill: "forwards" }).finished.then(() => m.remove(), () => m.remove());
+    }
+  }
   function celebrate(title, amount, sound) {
     return new Promise((resolve) => {
       el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
+      releaseMoths();
       const t0 = performance.now(), ms = S.turbo ? 900 : 2200;
       let done = false;
       const finish = () => { if (done) return; done = true; el.cel.hidden = true; el.cel.removeEventListener("pointerdown", finish); resolve(); };
@@ -444,20 +510,22 @@
   async function playFeature() {
     S.featureWin = S.featureWin || 0;
     el.fsBadge.hidden = false;
+    document.body.classList.add("night"); // dusk turns to deep night; the lanterns light one by one
     emit("featureState", { active: true, free_spins_left: S.freeSpinsLeft, bonus_win: S.featureWin });
     Sound?.setMusic?.("freeSpins");
     sfx("fs_intro");
     while (S.freeSpinsLeft > 0 && !S.paused) {
-      el.fsBadge.textContent = `FREE SPINS ${S.freeSpinsLeft} · ×${S.rules.free_spins.multiplier}`;
+      el.fsBadge.textContent = `Night · ${S.freeSpinsLeft} left`;
       const r = await playRound({ auto: true });
       if (!r) break;
       await sleep(260 * speed());
     }
     el.fsBadge.hidden = true;
+    document.body.classList.remove("night");
     Sound?.setMusic?.("base");
     sfx("fs_outro");
     const total = S.featureWin;
-    say(`Free spins won ${fmt(total)}`, total > 0);
+    say(total > 0 ? `The night gave ${fmt(total)}` : "Dawn returns.", total > 0);
     emit("featureState", { active: false, free_spins_left: S.freeSpinsLeft, bonus_win: total });
     S.featureWin = 0;
     return total;
@@ -511,14 +579,11 @@
     for (const sym of PAY_GLASS) {
       const p = S.rules.paytable[sym]; if (!p) continue;
       const tile = document.createElement("div"); tile.className = "pay";
-      const cv = document.createElement("canvas"); cv.width = cv.height = Math.round(38 * dpr); drawSymbol(cv.getContext("2d"), sym, cv.width);
+      const cv = document.createElement("canvas"); cv.width = cv.height = Math.round(40 * dpr); cv.title = NAMES[sym]; drawSymbol(cv.getContext("2d"), sym, cv.width);
       const big = document.createElement("b"); big.textContent = fmt(p[2] * lb);
-      const small = document.createElement("span"); small.textContent = `4: ${fmt(p[1] * lb)} · 3: ${fmt(p[0] * lb)}`;
+      const small = document.createElement("span"); small.textContent = `${fmt(p[1] * lb)} · ${fmt(p[0] * lb)}`;
       tile.append(cv, big, small); box.append(tile);
     }
-    const note = document.createElement("p");
-    note.textContent = `5 in a line, ${S.lines} lines. 3+ scatters anywhere: ${S.rules.free_spins.awards[0]}+ free spins, every win ×${S.rules.free_spins.multiplier}.`;
-    box.append(note);
   }
   const showBet = () => { renderPays(); el.bet.textContent = fmt(S.bets[S.betIndex]); el.betDown.disabled = S.betIndex === 0 || S.inFlight; el.betUp.disabled = S.betIndex === S.bets.length - 1 || S.inFlight; if (el.info.open) renderRules(); };
   el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex++; sfx("bet_change"); showBet(); } });
@@ -539,16 +604,21 @@
   if (Haptics.supported) { $("hapticsRow").hidden = false; $("haptics").checked = Haptics.on; $("haptics").addEventListener("change", (e) => Haptics.set(e.target.checked)); }
 
   /** Paytable and rules from rules.json (the file the engine pays from): displayed pays = paid pays. */
+  const icons = new Map();
+  function icon(sym) {
+    if (!icons.has(sym)) { const cv = document.createElement("canvas"); cv.width = cv.height = 52; drawSymbol(cv.getContext("2d"), sym, 52); icons.set(sym, cv.toDataURL()); }
+    return icons.get(sym);
+  }
   function renderRules() {
     if (!S.rules) return;
     const r = S.rules, lb = lineBet();
-    const rows = Object.entries(r.paytable).map(([sym, p]) => `<tr><td>${sym}</td>${p.map((x) => `<td>${fmt(x * lb)}</td>`).join("")}</tr>`).join("");
+    const rows = Object.entries(r.paytable).reverse().map(([sym, p]) => `<tr><td><img src="${icon(sym)}" alt="" width="26" height="26" style="vertical-align:middle;margin-right:8px">${NAMES[sym] || sym}</td>${p.map((x) => `<td>${fmt(x * lb)}</td>`).join("")}</tr>`).join("");
     el.rules.innerHTML = `
       <p>${S.lines} fixed lines. Total bet ${fmt(S.bets[S.betIndex])} (line bet ${fmt(lb)}). Line wins pay left to right from the first reel, 3 or more in a row; the highest win per line is paid and wins on different lines add up.</p>
       <table><thead><tr><th>Symbol</th><th>×3</th><th>×4</th><th>×5</th></tr></thead><tbody>${rows}</tbody></table>
-      <p><b>WILD</b> appears on reels 2, 3 and 4 and substitutes for every symbol except SCATTER.</p>
-      <p><b>SCATTER</b> pays anywhere: 3 = ${fmt(r.scatter.pays[0] * S.bets[S.betIndex])}, 4 = ${fmt(r.scatter.pays[1] * S.bets[S.betIndex])}, 5 = ${fmt(r.scatter.pays[2] * S.bets[S.betIndex])}.
-      3, 4 or 5 scatters award ${r.free_spins.awards.join(", ")} free spins, played at the same bet. Every free-spin win is multiplied by ${r.free_spins.multiplier}. Free spins can be won again during free spins.</p>
+      <p><img src="${icon("WILD")}" alt="" width="26" height="26" style="vertical-align:middle"> <b>The Lantern</b> is wild. It appears on reels 2, 3 and 4 and stands in for every symbol except the Full Moon.</p>
+      <p><img src="${icon("SCATTER")}" alt="" width="26" height="26" style="vertical-align:middle"> <b>The Full Moon</b> pays anywhere: 3 = ${fmt(r.scatter.pays[0] * S.bets[S.betIndex])}, 4 = ${fmt(r.scatter.pays[1] * S.bets[S.betIndex])}, 5 = ${fmt(r.scatter.pays[2] * S.bets[S.betIndex])}.
+      3, 4 or 5 Full Moons award ${r.free_spins.awards.join(", ")} free spins, played at the same bet. Every free-spin win is multiplied by ${r.free_spins.multiplier}. Free spins can be won again during free spins.</p>
       <p>Maximum win: ${r.max_win_x.toLocaleString()}× the total bet for a spin and the free spins it awards; the feature ends when it is reached.</p>
       <p>Theoretical return to player: ${Number(r.theoretical_rtp).toFixed(2)}%. Over a short session results vary widely.</p>
       <p>Autoplay stops when you press Stop, when the spins run out, when a round can't be played, or when a stop condition you chose is met. Turbo and quick stop change only how fast a round is shown, never its result. A malfunction voids all pays and plays.</p>`;
@@ -563,7 +633,7 @@
     el.reality.close();
     if (choice === "exit") { emit("exitRequested", { reason: "reality_check" }); say("Session ended"); return; }
     await api("POST", "/game/v1/reality-check/ack", {}, uuid()).catch(() => {});
-    say("Ready");
+    say("Lanterns lit.");
   }
 
   // ── boot ─────────────────────────────────────────────────────────────────
@@ -597,8 +667,8 @@
       session = await api("GET", "/game/v1/session");
     }
     S.rules = await rulesP;
-    // The marquee face draws BAR, 7, WILD and SCATTER: wait for it (capped) so no sprite is cached in a fallback.
-    await Promise.race([document.fonts?.load?.('400 32px "C5 Marquee"') ?? Promise.resolve(), sleep(1500)]).catch(() => {});
+    // The logo and win amounts use the display face: wait for it (capped) before the first frame.
+    await Promise.race([document.fonts?.load?.('600 32px "ML Display"') ?? Promise.resolve(), sleep(1500)]).catch(() => {});
     R.sprites.clear();
     const variant = S.rules.rtp_profiles.find((p) => p.game_id === session.game?.code) || S.rules.rtp_profiles[0];
     S.lines = variant.lines;
@@ -623,7 +693,7 @@
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
-    say(S.freeSpinsLeft > 0 ? `Free spins left: ${S.freeSpinsLeft} · tap Spin to continue` : `${S.lines} lines · good luck!`);
+    say(S.freeSpinsLeft > 0 ? `Night · ${S.freeSpinsLeft} left · tap Spin` : "Lanterns lit.");
     setControls();
   }
   boot().catch((err) => { say(`Could not start the game (${err.code || err.message})`); document.body.classList.add("app-ready"); });
