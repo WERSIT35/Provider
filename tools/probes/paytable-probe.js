@@ -101,7 +101,7 @@ const PAGE_CHECK = (gameId) => `(async () => {
   for (const bet of bets) {
     el.betSelect.value = String(bet);
     el.betSelect.dispatchEvent(new Event("change"));
-    const tables = [...document.querySelectorAll(".ps-paytable__table")];
+    const tables = [...el.psInfoModal.querySelectorAll(".ps-paytable__table")]; // the rules template the Info sheet shows
     if (tables.length !== 2) { mismatches.push("expected 2 tables, got " + tables.length); break; }
     [[tables[0], sc.basePayoutScaler], [tables[1], sc.freeSpinPayoutScaler]].forEach(([table, scaler]) => {
       const rows = [...table.querySelectorAll("tr")].slice(1).map((tr) => [...tr.children].map((c) => c.textContent));
@@ -129,8 +129,8 @@ const PAGE_CHECK = (gameId) => `(async () => {
       }
     });
   }
-  const rtp = [...document.querySelectorAll(".ps-rtp li")].map((li) => li.textContent);
-  const meta = document.querySelector(".ps-rules-meta")?.textContent || "";
+  const rtp = [...el.psInfoModal.querySelectorAll(".ps-rtp li")].map((li) => li.textContent);
+  const meta = el.psInfoModal.querySelector(".ps-rules-meta")?.textContent || "";
   return { cells, bets: bets.length, mismatches: mismatches.slice(0, 20), mismatchCount: mismatches.length, rtp, meta,
     declared: [profile.theoretical_percent, profile.ante_bet_percent, profile.buy_free_spins_percent] };
 })()`;
@@ -164,12 +164,14 @@ const PAGE_CHECK = (gameId) => `(async () => {
   for (let i = 0; i < 100; i++) { await sleep(100); if (await evaluate(cdp, `typeof state !== "undefined" && !!(state.sessionId && state.rules)`)) break; }
   await sleep(500);
 
-  // Player path: public mode, Info button opens the modal on the rules page.
+  // Player path: public mode, the Info button opens the shell's Info sheet with the rules.
   const opened = await evaluate(cdp, `(() => { document.getElementById("psInfoBtn").click();
-    const s = el.psInfoModal.querySelector('[data-ps-section-id="rules"]');
-    return { publicMode: document.body.classList.contains("public-mode"), visible: !s.hidden && s.getClientRects().length > 0,
-      tables: s.querySelectorAll(".ps-paytable__table").length, text: s.textContent }; })()`);
-  check("player Info modal shows the paytable (public mode)", opened.publicMode && opened.visible && opened.tables === 2, `tables=${opened.tables}`);
+    const s = [...document.querySelectorAll(".lsh-sheet")].find((x) => !x.classList.contains("hidden") && x.querySelector(".vx-info"));
+    const out = { publicMode: document.body.classList.contains("public-mode"), visible: Boolean(s) && s.getClientRects().length > 0,
+      tables: s ? s.querySelectorAll(".ps-paytable__table").length : 0, text: s ? s.textContent : "" };
+    VxNotify.get("lsh-info")?.close("close");
+    return out; })()`);
+  check("player Info sheet shows the paytable (public mode)", opened.publicMode && opened.visible && opened.tables === 2, `tables=${opened.tables}`);
   const stale = ["banana", "5 reels", "4 rows", "apex", "live market", "ontario", "malta", "united kingdom", "coming soon"]
     .filter((w) => opened.text.toLowerCase().includes(w));
   check("rules copy has no stale Banana X / 5x4 / Apex Wild / market text", stale.length === 0, stale.join(", "));

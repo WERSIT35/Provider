@@ -183,7 +183,7 @@ async function main() {
     if (!booted) return;
     await sleep(600);
 
-    // Turbo on, so rounds resolve quickly and the test stays short.
+    // Turbo on (the shell's speed button: normal to quick), so rounds resolve quickly.
     await ev(`document.getElementById("turboBtn")?.click();`);
     await sleep(200);
 
@@ -218,29 +218,29 @@ async function main() {
     // ── 2b. autoplay stop conditions (Phase 5) ───────────────────────────────
     // A 1× bet loss limit / a 0.01× bet win limit (options added for the test; the
     // player's lists are 10×+) end an unlimited run on their own.
-    const runUntilStopped = async (selectId, value) => {
+    // Through the shell's autoplay sheet: the button opens it, its selects carry the limits.
+    const runUntilStopped = async (limit, value) => {
       await ev(`(() => {
-        for (const id of ["apLossLimit", "apWinLimit"]) document.getElementById(id).value = "0";
-        const sel = document.getElementById(${JSON.stringify(selectId)});
-        sel.add(new Option("test", ${JSON.stringify(value)})); sel.value = ${JSON.stringify(value)};
         window.__apStart = state.lastBalance; window.__apWins = [];
         document.getElementById("autoplayBtn").click();
-        document.querySelector('#autoplayPopover button[data-autoplay="inf"]').click();
+        const sheet = [...document.querySelectorAll(".lsh-sheet")].find((s) => s.querySelector("[data-auto]"));
+        const sel = sheet.querySelector('[data-limit="' + ${JSON.stringify(limit)} + '"]');
+        sel.add(new Option("test", ${JSON.stringify(value)})); sel.value = ${JSON.stringify(value)};
+        sheet.querySelector('[data-auto="inf"]').click();
       })()`);
       const until = Date.now() + 90000;
       while (Date.now() < until && await ev(`state.autoplayActive`)) { await dismissFeature(); await sleep(150); }
       await waitIdle();
       return ev(`({ active: state.autoplayActive, start: window.__apStart, now: state.lastBalance, bet: Number(document.getElementById("betSelect").value), ticker: document.getElementById("psTickerText").textContent })`);
     };
-    const lossRun = await runUntilStopped("apLossLimit", "1");
+    const lossRun = await runUntilStopped("loss", "1");
     check("autoplay: a loss limit ends an unlimited run once the loss reaches it",
       !lossRun.active && lossRun.start - lossRun.now >= lossRun.bet - 1e-9 && /loss limit/.test(lossRun.ticker),
       `start=${lossRun.start} now=${lossRun.now} bet=${lossRun.bet} ticker="${lossRun.ticker}"`);
     for (let i = 0; i < 40 && await ev(`performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS`); i++) await sleep(25);
-    const winRun = await runUntilStopped("apWinLimit", "0.01");
+    const winRun = await runUntilStopped("win", "0.01");
     check("autoplay: a win limit ends an unlimited run on a winning spin",
       !winRun.active && /win of/.test(winRun.ticker), `ticker="${winRun.ticker}"`);
-    await ev(`for (const id of ["apLossLimit", "apWinLimit"]) document.getElementById(id).value = "0";`);
     for (let i = 0; i < 40 && await ev(`performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS`); i++) await sleep(25);
 
     // ── 3. BONUS: buy the feature, then hammer spin all the way through ──────

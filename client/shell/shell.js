@@ -188,7 +188,10 @@
         win(text, celebrate = true) { stopRotate(); mode = celebrate ? "win" : "neutral"; line = text; show(); },
         neutral(text) { stopRotate(); mode = "neutral"; line = text; show(); },
         say(text) { stopRotate(); mode = "say"; line = text; show(); },
-        flash(text, tone = "info", ms = TICK.flashMinMs) { clearTimeout(flashT); flashing = true; paint(text, `flash-${tone}`); flashT = setTimeout(() => { flashing = false; show(); }, Math.max(TICK.flashMinMs, ms)); },
+        flash(text, tone = "info", ms = TICK.flashMinMs) {
+          // A game that drives the message line itself (o.tickerFlash) takes the shell's notices.
+          if (o.tickerFlash) { o.tickerFlash(text, tone, ms); return; }
+          clearTimeout(flashT); flashing = true; paint(text, `flash-${tone}`); flashT = setTimeout(() => { flashing = false; show(); }, Math.max(TICK.flashMinMs, ms)); },
         get mode() { return mode; },
         get text() { return el.tickerText.textContent; }
       };
@@ -433,6 +436,8 @@
       /** The motion speed key for LuminaMotion: "reduced" wins, then the player's speed. */
       motionSpeed() { return reducedMotion() ? "reduced" : speed(); },
       setCurrency(c) { currency = c || ""; labels(); },
+      /** The game changed the speed itself (Vault 20K: hold Spin for turbo autoplay). */
+      setSpeed(s) { if (!turboAllowed() || prefs.speed === s) return; prefs.speed = s; store.save(prefs); syncSpeed(); },
       setBalance(v) { setText(el.balance, money(v)); },
       setBet(v) { if (!S.featureHud) setText(el.bet, money(v)); },
       setWin(v) { setText(el.win, money(v)); },
