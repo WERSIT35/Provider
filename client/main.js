@@ -271,7 +271,8 @@ const Haptics = (() => {
     onEvent(event) {
       const pattern = FOR_EVENT[event];
       if (pattern === undefined || !supported || !on || reduce?.matches || document.hidden) return;
-      try { navigator.vibrate(pattern); } catch { /* blocked (no user gesture yet, or a frame without permission) */ }
+      // In a task after the current handler: the buzz never lengthens a press's input response.
+      setTimeout(() => { try { navigator.vibrate(pattern); } catch { /* blocked (no user gesture yet, or a frame without permission) */ } }, 0);
     }
   };
 })();
