@@ -1,0 +1,7 @@
+{
+  "code": "classic-5x3",
+  "title": "Classic 5x3",
+  "engine": { "dir": "engine", "namespace": "SlotEngine", "files": ["engine.js"] },
+  "rules": "math/rules.json",
+  "client": "client"
+}
