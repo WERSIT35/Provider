@@ -151,12 +151,30 @@ async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; ht
   if (parts.some((p) => !p)) return null; // a missing file: serve the page unbundled
   const key = index.etag + parts.map((p) => (p as Asset).etag).join("");
   if (bundle?.key !== key) {
-    const code = Buffer.from(parts.map((p) => (p as Asset).body.toString("utf8")).join("\n;\n"));
-    const asset = makeAsset(".js", code, 0);
+    const code = await minify(parts.map((p) => (p as Asset).body.toString("utf8")).join("\n;\n"));
+    if (bundle?.key === key) return { asset: bundle.asset, html: bundle.html }; // another request built it meanwhile
+    const asset = makeAsset(".js", Buffer.from(code), 0);
     const tag = `<script src="${BUNDLE_PATH}?v=${asset.etag.slice(1, 13)}"></script>`;
     bundle = { key, asset, html: makeAsset(".html", Buffer.from(html.replace(BUNDLE_BLOCK, tag)), 0) };
   }
   return { asset: bundle.asset, html: bundle.html };
+}
+
+/**
+ * Minified with esbuild (500 → 236 KB, brotli 136 → 70 KB), off the event loop (its
+ * own process). Script mode: top-level names stay as they are, because the files
+ * share them as globals; only names inside functions shrink. `keepNames` keeps
+ * `fn.name` / class names. PLAY_MINIFY=0, or esbuild missing or failing, serves the
+ * plain concatenation (same behaviour, just bigger).
+ */
+async function minify(code: string): Promise<string> {
+  if (process.env.PLAY_MINIFY === "0") return code;
+  try {
+    const { transform } = await import("esbuild");
+    return (await transform(code, { minify: true, keepNames: true, target: "es2019", legalComments: "none" })).code;
+  } catch {
+    return code;
+  }
 }
 
 /** Pick brotli / gzip from Accept-Encoding; made once per asset, then served from memory. */

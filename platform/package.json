@@ -28,6 +28,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "esbuild": "^0.28.2",
     "fastify": "^5.2.1",
     "pg": "^8.22.0",
     "pino": "^9.6.0",

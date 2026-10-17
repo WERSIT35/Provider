@@ -34,7 +34,22 @@ describe("/play assets: one bundle, compressed, cacheable", () => {
     const files = scriptsInIndex();
     expect(files.length).toBeGreaterThan(10);
     expect(files.at(-1)).toBe("main.js");
-    expect(bundle.body).toBe(files.map((f) => fs.readFileSync(path.join(CLIENT, f), "utf8")).join("\n;\n"));
+    // The concatenation, minified by esbuild (script mode: top-level names unchanged).
+    const plain = files.map((f) => fs.readFileSync(path.join(CLIENT, f), "utf8")).join("\n;\n");
+    const { transform } = await import("esbuild");
+    expect(bundle.body).toBe((await transform(plain, { minify: true, keepNames: true, target: "es2019", legalComments: "none" })).code);
+    expect(bundle.body.length).toBeLessThan(plain.length * 0.6);
+  });
+
+  it("the minified bundle keeps every top-level name the files share as globals", async () => {
+    const page = await app.inject({ method: "GET", url: "/play/" });
+    const src = /<script src="([^"]+)"><\/script>/.exec(page.body)![1];
+    const min = (await app.inject({ method: "GET", url: `/play/${src}` })).body;
+    const plain = scriptsInIndex().map((f) => fs.readFileSync(path.join(CLIENT, f), "utf8")).join("\n;\n");
+    const names = [...plain.matchAll(/^(?:var|let|const|function|class)\s+([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(20);
+    const esc = (n: string) => n.replace(/\$/g, "\\$");
+    for (const name of names) expect(min, `global ${name}`).toMatch(new RegExp(`(?:var|let|const|function|class|,)\\s*${esc(name)}\\b`));
   });
 
   it("text is compressed (brotli, else gzip) and identical once decoded; binaries are not", async () => {

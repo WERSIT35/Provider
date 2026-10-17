@@ -8,12 +8,12 @@
 // BENCH_HEADLESS=shell for a chrome-headless-shell binary (default: new headless).
 // --minutes N (default 20): stop starting new spins after N minutes and report what was measured.
 // Writes qa/bench/client-<mode>.json.
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { args, launchPlayer, sleep, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
 pinGeneratorSide();
 
-const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20, profile: "", trace: "", perf: "" });
+const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20, profile: "", trace: "", perf: "", snapshots: "" });
 const MODE = a.mode;
 const SPINS = a.spins || (MODE === "soak" ? 500 : 20);
 
@@ -35,7 +35,8 @@ let result;
 try {
   const page = await browser.newPage();
   const cdp = await page.createCDPSession();
-  await cdp.send("Network.enable");
+  // No response bodies kept by DevTools (the bench reads sizes only): its buffer would sit in the page's heap.
+  await cdp.send("Network.enable", { maxResourceBufferSize: 0, maxTotalBufferSize: 0 });
   await page.setViewport({ width: 412, height: 823, deviceScaleFactor: 1.75, isMobile: true, hasTouch: true });
   await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
   if (MODE === "mobile") {
@@ -81,7 +82,17 @@ try {
   await sleep(1500);
 
   await cdp.send("HeapProfiler.enable");
-  const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); const h = await cdp.send("Runtime.getHeapUsage"); const d = await cdp.send("Memory.getDOMCounters");
+  // The page's frame/event logs move to Node before every heap sample, so the heap the
+  // soak reports is the game's own, not the bench's ever-growing per-frame log.
+  const acc = { frames: [], animFrames: [], long: [], events: [] };
+  const drain = async () => {
+    const b = await page.evaluate(() => { const b = window.__bench; const out = { frames: b.frames, animFrames: b.animFrames, long: b.long, events: b.events };
+      b.frames = []; b.animFrames = []; b.long = []; b.events = []; return out; });
+    for (const k of Object.keys(acc)) for (const x of b[k]) acc[k].push(x);
+  };
+  // Console messages the DevTools inspector holds (up to 1,000; the client logs one line per
+  // round) are the harness's, not the game's: dropped before each sample too.
+  const heap = async () => { await drain(); await cdp.send("Runtime.discardConsoleEntries").catch(() => {}); await cdp.send("HeapProfiler.collectGarbage"); const h = await cdp.send("Runtime.getHeapUsage"); const d = await cdp.send("Memory.getDOMCounters");
     return { heapMB: +(h.usedSize / 1048576).toFixed(2), nodes: d.nodes, listeners: d.jsEventListeners }; };
   // Same as tools/spin-e2e.js: the bonus feature screen waits for a click. Other popups close.
   const dismiss = () => page.evaluate(() => {
@@ -105,6 +116,7 @@ try {
   };
   if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
   await page.evaluate(() => { window.__bench.frames = []; window.__bench.animFrames = []; window.__bench.long = []; window.__bench.events = []; });
+  for (const k of Object.keys(acc)) acc[k].length = 0;
 
   // A finger's tap: touch down and up 80 ms apart BY THEIR TIMESTAMPS, sent straight
   // over CDP. puppeteer's page.tap() first scrolls and waits for the element to be
@@ -136,6 +148,18 @@ try {
     await dismiss();
     await sleep(a.pause); // a human never re-taps inside SPIN_SETTLE_GUARD_MS (250 ms): such a press is dropped by design
     if (MODE === "soak" && (i === 25 || (i > 0 && i % 100 === 0))) heapSamples.push({ spin: i, ...(await heap()) });
+    // --snapshots <dir>: V8 heap snapshots at spins 100 and SPINS-1 (diff them to find a leak's retainers).
+    if (a.snapshots && (i === 100 || i === SPINS - 1)) {
+      await drain(); await cdp.send("Runtime.discardConsoleEntries").catch(() => {});
+      const chunks = []; const onChunk = (e) => chunks.push(e.chunk);
+      cdp.on("HeapProfiler.addHeapSnapshotChunk", onChunk);
+      await cdp.send("HeapProfiler.collectGarbage");
+      await cdp.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false });
+      cdp.off("HeapProfiler.addHeapSnapshotChunk", onChunk);
+      mkdirSync(a.snapshots, { recursive: true });
+      writeFileSync(`${a.snapshots}/spin-${i}.heapsnapshot`, chunks.join(""));
+      log("heap snapshot", `${a.snapshots}/spin-${i}.heapsnapshot`);
+    }
     const s0 = Date.now();
     let sent = false;
     for (let attempt = 0; attempt < 3 && !sent; attempt++) {
@@ -178,7 +202,8 @@ try {
   }
   if (a.profile) { const { profile } = await cdp.send("Profiler.stop"); writeFileSync(a.profile, JSON.stringify(profile)); log("profile →", a.profile); }
 
-  const st = await page.evaluate(() => window.__bench);
+  await drain();
+  const st = acc;
   const f = st.frames.filter((x) => x < 1000).sort((x, y) => x - y);
   const af = st.animFrames.filter((x) => x < 1000).sort((x, y) => x - y);
   const q = (arr, p) => (arr.length ? +arr[Math.min(arr.length - 1, Math.floor(p * arr.length))].toFixed(1) : null);
