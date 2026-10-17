@@ -12,6 +12,7 @@
  *   • buy_feature_enabled    false → buy-feature is refused (FEATURE_BUY_DISABLED, 403).
  * Client-applied (the server cannot tell them apart from a normal spin):
  *   • autoplay_enabled, max_autoplay_spins, turbo_enabled.
+ *   • slam_stop_enabled      the client may offer slam-stop (missing = follows turbo).
  *
  * The presets are illustrative starting points, NOT legal advice: an operator's
  * compliance team must confirm every value against the current rules of its licence.
@@ -28,6 +29,11 @@ export interface RegulatoryProfile {
   autoplay_enabled: boolean;
   max_autoplay_spins: number | null;
   turbo_enabled: boolean;
+  /**
+   * Slam-stop (a Stop press that cuts the reel animation short). Optional because profiles
+   * stored before it existed lack it; a missing value follows turbo_enabled.
+   */
+  slam_stop_enabled?: boolean;
   buy_feature_enabled: boolean;
 }
 
@@ -39,6 +45,7 @@ export const REGULATORY_PRESETS: Readonly<Record<string, RegulatoryProfile>> = O
     autoplay_enabled: true,
     max_autoplay_spins: null,
     turbo_enabled: true,
+    slam_stop_enabled: true,
     buy_feature_enabled: true
   },
   // Illustrative: GB-style slot rules (2.5s minimum cycle, no autoplay, no turbo,
@@ -50,6 +57,7 @@ export const REGULATORY_PRESETS: Readonly<Record<string, RegulatoryProfile>> = O
     autoplay_enabled: false,
     max_autoplay_spins: 0,
     turbo_enabled: false,
+    slam_stop_enabled: false,
     buy_feature_enabled: false
   },
   // Illustrative: hourly reality check, otherwise permissive.
@@ -60,6 +68,7 @@ export const REGULATORY_PRESETS: Readonly<Record<string, RegulatoryProfile>> = O
     autoplay_enabled: true,
     max_autoplay_spins: 100,
     turbo_enabled: true,
+    slam_stop_enabled: true,
     buy_feature_enabled: true
   },
   // Illustrative: Swedish-style limits (paced rounds, no feature buy, hourly check).
@@ -70,6 +79,7 @@ export const REGULATORY_PRESETS: Readonly<Record<string, RegulatoryProfile>> = O
     autoplay_enabled: true,
     max_autoplay_spins: 100,
     turbo_enabled: false,
+    slam_stop_enabled: false,
     buy_feature_enabled: false
   }
 });
@@ -113,7 +123,7 @@ export function buildRegulatoryProfile(input: { preset?: unknown } & Partial<Rec
     if (v !== null && (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000)) throw bad("max_autoplay_spins");
     p.max_autoplay_spins = v as number | null;
   }
-  for (const f of ["autoplay_enabled", "turbo_enabled", "buy_feature_enabled"] as const) {
+  for (const f of ["autoplay_enabled", "turbo_enabled", "slam_stop_enabled", "buy_feature_enabled"] as const) {
     if (input[f] !== undefined) {
       if (typeof input[f] !== "boolean") throw bad(f);
       p[f] = input[f] as boolean;

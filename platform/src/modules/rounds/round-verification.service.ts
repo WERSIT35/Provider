@@ -100,9 +100,16 @@ export class RoundVerificationService {
         freeSpinsLeft: round.pre_state.free_spins_left,
         freeSpinPersistentMultiplier: round.pre_state.free_spin_multiplier_carry,
         bonusRoundWin: round.pre_state.bonus_round_win ?? 0,
-        anteEnabled: round.pre_state.ante_enabled
+        anteEnabled: round.pre_state.ante_enabled,
+        // Stateful games: the exact state the round was resolved against.
+        ...("feature_state" in round.pre_state ? { featureState: round.pre_state.feature_state } : {}),
+        ...("player_state" in round.pre_state ? { playerState: round.pre_state.player_state } : {})
       },
-      { bet_amount: round.bet_amount, ante_enabled: round.ante_enabled },
+      {
+        bet_amount: round.bet_amount,
+        ante_enabled: round.ante_enabled,
+        ...(round.pre_state.choice !== undefined ? { choice: round.pre_state.choice } : {})
+      },
       round.pre_state.resolve_mode
     );
     // A seed only reproduces its outcome under the engine version AND the rules payload

@@ -140,7 +140,8 @@ async function loadAsset(root: string, rel: string): Promise<Asset | null> {
  */
 const BUNDLE_BLOCK = /<!-- bundle:start[\s\S]*?<!-- bundle:end -->/;
 const BUNDLE_PATH = "app.bundle.js";
-let bundle: { key: string; asset: Asset; html: Asset } | null = null;
+/** One bundle per client root (Vault 20K at /play/, every other game at /play/g/<code>/). */
+const bundles = new Map<string, { key: string; asset: Asset; html: Asset }>();
 
 async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; html: Asset } | null> {
   const html = index.body.toString("utf8");
@@ -150,12 +151,15 @@ async function bundleFor(root: string, index: Asset): Promise<{ asset: Asset; ht
   const parts = await Promise.all(srcs.map((src) => loadAsset(root, src)));
   if (parts.some((p) => !p)) return null; // a missing file: serve the page unbundled
   const key = index.etag + parts.map((p) => (p as Asset).etag).join("");
+  let bundle = bundles.get(root);
   if (bundle?.key !== key) {
     const code = await minify(parts.map((p) => (p as Asset).body.toString("utf8")).join("\n;\n"));
+    bundle = bundles.get(root);
     if (bundle?.key === key) return { asset: bundle.asset, html: bundle.html }; // another request built it meanwhile
     const asset = makeAsset(".js", Buffer.from(code), 0);
     const tag = `<script src="${BUNDLE_PATH}?v=${asset.etag.slice(1, 13)}"></script>`;
     bundle = { key, asset, html: makeAsset(".html", Buffer.from(html.replace(BUNDLE_BLOCK, tag)), 0) };
+    bundles.set(root, bundle);
   }
   return { asset: bundle.asset, html: bundle.html };
 }
@@ -249,6 +253,26 @@ const playPageRoutes: FastifyPluginAsync = async (app) => {
   app.get("/play/*", async (req, reply) => {
     const rel = (req.params as { "*": string })["*"] || "index.html";
     return serveFile(root, rel, req, reply, framingHeaders(app, launchToken(req)));
+  });
+
+  // Every other game's client: /play/g/<code>/ serves games/<code>/<client> (the
+  // manifest's `client` folder), with the same framing rules and caching as /play/.
+  const gameRoot = (code: string): string | null => {
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(code)) return null;
+    return app.container.games.list().some((g) => g.code === code) ? app.container.games.clientDir(code) : null;
+  };
+  app.get("/play/g/:code", (req, reply) => {
+    const { code } = req.params as { code: string };
+    if (!gameRoot(code)) return notFound(reply);
+    const url = req.raw.url ?? "";
+    const search = url.includes("?") ? url.slice(url.indexOf("?")) : "";
+    return reply.code(302).header("location", `/play/g/${code}/${search}`).send();
+  });
+  app.get("/play/g/:code/*", async (req, reply) => {
+    const { code, "*": sub } = req.params as { code: string; "*": string };
+    const dir = gameRoot(code);
+    if (!dir) return notFound(reply);
+    return serveFile(dir, sub || "index.html", req, reply, framingHeaders(app, launchToken(req)));
   });
 };
 

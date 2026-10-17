@@ -10,7 +10,7 @@
 
 export type BodyCheck<T> = { ok: true; body: T } | { ok: false; message: string };
 
-type FieldType = "string" | "boolean" | "bet";
+type FieldType = "string" | "boolean" | "bet" | "index";
 type Shape = Record<string, { type: FieldType; required?: boolean }>;
 
 /** A stake: a finite, positive number (the session's allowed_bets decide the rest). */
@@ -42,12 +42,14 @@ export function checkBody<T>(raw: unknown, shape: Shape): BodyCheck<T> {
     }
     if (spec.type === "bet" && !isStake(v)) return { ok: false, message: `${key} must be a positive finite number` };
     if (spec.type === "boolean" && typeof v !== "boolean") return { ok: false, message: `${key} must be a boolean` };
+    if (spec.type === "index" && (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 63)) return { ok: false, message: `${key} must be an integer 0-63` };
     if (spec.type === "string" && (typeof v !== "string" || v.length > 256)) return { ok: false, message: `${key} must be a string (max 256)` };
   }
   return { ok: true, body: obj as T };
 }
 
-export const SPIN_BODY: Shape = { bet_amount: { type: "bet", required: true }, ante_enabled: { type: "boolean" } };
+// choice: a pick from the pending offer (stateful games; the orchestrator checks it against the offer).
+export const SPIN_BODY: Shape = { bet_amount: { type: "bet", required: true }, ante_enabled: { type: "boolean" }, choice: { type: "index" } };
 export const BUY_BODY: Shape = { bet_amount: { type: "bet", required: true } };
 export const LAUNCH_BODY: Shape = {
   game_code: { type: "string", required: true },

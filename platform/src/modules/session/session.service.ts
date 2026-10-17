@@ -41,6 +41,12 @@ export interface Session {
    * free spins under their trigger. Retriggers keep it; it clears with the lock.
    */
   locked_feature_ref: string | null;
+  /**
+   * A stateful game's per-session state (USES_FEATURE_STATE), e.g. Relic Forge's relics
+   * and pending draft offer: what the engine returned as `feature_state` after the last
+   * round. Absent for Vault 20K.
+   */
+  feature_state?: unknown;
   created_at: string;
 }
 
@@ -229,6 +235,8 @@ export class SessionService {
     if (typeof carry === "number") s.free_spin_multiplier_carry = carry;
     const bonusTotal = (result as { bonus_round_win?: number }).bonus_round_win;
     if (typeof bonusTotal === "number") s.bonus_round_win = bonusTotal;
+    // Stateful games: the engine's state after this round (a key Vault never returns).
+    if (Object.prototype.hasOwnProperty.call(result, "feature_state")) s.feature_state = result.feature_state ?? null;
     if (s.free_spins_left <= 0) {
       s.bonus_round_win = 0;
       Object.assign(s, UNLOCKED);

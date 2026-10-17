@@ -10,6 +10,7 @@ import type { Session } from "../modules/session/session.service";
 interface SpinBody {
   bet_amount: number;
   ante_enabled?: boolean;
+  choice?: number;
 }
 
 /** Game-client API: exchange a launch token for a session, then spin. */
@@ -63,6 +64,9 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       { operatorPlayerId: session.operator_player_id, currency: session.currency }
     );
     const inFeature = session.free_spins_left > 0;
+    const engine = app.container.games.engineFor(session.game_code);
+    const profile = app.container.regulatory.profile(session.operator_id);
+    const presentation = app.container.games.presentationFor(session.game_code);
     let bet: number | null = null;
     let ante = false;
     if (inFeature && session.locked_bet != null) {
@@ -101,9 +105,26 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
               locked_ante: session.locked_ante,
               feature_ref: session.locked_feature_ref ?? null,
               multiplier_bank: session.free_spin_multiplier_carry,
-              bonus_round_win: session.bonus_round_win ?? 0
+              bonus_round_win: session.bonus_round_win ?? 0,
+              // Stateful games: the engine's feature state (e.g. a pending relic offer).
+              ...(engine.usesFeatureState() ? { feature_state: session.feature_state ?? null } : {})
             }
-          : null
+          : null,
+        // Stateful games: the player's saved state per bet (e.g. the Forge meter), keyed
+        // by the bet with 2 decimals. Under changed rules a state reads back empty.
+        ...(engine.usesPlayerState()
+          ? {
+              player_states: app.container.playerStates.byBet(
+                {
+                  operator_id: session.operator_id,
+                  operator_player_id: session.operator_player_id,
+                  game_code: session.game_code,
+                  currency: session.currency
+                },
+                engine.rulesHash()
+              )
+            }
+          : {})
       },
       // Operator-granted free rounds waiting for this player (Campaign Manager).
       free_rounds: app.container.campaigns
@@ -127,8 +148,12 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       // The jurisdiction rules the client must apply (autoplay / turbo / buy switches,
       // round pacing) and when the next reality check is due. The RGS enforces pacing,
       // the reality check and the buy switch itself regardless.
+      // Turbo and slam-stop are on only where the market allows them AND the game's
+      // manifest does (Relic Forge ships both off; Vault 20K's switches are unchanged).
       regulatory: {
-        ...app.container.regulatory.profile(session.operator_id),
+        ...profile,
+        turbo_enabled: profile.turbo_enabled && presentation.turbo,
+        slam_stop_enabled: (profile.slam_stop_enabled ?? profile.turbo_enabled) && presentation.slam_stop,
         reality_check_due_in_ms: app.container.regulatory.realityCheckDueIn(session)
       }
     };
@@ -166,7 +191,8 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
       const outcome = await app.container.orchestrator.spin(req.sessionId as string, {
         bet_amount: body.bet_amount,
         ante_enabled: Boolean(body.ante_enabled),
-        idempotency_key: idem
+        idempotency_key: idem,
+        ...(body.choice !== undefined ? { choice: body.choice } : {})
       });
       reply.header("idempotent-replay", String(outcome.idempotent_replay));
       // Return the full engine SpinResult so a rich client (the canvas game)

@@ -54,6 +54,16 @@ export class GameRegistry implements EngineSource {
     return m ? path.resolve(m.root, m.client) : null;
   }
 
+  /**
+   * The controls a session's game allows at most (manifest `presentation`; missing =
+   * allowed). The session payload ANDs them with the market's regulatory switches.
+   */
+  presentationFor(gameCode?: string | null): { turbo: boolean; slam_stop: boolean } {
+    const code = this.engineFor(gameCode).gameCode;
+    const p = this.manifests.find((x) => x.code === code)?.presentation ?? {};
+    return { turbo: p.turbo !== false, slam_stop: p.slam_stop !== false };
+  }
+
   /** A game's rules JSON (the client shows the pays the engine pays: one file). */
   rulesPath(code: string): string | null {
     const m = this.manifests.find((x) => x.code === code);

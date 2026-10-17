@@ -9,6 +9,7 @@ import type { InMemoryTransactionStore } from "../wallet/transaction-store";
 import { type WalletAdapter, type Money, WalletDeclinedError } from "../wallet/wallet.types";
 import type { InMemoryCampaignRepository, ConsumedSpin } from "../campaigns/campaign.repository";
 import { DebitReconciler } from "../wallet/debit-reconciler";
+import { PlayerStateStore, playerStateId } from "../player-state/player-state.store";
 import type { RegulatoryService } from "../regulatory/regulatory";
 import { metrics } from "../../lib/metrics";
 
@@ -21,6 +22,8 @@ export interface SpinRequest {
   bet_amount: number;
   ante_enabled?: boolean;
   idempotency_key: string;
+  /** The player's pick from the pending offer (games with SUPPORTS_CHOICE only). */
+  choice?: number;
 }
 
 export interface BuyFeatureRequest {
@@ -99,7 +102,15 @@ export class RoundOrchestrator {
   private readonly inflight = new Set<string>();
   /** Sessions with a round in progress (see exclusive). */
   private readonly busySessions = new Set<string>();
+  /**
+   * Player states (USES_PLAYER_STATE) with a round in progress, and which round holds
+   * each. A player's state at one bet is shared by all their sessions of that game, so
+   * two sessions must not both read the same meter and both write it back.
+   */
+  private readonly busyPlayerStates = new Set<string>();
+  private readonly playerStateHolds = new Map<string, string>();
   private readonly debits: DebitReconciler;
+  private readonly playerStates: PlayerStateStore;
 
   constructor(
     /** One game's engine, or the GameRegistry: a round uses its session's game. */
@@ -122,9 +133,12 @@ export class RoundOrchestrator {
       commit: () => Promise<void>;
       /** Postgres mode: has this key ever been used (beyond what memory still holds)? */
       keyUsed?: (key: string) => Promise<boolean>;
-    }
+    },
+    /** Per-player state across sessions (stateful games); a private one if omitted. */
+    playerStates?: PlayerStateStore
   ) {
     this.debits = debits ?? new DebitReconciler(wallet, transactions);
+    this.playerStates = playerStates ?? new PlayerStateStore();
   }
 
   /** Drop cached outcomes older than the retry window (Map order = insertion = age). */
@@ -204,7 +218,34 @@ export class RoundOrchestrator {
     } finally {
       this.inflight.delete(key);
       this.busySessions.delete(sessionId);
+      const held = this.playerStateHolds.get(key);
+      if (held !== undefined) {
+        this.playerStateHolds.delete(key);
+        this.busyPlayerStates.delete(held);
+      }
     }
+  }
+
+  /** Claim a player state for this round (released with the round, in exclusive()). */
+  private holdPlayerState(idempotencyKey: string, stateId: string): void {
+    if (this.busyPlayerStates.has(stateId)) throw new Error("PLAYER_STATE_BUSY");
+    this.busyPlayerStates.add(stateId);
+    this.playerStateHolds.set(idempotencyKey, stateId);
+  }
+
+  /**
+   * The player-state row a round at this bet reads and writes, or null when the
+   * session's game keeps none.
+   */
+  private playerStateKeyFor(session: Session, betAmount: number) {
+    if (!this.engines.engineFor(session.game_code).usesPlayerState()) return null;
+    return {
+      operator_id: session.operator_id,
+      operator_player_id: session.operator_player_id,
+      game_code: session.game_code,
+      currency: session.currency,
+      bet_amount: betAmount
+    };
   }
 
   /**
@@ -254,6 +295,14 @@ export class RoundOrchestrator {
     if (!featureLock && !session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
     // A game without an ante (classic-5x3) refuses one before any money moves.
     if (!featureLock && req.ante_enabled && !this.engines.engineFor(session.game_code).supportsAnte()) throw new Error("ANTE_NOT_AVAILABLE");
+    // Player choice (Relic Forge's draft): the previous round left an offer of N options
+    // in the session's feature state; this round must name one of them, and a round with
+    // no offer pending takes no choice. Checked before anything is consumed or debited.
+    const options = this.engines.engineFor(session.game_code).choiceOptions(session.feature_state);
+    if (req.choice !== undefined && (options === 0 || !Number.isInteger(req.choice) || req.choice < 0 || req.choice >= options)) {
+      throw new Error("INVALID_CHOICE");
+    }
+    if (options > 0 && req.choice === undefined) throw new Error("CHOICE_REQUIRED");
     // Jurisdiction gate, before anything is consumed or debited: a due reality check
     // stops every round; pacing applies to round starts, not to a feature's free spins.
     this.regulatory?.beforeRound(session, isFreeSpin ? "feature_spin" : "round");
@@ -287,6 +336,16 @@ export class RoundOrchestrator {
     const restoreFreeRound = () => {
       if (freeRound) this.campaigns?.restoreSpin(freeRound.grant.id);
     };
+    const stateKey = this.playerStateKeyFor(session, betAmount);
+    if (stateKey) {
+      try {
+        this.holdPlayerState(req.idempotency_key, playerStateId(stateKey));
+      } catch (err) {
+        restoreFreeRound();
+        throw err;
+      }
+    }
+    const snapshot = this.snapshotFor(session, betAmount);
     const intents = this.durability?.intents;
     const intent: OpenIntentInput = {
       idempotency_key: req.idempotency_key,
@@ -366,9 +425,10 @@ export class RoundOrchestrator {
     // 2) RESOLVE (server-authoritative, seeded). Failure after debit → rollback.
     let resolved: AuthoritativeRound;
     try {
-      resolved = this.resolver.resolve(this.snapshotFor(session), {
+      resolved = this.resolver.resolve(snapshot, {
         bet_amount: betAmount,
-        ante_enabled: anteEnabled
+        ante_enabled: anteEnabled,
+        ...(req.choice !== undefined ? { choice: req.choice } : {})
       });
     } catch (err) {
       if (debitTxRef) {
@@ -409,6 +469,8 @@ export class RoundOrchestrator {
       anteEnabled,
       resolveMode: "spin",
       resolved,
+      snapshot,
+      choice: req.choice,
       intent,
       balanceAfterDebit,
       featureRef: featureLock?.feature_ref ?? null,
@@ -440,6 +502,9 @@ export class RoundOrchestrator {
     // A game without a feature buy (classic-5x3) refuses it before any money moves.
     if (!this.engines.engineFor(session.game_code).supportsBuy()) throw new Error("FEATURE_BUY_DISABLED");
     this.regulatory?.beforeRound(session, "buy");
+    const stateKey = this.playerStateKeyFor(session, req.bet_amount);
+    if (stateKey) this.holdPlayerState(req.idempotency_key, playerStateId(stateKey));
+    const snapshot = this.snapshotFor(session, req.bet_amount);
 
     const ctx = { operatorId: session.operator_id };
     const charge = Number((req.bet_amount * this.engines.engineFor(session.game_code).buyCostMultiplier()).toFixed(2));
@@ -506,7 +571,7 @@ export class RoundOrchestrator {
     // 2) RESOLVE the forced-trigger round. Failure after debit → rollback.
     let resolved: AuthoritativeRound;
     try {
-      resolved = this.resolver.resolveBuy(this.snapshotFor(session), { bet_amount: req.bet_amount });
+      resolved = this.resolver.resolveBuy(snapshot, { bet_amount: req.bet_amount });
     } catch (err) {
       await this.wallet.rollback(ctx, {
         idempotencyKey: `${req.idempotency_key}:rollback`,
@@ -540,6 +605,8 @@ export class RoundOrchestrator {
       anteEnabled: false,
       resolveMode: "buy",
       resolved,
+      snapshot,
+      choice: undefined,
       intent,
       balanceAfterDebit: debit.balanceAfter,
       featureRef: null,
@@ -566,6 +633,10 @@ export class RoundOrchestrator {
       anteEnabled: boolean;
       resolveMode: "spin" | "buy";
       resolved: AuthoritativeRound;
+      /** The pre-round engine state the round was resolved against. */
+      snapshot: SessionSnapshot;
+      /** The player's pick, when the round had an offer to choose from. */
+      choice: number | undefined;
       /** The round's write-ahead intent (opened before the debit, if there was one). */
       intent: OpenIntentInput;
       /** The casino's balance after this round's debit, when it said (balanceAfter). */
@@ -578,7 +649,7 @@ export class RoundOrchestrator {
       campaign: { campaign_id: string; grant_id: string } | null;
     }
   ): Promise<SpinOutcome> {
-    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, intent, featureRef, freeRound, campaign } = args;
+    const { idempotencyKey, roundRef, betAmount, charge, isFreeSpin, anteEnabled, resolveMode, resolved, snapshot, choice, intent, featureRef, freeRound, campaign } = args;
     // The balance after the round's LAST money move, as the casino reported it on that
     // move (the debit; then the credit, if any). Unknown → one balance call at the end.
     let balanceAfterRound: Money | undefined = args.balanceAfterDebit;
@@ -593,7 +664,11 @@ export class RoundOrchestrator {
       free_spin_multiplier_carry: session.free_spin_multiplier_carry,
       bonus_round_win: session.bonus_round_win ?? 0,
       ante_enabled: anteEnabled,
-      resolve_mode: resolveMode
+      resolve_mode: resolveMode,
+      // Stateful games only: absent for Vault 20K, so its rounds hash exactly as before.
+      ...(snapshot.featureState !== undefined ? { feature_state: snapshot.featureState } : {}),
+      ...(snapshot.playerState !== undefined ? { player_state: snapshot.playerState } : {}),
+      ...(choice !== undefined ? { choice } : {})
     };
 
     // 3) RECORD the immutable round (legal system of record).
@@ -636,6 +711,12 @@ export class RoundOrchestrator {
       grant_id: campaign?.grant_id ?? null,
       feature_ref: featureRef ?? roundRef
     });
+    // The player's state at this bet (stateful games), queued with the round so both
+    // become durable in the same commit.
+    const stateKey = this.playerStateKeyFor(session, betAmount);
+    if (stateKey && Object.prototype.hasOwnProperty.call(resolved.result, "player_state")) {
+      this.playerStates.set(stateKey, resolved.result.player_state, this.engines.engineFor(session.game_code).rulesHash());
+    }
 
     const win = Number(resolved.result.total_win ?? 0);
     const creditType = campaign ? "FREE_ROUND_WIN" : "CREDIT";
@@ -772,13 +853,18 @@ export class RoundOrchestrator {
     return rebuilt;
   }
 
-  private snapshotFor(session: Session): SessionSnapshot {
+  private snapshotFor(session: Session, betAmount: number): SessionSnapshot {
+    const engine = this.engines.engineFor(session.game_code);
+    const stateKey = this.playerStateKeyFor(session, betAmount);
     return {
       gameId: session.game_code,
       balance: ENGINE_BALANCE_SENTINEL,
       freeSpinsLeft: session.free_spins_left,
       freeSpinPersistentMultiplier: session.free_spin_multiplier_carry,
-      bonusRoundWin: session.bonus_round_win ?? 0
+      bonusRoundWin: session.bonus_round_win ?? 0,
+      // Stateful games only (Vault 20K's snapshot keeps exactly its old keys).
+      ...(engine.usesFeatureState() ? { featureState: session.feature_state ?? null } : {}),
+      ...(stateKey ? { playerState: this.playerStates.get(stateKey, engine.rulesHash()) } : {})
     };
   }
 }

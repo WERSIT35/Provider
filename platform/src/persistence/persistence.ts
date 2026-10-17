@@ -141,9 +141,16 @@ const TABLES: Record<string, TableSpec> = {
     { orderBy: "updated_at" }
   ),
   player_sessions: spec(
-    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "locked_feature_ref", "created_at"],
+    ["id", "operator_id", "game_id", "game_code", "math_config_id", "operator_player_id", "currency", "allowed_bets", "status", "free_spins_left", "free_spin_multiplier_carry", "bonus_round_win", "locked_bet", "locked_currency", "locked_ante", "locked_campaign_id", "locked_grant_id", "locked_feature_ref", "feature_state", "created_at"],
     ["id"],
-    { jsonb: ["allowed_bets"], orderBy: "created_at" }
+    // feature_state: a stateful game's session state (migration 0015); never set for Vault 20K.
+    { jsonb: ["allowed_bets", "feature_state"], orderBy: "created_at", omitNull: ["feature_state"] }
+  ),
+  // State a game keeps per player, game, currency and bet across sessions (migration 0015).
+  player_game_state: spec(
+    ["id", "operator_id", "operator_player_id", "game_code", "currency", "bet_amount", "state", "rules_hash", "version", "updated_at"],
+    ["id"],
+    { jsonb: ["state"], orderBy: "updated_at", version: "version" }
   ),
   rounds: spec(
     ["id", "seq", "round_ref", "session_id", "operator_id", "operator_player_id", "game_id", "math_config_id", "bet_amount", "bet_charged", "is_free_spin", "ante_enabled", "rng_seed_hex", "rng_algo", "rng_bytes_drawn", "outcome_hash", "total_win", "multiplier_applied", "status", "pre_state", "outcome_jsonb", "campaign_id", "grant_id", "engine_version", "rules_hash", "trace_id", "prev_hash", "payload_hash", "chain_hash", "signature", "signing_key_id", "created_at"],

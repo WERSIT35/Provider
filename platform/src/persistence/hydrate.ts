@@ -15,6 +15,7 @@ import type { AdminAccount } from "../modules/admin/admin-account";
 import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 import type { SigningKeyRecord } from "../lib/security/signing-keyring";
+import type { PlayerGameState } from "../modules/player-state/player-state.store";
 
 /**
  * Load durable state from Postgres into the in-memory stores on boot, in the same
@@ -77,6 +78,9 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
   });
 
   // Unfinished write-ahead intents: boot recovery (jobs/round-recovery.ts) finishes them.
+  // Stateful games' per-player state (one row per player, game, currency and bet).
+  c.playerStates.hydrate((await p.loadTable("player_game_state")) as unknown as PlayerGameState[]);
+
   c.intents.hydrate(roundIntents as unknown as RoundIntent[]);
 
   const sandbox = sandboxOf(c.wallet);
@@ -160,6 +164,7 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
   c.adminAccounts.hydrate(adminAccounts as unknown as AdminAccount[]);
   c.campaigns.hydrate({ campaigns: campaigns as unknown as Campaign[], grants: playerCampaigns as unknown as PlayerCampaign[] });
   c.intents.hydrate(intents as unknown as RoundIntent[]);
+  c.playerStates.hydrate((await p.loadTable("player_game_state")) as unknown as PlayerGameState[]);
 
   // Reality-check totals of the sessions in memory come from ALL their rounds, not only
   // the window: loaded per session on its next request (history.ensureSessionStats).

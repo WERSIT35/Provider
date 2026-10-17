@@ -30,6 +30,14 @@ export interface RoundPreState {
   bonus_round_win?: number;
   ante_enabled: boolean;
   resolve_mode: "spin" | "buy";
+  /**
+   * Stateful games only (never present on a Vault 20K round, so its payload hash keys
+   * are unchanged): the session's feature state, the player's state at this bet, and the
+   * player's pick, exactly as the round was resolved with them.
+   */
+  feature_state?: unknown;
+  player_state?: unknown;
+  choice?: number;
 }
 
 /** Caller-supplied content of a round (everything except chain/identity fields). */
