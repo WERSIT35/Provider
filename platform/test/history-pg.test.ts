@@ -93,6 +93,12 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     await closePool();
   });
 
+  /** A session's reality-check totals as the database has them (every round). */
+  const dbTotals = async (sessionId: string) => {
+    const r = (await persistence.query("SELECT count(*)::int AS rounds, coalesce(sum(bet_charged),0)::float8 AS wagered FROM rounds WHERE session_id = $1", [sessionId])).rows[0] as { rounds: number; wagered: number };
+    return { rounds: r.rounds, wagered: r.wagered };
+  };
+
   /** The same reports, recomputed in memory over EVERY row in the database. */
   async function reference() {
     const rounds = new InMemoryRoundRepository();
@@ -158,7 +164,8 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     expect(c.roundsRepo.statsArePending(sessionId)).toBe(true); // boot did not aggregate it
     const status = await app.inject({ method: "GET", url: "/game/v1/reality-check", headers: { authorization: `Bearer ${tokens.p3}` } });
     expect(status.statusCode, status.body).toBe(200);
-    expect(status.json().stats).toMatchObject({ rounds: 60, wagered: 60 });
+    // The truth is the database (spins are unseeded: a bonus's free spins charge 0).
+    expect(status.json().stats).toMatchObject(await dbTotals(sessionId));
     expect(c.roundsRepo.statsArePending(sessionId)).toBe(false);
     const res = await spin(tokens.p3, randomUUID());
     expect(res.statusCode, res.body).toBe(200);
@@ -169,11 +176,16 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     // A bonus resumed after an hour keeps the session's old created_at, and the token
     // issued at the resume outlives the age-based eviction (seen in the 2 h soak).
     const sessionId = (await persistence.loadRows("rounds", { where: "operator_player_id = $1", params: ["p3"], limit: 1 }))[0].session_id as string;
-    expect(c.sessions.evictIdle(Date.now() + 2 * 3600_000)).toContain(sessionId);
+    if (c.sessions.get(sessionId).free_spins_left > 0) {
+      // Mid-bonus sessions are never evicted by age (by design); drop it as a restart would.
+      (c.sessions as unknown as { sessions: Map<string, unknown> }).sessions.delete(sessionId);
+    } else {
+      expect(c.sessions.evictIdle(Date.now() + 2 * 3600_000)).toContain(sessionId);
+    }
     expect(c.sessions.has(sessionId)).toBe(false);
     const status = await app.inject({ method: "GET", url: "/game/v1/reality-check", headers: { authorization: `Bearer ${tokens.p3}` } });
     expect(status.statusCode, status.body).toBe(200);
-    expect(status.json().stats).toMatchObject({ rounds: 61 });
+    expect(status.json().stats).toMatchObject(await dbTotals(sessionId));
     const res = await spin(tokens.p3, randomUUID());
     expect(res.statusCode, res.body).toBe(200);
   });
