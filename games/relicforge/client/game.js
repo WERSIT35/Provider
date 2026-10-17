@@ -129,77 +129,75 @@
     throw e;
   }
 
-  // ── symbols (inline SVG, no image files) ─────────────────────────────────
-  // Forged look: metals are stamped ingots in three-quarter view, gems are cut with facets,
-  // the specials glow. Every gradient id is per symbol, so a board of 30 shares 12 sets.
-  const METAL = { COPPER: ["#f0a074", "#b4592c", "#5e2810", "ᚠ"], IRON: ["#c4c9cd", "#6e767c", "#2c3236", "ᚢ"], BRONZE: ["#ecc27a", "#a5752c", "#4f3410", "ᚦ"], SILVER: ["#ffffff", "#bcc4cc", "#5f6a74", "ᚨ"] };
+  // ── symbols: copperplate engravings on parchment (docs/brand/relicforge.md) ──
+  // Ink lines and hatching; molten gold is the only saturated colour, so heat reads at once.
+  // Metals: ingots stamped with their alchemical sign, hatching density shows the metal.
+  // Gems: cut stones in facet hatching with one colour wash. Ids are the engine's.
+  const INK = "#1c1611";
+  const METAL = { COPPER: ["♀", 7, 0, "rgba(176,92,40,.28)"], IRON: ["♂", 3.2, 1, "rgba(60,60,64,.22)"], BRONZE: ["♃", 5, 0, "rgba(150,110,40,.26)"], SILVER: ["☽", 11, 0, "rgba(255,255,255,.35)"] };
   const GEM = {
-    RUBY: ["#ffb3bd", "#ff3352", "#7a0618", [[50, 6], [90, 34], [76, 92], [24, 92], [10, 34]]],
-    SAPPHIRE: ["#b8dcff", "#2f86ff", "#0a2370", [[50, 4], [94, 50], [50, 96], [6, 50]]],
-    EMERALD: ["#b6ffd6", "#21c46c", "#064a26", [[30, 8], [70, 8], [92, 30], [92, 70], [70, 92], [30, 92], [8, 70], [8, 30]]],
-    GOLD: ["#fff6c4", "#ffc23a", "#8a5a05", [[50, 4], [62, 36], [96, 38], [69, 59], [79, 94], [50, 74], [21, 94], [31, 59], [4, 38], [38, 36]]]
+    RUBY: ["rgba(200,30,50,.55)", [[50, 6], [90, 34], [76, 92], [24, 92], [10, 34]]],
+    SAPPHIRE: ["rgba(30,80,200,.55)", [[50, 4], [94, 50], [50, 96], [6, 50]]],
+    EMERALD: ["rgba(20,140,80,.55)", [[30, 8], [70, 8], [92, 30], [92, 70], [70, 92], [30, 92], [8, 70], [8, 30]]],
+    GOLD: ["rgba(255,176,0,.75)", [[50, 4], [62, 36], [96, 38], [69, 59], [79, 94], [50, 74], [21, 94], [31, 59], [4, 38], [38, 36]]]
   };
   const pts = (a) => a.map((p) => p.join(",")).join(" ");
-  function facets(outer, cx, cy, k) {
-    // A table (the outer shape shrunk toward a point above the centre) and one facet per
-    // edge, alternately lit and shaded: reads as a cut stone at any size.
+  // A hatch pattern: lines `gap` apart at `ang` degrees; `cross` adds the perpendicular set.
+  const hatch = (id, gap, ang, cross, w = 0.9) => `<pattern id="${id}" width="${gap}" height="${gap}" patternUnits="userSpaceOnUse" patternTransform="rotate(${ang})"><path d="M0 0 V${gap}" stroke="${INK}" stroke-width="${w}"/>${cross ? `<path d="M0 0 H${gap}" stroke="${INK}" stroke-width="${w}"/>` : ""}</pattern>`;
+  function facets(outer, cx, cy, k, id) {
+    // A table (the outline shrunk toward a point) and one facet per edge; shaded facets get hatching.
     const inner = outer.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
     let out = "";
     for (let i = 0; i < outer.length; i += 1) {
       const j = (i + 1) % outer.length;
-      const lit = (outer[i][0] + outer[j][0]) / 2 < cx || (outer[i][1] + outer[j][1]) / 2 < cy;
-      out += `<polygon points="${pts([outer[i], outer[j], inner[j], inner[i]])}" fill="${lit ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.28)"}"/>`;
+      const shade = (outer[i][0] + outer[j][0]) / 2 > cx && (outer[i][1] + outer[j][1]) / 2 > cy - 10;
+      out += `<polygon points="${pts([outer[i], outer[j], inner[j], inner[i]])}" fill="${shade ? `url(#${id}h)` : "none"}" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>`;
     }
-    return out + `<polygon points="${pts(inner)}" fill="rgba(255,255,255,.16)" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>`;
+    return out + `<polygon points="${pts(inner)}" fill="rgba(255,250,235,.35)" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>`;
   }
   function svgFor(sym) {
-    const id = "g" + sym;
+    const id = "e" + sym;
     if (METAL[sym]) {
-      const [hi, mid, lo, glyph] = METAL[sym];
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>` +
-        `<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
-        `<linearGradient id="${id}t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".5" stop-color="${hi}"/><stop offset="1" stop-color="${mid}"/></linearGradient></defs>` +
-        `<path d="M24 20 H76 L90 40 H10 Z" fill="url(#${id}t)" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
-        `<path d="M10 40 H90 L94 82 Q94 88 88 88 H12 Q6 88 6 82 Z" fill="url(#${id}f)" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
-        `<path d="M10 40 L6 82 Q6 88 12 88 L18 44 Z" fill="rgba(0,0,0,.22)"/><path d="M90 40 L94 82 Q94 88 88 88 L82 44 Z" fill="rgba(255,255,255,.12)"/>` +
-        `<rect x="26" y="48" width="48" height="32" rx="5" fill="rgba(0,0,0,.18)" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>` +
-        `<text x="50" y="79" text-anchor="middle" font-size="40" font-weight="900" fill="rgba(255,255,255,.45)" font-family="serif">${glyph}</text>` +
-        `<text x="50" y="77" text-anchor="middle" font-size="40" font-weight="900" fill="#1a0803" font-family="serif">${glyph}</text></svg>`;
+      const [sign, gap, cross, wash] = METAL[sym];
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>${hatch(id + "f", gap, 45, cross)}${hatch(id + "t", gap * 1.6, -30, 0, 0.7)}</defs>` +
+        `<path d="M24 22 H76 L90 40 H10 Z" fill="${wash}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M24 22 H76 L90 40 H10 Z" fill="url(#${id}t)"/>` +
+        `<path d="M10 40 H90 L94 84 H6 Z" fill="${wash}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M10 40 H90 L94 84 H6 Z" fill="url(#${id}f)" opacity=".85"/>` +
+        `<ellipse cx="50" cy="62" rx="27" ry="19" fill="#efe3c6" stroke="${INK}" stroke-width="2.2"/>` +
+        `<text x="50" y="74.5" text-anchor="middle" font-size="35" font-weight="700" fill="${INK}" font-family="Georgia, 'Segoe UI Symbol', serif">${sign}</text></svg>`;
     }
     if (GEM[sym]) {
-      const [hi, mid, lo, outer] = GEM[sym];
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".35" cy=".28" r=".85"><stop offset="0" stop-color="${hi}"/><stop offset=".45" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></radialGradient></defs>` +
-        `<polygon points="${pts(outer)}" fill="url(#${id})" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
-        facets(outer, 50, 46, 0.5) +
-        `<circle cx="36" cy="28" r="4" fill="#fff" opacity=".9"/><circle cx="36" cy="28" r="9" fill="#fff" opacity=".18"/></svg>`;
+      const [wash, outer] = GEM[sym];
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>${hatch(id + "h", 3.4, 40, 0, 0.8)}</defs>` +
+        `<polygon points="${pts(outer)}" fill="${wash}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>` + facets(outer, 50, 46, 0.48, id) +
+        `<path d="M30 24 l5 -6 M27 30 l-6 -3" stroke="${INK}" stroke-width="1.4" stroke-linecap="round"/></svg>`;
     }
-    if (sym === "WILD") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".4" r=".65"><stop offset="0" stop-color="#fff3d0"/><stop offset=".4" stop-color="#ffb347"/><stop offset=".8" stop-color="#e2470e"/><stop offset="1" stop-color="#7a1d06"/></radialGradient>` +
-        `<linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8e2dc"/><stop offset="1" stop-color="#5c524c"/></linearGradient></defs>` +
-        `<circle cx="50" cy="50" r="44" fill="url(#${id})" stroke="#120805" stroke-width="3"/>` +
-        `<circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,240,200,.5)" stroke-width="1.5" stroke-dasharray="3 5"/>` +
-        `<g transform="rotate(-35 50 46)"><rect x="46" y="30" width="8" height="46" rx="3" fill="#6b3a1a" stroke="#120805" stroke-width="2.5"/>` +
-        `<rect x="28" y="18" width="44" height="18" rx="3" fill="url(#${id}h)" stroke="#120805" stroke-width="2.5"/></g>` +
-        `<rect x="18" y="62" width="64" height="20" rx="4" fill="#1a0a04" stroke="#ffcf6b" stroke-width="2"/>` +
-        `<text x="50" y="78" text-anchor="middle" font-size="17" font-weight="900" fill="#ffcf6b" font-family="RF Carved, Georgia, serif" letter-spacing="1">WILD</text></svg>`;
+    if (sym === "WILD") { // crossed hammer and tongs in molten gold
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffb000" stop-opacity=".55"/><stop offset="1" stop-color="#ffb000" stop-opacity="0"/></radialGradient>` +
+        `<linearGradient id="${id}m" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset=".55" stop-color="#ffb000"/><stop offset="1" stop-color="#ff5e1a"/></linearGradient></defs>` +
+        `<circle cx="50" cy="50" r="48" fill="url(#${id})"/>` +
+        `<g transform="rotate(-40 50 50)" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"><rect x="46" y="30" width="8" height="58" rx="3" fill="url(#${id}m)"/><rect x="28" y="14" width="44" height="20" rx="3" fill="url(#${id}m)"/></g>` +
+        `<g transform="rotate(40 50 50)" stroke="${INK}" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M46 90 L46 40 Q46 26 38 16" stroke="url(#${id}m)" stroke-width="6"/><path d="M54 90 L54 40 Q54 26 62 16" stroke="url(#${id}m)" stroke-width="6"/><path d="M46 90 L46 40 Q46 26 38 16 M54 90 L54 40 Q54 26 62 16" stroke-width="1.6"/></g>` +
+        `<circle cx="50" cy="50" r="5" fill="#ffe08a" stroke="${INK}" stroke-width="2"/></svg>`;
     }
-    if (sym === "EMBER") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".7" r=".62"><stop offset="0" stop-color="#fff7d0"/><stop offset=".35" stop-color="#ffb347"/><stop offset=".75" stop-color="#ff5a14"/><stop offset="1" stop-color="#7a1d06"/></radialGradient>` +
-        `<radialGradient id="${id}c" cx=".5" cy=".7" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffe08a"/></radialGradient></defs>` +
-        `<path d="M50 6 C60 26 84 36 82 62 C80 84 66 94 50 94 C34 94 20 84 18 62 C17 46 30 40 33 24 C40 32 43 40 45 46 C48 30 45 18 50 6Z" fill="url(#${id})" stroke="#120805" stroke-width="3" stroke-linejoin="round"/>` +
-        `<path d="M50 46 C56 56 66 62 64 74 C62 84 56 88 50 88 C44 88 37 84 36 74 C35 64 44 60 46 52 C48 56 49 58 50 60 Z" fill="url(#${id}c)" opacity=".95"/></svg>`;
+    if (sym === "EMBER") { // a gold flame in an ink ring
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset=".6" stop-color="#ffb000"/><stop offset="1" stop-color="#ff5e1a"/></linearGradient></defs>` +
+        `<circle cx="50" cy="52" r="42" fill="none" stroke="${INK}" stroke-width="2.6"/><circle cx="50" cy="52" r="36" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="2 3"/>` +
+        `<path d="M50 14 C58 30 74 38 72 58 C70 76 60 84 50 84 C40 84 29 76 28 60 C27 46 38 42 40 30 C45 36 47 40 48 44 C50 32 48 22 50 14Z" fill="url(#${id})" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>` +
+        `<path d="M50 50 C55 58 61 63 59 72 C57 79 53 81 50 81 C46 81 42 78 41 72 C40 65 46 61 48 55 Z" fill="#fff4cc" stroke="${INK}" stroke-width="1.2"/></svg>`;
     }
-    if (sym === "SCATTER") {
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1cf"/><stop offset=".45" stop-color="#ffc23a"/><stop offset="1" stop-color="#8a5205"/></linearGradient>` +
-        `<radialGradient id="${id}b" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#3d2a1e"/><stop offset="1" stop-color="#120805"/></radialGradient></defs>` +
-        `<circle cx="50" cy="50" r="45" fill="url(#${id}b)" stroke="url(#${id})" stroke-width="5"/>` +
-        `<path d="M16 38 H70 C79 38 86 33 88 28 V44 C82 49 76 51 67 51 L63 61 H71 V70 H29 V61 H37 L33 51 C25 51 18 46 16 38Z" fill="url(#${id})" stroke="#120805" stroke-width="2.5" stroke-linejoin="round"/>` +
-        `<g stroke="#ffcf6b" stroke-width="2.5" stroke-linecap="round"><path d="M50 24 V16"/><path d="M38 27 L33 20"/><path d="M62 27 L67 20"/></g></svg>`;
+    if (sym === "SCATTER") { // an engraved anvil on a seal
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>${hatch(id + "h", 3, 30, 0, 0.9)}</defs>` +
+        `<circle cx="50" cy="50" r="46" fill="#efe3c6" stroke="${INK}" stroke-width="2.6"/><circle cx="50" cy="50" r="40" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="1 3"/>` +
+        `<path d="M16 40 H70 C79 40 86 35 88 30 V46 C82 51 76 53 67 53 L63 63 H71 V72 H29 V63 H37 L33 53 C25 53 18 48 16 40Z" fill="url(#${id}h)" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>` +
+        `<path d="M16 40 H70 C79 40 86 35 88 30" fill="none" stroke="#ffb000" stroke-width="2.4" stroke-linecap="round"/>` +
+        `<g stroke="#ffb000" stroke-width="2.2" stroke-linecap="round"><path d="M50 26 V18"/><path d="M38 29 L33 22"/><path d="M62 29 L67 22"/></g></svg>`;
     }
-    if (sym === "PRISM") {
-      const outer = [[50, 6], [94, 86], [6, 86]];
-      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6b6b"/><stop offset=".25" stop-color="#ffd36b"/><stop offset=".5" stop-color="#6bffb0"/><stop offset=".75" stop-color="#6bb8ff"/><stop offset="1" stop-color="#c36bff"/></linearGradient></defs>` +
-        `<polygon points="${pts(outer)}" fill="url(#${id})" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>` + facets(outer, 50, 62, 0.45) + `</svg>`;
+    if (sym === "PRISM") { // a prism splitting a gold ray
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs>${hatch(id + "h", 3.4, 60, 0, 0.8)}</defs>` +
+        `<path d="M2 58 L40 52" stroke="#ffb000" stroke-width="4" stroke-linecap="round"/>` +
+        `<g stroke-width="3" stroke-linecap="round"><path d="M62 54 L98 40" stroke="#c83232"/><path d="M62 56 L98 52" stroke="#ffb000"/><path d="M62 58 L98 64" stroke="#2f8c5a"/><path d="M62 60 L98 76" stroke="#3050b8"/></g>` +
+        `<polygon points="50,12 86,84 14,84" fill="rgba(255,250,235,.55)" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>` +
+        `<polygon points="50,12 86,84 50,84" fill="url(#${id}h)"/><path d="M50 12 L50 84" stroke="${INK}" stroke-width="1.4"/></svg>`;
     }
     return `<svg viewBox="0 0 100 100" aria-hidden="true"></svg>`;
   }
@@ -286,7 +284,12 @@
     const runs = [];
     for (const p of cells) {
       const n = cellAt(p.row, p.col);
-      if (n) runs.push(n.animate([{ transform: "scale(1)", opacity: 1 }, { transform: "scale(.2)", opacity: 0 }], { duration: reduced.matches ? 80 : 200, easing: "ease-in", fill: "forwards" }).finished);
+      // The engraving ignites (its ink glows gold), then the cell burns away.
+      if (n) runs.push(n.animate(reduced.matches ? [{ opacity: 1 }, { opacity: 0 }] : [
+        { filter: "none", opacity: 1, transform: "scale(1)" },
+        { filter: "sepia(1) saturate(6) brightness(1.5) drop-shadow(0 0 6px #ffb000)", opacity: 1, transform: "scale(1.04)", offset: 0.45 },
+        { filter: "sepia(1) saturate(8) brightness(2.2) blur(1px)", opacity: 0, transform: "scale(.86)" }
+      ], { duration: reduced.matches ? 80 : 260, easing: "ease-in", fill: "forwards" }).finished);
     }
     await Promise.all(runs);
   }
@@ -468,7 +471,7 @@
       </button>`;
     }).join("");
     openModal(`
-      <h2>Choose a relic · Forge spin ${spinNo} / ${f.spins_total}</h2>
+      <h2>Choose your relic</h2><p>Forge spin ${spinNo} of ${f.spins_total}</p>
       <p>All three choices are worth the same on average; they differ in how much the result can swing.${f.spins_left === 1 ? " <b>Next is Meltdown:</b> every relic fires." : ""}</p>
       <div class="cards">${cards}</div>`);
     el.sheet.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
@@ -515,13 +518,14 @@
     if (free) {
       if (r.pick) {
         hook("relic_pick", { relic: r.pick.relic, level: r.pick.level });
-        say(`${RELIC_NAMES[r.pick.relic]} Lv${r.pick.level} · Relic bonus ×${bonus.toFixed(2)}`);
+        say(`${RELIC_NAMES[r.pick.relic]} ${"I".repeat(r.pick.level)} — the bonus stands at ×${bonus.toFixed(2)}`);
       }
       for (const e of r.evolved || []) await evolutionMoment(e);
       S.forge = Object.assign({}, S.forge, { relics: r.relics, evolutions: r.evolutions, relic_bonus: bonus, pending_offer: null });
       showForge();
       if (r.meltdown) {
         hook("meltdown_start");
+        document.body.classList.add("meltdown"); say("Meltdown.", true);
         el.meltdownPill.hidden = false;
         relicTray(r.relics, r.evolutions, true);
         shake(el.boardWrap);
@@ -574,6 +578,7 @@
       await pace(120);
     }
     el.hud.classList.remove("on");
+    document.body.classList.remove("meltdown");
     // The server's total is the paid one (capped, rounded); the running figure was the story.
     el.winText.textContent = money(r.total_win);
 
@@ -585,10 +590,10 @@
       await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, 2600);
     }
     if (r.total_win > 0 && !(celebrate && winTier(r.total_win / bet)) && !r.cap_reached) sfx("rf_win");
-    if (r.total_win > 0) say(`Win ${money(r.total_win)}`, celebrate);
+    if (r.total_win > 0) say(`Forged: ${money(r.total_win)}`, celebrate);
     // The furnace drone starts once the first round has been shown (not during load).
     if (Sound && !S.musicOn) { S.musicOn = true; Sound.warmMusic?.(); Sound.startMusic?.(); }
-    else say(free ? "No win this spin" : `Clusters of ${S.rules.layout.min_cluster}+ pay`);
+    else say(free ? "The hammer rests." : "The forge is cold.");
   }
 
   // ── spin ─────────────────────────────────────────────────────────────────
@@ -608,7 +613,7 @@
       // Pace from the RGS answer, never from the send (the RGS enforces it anyway).
       const wait = S.minRoundMs - (Date.now() - S.lastAnswerAt);
       if (!wasForge && wait > 0) await sleep(wait);
-      if (!wasForge) { setBalance(S.balance - bet); say("Good luck!"); }
+      if (!wasForge) { setBalance(S.balance - bet); say("The hammer falls…"); }
       sfx("rf_spin");
       let r;
       try {
@@ -628,6 +633,7 @@
         S.playerStates[betKey(bet)] = r.player_state;
         showMeter();
         if (r.meter && r.meter.collected) {
+          if (!(r.total_win > 0)) say("The crucible fills.");
           el.meter.classList.add("pulse");
           setTimeout(() => el.meter.classList.remove("pulse"), 600);
         }
@@ -641,7 +647,7 @@
         Sound?.setMusic?.("freeSpins");
         S.lastOffer = r.offer_next;
         const why = r.forge_trigger === "scatter" ? "Anvil scatters" : r.forge_trigger === "meter" ? "The Forge meter is full" : "Meter full and Anvil scatters";
-        await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why} · choose a relic before each spin</small>`, 2600);
+        await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why}. Choose your relic.</small>`, 2600);
         showForge();
         showBet();
         openDraft(r.offer_next);
@@ -666,7 +672,7 @@
         const big = totalX >= 1 ? winTier(totalX) : null;
         if (totalX >= 1) await banner(`<b>${big || "Forge complete"}</b><span>${money(total)}</span><small>Forge total, including the spin that started it</small>`, 3000);
         else await banner(`<span>Forge complete</span><small>Forge total ${money(total)}</small>`, 2200);
-        say(`Forge total ${money(total)}`, totalX >= 1);
+        say(`Forged in all: ${money(total)}`, totalX >= 1);
       }
     } finally {
       S.busy = false;
@@ -679,7 +685,7 @@
     openModal(`<h2>Reality check</h2><p>Time for a break?${mins}</p><div class="actions"><button data-close="leave">Leave the game</button><button class="primary" data-close="continue" data-focus>Keep playing</button></div>`, async (reason) => {
       if (reason === "leave") { say("You can close the game now"); return; }
       await api("POST", "/game/v1/reality-check/ack", {}, uuid()).catch(() => {});
-      say("Ready");
+      say("The forge is cold.");
     });
   }
 
@@ -746,8 +752,8 @@
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
-    if (S.forge) { say("Your Forge continues"); openDraft(null); }
-    else say(`Clusters of ${S.rules.layout.min_cluster}+ pay · good luck!`);
+    if (S.forge) { say("The Forge still burns. Choose your relic."); openDraft(null); }
+    else say("The forge is cold.");
   }
   boot().catch((err) => { say(`Could not start the game (${err.code || err.message})`); document.body.classList.add("app-ready"); });
 })();
