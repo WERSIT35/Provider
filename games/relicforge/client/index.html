@@ -1,5 +1,195 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Relic Forge</title></head>
-<body><p>Relic Forge client: phase 8.</p></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#120a07">
+  <title>Relic Forge</title>
+  <link rel="preload" href="rules.json" as="fetch" crossorigin>
+  <style>
+    :root {
+      --bg: #0c0806; --bg2: #1d100a; --panel: #1a110c; --panel2: #24170f;
+      --edge: rgba(255, 170, 90, 0.22); --edge-hi: rgba(255, 170, 90, 0.5);
+      --ember: #ff8a3d; --ember-hi: #ffc07a; --gold: #f2c14e; --text: #f5ece2; --muted: #b8a596; --dim: #7d6c60;
+      --danger: #ff7a6b; --teal: #4fd8c0;
+      --cell: 56px; --rows: 5; --cols: 6; --gap: clamp(6px, 1.4vmin, 14px); --btn: 44px;
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
+    body { background: radial-gradient(900px 520px at 50% 110%, rgba(255, 120, 40, 0.16), transparent 65%), linear-gradient(180deg, var(--bg2), var(--bg) 70%); }
+    button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
+    button:disabled { cursor: default; opacity: 0.45; }
+    :focus-visible { outline: 2px solid var(--ember-hi); outline-offset: 2px; }
+
+    .game {
+      position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: var(--gap);
+      padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
+      opacity: 0; transition: opacity 0.25s;
+    }
+    body.app-ready .game { opacity: 1; }
+
+    /* Top: title, Forge meter / Forge status, relic tray. */
+    .top { display: grid; gap: 8px; justify-items: center; padding-top: 30px; }
+    .title { font-weight: 800; letter-spacing: 0.28em; text-transform: uppercase; font-size: 0.8rem; color: var(--ember-hi); }
+    .meter { width: min(100%, 420px); display: grid; gap: 4px; }
+    .meter-row { display: flex; justify-content: space-between; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .meter-bar { position: relative; height: 10px; border-radius: 99px; background: #2a1a12; box-shadow: inset 0 0 0 1px var(--edge); overflow: hidden; }
+    .meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: linear-gradient(90deg, #a63a12, var(--ember), var(--ember-hi)); transition: width 0.35s ease-out; }
+    .meter.pulse .meter-bar { box-shadow: inset 0 0 0 1px var(--ember-hi), 0 0 14px rgba(255, 138, 61, 0.55); }
+    .forge-bar { display: none; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+    body.in-forge .forge-bar { display: flex; }
+    body.in-forge .meter { display: none; }
+    .pill { padding: 4px 10px; border-radius: 99px; background: var(--panel2); box-shadow: 0 0 0 1px var(--edge); font-size: 0.75rem; white-space: nowrap; }
+    .pill b { color: var(--ember-hi); }
+    .pill.meltdown { background: linear-gradient(90deg, #7a1d08, #c2410c); color: #fff; box-shadow: none; font-weight: 800; letter-spacing: 0.1em; }
+    .pill[hidden] { display: none; }
+    .relics { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .relic-chip { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border-radius: 99px; background: var(--panel2); box-shadow: 0 0 0 1px var(--edge); font-size: 0.72rem; transition: box-shadow 0.15s; }
+    .relic-chip i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 0.7rem; font-weight: 800; color: #1a0d05; background: var(--ember); }
+    .relic-chip .pips { letter-spacing: 1px; color: var(--ember-hi); }
+    .relic-chip.evo { background: linear-gradient(90deg, #3a1a0b, #5c2a10); box-shadow: 0 0 0 1px var(--ember-hi); color: var(--ember-hi); font-weight: 700; }
+    .relic-chip.ghost { opacity: 0.6; }
+    .relic-chip.fire { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--ember); opacity: 1; }
+
+    /* Stage: the board keeps its cell size; Expand adds rows. */
+    .stage { position: relative; min-height: 0; display: grid; place-items: center; }
+    .board-wrap { position: relative; }
+    .board { position: relative; width: calc(var(--cell) * var(--cols)); height: calc(var(--cell) * var(--rows)); border-radius: 12px; background: #120b07; box-shadow: 0 0 0 2px var(--edge), inset 0 0 40px rgba(0, 0, 0, 0.6); overflow: hidden; }
+    .cell { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); padding: calc(var(--cell) * 0.06); }
+    .cell svg { width: 100%; height: 100%; display: block; }
+    .cell.win svg { filter: drop-shadow(0 0 6px rgba(255, 210, 140, 0.95)); }
+    .cell.win::after { content: ""; position: absolute; inset: 2px; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(255, 210, 140, 0.9); }
+    .cell.blast::after { content: ""; position: absolute; inset: 0; border-radius: 6px; background: radial-gradient(circle, rgba(255, 240, 200, 0.85), rgba(255, 120, 40, 0.35) 60%, transparent 75%); }
+    .cell.mark::after { content: ""; position: absolute; inset: 2px; border-radius: 10px; box-shadow: inset 0 0 0 2px var(--teal); }
+    .cell .sp { position: absolute; right: 3%; top: 3%; width: 36%; height: 36%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.19); font-weight: 900; color: #1a0d05; box-shadow: 0 0 0 2px #1a0d05; }
+    .cell .sp.RUNE { background: #8fe3ff; }
+    .cell .sp.BOMB { background: #ff9c5b; }
+    .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 220, 160, 0.55), transparent); pointer-events: none; }
+
+    /* Step readout above the board: cascade counter, Base × Mult (× Relic bonus). */
+    .hud { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+    .combo, .mult, .calc { padding: 3px 10px; border-radius: 99px; background: rgba(26, 17, 12, 0.92); box-shadow: 0 0 0 1px var(--edge); font-size: 0.78rem; opacity: 0; transition: opacity 0.15s; }
+    .hud.on .combo, .hud.on .mult, .hud.on .calc { opacity: 1; }
+    .mult { font-weight: 800; transition: opacity 0.15s, color 0.2s; }
+    .mult[data-tier="1"] { color: var(--gold); }
+    .mult[data-tier="2"] { color: var(--ember); }
+    .mult[data-tier="3"] { color: #fff; text-shadow: 0 0 10px var(--ember-hi); }
+
+    .banner { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(12, 6, 3, 0.72); border-radius: 12px; cursor: pointer; z-index: 5; padding: 12px; }
+    .banner[hidden] { display: none; }
+    .banner b { display: block; font-size: clamp(1.3rem, 6vmin, 3.2rem); letter-spacing: 0.08em; color: var(--ember-hi); text-shadow: 0 0 22px rgba(255, 138, 61, 0.7); text-transform: uppercase; }
+    .banner span { display: block; font-size: clamp(1.2rem, 5vmin, 2.6rem); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .banner small { display: block; margin-top: 8px; color: var(--muted); font-size: 0.8rem; }
+
+    /* Element-level shake only (the board or the cascade counter), never the page layout.
+       Off under reduced motion or with Settings → Screen effects off (body.fx). */
+    @keyframes rf-shake { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-4px, 2px); } 40% { transform: translate(4px, -2px); } 60% { transform: translate(-3px, -1px); } 80% { transform: translate(2px, 1px); } }
+    body.fx .board-wrap.shake { animation: rf-shake 0.32s linear; }
+    body.fx .combo.shake { animation: rf-shake 0.25s linear; }
+
+    /* Deck. */
+    .deck { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--gap); padding: 8px 10px; border-radius: 16px; background: linear-gradient(180deg, rgba(40, 24, 15, 0.96), rgba(22, 14, 9, 0.96)); box-shadow: 0 0 0 1px var(--edge); }
+    .sys, .play { display: flex; align-items: center; gap: 8px; }
+    .status { min-width: 0; display: grid; gap: 4px; }
+    .msg { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.85rem; color: var(--muted); text-align: center; }
+    .msg.win { color: var(--ember-hi); font-weight: 700; }
+    .readouts { display: flex; justify-content: center; gap: clamp(8px, 3vw, 28px); font-variant-numeric: tabular-nums; }
+    .readouts div { display: grid; text-align: center; }
+    .readouts span { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .readouts strong { font-size: 0.95rem; }
+    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: grid; place-items: center; font-size: 1rem; font-weight: 700; }
+    .spin { width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, var(--ember-hi), var(--ember) 55%, #9a3412); color: #2a1004; font-weight: 900; letter-spacing: 0.06em; font-size: 0.8rem; box-shadow: 0 0 0 2px rgba(255, 192, 122, 0.5), 0 6px 18px rgba(255, 110, 30, 0.3); }
+    .spin:not(:disabled):hover { filter: brightness(1.08); }
+    @media (max-width: 560px) {
+      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; }
+      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
+    }
+
+    /* Draft, evolution, info, settings, reality check: one modal layer. */
+    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(8, 4, 2, 0.8); }
+    .modal[hidden] { display: none; }
+    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 18px; background: linear-gradient(180deg, var(--panel2), var(--panel)); box-shadow: 0 0 0 1px var(--edge-hi); padding: 18px; user-select: text; }
+    .sheet h2 { margin: 0 0 4px; font-size: 1.1rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ember-hi); }
+    .sheet h3 { margin: 16px 0 4px; font-size: 0.9rem; color: var(--ember-hi); }
+    .sheet p, .sheet li { margin: 6px 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+    .sheet .close { float: right; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+    .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 14px; background: #2b1a10; box-shadow: 0 0 0 1px var(--edge); transition: box-shadow 0.15s, transform 0.15s; }
+    .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--ember-hi); }
+    body.fx .card:hover { transform: translateY(-2px); }
+    .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 1.05rem; }
+    .card h4 small { color: var(--ember-hi); font-size: 0.75rem; letter-spacing: 0.1em; }
+    .card p { margin: 0; font-size: 0.85rem; color: var(--text); }
+    .card .evo-hint { color: var(--ember-hi); font-size: 0.78rem; }
+    .vol { justify-self: start; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; box-shadow: 0 0 0 1px var(--edge); color: var(--muted); }
+    .vol[data-v="low"] { color: var(--teal); } .vol[data-v="medium"] { color: var(--gold); } .vol[data-v="high"] { color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; margin: 8px 0 12px; }
+    th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    td svg { width: 22px; height: 22px; vertical-align: middle; margin-right: 6px; }
+    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+    .toggle button { padding: 6px 14px; border-radius: 99px; box-shadow: 0 0 0 1px var(--edge-hi); }
+    .toggle button[aria-pressed="true"] { background: var(--ember); color: #2a1004; font-weight: 700; }
+    .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+    .actions button { padding: 10px 16px; border-radius: 12px; box-shadow: 0 0 0 1px var(--edge-hi); }
+    .actions .primary { background: var(--ember); color: #2a1004; font-weight: 800; box-shadow: none; }
+    .evo-moment { text-align: center; padding: 28px 12px; }
+    .evo-moment b { display: block; font-size: clamp(2rem, 9vmin, 4.4rem); letter-spacing: 0.1em; color: var(--ember-hi); text-shadow: 0 0 30px rgba(255, 138, 61, 0.8); }
+
+    @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="game">
+    <header class="top">
+      <div class="title">Relic Forge</div>
+      <div class="meter" id="meter" aria-label="Forge meter">
+        <div class="meter-row"><span>Forge meter · this bet</span><span id="meterText">0 / 40</span></div>
+        <div class="meter-bar"><div class="meter-fill" id="meterFill"></div></div>
+      </div>
+      <div class="forge-bar" aria-live="polite">
+        <span class="pill" id="forgeSpins">Forge spin <b>1</b> / 10</span>
+        <span class="pill" id="forgeBonus">Relic bonus <b>×1.00</b></span>
+        <span class="pill" id="forgeTotal">Forge win <b>0.00</b></span>
+        <span class="pill meltdown" id="meltdownPill" hidden>Meltdown</span>
+      </div>
+      <div class="relics" id="relics"></div>
+    </header>
+
+    <main class="stage" id="stage">
+      <div class="board-wrap" id="boardWrap">
+        <div class="hud" id="hud"><span class="combo" id="combo">Cascade 1</span><span class="calc" id="calc"></span><span class="mult" id="mult">×1</span></div>
+        <div class="board" id="board" role="img" aria-label="Game board"></div>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+    </main>
+
+    <footer class="deck">
+      <div class="sys">
+        <button class="icon" id="infoBtn" type="button" aria-label="Game rules">i</button>
+        <button class="icon" id="settingsBtn" type="button" aria-label="Settings">⚙</button>
+      </div>
+      <div class="status">
+        <div class="msg" id="msg" aria-live="polite">Loading…</div>
+        <div class="readouts">
+          <div><span>Balance</span><strong id="balance">—</strong></div>
+          <div><span>Bet</span><strong id="betText">—</strong></div>
+          <div><span>Win</span><strong id="winText">0.00</strong></div>
+        </div>
+      </div>
+      <div class="play">
+        <button class="icon" id="betDown" type="button" aria-label="Lower bet">−</button>
+        <button class="icon" id="betUp" type="button" aria-label="Raise bet">+</button>
+        <button class="spin" id="spinBtn" type="button" disabled>SPIN</button>
+      </div>
+    </footer>
+  </div>
+
+  <div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+  <script src="game.js"></script>
+</body>
 </html>
