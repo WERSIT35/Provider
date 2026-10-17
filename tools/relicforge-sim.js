@@ -135,7 +135,8 @@ function playForge(engine, featureState, playerState, bet, pick, acc, cal) {
       const predicted = cal.values[s];
       if (predicted === undefined) continue;
       const warm = p.forge.relics.SURGE >= 1 || p.forge.relics.MAGNET >= 1 ? 1 : 0;
-      const g = (cal.groups[`${p.relic}|${p.forge.spins_left}|${warm}`] ||= { sumR: 0, sumV: 0, count: 0 });
+      const level = p.forge.relics[p.relic] || 0;
+      const g = (cal.groups[`${p.relic}|${p.forge.spins_left}|${warm}|${level}`] ||= { sumR: 0, sumV: 0, count: 0 });
       g.sumR += (total - p.from) / (bet * cal.scaler * p.forge.relic_bonus);
       g.sumV += predicted;
       g.count += 1;
@@ -376,7 +377,7 @@ async function main() {
     const out = await runAll(opts);
     json = out.groups;
     const worst = Object.entries(out.groups).map(([k, g]) => [k, g.sumR / g.sumV, g.count]).sort((a, b) => Math.abs(b[1] - 1) - Math.abs(a[1] - 1));
-    report = ["measured / predicted, worst groups (relic|spins left|warm, ratio, picks):", ...worst.slice(0, 12).map((w) => `  ${w[0].padEnd(12)} ${w[1].toFixed(4)}  ${w[2]}`)].join("\n");
+    report = ["measured / predicted, worst groups (relic|spins left|warm|level, ratio, picks):", ...worst.slice(0, 12).map((w) => `  ${w[0].padEnd(12)} ${w[1].toFixed(4)}  ${w[2]}`)].join("\n");
     if (env.CALIB) fs.writeFileSync(env.CALIB, JSON.stringify(out.groups));
   } else if (mode === "relics" || mode === "policies") {
     const policies = mode === "relics" ? RELICS.map((r) => `force:${r}`) : ["random", "first", "worst", ...RELICS.map((r) => `force:${r}`)];

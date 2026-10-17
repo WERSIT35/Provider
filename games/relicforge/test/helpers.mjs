@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 
 const GAME = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const manifest = JSON.parse(fs.readFileSync(path.join(GAME, "game.json"), "utf8"));
-export const rules = () => JSON.parse(fs.readFileSync(path.join(GAME, manifest.rules), "utf8"));
+// Unit tests run on a frozen fixture (the pre-tuning rules), so tuning never breaks them;
+// shipped.test.mjs checks the shipped rules.
+export const rules = () => JSON.parse(fs.readFileSync(path.join(GAME, "test/fixtures/rules-fixture.json"), "utf8"));
+export const shippedRules = () => JSON.parse(fs.readFileSync(path.join(GAME, manifest.rules), "utf8"));
 
 /** A deterministic getRandomValues: SHA-256 of (seed, counter), like a seeded stream. */
 export function seededCrypto(seed) {

@@ -33,9 +33,9 @@
  *
  * --write puts { version, factors, volatility } into the rules file's ev_table.
  * CALIBRATE=<file.json> (from MODE=calibrate in relicforge-sim.js): keep the rules'
- * table and divide each factor by the measured / predicted ratio of its (relic, spins
- * left, warm) group, correcting what the per-spin model gets wrong (the carried state). An
- * option is then worth V(s) as played, so V(s) stays the prediction for the next round.
+ * table and divide each factor by its (relic, spins left, warm, level) group's measured /
+ * predicted ratio RELATIVE to its layer's (spins left, warm): the relics of a layer end
+ * up worth the same as played, and the layer keeps its level. Repeat until flat.
  * LOAD=<file.json> reuses a DUMP instead of simulating (same rules and SPINS).
  * DUMP=<file.json> also writes every relic set's per-spin mean and SD (balance work).
  */
@@ -234,15 +234,28 @@ async function main() {
   if (process.env.CALIBRATE) {
     const prev = rules.ev_table;
     const cal = JSON.parse(fs.readFileSync(process.env.CALIBRATE, "utf8"));
+    // Relative calibration: within a layer (spins left, warm) only the relics move against
+    // each other; the layer keeps its pick-weighted level. Correcting absolute levels
+    // compounds through every later pick and diverges (seen: x13 then x0.0002).
+    const layers = {};
+    for (const [k, g] of Object.entries(cal)) {
+      const layer = k.split("|").slice(1, 3).join("|");
+      const l = (layers[layer] ||= { R: 0, V: 0 });
+      l.R += g.sumR;
+      l.V += g.sumV;
+    }
     let min = Infinity;
     for (const k of Object.keys(prev.factors)) {
       const [s, relic] = k.split(">");
       const n = s.split("|")[2];
       // Warm: Surge or Magnet owned before the pick (signature letters M and S).
       const warm = s[7] !== "0" || s[11] !== "0" ? 1 : 0;
-      const c = cal[`${relic}|${n}|${warm}`];
+      // The picked relic's level before the pick (its signature letter, then the digit).
+      const level = s["ICEMHS".indexOf(relic[0]) * 2 + 1];
+      const c = cal[`${relic}|${n}|${warm}|${level}`];
       // Picks of this relic at this depth paid ratio = measured / predicted: scale them back.
-      const ratio = c && c.count >= Number(process.env.MIN_COUNT || 2000) ? c.sumR / c.sumV : 1;
+      const l = layers[`${n}|${warm}`];
+      const ratio = c && l && c.count >= Number(process.env.MIN_COUNT || 2000) ? c.sumR / c.sumV / (l.R / l.V) : 1;
       factors[k] = Math.round((prev.factors[k] / ratio) * 10000) / 10000;
       min = Math.min(min, factors[k]);
     }
