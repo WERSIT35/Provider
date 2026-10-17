@@ -27,7 +27,8 @@
   // ---------------------------------------------------------------------------
 
   const STORAGE_KEY = "bananax.sound";
-  const AUDIO_BASE = "assets/audio/";
+  // Another game's client (games/<code>/client, served at /play/g/<code>/) shares these sounds: it sets VX_AUDIO_BASE.
+  const AUDIO_BASE = root.VX_AUDIO_BASE || "assets/audio/";
 
   // Bus levels (linear) under the master. UI sits ~12 dB under the game (its
   // files are levelled 4 dB under sfx, build-audio TARGET, and its bus is
@@ -667,12 +668,16 @@
     if (!ensureContext()) return;
     loadManifest();
   }
-  if (root.document) {
+  // A page that becomes playable after its `load` event (a small page whose session
+  // arrives later) sets VX_AUDIO_PRELOAD = "manual" and calls Sound.preload() once it is
+  // playable, so decoding never competes with its first frame.
+  if (root.document && root.VX_AUDIO_PRELOAD !== "manual") {
     if (root.document.readyState !== "complete") root.addEventListener("load", preloadOnLoad, { once: true });
     else preloadOnLoad();
   }
 
   root.Sound = {
+    preload: preloadOnLoad,
     play,
     unlock,
     setMuted,
