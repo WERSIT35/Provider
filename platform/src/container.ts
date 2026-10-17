@@ -5,6 +5,8 @@ import { SessionService } from "./modules/session/session.service";
 import { SandboxWallet } from "./modules/wallet/sandbox-wallet";
 import { sandboxOf } from "./modules/wallet/routing-wallet";
 import { RoundIntentStore } from "./modules/rounds/round-intents";
+import { PostgresPersistence } from "./persistence/persistence";
+import { MemoryHistory, PgHistory, type HistoryReads } from "./modules/history/history";
 import type { WalletAdapter } from "./modules/wallet/wallet.types";
 import { InMemoryTransactionStore } from "./modules/wallet/transaction-store";
 import { RoundOrchestrator } from "./modules/rounds/round-orchestrator";
@@ -64,6 +66,10 @@ export interface Container {
   transactions: InMemoryTransactionStore;
   orchestrator: RoundOrchestrator;
   intents: RoundIntentStore;
+  /** Whole-history reads (reports, old rounds, integrity sweep): SQL with Postgres, in-memory otherwise. */
+  history: HistoryReads & Partial<PgHistory>;
+  /** Postgres mode: the rows each ledger keeps in memory; null in memory mode (keeps all). */
+  historyWindow: typeof HISTORY_WINDOW | null;
   /** Lost-debit reconciliation: in-line retry, void + reversal, and the reversal queue. */
   debits: DebitReconciler;
   /** Jurisdiction rules per operator (round pacing, reality check, feature-buy switch). */
@@ -89,6 +95,12 @@ export interface Container {
   auditRepo: InMemoryAuditRepository;
 }
 
+/**
+ * Rows each ledger keeps in memory in Postgres mode (~7.5 KB per round incl. its money
+ * moves and audit row, so the defaults hold ~250 MB at most whatever the history size).
+ */
+export const HISTORY_WINDOW = { rounds: 20_000, coldRounds: 5_000, audit: 20_000, transactions: 60_000, coldTransactions: 15_000 };
+
 export function buildContainer(
   config: PlatformConfig,
   overrides: {
@@ -97,15 +109,21 @@ export function buildContainer(
     persistence?: Persistence;
     /** Pauses between in-line debit retries (default [250, 1000] ms). */
     debitRetryDelaysMs?: number[];
+    /** Postgres mode: how many rows each ledger keeps in memory (defaults: HISTORY_WINDOW). */
+    historyWindow?: Partial<typeof HISTORY_WINDOW>;
   } = {}
 ): Container {
   const persistence = overrides.persistence ?? NullPersistence;
+  // Bounded memory: with Postgres as the system of record the ledgers keep only a hot
+  // window (see memory-repositories.ts WindowOptions); in-memory mode keeps everything.
+  const pg = persistence instanceof PostgresPersistence ? persistence : null;
+  const win = { ...HISTORY_WINDOW, ...(overrides.historyWindow ?? {}) };
   const engine = new EngineService();
   // First: both ledgers sign every row they append with the active key.
   const signingKeyring = new SigningKeyring({ activePrivateKeyPem: config.exportSigningKey, expiresAt: config.exportSigningKeyExpiresAt ?? null }, persistence);
-  const audit = new InMemoryAuditRepository(persistence, signingKeyring);
+  const audit = new InMemoryAuditRepository(persistence, signingKeyring, pg ? { retain: win.audit } : {});
   const mgmt = new ManagementService(audit, persistence);
-  const rounds = new InMemoryRoundRepository(persistence, signingKeyring);
+  const rounds = new InMemoryRoundRepository(persistence, signingKeyring, pg ? { retain: win.rounds, cold: win.coldRounds } : {});
   const ledger = new RoundLedgerService(rounds, audit, signingKeyring);
   const sessions = new SessionService(mgmt, config.launchSecret, persistence);
   // walletFactory exists because a WebhookWallet needs `mgmt`, which is only
@@ -113,20 +131,21 @@ export function buildContainer(
   const wallet = overrides.walletFactory ? overrides.walletFactory(mgmt) : (overrides.wallet ?? new SandboxWallet());
   sandboxOf(wallet)?.usePersistence(persistence);
   const resolver = new AuthoritativeResolver(engine);
-  const transactions = new InMemoryTransactionStore(persistence);
+  const transactions = new InMemoryTransactionStore(persistence, pg ? { retain: win.transactions, cold: win.coldTransactions } : {});
   const campaigns = new InMemoryCampaignRepository(persistence);
   const debits = new DebitReconciler(wallet, transactions, { audit, retryDelaysMs: overrides.debitRetryDelaysMs });
   // Reality-check stats come from the round ledger (bound late: reporting is built below).
   const regulatory = new RegulatoryService(
     (operatorId) => mgmt.regulatoryProfile(operatorId),
     (session, now): SessionStats => {
-      const rounds = reporting.listRoundsByPlayer(session.operator_id, session.operator_player_id).filter((r) => r.session_id === session.id);
-      const wagered = Math.round(rounds.reduce((s, r) => s + r.bet_charged, 0) * 100) / 100;
-      const won = Math.round(rounds.reduce((s, r) => s + r.total_win, 0) * 100) / 100;
+      // Kept per session as rounds are appended (no scan of the player's history per spin).
+      const acc = rounds.sessionStats(session.id);
+      const wagered = Math.round(acc.wagered * 100) / 100;
+      const won = Math.round(acc.won * 100) / 100;
       return {
         session_started_at: session.created_at,
         elapsed_ms: now - Date.parse(session.created_at),
-        rounds: rounds.length,
+        rounds: acc.rounds,
         wagered,
         won,
         net: Math.round((won - wagered) * 100) / 100
@@ -137,12 +156,20 @@ export function buildContainer(
   const intents = new RoundIntentStore(persistence);
   const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory, {
     intents,
-    commit: () => persistence.flush()
+    commit: () => persistence.flush(),
+    ...(pg ? { keyUsed: (key: string) => history.keyUsed(key) } : {})
   });
   const adjustments = new InMemoryRoundAdjustmentStore(persistence);
   const reporting = new ReportingService(rounds, transactions, engine, adjustments);
   const lifecycle = new RoundLifecycleService(ledger, wallet, transactions, adjustments, audit, campaigns);
-  const verification = new RoundVerificationService(ledger, resolver);
+  const history: HistoryReads & Partial<PgHistory> = pg
+    ? new PgHistory(pg, rounds, transactions, adjustments, signingKeyring, sessions)
+    : new MemoryHistory(reporting, ledger, transactions, sessions);
+  const verification = new RoundVerificationService(
+    ledger,
+    resolver,
+    history instanceof PgHistory ? (ref) => history.roundChainHeld(ref) : undefined
+  );
   const roundExport = new RoundExportService(ledger, transactions, adjustments, verification, mgmt, signingKeyring);
   const disputes = new DisputeService(lifecycle, ledger, audit, persistence);
 
@@ -157,6 +184,8 @@ export function buildContainer(
     transactions,
     orchestrator,
     intents,
+    history,
+    historyWindow: pg ? win : null,
     debits,
     regulatory,
     reporting,

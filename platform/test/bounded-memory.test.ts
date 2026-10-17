@@ -6,6 +6,8 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
+import { InMemoryRoundRepository } from "../src/modules/ledger/memory-repositories";
+import type { RoundInput } from "../src/modules/ledger/ledger.types";
 import { InMemoryTransactionStore, DEBIT_OUTCOME_UNKNOWN, type TxInput, type TxRecord, BET_TX_TYPES, WIN_TX_TYPES } from "../src/modules/wallet/transaction-store";
 import { RateLimiter } from "../src/lib/security/rate-limiter";
 import { buildContainer } from "../src/container";
@@ -16,6 +18,56 @@ import { IDEMPOTENCY_CACHE_MS, IDEMPOTENCY_CACHE_PER_SESSION } from "../src/modu
 
 const CONFIG = { launchSecret: "s1", sessionSecret: "s2", adminSecret: "s3", hmacSkewSeconds: 30, rateLimitPerMin: 100_000 };
 
+const roundInput = (i: number, session = "s1"): RoundInput => ({
+  round_ref: `r_${i}`, session_id: session, operator_id: "op", operator_player_id: "p", game_id: "g", math_config_id: "m",
+  bet_amount: 1, bet_charged: 1, is_free_spin: false, ante_enabled: false, rng_seed_hex: "00", rng_algo: "x", rng_bytes_drawn: 1,
+  outcome_hash: "h", total_win: i % 3 === 0 ? 2.5 : 0, multiplier_applied: 1, status: "resolved", outcome: {} as never
+});
+
+describe("windowed round ledger", () => {
+  it("holds a bounded window, continues the chain from its tip, and serves older rows only once pulled in", () => {
+    const repo = new InMemoryRoundRepository(undefined, undefined, { retain: 100, cold: 10 });
+    for (let i = 0; i < 1000; i++) repo.append(roundInput(i));
+    expect(repo.size()).toBe(1000);
+    expect(repo.heldCount()).toBeLessThanOrEqual(125);
+    expect(repo.verifyChain().ok).toBe(true);
+    expect(repo.getByRef("r_0")).toBeNull();
+    expect(repo.getByRef("r_999")).not.toBeNull();
+    // Session totals cover every round, not just the window.
+    expect(repo.sessionStats("s1")).toMatchObject({ rounds: 1000, wagered: 1000 });
+  });
+
+  it("a window hydrated from the newest rows + tip appends exactly where a full ledger would", () => {
+    const full = new InMemoryRoundRepository();
+    for (let i = 0; i < 50; i++) full.append(roundInput(i));
+    const all = full.list();
+    const win = new InMemoryRoundRepository(undefined, undefined, { retain: 10 });
+    const last = all[all.length - 1];
+    win.hydrate(all.slice(-10), { nextSeq: last.seq + 1, lastHash: last.chain_hash });
+    const a = full.append(roundInput(50));
+    const b = win.append(roundInput(50));
+    expect(b.seq).toBe(a.seq);
+    expect(b.prev_hash).toBe(a.prev_hash);
+    expect(win.verifyChain().ok).toBe(true);
+  });
+
+  it("refuses a round ref it only knows from the cold cache", () => {
+    const repo = new InMemoryRoundRepository(undefined, undefined, { retain: 5, cold: 5 });
+    for (let i = 0; i < 20; i++) repo.append(roundInput(i));
+    const old = new InMemoryRoundRepository();
+    old.append(roundInput(0));
+    repo.addCold(old.list());
+    expect(repo.getByRef("r_0")).not.toBeNull();
+    expect(() => repo.append(roundInput(0))).toThrow(/DUPLICATE_ROUND_REF/);
+  });
+
+  it("memory mode still checks the whole chain from genesis (a forged first row is caught)", () => {
+    const repo = new InMemoryRoundRepository();
+    for (let i = 0; i < 5; i++) repo.append(roundInput(i));
+    repo.__unsafeTamper(0, { prev_hash: "f".repeat(64) });
+    expect(repo.verifyChain()).toMatchObject({ ok: false, brokenAtSeq: 0 });
+  });
+});
 
 describe("windowed money ledger: the operational queues match a full scan", () => {
   /** The original (full-scan) definitions from before Phase 2. */

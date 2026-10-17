@@ -173,6 +173,7 @@ const operatorRoutes: FastifyPluginAsync = async (app) => {
   // missing round.
   app.get("/operator/v1/rounds/:roundRef/export", { preHandler: auth }, async (req, reply) => {
     const { roundRef } = req.params as { roundRef: string };
+    await app.container.history.ensureRound(roundRef);
     const out = app.container.roundExport.export(roundRef, req.operatorId as string);
     if (!out) return reply.code(404).send(envelope("ROUND_NOT_FOUND", "no such round", req.id));
     app.container.auditRepo.append({

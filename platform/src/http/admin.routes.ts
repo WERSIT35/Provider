@@ -68,6 +68,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "rounds.read");
     if (!claims) return reply;
     const { roundRef } = req.params as { roundRef: string };
+    await app.container.history.ensureRound(roundRef);
     const round = app.container.ledger.getRound(roundRef);
     if (!round) {
       return reply.code(404).send(envelope("ROUND_NOT_FOUND", "no such round", req.id));
@@ -200,21 +201,21 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     if (!claims) return reply;
     const q = req.query as { operator_id?: string; from?: string; to?: string };
     const operatorId = resolveOperatorScope(claims, q.operator_id);
-    return app.container.reporting.roundsSummary(operatorId, { from: q.from, to: q.to });
+    return app.container.history.roundsSummary(operatorId, { from: q.from, to: q.to });
   });
 
   app.get("/admin/v1/reports/rtp", { preHandler: auth }, async (req, reply) => {
     const claims = guard(req, reply, "reports.read");
     if (!claims) return reply;
     const q = req.query as { operator_id?: string };
-    return app.container.reporting.rtpReport(resolveOperatorScope(claims, q.operator_id));
+    return app.container.history.rtpReport(resolveOperatorScope(claims, q.operator_id));
   });
 
   app.get("/admin/v1/reports/ggr", { preHandler: auth }, async (req, reply) => {
     const claims = guard(req, reply, "reports.read");
     if (!claims) return reply;
     const q = req.query as { operator_id?: string };
-    return { ggr_by_day: app.container.reporting.ggrByDay(resolveOperatorScope(claims, q.operator_id)) };
+    return { ggr_by_day: await app.container.history.ggrByDay(resolveOperatorScope(claims, q.operator_id)) };
   });
 
   // Extends roundsSummary with player/session activity + recent transactions —
@@ -225,24 +226,18 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const q = req.query as { operator_id?: string };
     const operatorId = resolveOperatorScope(claims, q.operator_id);
     if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
-    const rounds = app.container.reporting.listRounds(operatorId);
-    const summary = app.container.reporting.roundsSummary(operatorId);
-    const sessions = app.container.sessions.listByOperator(operatorId);
-    const recent_transactions = app.container.transactions
-      .list({ operator_id: operatorId })
-      .sort((a, b) => b.seq - a.seq)
-      .slice(0, 20);
+    const o = await app.container.history.overview(operatorId);
     return {
       operator_id: operatorId,
-      distinct_players: new Set(rounds.map((r) => r.operator_player_id)).size,
-      sessions_total: sessions.length,
-      sessions_active: sessions.filter((s) => s.status === "active").length,
-      rounds: summary.rounds,
-      total_bet: summary.total_bet,
-      total_win: summary.total_win,
-      ggr: summary.ggr,
-      hold_percent: summary.hold_percent,
-      recent_transactions
+      distinct_players: o.distinct_players,
+      sessions_total: o.sessions_total,
+      sessions_active: o.sessions_active,
+      rounds: o.summary.rounds,
+      total_bet: o.summary.total_bet,
+      total_win: o.summary.total_win,
+      ggr: o.summary.ggr,
+      hold_percent: o.summary.hold_percent,
+      recent_transactions: o.recent_transactions
     };
   });
 
@@ -268,13 +263,13 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     }
     return {
       operator_id: operatorId ?? null,
-      ...app.container.reporting.playerReport(operatorId, {
+      ...(await app.container.history.playerReport(operatorId, {
         from: q.from,
         to: q.to,
         game_id: gameId,
         sort: q.sort as PlayerReportSort | undefined,
         limit
-      })
+      }))
     };
   });
 
@@ -282,7 +277,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "reports.read");
     if (!claims) return reply;
     const q = req.query as { operator_id?: string };
-    return app.container.reporting.reconcile(resolveOperatorScope(claims, q.operator_id));
+    return app.container.history.reconcile(resolveOperatorScope(claims, q.operator_id));
   });
 
   // Failed-settlement queue.
@@ -533,6 +528,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "rounds.verify");
     if (!claims) return reply;
     const { roundRef } = req.params as { roundRef: string };
+    await app.container.history.ensureRound(roundRef);
     const round = app.container.ledger.getRound(roundRef);
     if (!round) return reply.code(404).send(envelope("ROUND_NOT_FOUND", "no such round", req.id));
     if (claims.scope === "operator" && claims.operator_id !== round.operator_id) {
@@ -548,6 +544,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "transactions.read");
     if (!claims) return reply;
     const { roundRef } = req.params as { roundRef: string };
+    await app.container.history.ensureRound(roundRef);
     const round = app.container.ledger.getRound(roundRef);
     if (!round) return reply.code(404).send(envelope("ROUND_NOT_FOUND", "no such round", req.id));
     if (claims.scope === "operator" && claims.operator_id !== round.operator_id) {
@@ -558,7 +555,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       round_ref: roundRef,
       recorded_status: round.status,
       effective_status: app.container.adjustments.effectiveStatus(roundRef, round.status),
-      transactions: app.container.reporting.transactionsForRound(roundRef),
+      transactions: await app.container.history.transactionsForRound(roundRef),
       adjustments
     };
   });
@@ -576,14 +573,14 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
     }
     const limit = Math.min(Math.max(Number(q.limit) || 200, 1), 1000);
-    const all = app.container.reporting.listRoundsByPlayer(operatorId, playerId);
+    const page = await app.container.history.playerRounds(operatorId, playerId, limit);
 
     // Bonus tags: derive each session's families from ALL of its rounds (a player's
     // session holds only that player's rounds), so a family cut off by the limit is
     // still labelled correctly.
     const membership = new Map<string, FeatureMembership>();
-    for (const sessionId of new Set(all.map((r) => r.session_id))) {
-      for (const [ref, m] of deriveFeatureFamilies(all.filter((r) => r.session_id === sessionId))) membership.set(ref, m);
+    for (const sessionId of new Set(page.familyRounds.map((r) => r.session_id))) {
+      for (const [ref, m] of deriveFeatureFamilies(page.familyRounds.filter((r) => r.session_id === sessionId))) membership.set(ref, m);
     }
     const slugs = new Map<string, string | null>();
     const slugOf = (id: string) => {
@@ -593,14 +590,14 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
       return slugs.get(id) ?? null;
     };
 
-    const rounds = all.slice(0, limit).map((r) => {
+    const rounds = page.rounds.map((r) => {
       const m = membership.get(r.round_ref);
       return {
         round_ref: r.round_ref,
         operator_id: r.operator_id,
         operator_slug: slugOf(r.operator_id),
         game_code: r.pre_state?.game_code ?? null,
-        currency: app.container.sessions.tryGet(r.session_id)?.currency ?? null,
+        currency: page.currencies[r.session_id] ?? app.container.sessions.tryGet(r.session_id)?.currency ?? null,
         bet_amount: r.bet_amount,
         bet_charged: r.bet_charged,
         total_win: r.total_win,
@@ -612,7 +609,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
         created_at: r.created_at
       };
     });
-    return { player_id: playerId, operator_id: operatorId ?? null, rounds, count: rounds.length, total: all.length };
+    return { player_id: playerId, operator_id: operatorId ?? null, rounds, count: rounds.length, total: page.total };
   });
 
   // Player lifetime summary (header of the player lookup view).
@@ -625,7 +622,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     if (!operatorId) {
       return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
     }
-    const summary = app.container.reporting.playerSummary(operatorId, playerId);
+    const summary = await app.container.history.playerSummary(operatorId, playerId);
     if (!summary) return reply.code(404).send(envelope("PLAYER_NOT_FOUND", "no rounds for this player", req.id));
     return summary;
   });
@@ -638,6 +635,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const body = (req.body ?? {}) as { reason?: string };
     if (!body.reason?.trim()) return reply.code(422).send(envelope("VALIDATION", "reason required", req.id));
     try {
+      await app.container.history.ensureRound(roundRef);
       return await app.container.lifecycle.voidRound(roundRef, (req.adminClaims as AdminClaims).admin_id, body.reason.trim());
     } catch (err) {
       return sendDomainError(reply, err, req.id);
@@ -651,6 +649,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const body = (req.body ?? {}) as { reason?: string };
     if (!body.reason?.trim()) return reply.code(422).send(envelope("VALIDATION", "reason required", req.id));
     try {
+      await app.container.history.ensureRound(roundRef);
       return await app.container.lifecycle.settleRound(roundRef, (req.adminClaims as AdminClaims).admin_id, body.reason.trim());
     } catch (err) {
       return sendDomainError(reply, err, req.id);
@@ -678,6 +677,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const operatorId = resolveOperatorScope(claims, body.operator_id);
     if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
     try {
+      await app.container.history.ensureRound(body.round_ref);
       const dispute = app.container.disputes.raise({
         operator_id: operatorId,
         round_ref: body.round_ref,
@@ -697,6 +697,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { note?: string };
     try {
+      const pending = app.container.disputes.get(id);
+      if (pending) await app.container.history.ensureRound(pending.round_ref);
       const dispute = await app.container.disputes.approve(id, (req.adminClaims as AdminClaims).admin_id, body.note ?? "");
       return { dispute };
     } catch (err) {
@@ -869,7 +871,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
   // ── Ledger integrity (provider only) ──────────────────────────────────────────
   app.get("/admin/v1/integrity", { preHandler: auth }, async (req, reply) => {
     if (!requireProvider(req, reply)) return reply;
-    return app.container.ledger.verifyIntegrity();
+    return app.container.history.verifyIntegrity();
   });
 };
 

@@ -451,11 +451,26 @@ export class PostgresPersistence implements Persistence {
   }
 
   async loadTable(table: string): Promise<Record<string, unknown>[]> {
+    return this.loadRows(table);
+  }
+
+  /**
+   * Rows of `table` shaped exactly like the app's objects (renames applied, NULLs the
+   * app never wrote left off), optionally filtered: `where` is a SQL condition over the
+   * table's columns with $1.. placeholders. Rows come oldest first (the table's order
+   * column) unless `newestFirst`. Used by hydrate and by modules/history.
+   */
+  async loadRows(
+    table: string,
+    opts: { where?: string; params?: unknown[]; newestFirst?: boolean; limit?: number } = {}
+  ): Promise<Record<string, unknown>[]> {
     const t = TABLES[table];
     if (!t) throw new Error(`unknown persistence table: ${table}`);
-    const order = t.orderBy ? ` ORDER BY ${t.orderBy} ASC` : "";
-    const res = await this.pool.query(`SELECT ${t.columns.join(", ")} FROM ${table}${order}`);
-    return res.rows.map((dbRow: Record<string, unknown>) => {
+    const where = opts.where ? ` WHERE ${opts.where}` : "";
+    const order = t.orderBy ? ` ORDER BY ${t.orderBy} ${opts.newestFirst ? "DESC" : "ASC"}` : "";
+    const limit = opts.limit ? ` LIMIT ${Math.floor(opts.limit)}` : "";
+    const res = await this.pool.query(`SELECT ${t.columns.join(", ")} FROM ${table}${where}${order}${limit}`, opts.params ?? []);
+    const rows = res.rows.map((dbRow: Record<string, unknown>) => {
       const obj: Record<string, unknown> = {};
       for (const col of t.columns) {
         if (dbRow[col] === null && t.omitNull.has(col)) continue;
@@ -463,5 +478,11 @@ export class PostgresPersistence implements Persistence {
       }
       return obj;
     });
+    return opts.newestFirst ? rows.reverse() : rows;
+  }
+
+  /** Raw read query (history reports). */
+  query(text: string, params: unknown[] = []): Promise<{ rows: Record<string, unknown>[] }> {
+    return this.pool.query(text, params) as unknown as Promise<{ rows: Record<string, unknown>[] }>;
   }
 }

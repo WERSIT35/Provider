@@ -43,6 +43,8 @@ export interface BuildAppDeps {
   campaignExpiryIntervalMs?: number;
   /** Retry interval for queued lost-debit reversals (default 30s; 0 = start-up sweep only). */
   debitReconcileIntervalMs?: number;
+  /** Postgres mode: full ledger integrity sweep interval (default 1 h; 0 = never). */
+  integritySweepIntervalMs?: number;
   /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
   metricsToken?: string;
 }
@@ -91,6 +93,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   let expiryJob: CampaignExpiryJob | null = null;
   let reconcileJob: DebitReconciliationJob | null = null;
   let recoveryJob: RoundRecoveryJob | null = null;
+  const housekeeping: Array<ReturnType<typeof setInterval>> = [];
   app.addHook("onReady", async () => {
     expiryJob = startCampaignExpiry({
       campaigns: deps.container.campaigns,
@@ -111,6 +114,27 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
       logger: app.log,
       intervalMs: deps.debitReconcileIntervalMs ?? 30_000
     });
+    // Bounded memory (Postgres mode): forget sessions no token can reach (and their
+    // reality-check totals), and re-verify both ledgers end to end in the background.
+    if (deps.container.historyWindow) {
+      const c = deps.container;
+      housekeeping.push(setInterval(() => {
+        for (const id of c.sessions.evictIdle()) {
+          c.roundsRepo.dropSessionStats(id);
+          c.regulatory.forgetSession(id);
+        }
+      }, 60_000));
+      const sweepEvery = deps.integritySweepIntervalMs ?? 3_600_000;
+      if (sweepEvery > 0) {
+        const sweep = () => void c.history.verifyIntegrity().then(
+          (r) => { if (!r.rounds.ok || !r.audit.ok || r.signatures?.rounds.ok === false || r.signatures?.audit.ok === false) app.log.error({ integrity: r }, "ledger_integrity_failed"); },
+          (err) => app.log.error({ err }, "integrity_sweep_failed")
+        );
+        housekeeping.push(setTimeout(sweep, Math.min(sweepEvery, 300_000)));
+        housekeeping.push(setInterval(sweep, sweepEvery));
+      }
+      for (const t of housekeeping) (t as NodeJS.Timeout).unref?.();
+    }
     reconcileJob = startDebitReconciliation({
       debits: deps.container.debits,
       sessions: deps.container.sessions,
@@ -123,6 +147,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
     expiryJob?.stop();
     reconcileJob?.stop();
     recoveryJob?.stop();
+    for (const t of housekeeping) clearInterval(t);
   });
 
   // Durable write-through: before the response leaves, commit what this request
