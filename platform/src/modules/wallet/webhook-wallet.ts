@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Agent, request } from "undici";
 import { computeSignature } from "../../lib/security/hmac";
 import { outboundTraceparent } from "../../lib/trace-context";
 import { metrics } from "../../lib/metrics";
@@ -30,11 +31,44 @@ import {
  * depends on, so no round-lifecycle code changes to adopt it — swap it in via
  * `buildContainer(config, { walletFactory: (mgmt) => new WebhookWallet(mgmt) })`.
  */
+/** One casino round trip: status + raw body. The whole exchange is bounded by the timeout. */
+type Transport = (target: URL, headers: Record<string, string>, body: string, timeoutMs: number) => Promise<{ status: number; text: string }>;
+
+/**
+ * Pooled keep-alive connections to every casino, reused across rounds. undici's
+ * `request` costs a fraction of `fetch`'s CPU per call (~75 vs ~600 us measured,
+ * tools/bench), and it honours the casino's Keep-Alive hint so it never writes to a
+ * socket the casino has just closed.
+ */
+const CASINO_POOL = new Agent({ connections: 128, keepAliveTimeout: 4_000, keepAliveMaxTimeout: 30_000 });
+
+const undiciTransport: Transport = async (target, headers, body, timeoutMs) => {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const res = await request(target, { method: "POST", headers, body, dispatcher: CASINO_POOL, signal, headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
+  return { status: res.statusCode, text: await res.body.text() };
+};
+
+/** An injected fetch (tests, fault injection). */
+const fetchTransport = (fetchImpl: typeof fetch): Transport => async (target, headers, body, timeoutMs) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(target, { method: "POST", headers, body, signal: controller.signal });
+    return { status: res.status, text: await res.text() };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export class WebhookWallet implements WalletAdapter {
+  private readonly transport: Transport;
+
   constructor(
     private readonly mgmt: ManagementService,
     private readonly opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}
-  ) {}
+  ) {
+    this.transport = opts.fetchImpl ? fetchTransport(opts.fetchImpl) : undiciTransport;
+  }
 
   async balance(ctx: WalletContext, args: { operatorPlayerId: string; currency: string }): Promise<Money> {
     return this.call<Money>(ctx, "balance", args);
@@ -67,47 +101,37 @@ export class WebhookWallet implements WalletAdapter {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = randomUUID();
     const signature = computeSignature(secret, { timestamp, method: "POST", path: target.pathname, rawBody });
-
-    const fetchImpl = this.opts.fetchImpl ?? fetch;
-    const timeoutMs = this.opts.timeoutMs ?? 5000;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
     // The casino sees the same trace as the round (a child span), and stores it.
     const traceparent = outboundTraceparent();
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      "x-operator-id": ctx.operatorId,
+      "x-timestamp": timestamp,
+      "x-nonce": nonce,
+      "x-signature": signature,
+      ...(traceparent ? { traceparent } : {})
+    };
     const started = performance.now();
     const observe = (outcome: "ok" | "declined" | "failed") =>
       metrics.walletCall.observe((performance.now() - started) / 1000, { action, outcome });
 
-    let res: Response;
+    let res: { status: number; text: string };
     try {
-      res = await fetchImpl(target, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-operator-id": ctx.operatorId,
-          "x-timestamp": timestamp,
-          "x-nonce": nonce,
-          "x-signature": signature,
-          ...(traceparent ? { traceparent } : {})
-        },
-        body: rawBody,
-        signal: controller.signal
-      });
+      res = await this.transport(target, headers, rawBody, this.opts.timeoutMs ?? 5000);
     } catch {
+      // No answer (refused, reset, timed out — headers OR body): the outcome is unknown.
       observe("failed");
       throw new Error("WEBHOOK_CALL_FAILED");
-    } finally {
-      clearTimeout(timer);
     }
 
     let payload: unknown = null;
     try {
-      payload = await res.json();
+      payload = res.text ? JSON.parse(res.text) : null;
     } catch {
-      /* empty/non-JSON body — handled by the status check below */
+      /* non-JSON body — handled by the status check below */
     }
 
-    if (!res.ok) {
+    if (res.status < 200 || res.status >= 300) {
       const err = payload as { error?: string; message?: string } | null;
       observe(err?.error ? "declined" : "failed");
       if (err?.error) throw new WalletDeclinedError(err.error, err.message);

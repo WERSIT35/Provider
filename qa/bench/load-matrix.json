@@ -1,6 +1,6 @@
 {
   "name": "load-matrix",
-  "at": "2026-10-16T22:36:27.142Z",
+  "at": "2026-10-17T00:32:39.605Z",
   "node": "v22.22.0",
   "runs": [
     {
@@ -15,21 +15,34 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 996,
+      "spins": 999,
       "spinsPerSec": 15.7,
       "errors": {},
       "latencyMs": {
-        "n": 996,
-        "p50": 3.97,
-        "p95": 7.63,
-        "p99": 11.13,
-        "max": 31.18
+        "n": 999,
+        "p50": 3.68,
+        "p95": 7.21,
+        "p99": 9.88,
+        "max": 14.68
       },
       "serverRssMB": {
-        "start": 89,
-        "max": 111
+        "start": 99,
+        "max": 117
       },
-      "serverCpuPctMax": 12.5,
+      "serverCpuPctMax": 15.7,
+      "eventLoopDelayMs": {
+        "p99Median": 8.1,
+        "max": 45.8
+      },
+      "gc": {
+        "pauseMaxMs": 11.5,
+        "pctMedian": 0.2,
+        "maxByKind": {
+          "weak": 6.7186359986662865,
+          "minor": 11.51639200001955,
+          "incremental": 7.3872230052948
+        }
+      },
       "generatorCpuPct": 2.5,
       "generatorBound": false
     },
@@ -46,21 +59,34 @@
         "postgres": false
       },
       "spins": 3971,
-      "spinsPerSec": 62.2,
+      "spinsPerSec": 62.1,
       "errors": {},
       "latencyMs": {
         "n": 3971,
-        "p50": 3.19,
-        "p95": 6.81,
-        "p99": 13.12,
-        "max": 41.92
+        "p50": 2.95,
+        "p95": 6.56,
+        "p99": 14.1,
+        "max": 414.42
       },
       "serverRssMB": {
-        "start": 93,
-        "max": 130
+        "start": 97,
+        "max": 136
       },
-      "serverCpuPctMax": 36.2,
-      "generatorCpuPct": 6.6,
+      "serverCpuPctMax": 35.1,
+      "eventLoopDelayMs": {
+        "p99Median": 8.5,
+        "max": 50.2
+      },
+      "gc": {
+        "pauseMaxMs": 12.4,
+        "pctMedian": 0.4,
+        "maxByKind": {
+          "weak": 9.177383996546268,
+          "minor": 12.378942005336285,
+          "incremental": 6.51978799700737
+        }
+      },
+      "generatorCpuPct": 6.7,
       "generatorBound": false
     },
     {
@@ -75,22 +101,35 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 9895,
-      "spinsPerSec": 155,
+      "spins": 9923,
+      "spinsPerSec": 155.3,
       "errors": {},
       "latencyMs": {
-        "n": 9895,
-        "p50": 2.66,
-        "p95": 7.27,
-        "p99": 25.08,
-        "max": 111.48
+        "n": 9923,
+        "p50": 2.5,
+        "p95": 7.45,
+        "p99": 33.01,
+        "max": 180.49
       },
       "serverRssMB": {
-        "start": 99,
-        "max": 164
+        "start": 102,
+        "max": 174
       },
-      "serverCpuPctMax": 60.3,
-      "generatorCpuPct": 9.8,
+      "serverCpuPctMax": 69.1,
+      "eventLoopDelayMs": {
+        "p99Median": 10.1,
+        "max": 120.4
+      },
+      "gc": {
+        "pauseMaxMs": 14.3,
+        "pctMedian": 1.3,
+        "maxByKind": {
+          "weak": 10.82379200309515,
+          "minor": 11.931166999042034,
+          "incremental": 14.307084999978542
+        }
+      },
+      "generatorCpuPct": 10.1,
       "generatorBound": false
     },
     {
@@ -105,22 +144,35 @@
         "wallet": "sandbox",
         "postgres": false
       },
-      "spins": 47609,
-      "spinsPerSec": 792.1,
+      "spins": 52057,
+      "spinsPerSec": 866.1,
       "errors": {},
       "latencyMs": {
-        "n": 47609,
-        "p50": 114.21,
-        "p95": 163.27,
-        "p99": 223.21,
-        "max": 8092.33
+        "n": 52057,
+        "p50": 106.15,
+        "p95": 142.17,
+        "p99": 211.76,
+        "max": 7331.39
       },
       "serverRssMB": {
-        "start": 121,
-        "max": 435
+        "start": 123,
+        "max": 493
       },
       "serverCpuPctMax": 99.9,
-      "generatorCpuPct": 24,
+      "eventLoopDelayMs": {
+        "p99Median": 141,
+        "max": 697.8
+      },
+      "gc": {
+        "pauseMaxMs": 24.6,
+        "pctMedian": 8.3,
+        "maxByKind": {
+          "weak": 9.357871994376183,
+          "minor": 24.591998994350433,
+          "incremental": 22.654827997088432
+        }
+      },
+      "generatorCpuPct": 25.7,
       "generatorBound": false
     },
     {
@@ -135,21 +187,34 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 9875,
-      "spinsPerSec": 154.5,
+      "spins": 9911,
+      "spinsPerSec": 155.2,
       "errors": {},
       "latencyMs": {
-        "n": 9875,
-        "p50": 9.59,
-        "p95": 92.95,
-        "p99": 254.28,
-        "max": 628.46
+        "n": 9911,
+        "p50": 3.48,
+        "p95": 14.61,
+        "p99": 63.19,
+        "max": 226.34
       },
       "serverRssMB": {
-        "start": 129,
-        "max": 319
+        "start": 114,
+        "max": 179
       },
-      "serverCpuPctMax": 94.7,
+      "serverCpuPctMax": 80.9,
+      "eventLoopDelayMs": {
+        "p99Median": 9.4,
+        "max": 79.6
+      },
+      "gc": {
+        "pauseMaxMs": 18.5,
+        "pctMedian": 1.7,
+        "maxByKind": {
+          "weak": 8.658932000398636,
+          "minor": 16.059904001653194,
+          "incremental": 18.4502459987998
+        }
+      },
       "generatorCpuPct": 8.9,
       "generatorBound": false
     },
@@ -165,22 +230,35 @@
         "wallet": "webhook",
         "postgres": false
       },
-      "spins": 17029,
-      "spinsPerSec": 282.8,
+      "spins": 36816,
+      "spinsPerSec": 612.4,
       "errors": {},
       "latencyMs": {
-        "n": 17029,
-        "p50": 316.55,
-        "p95": 503.56,
-        "p99": 678.71,
-        "max": 7714.5
+        "n": 36816,
+        "p50": 143.53,
+        "p95": 232.38,
+        "p99": 286.58,
+        "max": 5336.75
       },
       "serverRssMB": {
-        "start": 131,
-        "max": 449
+        "start": 122,
+        "max": 493
       },
-      "serverCpuPctMax": 99.8,
-      "generatorCpuPct": 11,
+      "serverCpuPctMax": 99.9,
+      "eventLoopDelayMs": {
+        "p99Median": 102.8,
+        "max": 367.8
+      },
+      "gc": {
+        "pauseMaxMs": 35.3,
+        "pctMedian": 11.1,
+        "maxByKind": {
+          "weak": 8.405885003507137,
+          "minor": 32.61355700343847,
+          "incremental": 35.25444199889898
+        }
+      },
+      "generatorCpuPct": 18.9,
       "generatorBound": false
     },
     {
@@ -195,22 +273,35 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 9793,
-      "spinsPerSec": 153.3,
+      "spins": 9870,
+      "spinsPerSec": 154.5,
       "errors": {},
       "latencyMs": {
-        "n": 9793,
-        "p50": 33.08,
-        "p95": 102.74,
-        "p99": 179.02,
-        "max": 282.44
+        "n": 9870,
+        "p50": 16.85,
+        "p95": 51.46,
+        "p99": 131.4,
+        "max": 218.18
       },
       "serverRssMB": {
-        "start": 100,
-        "max": 175
+        "start": 112,
+        "max": 178
       },
-      "serverCpuPctMax": 76.4,
-      "generatorCpuPct": 8.7,
+      "serverCpuPctMax": 69,
+      "eventLoopDelayMs": {
+        "p99Median": 10.5,
+        "max": 43.8
+      },
+      "gc": {
+        "pauseMaxMs": 19.7,
+        "pctMedian": 1.7,
+        "maxByKind": {
+          "minor": 13.041632004082203,
+          "weak": 10.55629900097847,
+          "incremental": 19.74039900302887
+        }
+      },
+      "generatorCpuPct": 9.5,
       "generatorBound": false
     },
     {
@@ -225,22 +316,35 @@
         "wallet": "sandbox",
         "postgres": true
       },
-      "spins": 24192,
-      "spinsPerSec": 402.3,
+      "spins": 28858,
+      "spinsPerSec": 480.1,
       "errors": {},
       "latencyMs": {
-        "n": 24192,
-        "p50": 231.37,
-        "p95": 369.18,
-        "p99": 439.11,
-        "max": 637.7
+        "n": 28858,
+        "p50": 194.59,
+        "p95": 310.52,
+        "p99": 377.97,
+        "max": 765.06
       },
       "serverRssMB": {
-        "start": 130,
-        "max": 334
+        "start": 129,
+        "max": 367
       },
-      "serverCpuPctMax": 84.6,
-      "generatorCpuPct": 8.8,
+      "serverCpuPctMax": 88.1,
+      "eventLoopDelayMs": {
+        "p99Median": 46.6,
+        "max": 173.3
+      },
+      "gc": {
+        "pauseMaxMs": 22.6,
+        "pctMedian": 7.9,
+        "maxByKind": {
+          "minor": 17.42356599867344,
+          "weak": 8.503457002341747,
+          "incremental": 22.638971000909805
+        }
+      },
+      "generatorCpuPct": 9.9,
       "generatorBound": false
     },
     {
@@ -255,22 +359,33 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 973,
-      "spinsPerSec": 15.4,
+      "spins": 988,
+      "spinsPerSec": 15.5,
       "errors": {},
       "latencyMs": {
-        "n": 973,
-        "p50": 18.95,
-        "p95": 39.17,
-        "p99": 82.58,
-        "max": 139.34
+        "n": 988,
+        "p50": 11.29,
+        "p95": 21.89,
+        "p99": 32.37,
+        "max": 36.32
       },
       "serverRssMB": {
-        "start": 109,
-        "max": 154
+        "start": 101,
+        "max": 136
       },
-      "serverCpuPctMax": 29,
-      "generatorCpuPct": 1.5,
+      "serverCpuPctMax": 23.6,
+      "eventLoopDelayMs": {
+        "p99Median": 7,
+        "max": 41.4
+      },
+      "gc": {
+        "pauseMaxMs": 12.4,
+        "pctMedian": 0.2,
+        "maxByKind": {
+          "minor": 12.439335994422436
+        }
+      },
+      "generatorCpuPct": 1.4,
       "generatorBound": false
     },
     {
@@ -285,22 +400,35 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 3928,
-      "spinsPerSec": 61.8,
+      "spins": 3946,
+      "spinsPerSec": 61.9,
       "errors": {},
       "latencyMs": {
-        "n": 3928,
-        "p50": 25.74,
-        "p95": 78.99,
-        "p99": 134.18,
-        "max": 258.99
+        "n": 3946,
+        "p50": 11.31,
+        "p95": 28.61,
+        "p99": 51.96,
+        "max": 118.52
       },
       "serverRssMB": {
-        "start": 119,
-        "max": 223
+        "start": 113,
+        "max": 148
       },
-      "serverCpuPctMax": 78.7,
-      "generatorCpuPct": 4.7,
+      "serverCpuPctMax": 58,
+      "eventLoopDelayMs": {
+        "p99Median": 8.8,
+        "max": 53.8
+      },
+      "gc": {
+        "pauseMaxMs": 17.7,
+        "pctMedian": 0.8,
+        "maxByKind": {
+          "minor": 14.31726299971342,
+          "weak": 17.676238998770714,
+          "incremental": 13.728744000196457
+        }
+      },
+      "generatorCpuPct": 4.6,
       "generatorBound": false
     },
     {
@@ -315,22 +443,35 @@
         "wallet": "webhook",
         "postgres": true
       },
-      "spins": 9636,
-      "spinsPerSec": 150.6,
+      "spins": 9855,
+      "spinsPerSec": 154.6,
       "errors": {},
       "latencyMs": {
-        "n": 9636,
-        "p50": 62.81,
-        "p95": 308.32,
-        "p99": 526.89,
-        "max": 838.82
+        "n": 9855,
+        "p50": 14.74,
+        "p95": 49.1,
+        "p99": 83.76,
+        "max": 165.93
       },
       "serverRssMB": {
-        "start": 127,
-        "max": 314
+        "start": 118,
+        "max": 227
       },
-      "serverCpuPctMax": 92.1,
-      "generatorCpuPct": 8,
+      "serverCpuPctMax": 87.8,
+      "eventLoopDelayMs": {
+        "p99Median": 9.8,
+        "max": 48.9
+      },
+      "gc": {
+        "pauseMaxMs": 14,
+        "pctMedian": 1.8,
+        "maxByKind": {
+          "minor": 14.042077004909515,
+          "weak": 0.8444059938192368,
+          "incremental": 10.800164997577667
+        }
+      },
+      "generatorCpuPct": 9.3,
       "generatorBound": false
     }
   ]

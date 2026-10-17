@@ -45,8 +45,9 @@ export interface TxFilter {
   status?: TxStatus;
 }
 
+/** TxRecord is flat (primitives only): a shallow copy is a full copy, without a JSON round trip per read. */
 function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v)) as T;
+  return { ...(v as object) } as T;
 }
 
 export class InMemoryTransactionStore {

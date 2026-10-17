@@ -210,7 +210,10 @@ export class InMemoryRoundRepository implements RoundRepository {
     this.count(record);
     this.persistence.save("rounds", record);
     this.trim();
-    return clone(record);
+    // A shallow copy: the stored record's nested outcome / pre_state already are the
+    // caller's own objects, so a deep clone here (a JSON round trip of the whole
+    // outcome, on every round) protected nothing.
+    return { ...record };
   }
 
   /** Windowed: drop the oldest hot rows in batches once the window is 25% over. */
@@ -306,7 +309,7 @@ export class InMemoryAuditRepository implements AuditRepository {
     this.tip = { nextSeq: seq + 1, lastHash: chain_hash };
     this.persistence.save("audit_records", record);
     if (this.retain !== null && this.entries.length > this.retain * 1.25) this.entries.splice(0, this.entries.length - this.retain);
-    return clone(record);
+    return { ...record }; // flat record: a shallow copy is a full copy
   }
 
   list(filter: { operator_id?: string | null; action?: string } = {}): AuditRecord[] {

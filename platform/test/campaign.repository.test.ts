@@ -184,7 +184,18 @@ describe("campaign persistence", () => {
   it("emits a version-guarded upsert so a stale flush can't resurrect spins", async () => {
     const queries: string[] = [];
     const params: unknown[][] = [];
-    const client = { query: async (text: string, values?: unknown[]) => void (queries.push(text), params.push(values ?? [])), release: () => {} };
+    // A drain is ONE statement (`WITH s0 AS (INSERT …), …`): record each upsert in it
+    // with its own values, renumbered, as if it had been sent alone.
+    const record = (text: string, values: unknown[] = []) => {
+      if (!text.startsWith("WITH ")) return void (queries.push(text), params.push(values));
+      for (const m of text.matchAll(/s\d+ AS \((INSERT .*?)\)(?=, s\d+ AS \(| SELECT 1$)/g)) {
+        const nums = [...m[1].matchAll(/\$(\d+)/g)].map((x) => Number(x[1]));
+        const lo = Math.min(...nums), hi = Math.max(...nums);
+        queries.push(m[1].replace(/\$(\d+)/g, (_x, n: string) => `$${Number(n) - lo + 1}`));
+        params.push(values.slice(lo - 1, hi));
+      }
+    };
+    const client = { query: async (text: string, values?: unknown[]) => record(text, values), release: () => {} };
     const pg = new PostgresPersistence({ connect: async () => client } as unknown as Pool);
     const { repo, campaign } = (() => {
       const r = new InMemoryCampaignRepository(pg);

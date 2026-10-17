@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomBytes } from "node:crypto";
+import { randomFillSync } from "node:crypto";
 
 /**
  * W3C Trace Context (https://www.w3.org/TR/trace-context/) for correlating one player
@@ -24,16 +24,31 @@ export interface TraceContext {
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
 const store = new AsyncLocalStorage<TraceContext>();
 
+// Ids come from a pooled CSPRNG buffer (one randomFillSync per 4 KB, not one
+// randomBytes allocation per id): every request and every outbound call needs them.
+const POOL = Buffer.alloc(4096);
+let poolPos = POOL.length;
+function randomHex(bytes: number): string {
+  if (poolPos + bytes > POOL.length) {
+    randomFillSync(POOL);
+    poolPos = 0;
+  }
+  const hex = POOL.toString("hex", poolPos, poolPos + bytes);
+  poolPos += bytes;
+  return hex;
+}
+const ZERO_TRACE = "0".repeat(32);
+const ZERO_SPAN = "0".repeat(16);
 export const newTraceId = (): string => {
   let id: string;
-  do id = randomBytes(16).toString("hex");
-  while (/^0+$/.test(id));
+  do id = randomHex(16);
+  while (id === ZERO_TRACE);
   return id;
 };
 export const newSpanId = (): string => {
   let id: string;
-  do id = randomBytes(8).toString("hex");
-  while (/^0+$/.test(id));
+  do id = randomHex(8);
+  while (id === ZERO_SPAN);
   return id;
 };
 

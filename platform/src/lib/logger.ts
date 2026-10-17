@@ -8,17 +8,25 @@ export interface LoggerOptions {
 }
 
 export function createLogger(opts: LoggerOptions): Logger {
-  return pino({
+  const options = {
     level: opts.level,
     base: { service: "bananax-platform", env: opts.env },
-    timestamp: pino.stdTimeFunctions.isoTime,
-    ...(opts.pretty
-      ? {
-          transport: {
-            target: "pino-pretty",
-            options: { translateTime: "HH:MM:ss.l", ignore: "pid,hostname" }
-          }
-        }
-      : {})
+    timestamp: pino.stdTimeFunctions.isoTime
+  };
+  if (opts.pretty) {
+    return pino({ ...options, transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss.l", ignore: "pid,hostname" } } });
+  }
+  // Asynchronous stdout: a slow log pipe (a container log driver under pressure) must
+  // never block the event loop, and lines written while one write is in flight go out
+  // together. No minimum batch size, so a quiet server's line is written at once.
+  // Flushed on exit; a kill -9 can lose the last few lines (money state is in Postgres).
+  const dest = pino.destination({ dest: 1, sync: false });
+  process.once("exit", () => {
+    try {
+      dest.flushSync();
+    } catch {
+      /* not open yet, or already closed */
+    }
   });
+  return pino(options, dest);
 }
