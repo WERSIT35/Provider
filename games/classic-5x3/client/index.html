@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#140d1f">
+  <title>Classic 5x3</title>
+  <!-- Start the session handshake and the rules while the scripts download (game.js picks
+       them up): on Slow 4G every serial round trip is ~0.6 s. -->
+  <link rel="preload" href="rules.json" as="fetch" crossorigin>
+  <link rel="preload" href="game.js" as="script">
+  <script>
+    (function () {
+      var lt = new URLSearchParams(location.search).get("lt");
+      if (!lt) return;
+      window.__classicEarlySession = fetch("/game/v1/session/init", { method: "POST", headers: { authorization: "Bearer " + lt } })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
+      window.__classicEarlySession.catch(function () {});
+    })();
+  </script>
+  <style>
+    :root {
+      --bg: #140d1f; --bg2: #24163a; --panel: #1d1430; --edge: rgba(255, 214, 140, 0.28);
+      --gold: #ffd36b; --gold2: #f0a83c; --text: #f4ecdf; --muted: #b6a7c9; --win: #ffe08a; --danger: #ff7a7a;
+      --btn: 44px; --gap: clamp(6px, 1.4vmin, 14px);
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    /* Flat colours and no large blurred shadows: on a phone without much GPU (and on the
+       bench's software GPU) a full-screen radial gradient and 40-50 px blurs are the
+       first frame's biggest raster cost. */
+    html, body { margin: 0; height: 100%; background: linear-gradient(180deg, var(--bg2), var(--bg) 60%); color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
+    .game {
+      position: fixed; inset: 0; display: grid; grid-template-rows: 1fr auto; gap: var(--gap);
+      padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
+    }
+    .stage { position: relative; min-height: 0; display: grid; place-items: center; }
+    /* The board keeps 5:3 at every size; it never moves when anything else changes. */
+    .board { position: relative; width: min(100%, calc((100dvh - 150px) * 5 / 3)); aspect-ratio: 5 / 3; max-height: 100%; border-radius: 14px; background: #0d0816; box-shadow: 0 0 0 2px var(--edge); }
+    .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; display: block; }
+    .badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 4px 12px; border-radius: 99px; background: linear-gradient(180deg, var(--gold), var(--gold2)); color: #2a1600; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.08em; white-space: nowrap; }
+    .badge[hidden] { display: none; }
+    .celebration { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(10, 5, 20, 0.62); border-radius: 14px; cursor: pointer; }
+    .celebration[hidden] { display: none; }
+    .celebration b { display: block; font-size: clamp(1.6rem, 7vmin, 4.2rem); letter-spacing: 0.06em; color: var(--gold); text-shadow: 0 0 24px rgba(255, 190, 80, 0.7); }
+    .celebration span { font-size: clamp(1.4rem, 6vmin, 3.4rem); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .celebration small { display: block; margin-top: 8px; color: var(--muted); }
+    .deck { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--gap); padding: 8px 10px; border-radius: 16px; background: linear-gradient(180deg, rgba(36, 22, 58, 0.95), rgba(20, 13, 31, 0.95)); box-shadow: 0 0 0 1px var(--edge); }
+    .sys, .play { display: flex; align-items: center; gap: 8px; }
+    .status { min-width: 0; display: grid; gap: 4px; }
+    .msg { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.85rem; color: var(--muted); text-align: center; }
+    .msg.win { color: var(--win); font-weight: 700; }
+    .readouts { display: flex; justify-content: center; gap: clamp(8px, 3vw, 28px); font-variant-numeric: tabular-nums; }
+    .readouts div { display: grid; text-align: center; }
+    .readouts span { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .readouts strong { font-size: 0.95rem; }
+    button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: grid; place-items: center; font-size: 1.05rem; }
+    .icon[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--gold); color: var(--gold); }
+    .icon.muted { opacity: 0.5; }
+    .spin { width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #ffe7a3, var(--gold2) 70%); color: #2a1600; font-weight: 900; font-size: 0.9rem; letter-spacing: 0.06em; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.18); }
+    .spin:active { transform: scale(0.96); }
+    .spin.busy { background: radial-gradient(circle at 50% 35%, #f6e0ff, #a982d6 70%); }
+    .spin:disabled { filter: grayscale(0.7); opacity: 0.6; }
+    .bet { width: 36px; height: 36px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); font-size: 1.2rem; font-weight: 800; }
+    .bet:disabled, .icon:disabled { opacity: 0.4; }
+    .wrap { position: relative; }
+    .pop { position: absolute; bottom: calc(100% + 10px); right: 0; z-index: 5; width: 250px; padding: 12px; border-radius: 14px; background: #1b1129; box-shadow: 0 0 0 1px var(--edge), 0 14px 40px rgba(0, 0, 0, 0.6); display: grid; gap: 8px; font-size: 0.8rem; }
+    .pop[hidden] { display: none; }
+    .pop .counts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .pop .counts button { height: 38px; border-radius: 9px; background: linear-gradient(180deg, #f3e2bc, #c6a46e); color: #241400; font-weight: 800; }
+    .pop label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .pop select { background: #0d0816; color: var(--text); border: 1px solid var(--edge); border-radius: 7px; min-height: 30px; font: inherit; }
+    dialog { max-width: min(92vw, 640px); max-height: 86vh; border: 0; border-radius: 16px; padding: 18px 20px; background: #1b1129; color: var(--text); box-shadow: 0 0 0 1px var(--edge), 0 20px 60px rgba(0, 0, 0, 0.7); }
+    dialog::backdrop { background: rgba(5, 2, 10, 0.7); }
+    dialog h2 { margin: 0 0 10px; font-size: 1.1rem; color: var(--gold); }
+    dialog table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+    dialog td, dialog th { padding: 5px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); text-align: right; }
+    dialog td:first-child, dialog th:first-child { text-align: left; }
+    dialog p, dialog li { font-size: 0.85rem; line-height: 1.45; color: #ddd1ea; }
+    dialog .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
+    dialog .row button, dialog .row label { min-height: 40px; padding: 0 14px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: inline-flex; align-items: center; gap: 8px; }
+    .close { float: right; width: 36px; height: 36px; border-radius: 50%; background: var(--panel); }
+    body:not(.app-ready) .deck { visibility: hidden; }
+    @media (max-width: 520px) {
+      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; }
+      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
+      .board { width: min(100%, calc((100dvh - 220px) * 5 / 3)); }
+    }
+    @media (prefers-reduced-motion: reduce) { .spin:active { transform: none; } }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <div class="stage">
+      <div class="board" id="board">
+        <canvas id="reels" aria-label="Reels"></canvas>
+        <div class="badge" id="fsBadge" hidden></div>
+        <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
+      </div>
+    </div>
+    <footer class="deck" aria-label="Controls">
+      <div class="sys">
+        <button class="icon" id="infoBtn" aria-label="Game info and settings">i</button>
+        <button class="icon" id="soundBtn" aria-label="Sound" aria-pressed="true">&#9835;</button>
+      </div>
+      <div class="status">
+        <div class="msg" id="msg" role="status" aria-live="polite">Loading…</div>
+        <div class="readouts">
+          <div><span>Credit</span><strong id="balance">—</strong></div>
+          <div><span>Bet</span><strong id="bet">—</strong></div>
+          <div><span>Win</span><strong id="win">0.00</strong></div>
+        </div>
+      </div>
+      <div class="play">
+        <button class="bet" id="betDown" aria-label="Decrease bet">−</button>
+        <button class="spin" id="spinBtn" aria-label="Spin">SPIN</button>
+        <button class="bet" id="betUp" aria-label="Increase bet">+</button>
+        <div class="wrap">
+          <button class="icon" id="autoBtn" aria-label="Autoplay" aria-pressed="false">&#8635;</button>
+          <div class="pop" id="autoPop" hidden role="menu" aria-label="Autoplay">
+            <div class="counts"><button data-n="10">10</button><button data-n="25">25</button><button data-n="50">50</button><button data-n="100">100</button><button data-n="inf">&#8734;</button></div>
+            <label>Stop if loss reaches <select id="apLoss"><option value="0">No limit</option><option value="10">10× bet</option><option value="25">25× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select></label>
+            <label>Stop on a win of <select id="apWin"><option value="0">No limit</option><option value="10">10× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select></label>
+            <label><span>Stop when Free Spins are won</span><input type="checkbox" id="apFeature"></label>
+          </div>
+        </div>
+        <button class="icon" id="turboBtn" aria-label="Turbo" aria-pressed="false">&#9889;</button>
+      </div>
+    </footer>
+  </main>
+
+  <dialog id="info" aria-label="Game info">
+    <button class="close" data-close aria-label="Close">&#10005;</button>
+    <h2>Classic 5x3</h2>
+    <div class="row">
+      <button id="fsBtn" hidden aria-pressed="false">Full screen</button>
+      <label id="hapticsRow" hidden><input type="checkbox" id="haptics" checked> Vibration</label>
+    </div>
+    <div id="rulesBody"></div>
+  </dialog>
+  <dialog id="reality" aria-label="Session reminder">
+    <h2>Session reminder</h2>
+    <p id="realityText"></p>
+    <div class="row"><button id="realityContinue">Keep playing</button><button id="realityExit">Exit game</button></div>
+  </dialog>
+
+  <script>window.VX_AUDIO_BASE = "/play/assets/audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
+  <script src="/play/embed-bridge.js"></script>
+  <script src="/play/audio/audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
