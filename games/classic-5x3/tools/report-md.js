@@ -1,0 +1,50 @@
+// Markdown report from sim-report.js JSON outputs (one per variant) + the exact figures.
+//   node games/classic-5x3/tools/report-md.js qa/sim-20.json qa/sim-10.json qa/sim-40.json > qa/rtp-report.md
+const fs = require("fs");
+const path = require("path");
+const { exact } = require("./exact-rtp");
+
+const rules = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "math", "rules.json"), "utf8"));
+const ex = exact(rules);
+const runs = process.argv.slice(2).map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+const main = runs[0];
+const pct = (x, d = 4) => `${Number(x).toFixed(d)}%`;
+const num = (x) => Number(x).toLocaleString("en-US");
+const inside = (r) => r.ci99[0] <= ex.rtp * 100 && ex.rtp * 100 <= r.ci99[1];
+
+const out = [];
+out.push("# classic-5x3: RTP and volatility report", "");
+out.push(`Seeded Monte Carlo over the real engine file (\`engine/engine.js\`, loaded in a vm context as the RGS loads it), produced by \`tools/sim-report.js\` and rendered by \`tools/report-md.js\`. One sample is one paid spin **including the whole free-spins feature it triggers**. Shards are fixed (${main.shards}), so the figures don't depend on the machine; rerun with the same seed to reproduce them exactly.`, "");
+out.push("This is an internal measurement. It is not a certification and makes no claim of approval by any lab or regulator.", "");
+out.push("## Summary", "");
+out.push("| | Target | Result |", "|---|---|---|");
+out.push(`| RTP (exact, from strips + paytable) | 96.0% ± 0.1 | **${pct(ex.rtp * 100)}** (${Math.abs(ex.rtp * 100 - 96) <= 0.1 ? "within" : "OUTSIDE"} target) |`);
+out.push(`| RTP measured, ${num(main.samples)} paid spins (${main.lines} lines) | — | **${pct(main.rtp)}**, 99% CI [${pct(main.ci99[0])}, ${pct(main.ci99[1])}], SE ${pct(main.se)} (${inside(main) ? "contains" : "does NOT contain"} the exact RTP) |`);
+out.push(`| Volatility | medium | SD ${main.sd_x}× bet per paid spin; volatility index (1.645 × SD) ${main.volatility_index_90} |`);
+out.push(`| Hit frequency (${main.lines} lines) | — | ${pct(main.hit_frequency, 2)} (1 in ${main.hit_1_in}) |`);
+out.push(`| Max win | 5,000× | cap enforced; largest observed ${num(main.max_win_observed_x)}×; cap reached ${num(main.cap_hits)} times |`);
+out.push("");
+out.push("## Variants (fixed lines)", "");
+out.push("RTP doesn't depend on the line count (see math-spec.md §2); hit frequency and volatility do.", "");
+out.push("| Variant | Lines | Paid spins | RTP | 99% CI | Hit frequency | SD (× bet) | Volatility index | Free spins 1 in | Largest win |", "|---|---|---|---|---|---|---|---|---|---|");
+for (const r of runs) out.push(`| \`${r.variant}\` | ${r.lines} | ${num(r.samples)} | ${pct(r.rtp)} | [${pct(r.ci99[0])}, ${pct(r.ci99[1])}] | ${pct(r.hit_frequency, 2)} | ${r.sd_x} | ${r.volatility_index_90} | ${r.feature_1_in} | ${num(r.max_win_observed_x)}× |`);
+out.push("");
+out.push("## Exact vs measured, by part", "");
+out.push("| Part | Exact | Measured |", "|---|---|---|");
+out.push(`| Base game (lines + scatters) | ${pct(ex.baseGameRtp * 100)} | ${pct(main.base_game_rtp)} |`);
+out.push(`| Free spins | ${pct(ex.featureRtp * 100)} | ${pct(main.free_spins_rtp)} |`);
+out.push(`| Feature frequency | 1 in ${ex.triggerOneIn.toFixed(1)} | 1 in ${main.feature_1_in} |`);
+out.push(`| Spins per feature (incl. retriggers) | ${ex.spinsPerFeature.toFixed(2)} | ${main.avg_feature_spins} |`);
+out.push(`| Average feature win | — | ${main.avg_feature_win_x}× bet |`);
+out.push("");
+out.push(`## Win distribution (${main.variant}, per paid spin incl. its feature)`, "");
+out.push("| Win (× bet) | Share of spins | RTP contribution |", "|---|---|---|");
+for (const d of main.distribution) out.push(`| ${d.from_x === 0 ? "0 (no win)" : d.to_x === null ? `≥ ${d.from_x}` : `${d.from_x === 0.000001 ? ">0" : d.from_x} – ${d.to_x}`} | ${pct(d.share_pct, 5)} | ${pct(d.rtp_pct)} |`);
+out.push("");
+out.push("## Reproduce", "");
+out.push("```bash");
+for (const r of runs) out.push(`node games/classic-5x3/tools/sim-report.js --spins ${r.samples} --variant ${r.variant} --seed ${r.seed} --json <out>.json`);
+out.push("node games/classic-5x3/tools/exact-rtp.js");
+out.push("```", "");
+out.push(`Run time: ${runs.map((r) => `${r.variant} ${r.seconds}s`).join(", ")}.`);
+process.stdout.write(out.join("\n") + "\n");

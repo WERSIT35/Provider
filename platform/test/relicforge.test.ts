@@ -63,13 +63,17 @@ describe("Relic Forge on the RGS", () => {
     expect(init.statusCode).toBe(200);
     expect(init.json().regulatory).toMatchObject({ turbo_enabled: false, slam_stop_enabled: false });
     const token = init.json().session_token;
+    // A paid spin can trigger the Forge; its spins then need a pick (choice 0).
+    let pending = false;
     for (let i = 0; i < 20; i++) {
-      const res = await app.inject({ method: "POST", url: "/game/v1/spin", headers: { authorization: `Bearer ${token}`, "idempotency-key": `rf-${i}` }, payload: { bet_amount: 1 } });
+      const res = await app.inject({ method: "POST", url: "/game/v1/spin", headers: { authorization: `Bearer ${token}`, "idempotency-key": `rf-${i}` }, payload: pending ? { bet_amount: 1, choice: 0 } : { bet_amount: 1 } });
       expect(res.statusCode).toBe(200);
       const body = res.json();
-      expect(body.initial_board).toHaveLength(5);
+      // 5 rows; 6-8 in a Forge spin with Expand.
+      expect(body.initial_board.length).toBeGreaterThanOrEqual(5);
       expect(body.total_win).toBeLessThanOrEqual(10000);
       expect(c.verification.verify(body.round_ref)?.verdict).toBe("legitimate");
+      pending = Array.isArray(body.feature_state?.forge?.pending_offer);
     }
     // The Forge meter at this bet survives into the next visit.
     const last = c.ledger.lastRoundForSession(init.json().session_id);

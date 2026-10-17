@@ -240,39 +240,61 @@ async function serveFile(
 const playPageRoutes: FastifyPluginAsync = async (app) => {
   const root = clientRoot();
 
-  // /play (no slash) → /play/ so the canvas client's relative paths resolve.
-  app.get("/play", (req, reply) => {
-    const search = (req.raw.url || "").includes("?") ? (req.raw.url as string).slice((req.raw.url as string).indexOf("?")) : "";
-    return reply.code(302).header("location", "/play/" + search).send();
-  });
-
   const launchToken = (req: FastifyRequest): unknown => (req.query as Record<string, unknown> | undefined)?.lt;
 
-  app.get("/play/", async (req, reply) => serveFile(root, "index.html", req, reply, framingHeaders(app, launchToken(req))));
+  // /play (no slash) → /play/ so the canvas client's relative paths resolve; another
+  // game's launch goes straight to its own folder (one redirect, not two: each is a
+  // round trip, 562 ms on Slow 4G).
+  app.get("/play", (req, reply) => {
+    const search = (req.raw.url || "").includes("?") ? (req.raw.url as string).slice((req.raw.url as string).indexOf("?")) : "";
+    const game = gameOf(launchToken(req));
+    const target = game && game !== app.container.games.default.gameCode ? `/play/g/${game}/` : "/play/";
+    return reply.code(302).header("location", target + search).send();
+  });
+
+  // Multi-game: a launch for another game than Vault 20K goes to that game's own client,
+  // /play/g/<code>/ (served from games/<code>/<client>), with the same query (?lt=…).
+  const gameOf = (lt: unknown): string | null => {
+    if (typeof lt !== "string" || !lt) return null;
+    try {
+      const code = verifyToken(app.container.config.launchSecret, lt, { ignoreExpiry: true }).game_code;
+      return typeof code === "string" && app.container.games.has(code) ? app.container.games.engineFor(code).gameCode : null;
+    } catch {
+      return null;
+    }
+  };
+  app.get("/play/", async (req, reply) => {
+    const game = gameOf(launchToken(req));
+    if (game && game !== app.container.games.default.gameCode) {
+      const url = req.raw.url || "";
+      return reply.code(302).header("location", `/play/g/${game}/${url.includes("?") ? url.slice(url.indexOf("?")) : ""}`).send();
+    }
+    return serveFile(root, "index.html", req, reply, framingHeaders(app, launchToken(req)));
+  });
+
+  app.get("/play/g/:game/*", async (req, reply) => {
+    const { game, "*": rest } = req.params as { game: string; "*": string };
+    const dir = /^[a-z0-9][a-z0-9_-]*$/.test(game) ? app.container.games.clientDir(game) : null;
+    if (!dir || game === app.container.games.default.gameCode) return notFound(reply);
+    // rules.json = the game's own rules file (outside its client folder): displayed pays = paid pays.
+    if (rest === "rules.json") {
+      const rules = app.container.games.rulesPath(game) as string;
+      return serveFile(path.dirname(rules), path.basename(rules), req, reply);
+    }
+    return serveFile(dir, rest || "index.html", req, reply, framingHeaders(app, launchToken(req)));
+  });
 
   app.get("/play/*", async (req, reply) => {
     const rel = (req.params as { "*": string })["*"] || "index.html";
     return serveFile(root, rel, req, reply, framingHeaders(app, launchToken(req)));
   });
 
-  // Every other game's client: /play/g/<code>/ serves games/<code>/<client> (the
-  // manifest's `client` folder), with the same framing rules and caching as /play/.
-  const gameRoot = (code: string): string | null => {
-    if (!/^[a-z0-9][a-z0-9_-]*$/.test(code)) return null;
-    return app.container.games.list().some((g) => g.code === code) ? app.container.games.clientDir(code) : null;
-  };
-  app.get("/play/g/:code", (req, reply) => {
-    const { code } = req.params as { code: string };
-    if (!gameRoot(code)) return notFound(reply);
+  // /play/g/<code> (no slash) → /play/g/<code>/ so the client's relative paths resolve.
+  app.get("/play/g/:game", (req, reply) => {
+    const { game } = req.params as { game: string };
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(game) || !app.container.games.clientDir(game) || game === app.container.games.default.gameCode) return notFound(reply);
     const url = req.raw.url ?? "";
-    const search = url.includes("?") ? url.slice(url.indexOf("?")) : "";
-    return reply.code(302).header("location", `/play/g/${code}/${search}`).send();
-  });
-  app.get("/play/g/:code/*", async (req, reply) => {
-    const { code, "*": sub } = req.params as { code: string; "*": string };
-    const dir = gameRoot(code);
-    if (!dir) return notFound(reply);
-    return serveFile(dir, sub || "index.html", req, reply, framingHeaders(app, launchToken(req)));
+    return reply.code(302).header("location", `/play/g/${game}/${url.includes("?") ? url.slice(url.indexOf("?")) : ""}`).send();
   });
 };
 

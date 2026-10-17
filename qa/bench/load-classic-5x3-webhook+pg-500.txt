@@ -1,0 +1,2 @@
+webhook+pg-500           153.9 spins/s  p50 22.9  p95 69.67  p99 134.49  max 219.93 ms  errors 0  rss 213 MB  server cpu 82.5%  gen cpu 10.7%
+→ /home/claude/provider-p7e/qa/bench/load-webhook+pg-500.json

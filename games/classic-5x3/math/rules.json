@@ -1,0 +1,105 @@
+{
+  "game": "classic-5x3",
+  "version": "1.0.0",
+  "layout": {
+    "reels": 5,
+    "rows": 3
+  },
+  "lines": {
+    "options": [10, 20, 40],
+    "patterns": [
+      [1, 1, 1, 1, 1],
+      [0, 0, 0, 0, 0],
+      [2, 2, 2, 2, 2],
+      [0, 1, 2, 1, 0],
+      [2, 1, 0, 1, 2],
+      [0, 0, 1, 2, 2],
+      [2, 2, 1, 0, 0],
+      [1, 0, 0, 0, 1],
+      [1, 2, 2, 2, 1],
+      [0, 1, 1, 1, 0],
+      [2, 1, 1, 1, 2],
+      [1, 0, 1, 2, 1],
+      [1, 2, 1, 0, 1],
+      [0, 1, 0, 1, 0],
+      [2, 1, 2, 1, 2],
+      [1, 1, 0, 1, 1],
+      [1, 1, 2, 1, 1],
+      [0, 0, 2, 0, 0],
+      [2, 2, 0, 2, 2],
+      [0, 2, 0, 2, 0],
+      [2, 0, 2, 0, 2],
+      [1, 0, 2, 0, 1],
+      [1, 2, 0, 2, 1],
+      [0, 2, 2, 2, 0],
+      [2, 0, 0, 0, 2],
+      [0, 0, 1, 0, 0],
+      [2, 2, 1, 2, 2],
+      [1, 1, 1, 0, 0],
+      [1, 1, 1, 2, 2],
+      [0, 1, 2, 2, 2],
+      [2, 1, 0, 0, 0],
+      [0, 0, 0, 1, 2],
+      [2, 2, 2, 1, 0],
+      [1, 0, 1, 0, 1],
+      [1, 2, 1, 2, 1],
+      [0, 2, 1, 2, 0],
+      [2, 0, 1, 0, 2],
+      [0, 1, 1, 1, 2],
+      [2, 1, 1, 1, 0],
+      [1, 1, 0, 0, 0]
+    ]
+  },
+  "symbols": ["CHERRY", "LEMON", "ORANGE", "PLUM", "GRAPE", "MELON", "BELL", "BAR", "SEVEN", "WILD", "SCATTER"],
+  "wild": {
+    "symbol": "WILD",
+    "substitutes_all_but": ["SCATTER"]
+  },
+  "scatter": {
+    "symbol": "SCATTER",
+    "pays": [3, 15, 100]
+  },
+  "paytable": {
+    "CHERRY": [6, 20, 50],
+    "LEMON": [6, 20, 50],
+    "ORANGE": [8, 25, 60],
+    "PLUM": [8, 25, 60],
+    "GRAPE": [12, 40, 125],
+    "MELON": [15, 50, 150],
+    "BELL": [20, 75, 250],
+    "BAR": [25, 100, 400],
+    "SEVEN": [40, 150, 800]
+  },
+  "free_spins": {
+    "awards": [20, 25, 30],
+    "multiplier": 3
+  },
+  "rtp_profiles": [
+    {
+      "game_id": "classic-5x3",
+      "slug": "classic_5x3_20",
+      "lines": 20
+    },
+    {
+      "game_id": "classic-5x3_10",
+      "slug": "classic_5x3_10",
+      "lines": 10
+    },
+    {
+      "game_id": "classic-5x3_40",
+      "slug": "classic_5x3_40",
+      "lines": 40
+    }
+  ],
+  "max_win_x": 5000,
+  "allowed_bets": [0.2, 0.4, 1, 2, 4, 10, 20, 40, 100],
+  "target_rtp": 96,
+  "theoretical_rtp": 96.0203,
+  "reels": [
+    ["CHERRY", "PLUM", "LEMON", "BELL", "GRAPE", "ORANGE", "CHERRY", "SEVEN", "LEMON", "PLUM", "MELON", "BAR", "CHERRY", "ORANGE", "LEMON", "GRAPE", "PLUM", "SEVEN", "CHERRY", "MELON", "LEMON", "ORANGE", "BELL", "SCATTER", "CHERRY", "PLUM", "GRAPE", "LEMON", "ORANGE", "MELON", "BAR"],
+    ["ORANGE", "SEVEN", "LEMON", "PLUM", "MELON", "BELL", "CHERRY", "ORANGE", "WILD", "LEMON", "PLUM", "GRAPE", "BAR", "CHERRY", "MELON", "LEMON", "ORANGE", "SEVEN", "WILD", "PLUM", "CHERRY", "GRAPE", "LEMON", "BELL", "ORANGE", "MELON", "BAR", "CHERRY", "PLUM", "LEMON", "WILD", "SCATTER", "GRAPE", "CHERRY"],
+    ["ORANGE", "WILD", "LEMON", "PLUM", "GRAPE", "BAR", "CHERRY", "MELON", "LEMON", "ORANGE", "SEVEN", "WILD", "PLUM", "CHERRY", "GRAPE", "LEMON", "BELL", "ORANGE", "MELON", "BAR", "CHERRY", "PLUM", "LEMON", "WILD", "SCATTER", "GRAPE", "CHERRY", "ORANGE", "SEVEN", "LEMON", "PLUM", "MELON", "BELL", "CHERRY"],
+    ["MELON", "LEMON", "ORANGE", "SEVEN", "WILD", "PLUM", "CHERRY", "GRAPE", "LEMON", "BELL", "ORANGE", "MELON", "BAR", "CHERRY", "PLUM", "LEMON", "WILD", "SCATTER", "GRAPE", "CHERRY", "ORANGE", "SEVEN", "LEMON", "PLUM", "MELON", "BELL", "CHERRY", "ORANGE", "WILD", "LEMON", "PLUM", "GRAPE", "BAR", "CHERRY"],
+    ["ORANGE", "MELON", "BAR", "CHERRY", "PLUM", "LEMON", "BELL", "GRAPE", "ORANGE", "CHERRY", "SEVEN", "LEMON", "PLUM", "MELON", "BAR", "CHERRY", "ORANGE", "LEMON", "GRAPE", "PLUM", "SEVEN", "CHERRY", "MELON", "LEMON", "ORANGE", "BELL", "SCATTER", "CHERRY", "PLUM", "GRAPE", "LEMON"]
+  ]
+}

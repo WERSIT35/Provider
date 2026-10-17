@@ -148,11 +148,11 @@ export function startMockCasino(env = {}) {
 }
 
 /** Signed operator launch → session init. Same HMAC scheme as src/lib/security/hmac.ts. */
-export async function launchPlayer(cred, playerId) {
+export async function launchPlayer(cred, playerId, gameCode = process.env.BENCH_GAME || "bananax") {
   const { computeSignature } = await importDist("lib/security/hmac.js");
   const base = `http://127.0.0.1:${cred.port}`;
   for (;;) {
-    const body = JSON.stringify({ game_code: "bananax", operator_player_id: playerId, currency: "GEL", origin: "play.bench.test" });
+    const body = JSON.stringify({ game_code: gameCode, operator_player_id: playerId, currency: "GEL", origin: "play.bench.test" });
     const ts = Math.floor(Date.now() / 1000).toString();
     const r = await request(`${base}/operator/v1/launch`, {
       method: "POST", body,

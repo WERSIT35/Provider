@@ -87,6 +87,16 @@ if (RESUME) {
   });
   mc = container.mgmt.approveMathConfig(container.mgmt.submitMathConfigForReview(mc.id).id, "bench");
   container.mgmt.assignGame({ operator_id: op.id, game_id: game.id, math_config_id: mc.id, currency: "GEL", allowed_bets: [1, 5, 10, 50, 500] });
+  // Every other registered game too (games/), so a bench can launch any of them (BENCH_GAME).
+  for (const g of container.games.list().filter((x) => x.code !== "bananax")) {
+    const engine = container.games.game(g.code);
+    for (const code of engine.codes()) {
+      const reg = container.mgmt.registerGame({ code, title: g.title });
+      let cfg = container.mgmt.createMathConfig({ game_id: reg.id, version: engine.rulesVersion(), rtp_profile_key: code, theoretical_rtp: engine.getRtpProfile(code).theoretical_percent, config_hash: `sha256:${engine.rulesHash()}` });
+      cfg = container.mgmt.approveMathConfig(container.mgmt.submitMathConfigForReview(cfg.id).id, "bench");
+      container.mgmt.assignGame({ operator_id: op.id, game_id: reg.id, math_config_id: cfg.id, currency: "GEL", allowed_bets: engine.getAllowedBets().filter((b) => b >= 0.2 && b <= 100) });
+    }
+  }
   if (WALLET === "webhook") container.mgmt.setWebhook(op.id, process.env.BENCH_CASINO_URL ?? "http://127.0.0.1:8091/wallet");
   cred = { key: c.credential.api_key_id, secret: c.api_secret, port: PORT };
   writeFileSync(CRED_FILE, JSON.stringify(cred));
