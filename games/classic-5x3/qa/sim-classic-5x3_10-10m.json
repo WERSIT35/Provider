@@ -1,0 +1,116 @@
+{
+  "game": "classic-5x3",
+  "variant": "classic-5x3_10",
+  "lines": 10,
+  "seed": "classic-5x3",
+  "samples": 10000000,
+  "shards": 20,
+  "engine": "engine/engine.js (vm context, seeded xoshiro128**)",
+  "theoretical_rtp": 96.0203,
+  "target_rtp": 96,
+  "rtp": 96.0482,
+  "se": 0.1714,
+  "ci99": [
+    95.6066,
+    96.4897
+  ],
+  "base_game_rtp": 65.4168,
+  "free_spins_rtp": 30.6314,
+  "hit_frequency": 30.382,
+  "hit_1_in": 3.29,
+  "sd_x": 5.421,
+  "volatility_index_90": 8.917,
+  "feature_1_in": 149.8,
+  "avg_feature_spins": 23.4,
+  "avg_feature_win_x": 45.9,
+  "max_win_x": 5000,
+  "max_win_observed_x": 591.8,
+  "cap_hits": 0,
+  "distribution": [
+    {
+      "from_x": 0,
+      "to_x": 0.000001,
+      "share_pct": 69.61788,
+      "rtp_pct": 0
+    },
+    {
+      "from_x": 0.000001,
+      "to_x": 1,
+      "share_pct": 13.01299,
+      "rtp_pct": 8.7307
+    },
+    {
+      "from_x": 1,
+      "to_x": 2,
+      "share_pct": 5.18633,
+      "rtp_pct": 7.2091
+    },
+    {
+      "from_x": 2,
+      "to_x": 5,
+      "share_pct": 8.89631,
+      "rtp_pct": 24.3706
+    },
+    {
+      "from_x": 5,
+      "to_x": 10,
+      "share_pct": 2.01348,
+      "rtp_pct": 12.1662
+    },
+    {
+      "from_x": 10,
+      "to_x": 20,
+      "share_pct": 0.61481,
+      "rtp_pct": 8.289
+    },
+    {
+      "from_x": 20,
+      "to_x": 50,
+      "share_pct": 0.39711,
+      "rtp_pct": 13.3
+    },
+    {
+      "from_x": 50,
+      "to_x": 100,
+      "share_pct": 0.20782,
+      "rtp_pct": 14.3095
+    },
+    {
+      "from_x": 100,
+      "to_x": 250,
+      "share_pct": 0.05012,
+      "rtp_pct": 6.7037
+    },
+    {
+      "from_x": 250,
+      "to_x": 500,
+      "share_pct": 0.0031,
+      "rtp_pct": 0.942
+    },
+    {
+      "from_x": 500,
+      "to_x": 1000,
+      "share_pct": 0.00005,
+      "rtp_pct": 0.0273
+    },
+    {
+      "from_x": 1000,
+      "to_x": 2500,
+      "share_pct": 0,
+      "rtp_pct": 0
+    },
+    {
+      "from_x": 2500,
+      "to_x": 5000,
+      "share_pct": 0,
+      "rtp_pct": 0
+    },
+    {
+      "from_x": 5000,
+      "to_x": null,
+      "share_pct": 0,
+      "rtp_pct": 0
+    }
+  ],
+  "seconds": 132
+}
