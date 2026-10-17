@@ -82,10 +82,23 @@
     dialog .row button, dialog .row label { min-height: 40px; padding: 0 14px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: inline-flex; align-items: center; gap: 8px; }
     .close { float: right; width: 36px; height: 36px; border-radius: 50%; background: var(--panel); }
     body:not(.app-ready) .deck { visibility: hidden; }
+    /* One column that never grows past the screen: the deck's buttons used to widen it
+       (and the board with it) past a 375 px phone's edge. */
+    .game { grid-template-columns: minmax(0, 1fr); }
     @media (max-width: 520px) {
+      :root { --btn: 40px; }
       .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; }
       .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
+      .play { gap: 6px; }
+      .spin { width: 60px; height: 60px; }
+      .bet { width: 34px; height: 34px; }
       .board { width: min(100%, calc((100dvh - 220px) * 5 / 3)); }
+    }
+    @media (max-width: 360px) {
+      /* 320-360 px: the two system buttons sit beside the readouts, the play row gets the full width. */
+      .deck { grid-template-columns: auto 1fr; grid-template-areas: "sys status" "play play"; }
+      .sys { flex-direction: column; gap: 6px; }
+      .play { justify-content: center; }
     }
     @media (prefers-reduced-motion: reduce) { .spin:active { transform: none; } }
   </style>

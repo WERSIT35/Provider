@@ -27,3 +27,6 @@ art-src/audio/incoming/*
 
 # Bench history (latest results live in qa/bench/*.json)
 qa/bench/runs/
+
+# Static demo site, built by tools/build-demo.mjs (Vercel/Netlify build it themselves).
+dist-demo/

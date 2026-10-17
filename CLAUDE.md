@@ -145,7 +145,7 @@ npm run check:casino-embed  # casino page framing + driving the game in real Chr
 
 ## Deployment
 
-Static-client hosting only (`netlify.toml`, `vercel.json`): both publish `client/` as a SPA with a catch-all rewrite to `index.html`. These deploy the front end **without** an API backend.
+Static demo hosting (`netlify.toml`, `vercel.json`): both run `node tools/build-demo.mjs` and publish `dist-demo/` (git-ignored): the lobby (`demo/lobby.html`) at `/`, `client/` at `/vault/`, Classic 5x3 at `/classic/`. `demo/demo.js` is demo-only: one play-money balance in localStorage (`lumina.demo.balance`, start/reset 100,000) written into Vault 20K's local session before it boots and read back on `pagehide`, and Classic 5x3's `/game/v1/*` calls answered in the page by its own `engine.js` (no engine change; the game clients only get demo.js prepended in the build). No API backend; outcomes there are browser-made.
 
 **Platform hosting (`infra/`, see `infra/README.md`):** one server running `docker-compose.prod.yml` (platform from `platform/Dockerfile` + Postgres + Caddy for HTTPS). `node infra/gen-secrets.mjs > infra/.env.prod` fills every secret the boot guards require (`.env.prod` is git-ignored). Migrations apply on boot. **One platform replica only** (nonce store, rate limiter, regulatory timers and the read model are in memory). CI job `deploy` (off until the repo variable `DEPLOY_ENABLED=true`) SSHes in after `release-check`, `browser-checks` and `rtp-parity` pass on `main`. CI job `rtp-parity` is a reduced seeded run (5M base, 500k buys); the 30M run stays the local/certification gate.
 

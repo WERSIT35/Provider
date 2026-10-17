@@ -1,8 +1,4 @@
+# Static demo site: lobby at /, Vault 20K at /vault/, Classic 5x3 at /classic/ (tools/build-demo.mjs).
 [build]
-  publish = "client"
-  command = ""
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+  publish = "dist-demo"
+  command = "node tools/build-demo.mjs"

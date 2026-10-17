@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050c0e" />
+  <title>Lumina Games · Demo lobby</title>
+  <meta name="description" content="Play Lumina Games' slots in demo mode: Vault 20K and Classic 5x3, with play money you can reset." />
+  <link rel="preload" as="font" type="font/woff2" href="/vault/assets/fonts/oswald-sub-wght-400-700.woff2" crossorigin />
+  <style>
+    @font-face { font-family: "Lobby UI"; src: url("/vault/assets/fonts/inter-sub-wght-400-900.woff2") format("woff2"); font-weight: 400 900; font-display: swap; }
+    @font-face { font-family: "Lobby Display"; src: url("/vault/assets/fonts/oswald-sub-wght-400-700.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+    :root {
+      color-scheme: dark;
+      --bg: #050c0e; --panel: #0b1a1d; --panel-raised: #10252a;
+      --line: rgba(255, 255, 255, 0.09); --line-gold: rgba(242, 193, 78, 0.35);
+      --teal: #3fe0b5; --gold: #f2c14e; --gold-bright: #ffe7a3; --gold-deep: #9c6b12;
+      --text: #eef1f4; --muted: #9aa7ad; --dim: #66747a;
+      --radius: 18px; --gutter: clamp(16px, 4vw, 40px);
+      --ui: "Lobby UI", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --display: "Lobby Display", "Arial Narrow", sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text); font: 400 16px/1.55 var(--ui); -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(1100px 560px at 85% -10%, rgba(63, 224, 181, 0.10), transparent 60%),
+        radial-gradient(800px 480px at 0% 15%, rgba(242, 193, 78, 0.06), transparent 60%),
+        var(--bg);
+    }
+    a { color: inherit; text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
+    .wrap { width: min(1120px, 100% - 2 * var(--gutter)); margin-inline: auto; }
+
+    header { padding: clamp(20px, 4vw, 36px) 0 0; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .brand { font: 600 15px/1 var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+    .brand span { color: var(--muted); }
+    .mode { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-gold); color: var(--gold-bright); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .mode::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); }
+
+    .hero { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; padding: clamp(28px, 6vw, 56px) 0 clamp(20px, 4vw, 32px); border-bottom: 1px solid var(--line); }
+    h1 { margin: 0; font: 700 clamp(40px, 8vw, 84px)/0.95 var(--display); letter-spacing: 0.01em; text-transform: uppercase; }
+    .hero p { margin: 14px 0 0; max-width: 46ch; color: var(--muted); }
+
+    .wallet { min-width: 260px; padding: 18px 20px; border-radius: var(--radius); background: linear-gradient(180deg, var(--panel-raised), var(--panel)); border: 1px solid var(--line-gold); }
+    .wallet small { display: block; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .wallet output { display: block; margin: 4px 0 12px; font: 700 34px/1.1 var(--display); color: var(--gold-bright); font-variant-numeric: tabular-nums; }
+    .wallet output span { font: 500 14px var(--ui); color: var(--muted); margin-left: 6px; }
+    button { font: inherit; cursor: pointer; }
+    .reset { width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line-gold); background: transparent; color: var(--gold); font-weight: 600; letter-spacing: 0.02em; transition: background-color 0.15s, color 0.15s; }
+    .reset:hover { background: rgba(242, 193, 78, 0.10); color: var(--gold-bright); }
+    .reset[data-done] { color: var(--teal); border-color: rgba(63, 224, 181, 0.45); }
+
+    .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: clamp(16px, 2.5vw, 24px); padding: clamp(24px, 4vw, 40px) 0; }
+    .card { display: grid; grid-template-rows: auto 1fr; border-radius: var(--radius); overflow: hidden; background: var(--panel); border: 1px solid var(--line); transition: border-color 0.2s, transform 0.2s; }
+    .card:hover { border-color: var(--line-gold); transform: translateY(-2px); }
+    @media (prefers-reduced-motion: reduce) { .card, .card:hover { transition: none; transform: none; } }
+    .shot { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #071114; }
+    .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .shot .tag { position: absolute; left: 12px; top: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(5, 12, 14, 0.78); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-bright); }
+    .body { display: grid; gap: 14px; padding: 18px 20px 20px; align-content: start; }
+    .body h2 { margin: 0; font: 700 28px/1 var(--display); text-transform: uppercase; letter-spacing: 0.02em; }
+    .body p { margin: 0; color: var(--muted); font-size: 15px; }
+    dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; }
+    dl div { padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
+    dt { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+    dd { margin: 2px 0 0; font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .play { display: inline-flex; justify-content: center; align-items: center; padding: 12px 18px; border-radius: 12px; background: linear-gradient(180deg, var(--gold), #d9a334); color: #1d1300; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 14px; }
+    .card:hover .play { background: linear-gradient(180deg, var(--gold-bright), var(--gold)); }
+
+    footer { padding: 8px 0 40px; color: var(--dim); font-size: 13px; }
+    footer p { margin: 0 0 6px; max-width: 80ch; }
+
+    @media (max-width: 720px) {
+      .hero { grid-template-columns: 1fr; }
+      .wallet { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <div class="top">
+      <div class="brand">Lumina Games <span>· Demo</span></div>
+      <div class="mode">Test mode · play money</div>
+    </div>
+    <div class="hero">
+      <div>
+        <h1>Choose a game</h1>
+        <p>Every game here shares one play-money balance. Run it down, then reset it and keep testing.</p>
+      </div>
+      <div class="wallet" aria-live="polite">
+        <small>Demo balance</small>
+        <output id="balance">100,000.00<span>credits</span></output>
+        <button class="reset" id="reset" type="button">Reset to 100,000</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="games" aria-label="Games">
+      <a class="card" href="/vault/">
+        <div class="shot"><img src="/demo/img/vault-20k.webp" alt="Vault 20K game screen" width="800" height="500" /><span class="tag">Tumbles · multipliers</span></div>
+        <div class="body">
+          <h2>Vault 20K</h2>
+          <p>6×5 pays-anywhere: 8 or more of a symbol pay, wins tumble away and multipliers stack up in free spins.</p>
+          <dl>
+            <div><dt>RTP</dt><dd>96.38%</dd></div>
+            <div><dt>Volatility</dt><dd>High</dd></div>
+            <div><dt>Max win</dt><dd>20,000×</dd></div>
+          </dl>
+          <span class="play">Play demo</span>
+        </div>
+      </a>
+      <a class="card" href="/classic/">
+        <div class="shot"><img src="/demo/img/classic-5x3.webp" alt="Classic 5x3 game screen" width="800" height="500" /><span class="tag">20 lines · free spins ×3</span></div>
+        <div class="body">
+          <h2>Classic 5x3</h2>
+          <p>Five reels, twenty fixed lines, wilds on reels 2–4 and scatter free spins where every win pays triple.</p>
+          <dl>
+            <div><dt>RTP</dt><dd>96.02%</dd></div>
+            <div><dt>Volatility</dt><dd>Medium</dd></div>
+            <div><dt>Max win</dt><dd>5,000×</dd></div>
+          </dl>
+          <span class="play">Play demo</span>
+        </div>
+      </a>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>Demo mode: play money with no cash value, kept in this browser only. Rounds in this demo are made in your browser by each game's own maths engine; on the platform a casino integrates, every round is made and recorded by the server.</p>
+    <p>18+. Lumina Games is pre-launch and not yet licensed for real-money play.</p>
+  </footer>
+
+  <script src="/demo/demo.js"></script>
+  <script>
+    (function () {
+      var out = document.getElementById("balance");
+      var btn = document.getElementById("reset");
+      var fmt = function (v) { return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+      var show = function () { out.firstChild.nodeValue = fmt(window.LuminaDemo.balance()); };
+      show();
+      // Coming back from a game (back button / bfcache) or another tab: show the current balance.
+      addEventListener("pageshow", show);
+      addEventListener("storage", show);
+      var timer = 0;
+      btn.addEventListener("click", function () {
+        window.LuminaDemo.reset();
+        show();
+        btn.textContent = "Balance reset";
+        btn.setAttribute("data-done", "");
+        clearTimeout(timer);
+        timer = setTimeout(function () { btn.textContent = "Reset to 100,000"; btn.removeAttribute("data-done"); }, 1600);
+      });
+    })();
+  </script>
+</body>
+</html>
