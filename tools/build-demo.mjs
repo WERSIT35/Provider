@@ -55,6 +55,8 @@ const rfManifest = JSON.parse(readFileSync(p("games", "relicforge", "game.json")
 cpSync(p("games", "relicforge", "client"), rf, { recursive: true });
 cpSync(p("games", "relicforge", rfManifest.engine.dir), path.join(rf, "engine"), { recursive: true });
 cpSync(p("games", "relicforge", rfManifest.rules), path.join(rf, "rules.json"));
+const rfi = path.join(rf, "index.html");
+writeFileSync(rfi, readFileSync(rfi, "utf8").replaceAll('"/play/', '"/vault/')); // the shared sound engine
 const rfTags = rfManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
 inject(path.join(rf, "index.html"), '<script src="game.js">', rfTags + '\n  <script src="/demo/demo.js" data-game="relicforge"></script>\n  ');
 

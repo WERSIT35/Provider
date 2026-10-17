@@ -3,84 +3,135 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#120a07">
+  <meta name="theme-color" content="#0f0a08">
   <title>Relic Forge</title>
   <link rel="preload" href="rules.json" as="fetch" crossorigin>
+  <link rel="preload" href="assets/fonts/cinzel-900.woff2" as="font" type="font/woff2" crossorigin>
   <style>
+    /* Relic Forge: black iron and a molten seam. Cinzel (carved display) + Barlow Semi
+       Condensed (UI), both SIL OFL 1.1 (assets/fonts). */
+    @font-face { font-family: "RF Carved"; src: url("assets/fonts/cinzel-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+    @font-face { font-family: "RF Carved"; src: url("assets/fonts/cinzel-900.woff2") format("woff2"); font-weight: 900; font-display: swap; }
+    @font-face { font-family: "RF UI"; src: url("assets/fonts/barlow-sc-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+    @font-face { font-family: "RF UI"; src: url("assets/fonts/barlow-sc-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
     :root {
-      --bg: #0c0806; --bg2: #1d100a; --panel: #1a110c; --panel2: #24170f;
-      --edge: rgba(255, 170, 90, 0.22); --edge-hi: rgba(255, 170, 90, 0.5);
-      --ember: #ff8a3d; --ember-hi: #ffc07a; --gold: #f2c14e; --text: #f5ece2; --muted: #b8a596; --dim: #7d6c60;
-      --danger: #ff7a6b; --teal: #4fd8c0;
-      --cell: 56px; --rows: 5; --cols: 6; --gap: clamp(6px, 1.4vmin, 14px); --btn: 44px;
-      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      --basalt: #0f0a08; --basalt-2: #1a1210; --iron: #2b2624; --iron-2: #3d3532; --iron-hi: #7c726b; --rivet: #9a8f87;
+      --molten: #ff6a1a; --molten-hi: #ffcf6b; --molten-deep: #a8300a; --slag: #3a1a0c;
+      --rune: #46e0c8; --gold: #f2c14e; --text: #f3e9df; --muted: #bba99b; --dim: #85766b; --danger: #ff7a6b;
+      --cell: 56px; --rows: 5; --cols: 6; --gap: clamp(6px, 1.5vmin, 14px); --btn: 44px; --spin: 70px;
+      --carved: "RF Carved", "Trajan Pro", Georgia, serif;
+      --ui: "RF UI", "Arial Narrow", system-ui, sans-serif;
+      font-family: var(--ui); font-weight: 500;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
-    body { background: radial-gradient(900px 520px at 50% 110%, rgba(255, 120, 40, 0.16), transparent 65%), linear-gradient(180deg, var(--bg2), var(--bg) 70%); }
+    body {
+      background:
+        radial-gradient(120% 55% at 50% 112%, rgba(255, 106, 26, 0.32), rgba(168, 48, 10, 0.12) 45%, transparent 70%),
+        radial-gradient(80% 40% at 50% -10%, rgba(124, 114, 107, 0.16), transparent 70%),
+        linear-gradient(180deg, var(--basalt-2), var(--basalt) 60%, #140806);
+    }
     button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
     button:disabled { cursor: default; opacity: 0.45; }
-    :focus-visible { outline: 2px solid var(--ember-hi); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--molten-hi); outline-offset: 2px; }
+
+    /* Embers drift up from the seam: a handful of CSS sparks, off with reduced motion or
+       Settings → Screen effects off. Behind everything, never over the board. */
+    .embers { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+    .embers i { position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; background: var(--molten-hi); box-shadow: 0 0 6px 2px rgba(255, 140, 40, 0.7); opacity: 0; }
+    body.fx .embers i { animation: ember var(--d, 7s) linear infinite; animation-delay: var(--t, 0s); }
+    @keyframes ember { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: 0.9; } 100% { transform: translate(var(--x, 20px), -105vh); opacity: 0; } }
 
     .game {
-      position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: var(--gap);
+      position: fixed; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
       padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
       opacity: 0; transition: opacity 0.25s;
     }
     body.app-ready .game { opacity: 1; }
 
-    /* Top: title, Forge meter / Forge status, relic tray. */
-    .top { display: grid; gap: 8px; justify-items: center; padding-top: 30px; }
-    .title { font-weight: 800; letter-spacing: 0.28em; text-transform: uppercase; font-size: 0.8rem; color: var(--ember-hi); }
-    .meter { width: min(100%, 420px); display: grid; gap: 4px; }
-    .meter-row { display: flex; justify-content: space-between; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .meter-bar { position: relative; height: 10px; border-radius: 99px; background: #2a1a12; box-shadow: inset 0 0 0 1px var(--edge); overflow: hidden; }
-    .meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: linear-gradient(90deg, #a63a12, var(--ember), var(--ember-hi)); transition: width 0.35s ease-out; }
-    .meter.pulse .meter-bar { box-shadow: inset 0 0 0 1px var(--ember-hi), 0 0 14px rgba(255, 138, 61, 0.55); }
-    .forge-bar { display: none; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+    /* ── Top: carved title, the crucible (Forge meter) or the Forge status, the relic tray. ── */
+    .top { position: relative; display: grid; gap: 8px; justify-items: center; min-width: 0; }
+    .title { margin: 0; font: 900 clamp(1.55rem, 7vw, 2.5rem)/1 var(--carved); letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #fff1cf 0%, #ffcf6b 38%, #ff6a1a 62%, #7a2208 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 2px 0 #1a0a04) drop-shadow(0 0 14px rgba(255, 106, 26, 0.45)); }
+    .lobby-slot { position: absolute; left: 0; top: 0; }
+    .meter { width: min(100%, 440px); display: grid; gap: 5px; }
+    .meter-row { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .meter-row span:last-child { color: var(--molten-hi); font-weight: 700; }
+    /* The crucible: an iron channel, molten metal pours in from the left. */
+    .meter-bar { position: relative; height: 14px; border-radius: 4px; overflow: hidden;
+      background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), rgba(0, 0, 0, 0.55) calc(25% - 1px) 25%), linear-gradient(180deg, #0b0705, #1d1310);
+      box-shadow: 0 0 0 2px var(--iron-2), 0 0 0 3px #000, inset 0 2px 4px rgba(0, 0, 0, 0.9); }
+    .meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; transition: width 0.45s cubic-bezier(.3, .7, .3, 1);
+      background: linear-gradient(180deg, var(--molten-hi), var(--molten) 45%, var(--molten-deep)); box-shadow: 0 0 12px rgba(255, 106, 26, 0.7); }
+    .meter-fill::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #fff3d0; box-shadow: 0 0 10px 3px rgba(255, 220, 140, 0.9); }
+    .meter.pulse .meter-bar { box-shadow: 0 0 0 2px var(--molten-hi), 0 0 0 3px #000, 0 0 18px rgba(255, 106, 26, 0.7); }
+    .forge-bar { display: none; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
     body.in-forge .forge-bar { display: flex; }
     body.in-forge .meter { display: none; }
-    .pill { padding: 4px 10px; border-radius: 99px; background: var(--panel2); box-shadow: 0 0 0 1px var(--edge); font-size: 0.75rem; white-space: nowrap; }
-    .pill b { color: var(--ember-hi); }
-    .pill.meltdown { background: linear-gradient(90deg, #7a1d08, #c2410c); color: #fff; box-shadow: none; font-weight: 800; letter-spacing: 0.1em; }
+    .pill { padding: 4px 11px; border-radius: 6px; background: linear-gradient(180deg, var(--iron-2), var(--iron)); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.12); font-size: 0.82rem; white-space: nowrap; }
+    .pill b { color: var(--molten-hi); }
+    .pill.meltdown { background: linear-gradient(180deg, #ff8a3d, #a8300a); color: #fff; font: 900 0.8rem var(--carved); letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(255, 106, 26, 0.7); }
     .pill[hidden] { display: none; }
-    .relics { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-    .relic-chip { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border-radius: 99px; background: var(--panel2); box-shadow: 0 0 0 1px var(--edge); font-size: 0.72rem; transition: box-shadow 0.15s; }
-    .relic-chip i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 0.7rem; font-weight: 800; color: #1a0d05; background: var(--ember); }
-    .relic-chip .pips { letter-spacing: 1px; color: var(--ember-hi); }
-    .relic-chip.evo { background: linear-gradient(90deg, #3a1a0b, #5c2a10); box-shadow: 0 0 0 1px var(--ember-hi); color: var(--ember-hi); font-weight: 700; }
-    .relic-chip.ghost { opacity: 0.6; }
-    .relic-chip.fire { box-shadow: 0 0 0 2px #fff, 0 0 16px var(--ember); opacity: 1; }
+    .relics { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; min-height: 0; }
+    .relic-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 6px; background: linear-gradient(180deg, var(--iron-2), var(--iron)); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.1); font-size: 0.8rem; transition: box-shadow 0.15s; }
+    .relic-chip i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 4px; font: 900 0.72rem var(--carved); font-style: normal; color: #1a0a04; background: linear-gradient(180deg, var(--molten-hi), var(--molten)); }
+    .relic-chip .pips { letter-spacing: 1px; color: var(--molten-hi); }
+    .relic-chip.evo { background: linear-gradient(180deg, #5c2a10, #2a1208); box-shadow: 0 0 0 1px var(--molten-hi); color: var(--molten-hi); font-weight: 700; }
+    .relic-chip.ghost { opacity: 0.55; }
+    .relic-chip.fire { box-shadow: 0 0 0 2px #fff, 0 0 18px var(--molten); opacity: 1; }
 
-    /* Stage: the board keeps its cell size; Expand adds rows. */
-    .stage { position: relative; min-height: 0; display: grid; place-items: center; }
-    .board-wrap { position: relative; }
-    .board { position: relative; width: calc(var(--cell) * var(--cols)); height: calc(var(--cell) * var(--rows)); border-radius: 12px; background: #120b07; box-shadow: 0 0 0 2px var(--edge), inset 0 0 40px rgba(0, 0, 0, 0.6); overflow: hidden; }
-    .cell { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); padding: calc(var(--cell) * 0.06); }
-    .cell svg { width: 100%; height: 100%; display: block; }
-    .cell.win svg { filter: drop-shadow(0 0 6px rgba(255, 210, 140, 0.95)); }
-    .cell.win::after { content: ""; position: absolute; inset: 2px; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(255, 210, 140, 0.9); }
-    .cell.blast::after { content: ""; position: absolute; inset: 0; border-radius: 6px; background: radial-gradient(circle, rgba(255, 240, 200, 0.85), rgba(255, 120, 40, 0.35) 60%, transparent 75%); }
-    .cell.mark::after { content: ""; position: absolute; inset: 2px; border-radius: 10px; box-shadow: inset 0 0 0 2px var(--teal); }
-    .cell .sp { position: absolute; right: 3%; top: 3%; width: 36%; height: 36%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.19); font-weight: 900; color: #1a0d05; box-shadow: 0 0 0 2px #1a0d05; }
-    .cell .sp.RUNE { background: #8fe3ff; }
-    .cell .sp.BOMB { background: #ff9c5b; }
-    .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 220, 160, 0.55), transparent); pointer-events: none; }
+    /* ── Stage: the board sits in an iron plate with four rivets and a molten seam below. ── */
+    .stage { position: relative; min-height: 0; min-width: 0; display: grid; place-items: center; padding-top: 30px; }
+    .board-wrap { position: relative; padding: 10px; border-radius: 16px;
+      background: linear-gradient(160deg, #4a423e, var(--iron) 35%, #1c1715 70%, #3a322f);
+      box-shadow: 0 0 0 2px #000, inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 30px rgba(0, 0, 0, 0.6), 0 18px 36px -10px rgba(255, 106, 26, 0.45); }
+    .board-wrap::before { content: ""; position: absolute; inset: 4px; border-radius: 12px; pointer-events: none;
+      background:
+        radial-gradient(circle at 0 0, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
+        radial-gradient(circle at 100% 0, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
+        radial-gradient(circle at 0 100%, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
+        radial-gradient(circle at 100% 100%, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat; }
+    .board-wrap::after { content: ""; position: absolute; left: 12%; right: 12%; bottom: -3px; height: 3px; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--molten-hi), var(--molten), var(--molten-hi), transparent); box-shadow: 0 0 14px 3px rgba(255, 106, 26, 0.65); }
+    .board { position: relative; width: calc(var(--cell) * var(--cols)); height: calc(var(--cell) * var(--rows)); border-radius: 8px; overflow: hidden;
+      /* Stone sockets, one per cell. */
+      background:
+        radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.035), transparent 62%) 0 0 / var(--cell) var(--cell),
+        linear-gradient(180deg, #161010, #0c0807);
+      box-shadow: inset 0 0 0 2px #000, inset 0 0 40px rgba(0, 0, 0, 0.75); }
+    .cell { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); padding: calc(var(--cell) * 0.05); }
+    .cell svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 calc(var(--cell) * 0.03) calc(var(--cell) * 0.03) rgba(0, 0, 0, 0.7)); }
+    .cell.win svg { filter: drop-shadow(0 0 calc(var(--cell) * 0.1) rgba(255, 200, 110, 0.95)); }
+    .cell.win::after { content: ""; position: absolute; inset: 2px; border-radius: 9px; box-shadow: inset 0 0 0 2px var(--molten-hi), inset 0 0 14px rgba(255, 140, 40, 0.55); }
+    .cell.blast::after { content: ""; position: absolute; inset: 0; border-radius: 6px; background: radial-gradient(circle, rgba(255, 245, 210, 0.95), rgba(255, 106, 26, 0.45) 55%, transparent 75%); }
+    .cell.mark::after { content: ""; position: absolute; inset: 2px; border-radius: 9px; box-shadow: inset 0 0 0 2px var(--rune), 0 0 12px rgba(70, 224, 200, 0.5); }
+    .cell .sp { position: absolute; right: 3%; top: 3%; width: 36%; height: 36%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.19); font-weight: 900; color: #0b0705; box-shadow: 0 0 0 2px #0b0705, 0 0 8px currentColor; }
+    .cell .sp.RUNE { background: radial-gradient(circle at 40% 35%, #d8fff7, var(--rune)); }
+    .cell .sp.BOMB { background: radial-gradient(circle at 40% 35%, #ffe0b0, #ff7a2a); }
+    .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 220, 160, 0.7), transparent); box-shadow: 0 0 20px rgba(255, 140, 40, 0.6); pointer-events: none; }
+
+    /* One line on how the Forge works, under the board on tall portrait screens only. */
+    .lore { display: none; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 440px); margin: 0; padding: 8px 12px; border-radius: 8px; text-align: center; font-size: 0.88rem; color: var(--muted);
+      background: rgba(15, 10, 8, 0.7); box-shadow: 0 0 0 1px var(--iron-2); }
+    body.in-forge .lore { visibility: hidden; }
+    @media (max-aspect-ratio: 3 / 4) and (min-height: 760px) { .lore { display: block; } .stage { padding-bottom: 64px; } }
 
     /* Step readout above the board: cascade counter, Base × Mult (× Relic bonus). */
-    .hud { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
-    .combo, .mult, .calc { padding: 3px 10px; border-radius: 99px; background: rgba(26, 17, 12, 0.92); box-shadow: 0 0 0 1px var(--edge); font-size: 0.78rem; opacity: 0; transition: opacity 0.15s; }
+    .hud { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+    .combo, .mult, .calc { padding: 3px 10px; border-radius: 6px; background: rgba(15, 10, 8, 0.94); box-shadow: 0 0 0 1px var(--iron-hi); font-size: 0.86rem; opacity: 0; transition: opacity 0.15s; }
     .hud.on .combo, .hud.on .mult, .hud.on .calc { opacity: 1; }
-    .mult { font-weight: 800; transition: opacity 0.15s, color 0.2s; }
+    .mult { font: 900 0.95rem var(--carved); transition: opacity 0.15s, color 0.2s; }
     .mult[data-tier="1"] { color: var(--gold); }
-    .mult[data-tier="2"] { color: var(--ember); }
-    .mult[data-tier="3"] { color: #fff; text-shadow: 0 0 10px var(--ember-hi); }
+    .mult[data-tier="2"] { color: var(--molten); }
+    .mult[data-tier="3"] { color: #fff; text-shadow: 0 0 12px var(--molten-hi); }
 
-    .banner { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(12, 6, 3, 0.72); border-radius: 12px; cursor: pointer; z-index: 5; padding: 12px; }
+    .banner { position: absolute; inset: 10px; display: grid; place-content: center; text-align: center; border-radius: 8px; cursor: pointer; z-index: 5; padding: 12px;
+      background: radial-gradient(circle at 50% 60%, rgba(120, 40, 10, 0.85), rgba(10, 5, 3, 0.9)); }
     .banner[hidden] { display: none; }
-    .banner b { display: block; font-size: clamp(1.3rem, 6vmin, 3.2rem); letter-spacing: 0.08em; color: var(--ember-hi); text-shadow: 0 0 22px rgba(255, 138, 61, 0.7); text-transform: uppercase; }
-    .banner span { display: block; font-size: clamp(1.2rem, 5vmin, 2.6rem); font-weight: 800; font-variant-numeric: tabular-nums; }
-    .banner small { display: block; margin-top: 8px; color: var(--muted); font-size: 0.8rem; }
+    .banner b { display: block; font: 900 clamp(1.4rem, 6.5vmin, 3.4rem)/1.05 var(--carved); letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #fff1cf, #ffcf6b 40%, #ff6a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 16px rgba(255, 106, 26, 0.75)); }
+    .banner span { display: block; margin-top: 6px; font: 700 clamp(1.3rem, 5.5vmin, 2.8rem)/1.1 var(--ui); font-variant-numeric: tabular-nums; color: #fff; }
+    .banner small { display: block; margin-top: 8px; color: var(--muted); font-size: 0.85rem; }
 
     /* Element-level shake only (the board or the cascade counter), never the page layout.
        Off under reduced motion or with Settings → Screen effects off (body.fx). */
@@ -88,66 +139,92 @@
     body.fx .board-wrap.shake { animation: rf-shake 0.32s linear; }
     body.fx .combo.shake { animation: rf-shake 0.25s linear; }
 
-    /* Deck. */
-    .deck { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--gap); padding: 8px 10px; border-radius: 16px; background: linear-gradient(180deg, rgba(40, 24, 15, 0.96), rgba(22, 14, 9, 0.96)); box-shadow: 0 0 0 1px var(--edge); }
+    /* ── Deck: a forged iron panel. ── */
+    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 14px;
+      background: linear-gradient(180deg, #3a3330, #1d1816 60%, #151110); box-shadow: 0 0 0 2px #000, inset 0 1px 0 rgba(255, 255, 255, 0.14); }
     .sys, .play { display: flex; align-items: center; gap: 8px; }
-    .status { min-width: 0; display: grid; gap: 4px; }
-    .msg { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.85rem; color: var(--muted); text-align: center; }
-    .msg.win { color: var(--ember-hi); font-weight: 700; }
-    .readouts { display: flex; justify-content: center; gap: clamp(8px, 3vw, 28px); font-variant-numeric: tabular-nums; }
-    .readouts div { display: grid; text-align: center; }
-    .readouts span { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-    .readouts strong { font-size: 0.95rem; }
-    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: grid; place-items: center; font-size: 1rem; font-weight: 700; }
-    .spin { width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, var(--ember-hi), var(--ember) 55%, #9a3412); color: #2a1004; font-weight: 900; letter-spacing: 0.06em; font-size: 0.8rem; box-shadow: 0 0 0 2px rgba(255, 192, 122, 0.5), 0 6px 18px rgba(255, 110, 30, 0.3); }
+    .status { min-width: 0; width: 100%; max-width: 460px; justify-self: center; display: grid; gap: 6px; }
+    .msg { height: 1.35em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.92rem; color: var(--muted); text-align: center; }
+    .msg.win { color: var(--molten-hi); font-weight: 700; }
+    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; font-variant-numeric: tabular-nums; }
+    .readouts div { display: grid; text-align: center; padding: 3px 6px 4px; border-radius: 6px; background: #0b0705; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.08); min-width: 0; }
+    .readouts span { font-size: 0.68rem; color: var(--dim); }
+    .readouts strong { font: 700 1.05rem/1.15 var(--ui); color: var(--molten-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .icon { width: var(--btn); height: var(--btn); border-radius: 10px; display: grid; place-items: center; font-size: 1.05rem; font-weight: 700; color: var(--text);
+      background: linear-gradient(180deg, #5a514c, var(--iron) 55%, #1a1513); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 3px 0 #000; }
+    .icon:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 1px #000, 0 1px 0 #000; }
+    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: #2a0c02; font: 900 0.95rem var(--carved); letter-spacing: 0.04em;
+      background: radial-gradient(circle at 50% 32%, #fff3d0, var(--molten-hi) 25%, var(--molten) 55%, var(--molten-deep) 90%);
+      box-shadow: 0 0 0 3px #1a1513, 0 0 0 5px var(--iron-hi), 0 0 0 6px #000, 0 0 26px rgba(255, 106, 26, 0.55), 0 5px 0 #000; }
     .spin:not(:disabled):hover { filter: brightness(1.08); }
+    .spin:active:not(:disabled) { transform: translateY(3px); }
+
     @media (max-width: 560px) {
-      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; }
+      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; padding: 10px; }
       .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
+      .top { padding-top: 30px; }
+    }
+    @media (max-width: 340px) {
+      :root { --btn: 40px; --spin: 62px; }
+      .readouts strong { font-size: 0.95rem; }
+    }
+    /* Phones in landscape: title and meter on the left, the board in the middle, controls right. */
+    @media (orientation: landscape) and (max-height: 520px) {
+      .game { grid-template-columns: clamp(150px, 24vw, 230px) minmax(0, 1fr) clamp(170px, 24vw, 220px); grid-template-rows: minmax(0, 1fr); }
+      .top { grid-column: 1; grid-row: 1; align-content: center; padding-top: 34px; }
+      .title { font-size: clamp(1.1rem, 3.4vw, 1.6rem); text-align: center; }
+      .stage { grid-column: 2; grid-row: 1; }
+      .deck { grid-column: 3; grid-row: 1; grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; align-content: center; justify-items: center; gap: 12px; }
+      .status { grid-area: status; } .play { grid-area: play; } .sys { grid-area: sys; }
+      .readouts { grid-template-columns: 1fr 1fr; } .readouts div:first-child { grid-column: 1 / -1; }
+      :root { --spin: 62px; --btn: 40px; }
     }
 
     /* Draft, evolution, info, settings, reality check: one modal layer. */
-    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(8, 4, 2, 0.8); }
+    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(8, 4, 2, 0.82); }
     .modal[hidden] { display: none; }
-    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 18px; background: linear-gradient(180deg, var(--panel2), var(--panel)); box-shadow: 0 0 0 1px var(--edge-hi); padding: 18px; user-select: text; }
-    .sheet h2 { margin: 0 0 4px; font-size: 1.1rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ember-hi); }
-    .sheet h3 { margin: 16px 0 4px; font-size: 0.9rem; color: var(--ember-hi); }
-    .sheet p, .sheet li { margin: 6px 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 14px; background: linear-gradient(180deg, #2a2320, #171210); box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--iron-hi), 0 20px 50px rgba(0, 0, 0, 0.7); padding: 18px; user-select: text; }
+    .sheet h2 { margin: 0 0 4px; font: 900 1.3rem var(--carved); color: var(--molten-hi); }
+    .sheet h3 { margin: 16px 0 4px; font: 700 1rem var(--carved); color: var(--molten-hi); }
+    .sheet p, .sheet li { margin: 6px 0; color: var(--muted); font-size: 0.95rem; line-height: 1.45; }
     .sheet .close { float: right; }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
     @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
-    .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 14px; background: #2b1a10; box-shadow: 0 0 0 1px var(--edge); transition: box-shadow 0.15s, transform 0.15s; }
-    .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--ember-hi); }
+    .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 10px; background: linear-gradient(180deg, #3a2a20, #24170f); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.1); transition: box-shadow 0.15s, transform 0.15s; }
+    .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--molten-hi), 0 0 18px rgba(255, 106, 26, 0.4); }
     body.fx .card:hover { transform: translateY(-2px); }
-    .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 1.05rem; }
-    .card h4 small { color: var(--ember-hi); font-size: 0.75rem; letter-spacing: 0.1em; }
-    .card p { margin: 0; font-size: 0.85rem; color: var(--text); }
-    .card .evo-hint { color: var(--ember-hi); font-size: 0.78rem; }
-    .vol { justify-self: start; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; box-shadow: 0 0 0 1px var(--edge); color: var(--muted); }
-    .vol[data-v="low"] { color: var(--teal); } .vol[data-v="medium"] { color: var(--gold); } .vol[data-v="high"] { color: var(--danger); }
-    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; margin: 8px 0 12px; }
-    th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+    .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 900 1.1rem var(--carved); }
+    .card h4 small { color: var(--molten-hi); font: 700 0.8rem var(--ui); }
+    .card p { margin: 0; font-size: 0.92rem; color: var(--text); }
+    .card .evo-hint { color: var(--molten-hi); font-size: 0.85rem; }
+    .vol { justify-self: start; padding: 2px 8px; border-radius: 4px; font-size: 0.76rem; box-shadow: 0 0 0 1px var(--iron-hi); color: var(--muted); }
+    .vol[data-v="low"] { color: var(--rune); } .vol[data-v="medium"] { color: var(--gold); } .vol[data-v="high"] { color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; margin: 8px 0 12px; }
+    th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
     th:first-child, td:first-child { text-align: left; }
-    th { color: var(--muted); font-weight: 600; }
-    td svg { width: 22px; height: 22px; vertical-align: middle; margin-right: 6px; }
-    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
-    .toggle button { padding: 6px 14px; border-radius: 99px; box-shadow: 0 0 0 1px var(--edge-hi); }
-    .toggle button[aria-pressed="true"] { background: var(--ember); color: #2a1004; font-weight: 700; }
+    th { color: var(--muted); font-weight: 700; }
+    td svg { width: 24px; height: 24px; vertical-align: middle; margin-right: 6px; }
+    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+    .toggle button { padding: 6px 14px; border-radius: 6px; box-shadow: 0 0 0 1px var(--iron-hi); }
+    .toggle button[aria-pressed="true"] { background: var(--molten); color: #2a0c02; font-weight: 700; }
     .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
-    .actions button { padding: 10px 16px; border-radius: 12px; box-shadow: 0 0 0 1px var(--edge-hi); }
-    .actions .primary { background: var(--ember); color: #2a1004; font-weight: 800; box-shadow: none; }
+    .actions button { padding: 10px 16px; border-radius: 8px; box-shadow: 0 0 0 1px var(--iron-hi); }
+    .actions .primary { background: linear-gradient(180deg, var(--molten-hi), var(--molten)); color: #2a0c02; font-weight: 700; box-shadow: none; }
     .evo-moment { text-align: center; padding: 28px 12px; }
-    .evo-moment b { display: block; font-size: clamp(2rem, 9vmin, 4.4rem); letter-spacing: 0.1em; color: var(--ember-hi); text-shadow: 0 0 30px rgba(255, 138, 61, 0.8); }
+    .evo-moment b { display: block; font: 900 clamp(2rem, 9vmin, 4.4rem)/1 var(--carved);
+      background: linear-gradient(180deg, #fff1cf, #ffcf6b 40%, #ff6a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 24px rgba(255, 106, 26, 0.8)); }
 
     @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip { transition: none; } }
   </style>
 </head>
 <body>
+  <div class="embers" aria-hidden="true"><i style="left:8%;--d:7s;--t:0s;--x:30px"></i><i style="left:19%;--d:9s;--t:2s;--x:-20px"></i><i style="left:31%;--d:6.5s;--t:4s;--x:25px"></i><i style="left:46%;--d:8s;--t:1s;--x:-30px"></i><i style="left:58%;--d:7.5s;--t:3s;--x:20px"></i><i style="left:69%;--d:9.5s;--t:5s;--x:-15px"></i><i style="left:81%;--d:6.8s;--t:2.5s;--x:28px"></i><i style="left:92%;--d:8.6s;--t:0.5s;--x:-24px"></i></div>
   <div class="game">
     <header class="top">
-      <div class="title">Relic Forge</div>
+      <div class="lobby-slot"></div>
+      <h1 class="title">Relic Forge</h1>
       <div class="meter" id="meter" aria-label="Forge meter">
-        <div class="meter-row"><span>Forge meter · this bet</span><span id="meterText">0 / 40</span></div>
+        <div class="meter-row"><span>Forge meter at this bet</span><span id="meterText">0 / 40</span></div>
         <div class="meter-bar"><div class="meter-fill" id="meterFill"></div></div>
       </div>
       <div class="forge-bar" aria-live="polite">
@@ -160,6 +237,7 @@
     </header>
 
     <main class="stage" id="stage">
+      <p class="lore" id="lore">Embers fill the crucible. At 40 it pours: ten Forge spins, with a relic to choose before each.</p>
       <div class="board-wrap" id="boardWrap">
         <div class="hud" id="hud"><span class="combo" id="combo">Cascade 1</span><span class="calc" id="calc"></span><span class="mult" id="mult">×1</span></div>
         <div class="board" id="board" role="img" aria-label="Game board"></div>
@@ -190,6 +268,9 @@
 
   <div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 
+  <!-- Its own sounds (audio/, built by tools/build-game-audio.mjs), through the shared engine. -->
+  <script>window.VX_AUDIO_BASE = "audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
+  <script src="/play/audio/audio.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

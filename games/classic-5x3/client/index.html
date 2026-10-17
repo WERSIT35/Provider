@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#140d1f">
+  <meta name="theme-color" content="#1a0507">
   <title>Classic 5x3</title>
   <!-- Start the session handshake and the rules while the scripts download (game.js picks
        them up): on Slow 4G every serial round trip is ~0.6 s. -->
   <link rel="preload" href="rules.json" as="fetch" crossorigin>
   <link rel="preload" href="game.js" as="script">
+  <link rel="preload" href="assets/fonts/bungee-400.woff2" as="font" type="font/woff2" crossorigin>
   <script>
     (function () {
       var lt = new URLSearchParams(location.search).get("lt");
@@ -19,98 +20,183 @@
     })();
   </script>
   <style>
+    /* Classic 5x3: a fruit-machine cabinet. Oxblood lacquer, chrome bezel, ivory reels, a lit
+       marquee. Bungee (marquee display) + Rubik (UI), both SIL OFL 1.1 (assets/fonts). */
+    @font-face { font-family: "C5 Marquee"; src: url("assets/fonts/bungee-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "C5 UI"; src: url("assets/fonts/rubik-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+    @font-face { font-family: "C5 UI"; src: url("assets/fonts/rubik-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
     :root {
-      --bg: #140d1f; --bg2: #24163a; --panel: #1d1430; --edge: rgba(255, 214, 140, 0.28);
-      --gold: #ffd36b; --gold2: #f0a83c; --text: #f4ecdf; --muted: #b6a7c9; --win: #ffe08a; --danger: #ff7a7a;
-      --btn: 44px; --gap: clamp(6px, 1.4vmin, 14px);
-      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      --lacquer: #5b0f14; --lacquer-deep: #1a0507; --lacquer-hi: #8e1b22;
+      --chrome: #dfe3e8; --chrome-mid: #9aa1aa; --chrome-dark: #4a4f57;
+      --ivory: #f7f1e3; --lamp: #ffc94a; --lamp-hot: #fff1b8; --led: #ffb020; --led-dim: #4a2a06;
+      --text: #fbeee0; --muted: #d9b9a6; --ink: #2a1408;
+      --gap: clamp(6px, 1.6vmin, 14px); --btn: 46px; --spin: 76px;
+      --ui: "C5 UI", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --marquee: "C5 Marquee", "Arial Black", Impact, sans-serif;
+      font-family: var(--ui); font-weight: 500;
     }
     * { box-sizing: border-box; }
-    /* Flat colours and no large blurred shadows: on a phone without much GPU (and on the
-       bench's software GPU) a full-screen radial gradient and 40-50 px blurs are the
-       first frame's biggest raster cost. */
-    html, body { margin: 0; height: 100%; background: linear-gradient(180deg, var(--bg2), var(--bg) 60%); color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
+    html, body { margin: 0; height: 100%; overflow: hidden; color: var(--text); -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
+    body {
+      /* Lacquered cabinet with a quilted diamond pattern: flat colour stops only (cheap to raster). */
+      background:
+        repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 28px),
+        repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 28px),
+        linear-gradient(180deg, var(--lacquer) 0%, #3a0a0e 55%, var(--lacquer-deep) 100%);
+    }
+    button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
+    :focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+
     .game {
-      position: fixed; inset: 0; display: grid; grid-template-rows: 1fr auto; gap: var(--gap);
+      position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
       padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
     }
-    .stage { position: relative; min-height: 0; display: grid; place-items: center; }
-    /* The board keeps 5:3 at every size; it never moves when anything else changes. */
-    .board { position: relative; width: min(100%, calc((100dvh - 150px) * 5 / 3)); aspect-ratio: 5 / 3; max-height: 100%; border-radius: 14px; background: #0d0816; box-shadow: 0 0 0 2px var(--edge); }
+
+    /* ── Marquee: the cabinet's lit sign. Bulbs chase only while a win is shown. ── */
+    .marquee { position: relative; display: grid; place-items: center; padding: 10px 12px 12px; border-radius: 18px;
+      background: linear-gradient(180deg, #2a0609, #12030a); box-shadow: inset 0 0 0 2px var(--chrome-dark), inset 0 0 0 4px #000, 0 0 0 2px var(--chrome-mid); }
+    .marquee::before, .marquee::after { content: ""; position: absolute; left: 14px; right: 14px; height: 6px;
+      background: radial-gradient(circle, var(--lamp-hot) 0 2px, var(--lamp) 2.5px, transparent 3.5px) 0 50% / 14px 6px repeat-x; opacity: 0.9; }
+    .marquee::before { top: 4px; } .marquee::after { bottom: 4px; }
+    body.lights .marquee::before, body.lights .marquee::after { animation: chase 0.5s steps(2) infinite; }
+    @keyframes chase { to { background-position: 14px 50%; } }
+    .logo { margin: 0; font: 400 clamp(1.5rem, 7.4vw, 2.6rem)/1 var(--marquee); letter-spacing: 0.02em; color: var(--lamp-hot);
+      text-shadow: 0 2px 0 #c0392b, 0 4px 0 #6d1010, 0 0 18px rgba(255, 190, 70, 0.55); white-space: nowrap; }
+    .logo small { font-size: 0.62em; color: var(--chrome); text-shadow: 0 2px 0 var(--chrome-dark), 0 3px 0 #000; margin-left: 0.3em; }
+    .tag { margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Cabinet: chrome bezel around ivory reels. The board keeps 5:3 and never moves. ── */
+    .stage { position: relative; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: clamp(10px, 2.4vmin, 18px); container-type: size; }
+    .cabinet { --bez: clamp(8px, 2.2vmin, 14px); position: relative; padding: var(--bez); border-radius: 22px;
+      width: min(100cqw, calc((100cqh - 2 * var(--bez)) * 5 / 3 + 2 * var(--bez)));
+      background: linear-gradient(160deg, #f4f6f8 0%, var(--chrome-mid) 22%, #f9fafb 45%, var(--chrome-dark) 72%, #c9ced4 100%);
+      box-shadow: 0 0 0 2px #120206, 0 10px 30px rgba(0, 0, 0, 0.55); }
+    /* Pay glass under the reels (portrait screens with room for it): the top pays at the
+       current bet, from rules.json, the file the engine pays from. */
+    .pays { display: none; width: min(100cqw, 560px); padding: 8px; border-radius: 16px; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr));
+      background: linear-gradient(180deg, rgba(20, 3, 6, 0.86), rgba(40, 6, 10, 0.86)); box-shadow: inset 0 0 0 1px rgba(255, 201, 74, 0.35), 0 0 0 2px #0a0204; }
+    .pay { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); min-width: 0; }
+    .pay canvas { width: 38px; height: 38px; }
+    .pay b { font: 700 0.92rem/1.1 var(--ui); color: var(--lamp-hot); font-variant-numeric: tabular-nums; }
+    .pay span { font-size: 0.66rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pays p { grid-column: 1 / -1; margin: 2px 0 0; text-align: center; font-size: 0.72rem; color: var(--muted); }
+    @container (max-aspect-ratio: 1 / 1) and (min-height: 420px) {
+      .pays { display: grid; }
+      .cabinet { width: min(100cqw, calc((100cqh - 2 * var(--bez) - 150px) * 5 / 3 + 2 * var(--bez))); }
+    }
+    .board { position: relative; width: 100%; aspect-ratio: 5 / 3; border-radius: 12px; background: var(--ivory); box-shadow: 0 0 0 3px #120206, inset 0 0 0 1px rgba(0, 0, 0, 0.5); }
     .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; display: block; }
-    .badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 4px 12px; border-radius: 99px; background: linear-gradient(180deg, var(--gold), var(--gold2)); color: #2a1600; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.08em; white-space: nowrap; }
+    .badge { position: absolute; z-index: 2; top: -14px; left: 50%; transform: translateX(-50%); padding: 5px 14px; border-radius: 99px;
+      background: linear-gradient(180deg, #ff5a4a, #b3121c); color: #fff6dc; font: 400 0.82rem var(--marquee); letter-spacing: 0.04em; white-space: nowrap; box-shadow: 0 0 0 2px var(--lamp), 0 4px 10px rgba(0, 0, 0, 0.5); }
     .badge[hidden] { display: none; }
-    .celebration { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(10, 5, 20, 0.62); border-radius: 14px; cursor: pointer; }
+    .celebration { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; text-align: center; border-radius: 12px; cursor: pointer; overflow: hidden;
+      background: radial-gradient(circle at 50% 50%, rgba(80, 10, 14, 0.82), rgba(20, 3, 6, 0.92)); }
+    .celebration::before { content: ""; position: absolute; inset: -60%;
+      background: repeating-conic-gradient(from 0deg, rgba(255, 201, 74, 0.22) 0 10deg, transparent 10deg 20deg); animation: rays 6s linear infinite; }
+    @keyframes rays { to { transform: rotate(360deg); } }
     .celebration[hidden] { display: none; }
-    .celebration b { display: block; font-size: clamp(1.6rem, 7vmin, 4.2rem); letter-spacing: 0.06em; color: var(--gold); text-shadow: 0 0 24px rgba(255, 190, 80, 0.7); }
-    .celebration span { font-size: clamp(1.4rem, 6vmin, 3.4rem); font-weight: 800; font-variant-numeric: tabular-nums; }
-    .celebration small { display: block; margin-top: 8px; color: var(--muted); }
-    .deck { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--gap); padding: 8px 10px; border-radius: 16px; background: linear-gradient(180deg, rgba(36, 22, 58, 0.95), rgba(20, 13, 31, 0.95)); box-shadow: 0 0 0 1px var(--edge); }
+    .celebration > div { position: relative; }
+    .celebration b { display: block; font: 400 clamp(1.7rem, 8vmin, 4.4rem)/1 var(--marquee); color: var(--lamp-hot); text-shadow: 0 3px 0 #c0392b, 0 6px 0 #5a0b0b, 0 0 30px rgba(255, 190, 70, 0.8); }
+    .celebration span { display: block; margin-top: 6px; font: 700 clamp(1.4rem, 6.5vmin, 3.4rem)/1.1 var(--ui); font-variant-numeric: tabular-nums; color: #fff; }
+    .celebration small { display: block; margin-top: 10px; color: var(--muted); font-size: 0.8rem; }
+
+    /* ── Control panel: LED readouts, chrome buttons, the red SPIN dome. ── */
+    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 18px;
+      background: linear-gradient(180deg, #2b2f35, #15171b); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 0 2px #0a0204, 0 -2px 0 2px var(--chrome-dark); }
     .sys, .play { display: flex; align-items: center; gap: 8px; }
-    .status { min-width: 0; display: grid; gap: 4px; }
-    .msg { height: 1.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.85rem; color: var(--muted); text-align: center; }
-    .msg.win { color: var(--win); font-weight: 700; }
-    .readouts { display: flex; justify-content: center; gap: clamp(8px, 3vw, 28px); font-variant-numeric: tabular-nums; }
-    .readouts div { display: grid; text-align: center; }
-    .readouts span { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-    .readouts strong { font-size: 0.95rem; }
-    button { font: inherit; color: inherit; border: 0; cursor: pointer; }
-    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: grid; place-items: center; font-size: 1.05rem; }
-    .icon[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--gold); color: var(--gold); }
-    .icon.muted { opacity: 0.5; }
-    .spin { width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #ffe7a3, var(--gold2) 70%); color: #2a1600; font-weight: 900; font-size: 0.9rem; letter-spacing: 0.06em; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.18); }
-    .spin:active { transform: scale(0.96); }
-    .spin.busy { background: radial-gradient(circle at 50% 35%, #f6e0ff, #a982d6 70%); }
-    .spin:disabled { filter: grayscale(0.7); opacity: 0.6; }
-    .bet { width: 36px; height: 36px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); font-size: 1.2rem; font-weight: 800; }
-    .bet:disabled, .icon:disabled { opacity: 0.4; }
+    .status { min-width: 0; width: 100%; max-width: 460px; justify-self: center; display: grid; gap: 6px; }
+    .msg { height: 1.35em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.86rem; color: var(--muted); text-align: center; }
+    .msg.win { color: var(--lamp-hot); font-weight: 700; }
+    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; font-variant-numeric: tabular-nums; }
+    .readouts div { display: grid; text-align: center; padding: 4px 6px 5px; border-radius: 8px; background: #0b0503; box-shadow: inset 0 0 0 1px #000, inset 0 2px 6px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.08); min-width: 0; }
+    .readouts span { font-size: 0.62rem; color: #a88a76; }
+    .readouts strong { font: 700 1rem/1.15 var(--ui); color: var(--led); text-shadow: 0 0 8px rgba(255, 160, 30, 0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; display: grid; place-items: center; font-size: 1.05rem; font-weight: 700; color: #1d2025;
+      background: radial-gradient(circle at 40% 30%, #ffffff, var(--chrome) 45%, var(--chrome-mid) 100%); box-shadow: 0 0 0 2px #0a0204, 0 3px 0 #000, inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+    .icon:active { transform: translateY(2px); box-shadow: 0 0 0 2px #0a0204, 0 1px 0 #000; }
+    .icon[aria-pressed="true"] { background: radial-gradient(circle at 40% 30%, var(--lamp-hot), var(--lamp) 55%, #b97a10); color: var(--ink); }
+    .icon.muted { opacity: 0.55; }
+    .bet { width: 38px; height: 38px; border-radius: 50%; font-size: 1.3rem; font-weight: 700; color: #1d2025;
+      background: radial-gradient(circle at 40% 30%, #ffffff, var(--chrome) 45%, var(--chrome-mid)); box-shadow: 0 0 0 2px #0a0204, 0 3px 0 #000; }
+    .bet:active { transform: translateY(2px); box-shadow: 0 0 0 2px #0a0204, 0 1px 0 #000; }
+    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: #fff6dc; font: 400 1rem var(--marquee); letter-spacing: 0.04em;
+      background: radial-gradient(circle at 42% 30%, #ff9b8a 0%, #f2392b 32%, #a30d16 78%, #5c0409 100%);
+      box-shadow: 0 0 0 4px #c9ced4, 0 0 0 6px #0a0204, 0 6px 0 #000, 0 0 22px rgba(255, 60, 40, 0.45); text-shadow: 0 2px 0 #5c0409; }
+    .spin:active { transform: translateY(3px); box-shadow: 0 0 0 4px #c9ced4, 0 0 0 6px #0a0204, 0 3px 0 #000; }
+    .spin.busy { background: radial-gradient(circle at 42% 30%, #ffe08a, #f2a51b 40%, #8a5207 85%); color: #2a1404; text-shadow: none; }
+    .spin:disabled, .bet:disabled, .icon:disabled { filter: grayscale(0.7); opacity: 0.5; }
     .wrap { position: relative; }
-    .pop { position: absolute; bottom: calc(100% + 10px); right: 0; z-index: 5; width: 250px; padding: 12px; border-radius: 14px; background: #1b1129; box-shadow: 0 0 0 1px var(--edge), 0 14px 40px rgba(0, 0, 0, 0.6); display: grid; gap: 8px; font-size: 0.8rem; }
+    .pop { position: absolute; bottom: calc(100% + 12px); right: 0; z-index: 5; width: min(270px, calc(100vw - 24px)); padding: 12px; border-radius: 14px; background: #24070a; color: var(--text);
+      box-shadow: 0 0 0 2px var(--chrome-mid), 0 14px 40px rgba(0, 0, 0, 0.6); display: grid; gap: 8px; font-size: 0.82rem; }
     .pop[hidden] { display: none; }
     .pop .counts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-    .pop .counts button { height: 38px; border-radius: 9px; background: linear-gradient(180deg, #f3e2bc, #c6a46e); color: #241400; font-weight: 800; }
+    .pop .counts button { height: 40px; border-radius: 10px; background: radial-gradient(circle at 40% 30%, #fff, var(--chrome) 50%, var(--chrome-mid)); color: #1d2025; font-weight: 700; }
     .pop label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .pop select { background: #0d0816; color: var(--text); border: 1px solid var(--edge); border-radius: 7px; min-height: 30px; font: inherit; }
-    dialog { max-width: min(92vw, 640px); max-height: 86vh; border: 0; border-radius: 16px; padding: 18px 20px; background: #1b1129; color: var(--text); box-shadow: 0 0 0 1px var(--edge), 0 20px 60px rgba(0, 0, 0, 0.7); }
-    dialog::backdrop { background: rgba(5, 2, 10, 0.7); }
-    dialog h2 { margin: 0 0 10px; font-size: 1.1rem; color: var(--gold); }
-    dialog table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
-    dialog td, dialog th { padding: 5px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); text-align: right; }
+    .pop select { background: #0b0503; color: var(--text); border: 1px solid var(--chrome-dark); border-radius: 7px; min-height: 32px; font: inherit; }
+
+    dialog { width: min(92vw, 640px); max-height: 86vh; border: 0; border-radius: 18px; padding: 18px 20px; background: #24070a; color: var(--text); box-shadow: 0 0 0 2px var(--chrome-mid), 0 20px 60px rgba(0, 0, 0, 0.7); user-select: text; }
+    dialog::backdrop { background: rgba(10, 2, 4, 0.75); }
+    dialog h2 { margin: 0 0 10px; font: 400 1.25rem var(--marquee); color: var(--lamp-hot); }
+    dialog table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.86rem; }
+    dialog td, dialog th { padding: 5px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: right; }
     dialog td:first-child, dialog th:first-child { text-align: left; }
-    dialog p, dialog li { font-size: 0.85rem; line-height: 1.45; color: #ddd1ea; }
+    dialog p, dialog li { font-size: 0.86rem; line-height: 1.5; color: #f1dccd; }
     dialog .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
-    dialog .row button, dialog .row label { min-height: 40px; padding: 0 14px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--edge); display: inline-flex; align-items: center; gap: 8px; }
-    .close { float: right; width: 36px; height: 36px; border-radius: 50%; background: var(--panel); }
+    dialog .row button, dialog .row label { min-height: 42px; padding: 0 14px; border-radius: 12px; background: #3a0c11; box-shadow: 0 0 0 1px var(--chrome-dark); display: inline-flex; align-items: center; gap: 8px; }
+    .close { float: right; width: 38px; height: 38px; border-radius: 50%; background: #3a0c11; box-shadow: 0 0 0 1px var(--chrome-dark); }
     body:not(.app-ready) .deck { visibility: hidden; }
-    /* One column that never grows past the screen: the deck's buttons used to widen it
-       (and the board with it) past a 375 px phone's edge. */
-    .game { grid-template-columns: minmax(0, 1fr); }
-    @media (max-width: 520px) {
-      :root { --btn: 40px; }
-      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; }
-      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
-      .play { gap: 6px; }
-      .spin { width: 60px; height: 60px; }
-      .bet { width: 34px; height: 34px; }
-      .board { width: min(100%, calc((100dvh - 220px) * 5 / 3)); }
+
+    /* Demo lobby link sits in the marquee's corner (demo/demo.js fills it). */
+    .lobby-slot { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); }
+
+    /* ── Phones in portrait: two rows of controls under the readouts. ── */
+    @media (max-width: 560px) {
+      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; padding: 10px; }
+      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; gap: 7px; }
+      :root { --btn: 42px; --spin: 68px; }
+      .bet { width: 36px; height: 36px; }
+      .lobby-slot { top: 8px; transform: none; }
+      .marquee { padding-top: 26px; }
     }
-    @media (max-width: 360px) {
-      /* 320-360 px: the two system buttons sit beside the readouts, the play row gets the full width. */
-      .deck { grid-template-columns: auto 1fr; grid-template-areas: "sys status" "play play"; }
-      .sys { flex-direction: column; gap: 6px; }
-      .play { justify-content: center; }
+    @media (max-width: 370px) {
+      :root { --btn: 38px; --spin: 62px; }
+      .deck { grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; justify-items: center; }
+      .sys { gap: 10px; }
+      .readouts strong { font-size: 0.9rem; }
     }
-    @media (prefers-reduced-motion: reduce) { .spin:active { transform: none; } }
+    /* ── Phones in landscape (short screens): reels left, a slim control column right. ── */
+    @media (orientation: landscape) and (max-height: 520px) {
+      .game { grid-template-columns: minmax(0, 1fr) clamp(200px, 30vw, 260px); grid-template-rows: minmax(0, 1fr); }
+      .marquee { display: none; }
+      .stage { grid-column: 1; grid-row: 1; }
+      .deck { grid-column: 2; grid-row: 1; grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; align-content: center; justify-items: center; gap: 12px; }
+      .status { grid-area: status; width: 100%; } .play { grid-area: play; flex-wrap: wrap; justify-content: center; } .sys { grid-area: sys; }
+      .readouts { grid-template-columns: 1fr 1fr; } .readouts div:first-child { grid-column: 1 / -1; }
+      :root { --spin: 64px; --btn: 40px; }
+      .lobby-slot { position: fixed; left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); transform: none; z-index: 4; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spin:active, .icon:active, .bet:active { transform: none; }
+      .celebration::before, body.lights .marquee::before, body.lights .marquee::after { animation: none; }
+    }
   </style>
 </head>
 <body>
   <main class="game">
+    <header class="marquee">
+      <div class="lobby-slot"></div>
+      <h1 class="logo">Classic<small>5×3</small></h1>
+      <div class="tag" id="tagline">20 lines, wilds on reels 2–4, free spins pay triple</div>
+    </header>
     <div class="stage">
-      <div class="board" id="board">
-        <canvas id="reels" aria-label="Reels"></canvas>
-        <div class="badge" id="fsBadge" hidden></div>
-        <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
+      <div class="cabinet">
+        <div class="board" id="board">
+          <canvas id="reels" aria-label="Reels"></canvas>
+          <div class="badge" id="fsBadge" hidden></div>
+          <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
+        </div>
       </div>
+      <div class="pays" id="pays" aria-label="Top pays at this bet"></div>
     </div>
     <footer class="deck" aria-label="Controls">
       <div class="sys">
@@ -158,7 +244,8 @@
     <div class="row"><button id="realityContinue">Keep playing</button><button id="realityExit">Exit game</button></div>
   </dialog>
 
-  <script>window.VX_AUDIO_BASE = "/play/assets/audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
+  <!-- Its own sounds (audio/, built by tools/build-game-audio.mjs), through the shared engine. -->
+  <script>window.VX_AUDIO_BASE = "audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
   <script src="/play/embed-bridge.js"></script>
   <script src="/play/audio/audio.js"></script>
   <script src="game.js"></script>

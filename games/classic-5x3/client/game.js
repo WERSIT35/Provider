@@ -20,6 +20,13 @@
     cel: $("celebration"), celTitle: $("celTitle"), celAmount: $("celAmount"), reality: $("reality"), realityText: $("realityText")
   };
   const Sound = window.Sound;
+  // Classic 5x3's own events on top of the shared engine's (its sounds: audio/manifest.json).
+  if (Sound?.defineEvents) {
+    const { semis } = Sound.util;
+    // Each winning line its own note, walking up a major scale as the lines are shown.
+    const SCALE = [0, 2, 4, 5, 7, 9, 11, 12];
+    Sound.defineEvents({ line_show: { minGap: 60, voice: (o) => ({ key: "line", rate: semis(SCALE[(Number(o.i) || 0) % SCALE.length]), jitter: false, db: -2 }) } });
+  }
   const sfx = (name, opts) => { Haptics.onEvent(name); try { Sound?.play(name, opts); } catch { /* sound is never load-bearing */ } };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
 
@@ -33,7 +40,7 @@
   // A free-spins run is ONE lifecycle (as in Vault 20K): no other round may start between its spins.
   window.__spinLifecycle = { get inFlight() { return S.inFlight || S.featureRun; }, get autoplayActive() { return Boolean(S.autoplay); }, stats: S.stats };
 
-  const fmt = (n) => (Number.isFinite(n) ? n.toFixed(2) : "—");
+  const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const speed = () => (S.turbo ? 0.5 : 1) * (reduceMotion?.matches ? 0.6 : 1);
 
@@ -55,56 +62,125 @@
   function say(text, win = false) { el.msg.textContent = text; el.msg.classList.toggle("win", win); }
   const lineBet = () => S.bets[S.betIndex] / S.lines;
 
-  // ── symbols: vector art, drawn once per cell size into sprites ──────────────
-  const COLORS = { CHERRY: "#e5334b", LEMON: "#f7dc3b", ORANGE: "#f6922e", PLUM: "#8a4fd3", GRAPE: "#6b3bb3", MELON: "#3fb34f", BELL: "#f4c542", BAR: "#e9e4d8", SEVEN: "#ff3b3b", WILD: "#ffd36b", SCATTER: "#4fd8ff" };
+  // ── symbols: fruit-machine art for ivory reels, drawn once per cell size into sprites ──
+  // Sticker style: rich gradient fills, a dark ink outline and one specular highlight, so
+  // every symbol reads at 40 px on a phone. Text symbols use the marquee face (Bungee).
+  const INK = "#2a1408";
+  const MARQUEE = '"C5 Marquee", "Arial Black", Impact, sans-serif';
   function drawSymbol(g, sym, s) {
-    const c = s / 2;
+    const c = s / 2, lw = Math.max(1.5, s * 0.035);
     g.save();
-    g.lineJoin = "round";
-    g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = s * 0.06; g.shadowOffsetY = s * 0.03;
-    const circle = (x, y, r, fill) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); };
-    const shine = (x, y, r) => { g.shadowColor = "transparent"; circle(x, y, r, "rgba(255,255,255,0.45)"); };
+    g.lineJoin = "round"; g.lineCap = "round";
+    const rg = (x, y, r, stops) => { const gr = g.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.05, x, y, r * 1.05); stops.forEach(([o, col]) => gr.addColorStop(o, col)); return gr; };
+    const lg = (x0, y0, x1, y1, stops) => { const gr = g.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, col]) => gr.addColorStop(o, col)); return gr; };
+    const ink = (w = lw) => { g.lineWidth = w; g.strokeStyle = INK; g.stroke(); };
+    const ball = (x, y, r, stops) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = rg(x, y, r, stops); g.fill(); ink(); };
+    const glint = (x, y, rx, ry, rot = -0.6, a = 0.75) => { g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); g.fillStyle = `rgba(255,255,255,${a})`; g.fill(); };
+    const leaf = (x, y, len, rot) => {
+      g.save(); g.translate(x, y); g.rotate(rot);
+      g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(len * 0.5, -len * 0.42, len, 0); g.quadraticCurveTo(len * 0.5, len * 0.42, 0, 0);
+      g.fillStyle = lg(0, -len * 0.3, 0, len * 0.3, [[0, "#8fe06a"], [1, "#2f8a2a"]]); g.fill(); ink(lw * 0.8);
+      g.beginPath(); g.moveTo(len * 0.1, 0); g.lineTo(len * 0.85, 0); g.lineWidth = lw * 0.5; g.strokeStyle = "rgba(20,60,10,0.6)"; g.stroke();
+      g.restore();
+    };
+    const label = (text, y, size, fill, stroke) => {
+      g.font = `400 ${size}px ${MARQUEE}`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.lineWidth = size * 0.22; g.strokeStyle = stroke; g.strokeText(text, c, y); g.fillStyle = fill; g.fillText(text, c, y);
+    };
+    // A soft contact shadow under every symbol: it sits on the reel, not floating.
+    g.beginPath(); g.ellipse(c, s * 0.9, s * 0.3, s * 0.05, 0, 0, Math.PI * 2); g.fillStyle = "rgba(60,30,10,0.16)"; g.fill();
     switch (sym) {
-      case "CHERRY":
-        g.strokeStyle = "#3c8a2e"; g.lineWidth = s * 0.05;
-        g.beginPath(); g.moveTo(c * 0.75, c * 1.15); g.quadraticCurveTo(c * 0.9, c * 0.45, c * 1.35, c * 0.35); g.moveTo(c * 1.3, c * 1.2); g.quadraticCurveTo(c * 1.25, c * 0.6, c * 1.35, c * 0.35); g.stroke();
-        circle(c * 0.72, c * 1.32, s * 0.2, COLORS.CHERRY); circle(c * 1.3, c * 1.38, s * 0.2, "#c91f38");
-        shine(c * 0.62, c * 1.22, s * 0.05); shine(c * 1.2, c * 1.28, s * 0.05); break;
-      case "LEMON":
-        g.beginPath(); g.ellipse(c, c, s * 0.36, s * 0.26, -0.3, 0, Math.PI * 2); g.fillStyle = COLORS.LEMON; g.fill(); shine(c * 0.82, c * 0.82, s * 0.06); break;
-      case "ORANGE":
-        circle(c, c * 1.05, s * 0.32, COLORS.ORANGE);
-        g.fillStyle = "#3c8a2e"; g.beginPath(); g.ellipse(c * 1.18, c * 0.5, s * 0.12, s * 0.06, -0.5, 0, Math.PI * 2); g.fill(); shine(c * 0.8, c * 0.85, s * 0.07); break;
-      case "PLUM":
-        g.beginPath(); g.ellipse(c, c * 1.05, s * 0.28, s * 0.34, 0.2, 0, Math.PI * 2); g.fillStyle = COLORS.PLUM; g.fill(); shine(c * 0.82, c * 0.8, s * 0.06); break;
-      case "GRAPE":
-        for (const [x, y] of [[0.75, 0.7], [1, 0.7], [1.25, 0.7], [0.87, 0.95], [1.13, 0.95], [0.75, 1.2], [1, 1.2], [1.25, 1.2], [1, 1.45]]) circle(c * x, c * y, s * 0.11, COLORS.GRAPE);
-        shine(c * 0.72, c * 0.64, s * 0.035); break;
-      case "MELON":
-        g.beginPath(); g.arc(c, c * 0.8, s * 0.38, 0, Math.PI); g.closePath(); g.fillStyle = "#2e8b3d"; g.fill();
-        g.beginPath(); g.arc(c, c * 0.8, s * 0.32, 0, Math.PI); g.closePath(); g.fillStyle = "#ff5d6c"; g.fill();
-        g.shadowColor = "transparent"; for (const x of [0.75, 1, 1.25]) circle(c * x, c * 1.05, s * 0.025, "#1d1d1d"); break;
-      case "BELL":
-        g.fillStyle = COLORS.BELL; g.beginPath(); g.moveTo(c * 0.45, c * 1.35); g.quadraticCurveTo(c * 0.55, c * 0.4, c, c * 0.38); g.quadraticCurveTo(c * 1.45, c * 0.4, c * 1.55, c * 1.35); g.closePath(); g.fill();
-        circle(c, c * 1.45, s * 0.07, "#c98f1c"); shine(c * 0.8, c * 0.75, s * 0.05); break;
-      case "BAR":
-        g.fillStyle = "#1c1c1c"; roundRect(g, s * 0.12, s * 0.33, s * 0.76, s * 0.34, s * 0.06); g.fill();
-        g.shadowColor = "transparent"; g.fillStyle = COLORS.BAR; g.font = `900 ${s * 0.24}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("BAR", c, c * 1.02); break;
-      case "SEVEN":
-        g.fillStyle = COLORS.SEVEN; g.strokeStyle = "#ffe5a0"; g.lineWidth = s * 0.03; g.font = `900 ${s * 0.72}px Georgia, serif`; g.textAlign = "center"; g.textBaseline = "middle";
-        g.strokeText("7", c, c * 1.06); g.fillText("7", c, c * 1.06); break;
-      case "WILD":
-        star(g, c, c * 0.95, s * 0.42, s * 0.2, 5); g.fillStyle = COLORS.WILD; g.fill();
-        g.shadowColor = "transparent"; g.fillStyle = "#3a1d00"; g.font = `900 ${s * 0.17}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("WILD", c, c * 1.0); break;
-      case "SCATTER":
-        g.fillStyle = COLORS.SCATTER; g.beginPath(); g.moveTo(c, c * 0.3); g.lineTo(c * 1.62, c * 0.85); g.lineTo(c, c * 1.72); g.lineTo(c * 0.38, c * 0.85); g.closePath(); g.fill();
-        g.shadowColor = "transparent"; g.fillStyle = "rgba(255,255,255,0.5)"; g.beginPath(); g.moveTo(c, c * 0.3); g.lineTo(c * 1.25, c * 0.85); g.lineTo(c, c * 1.72); g.closePath(); g.fill();
-        g.fillStyle = "#06263a"; g.font = `900 ${s * 0.12}px system-ui, sans-serif`; g.textAlign = "center"; g.fillText("SCATTER", c, c * 1.92); break;
+      case "CHERRY": {
+        g.beginPath(); g.moveTo(s * 0.33, s * 0.62); g.quadraticCurveTo(s * 0.4, s * 0.3, s * 0.62, s * 0.16); g.moveTo(s * 0.68, s * 0.66); g.quadraticCurveTo(s * 0.64, s * 0.36, s * 0.62, s * 0.16);
+        g.lineWidth = s * 0.07; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.038; g.strokeStyle = "#5c8f2a"; g.stroke();
+        leaf(s * 0.62, s * 0.17, s * 0.26, -0.35);
+        const red = [[0, "#ff9aa2"], [0.35, "#e8243c"], [1, "#7a0716"]];
+        ball(s * 0.32, s * 0.68, s * 0.2, red); ball(s * 0.68, s * 0.71, s * 0.2, red);
+        glint(s * 0.26, s * 0.6, s * 0.05, s * 0.03); glint(s * 0.62, s * 0.63, s * 0.05, s * 0.03); break;
+      }
+      case "LEMON": {
+        g.beginPath(); g.moveTo(s * 0.12, s * 0.52); g.bezierCurveTo(s * 0.16, s * 0.2, s * 0.84, s * 0.2, s * 0.88, s * 0.48); g.bezierCurveTo(s * 0.84, s * 0.8, s * 0.16, s * 0.82, s * 0.12, s * 0.52); g.closePath();
+        g.fillStyle = rg(c, c, s * 0.42, [[0, "#fff9b0"], [0.45, "#ffe03a"], [1, "#c99a00"]]); g.fill(); ink();
+        g.fillStyle = "rgba(160,110,0,0.35)"; for (const [x, y] of [[0.55, 0.6], [0.66, 0.5], [0.45, 0.66], [0.72, 0.62], [0.36, 0.58]]) { g.beginPath(); g.arc(s * x, s * y, s * 0.012, 0, Math.PI * 2); g.fill(); }
+        glint(s * 0.34, s * 0.4, s * 0.1, s * 0.04, -0.3); break;
+      }
+      case "ORANGE": {
+        ball(c, s * 0.56, s * 0.32, [[0, "#ffd29a"], [0.4, "#ff8c1a"], [1, "#a8460a"]]);
+        g.fillStyle = "rgba(140,60,0,0.3)"; for (let i = 0; i < 14; i++) { const a = i * 2.4, r = s * (0.08 + (i % 5) * 0.045); g.beginPath(); g.arc(c + Math.cos(a) * r, s * 0.58 + Math.sin(a) * r, s * 0.011, 0, Math.PI * 2); g.fill(); }
+        g.beginPath(); g.arc(c, s * 0.25, s * 0.04, 0, Math.PI * 2); g.fillStyle = "#6b4a1a"; g.fill(); ink(lw * 0.7);
+        leaf(c + s * 0.02, s * 0.24, s * 0.24, -0.5); glint(s * 0.38, s * 0.44, s * 0.08, s * 0.05); break;
+      }
+      case "PLUM": {
+        g.beginPath(); g.ellipse(c, s * 0.57, s * 0.29, s * 0.33, 0.25, 0, Math.PI * 2);
+        g.fillStyle = rg(c, s * 0.57, s * 0.33, [[0, "#e2b8ff"], [0.35, "#9a52e0"], [1, "#3e1470"]]); g.fill(); ink();
+        g.beginPath(); g.moveTo(s * 0.5, s * 0.27); g.quadraticCurveTo(s * 0.62, s * 0.55, s * 0.56, s * 0.88); g.lineWidth = lw * 0.7; g.strokeStyle = "rgba(40,10,70,0.5)"; g.stroke();
+        g.beginPath(); g.moveTo(c, s * 0.26); g.lineTo(s * 0.56, s * 0.12); g.lineWidth = s * 0.05; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.025; g.strokeStyle = "#6b4a1a"; g.stroke();
+        leaf(s * 0.55, s * 0.15, s * 0.2, -0.2); glint(s * 0.4, s * 0.44, s * 0.06, s * 0.1, 0.3, 0.6); break;
+      }
+      case "GRAPE": {
+        g.beginPath(); g.moveTo(c, s * 0.24); g.lineTo(s * 0.54, s * 0.1); g.lineWidth = s * 0.05; g.strokeStyle = INK; g.stroke(); g.lineWidth = s * 0.025; g.strokeStyle = "#6b4a1a"; g.stroke();
+        leaf(s * 0.52, s * 0.18, s * 0.28, -0.15);
+        const pur = [[0, "#c9a4ff"], [0.4, "#7b3fd0"], [1, "#2c0d5c"]];
+        for (const [x, y] of [[0.33, 0.36], [0.5, 0.34], [0.67, 0.36], [0.41, 0.52], [0.59, 0.52], [0.33, 0.67], [0.5, 0.68], [0.67, 0.67], [0.42, 0.82], [0.58, 0.82]].reverse()) ball(s * x, s * y, s * 0.095, pur);
+        glint(s * 0.3, s * 0.33, s * 0.03, s * 0.02); glint(s * 0.47, s * 0.31, s * 0.03, s * 0.02); break;
+      }
+      case "MELON": {
+        g.beginPath(); g.moveTo(s * 0.1, s * 0.4); g.quadraticCurveTo(c, s * 1.06, s * 0.9, s * 0.4); g.closePath();
+        g.fillStyle = lg(0, s * 0.4, 0, s * 0.85, [[0, "#3fbf4f"], [1, "#1c6b26"]]); g.fill(); ink();
+        g.beginPath(); g.moveTo(s * 0.15, s * 0.4); g.quadraticCurveTo(c, s * 0.97, s * 0.85, s * 0.4); g.closePath(); g.fillStyle = "#f6f2d4"; g.fill();
+        g.beginPath(); g.moveTo(s * 0.19, s * 0.4); g.quadraticCurveTo(c, s * 0.9, s * 0.81, s * 0.4); g.closePath();
+        g.fillStyle = lg(0, s * 0.4, 0, s * 0.8, [[0, "#ff7a86"], [1, "#e0263c"]]); g.fill();
+        g.beginPath(); g.moveTo(s * 0.1, s * 0.4); g.lineTo(s * 0.9, s * 0.4); ink();
+        g.fillStyle = INK; for (const [x, y] of [[0.35, 0.5], [0.5, 0.56], [0.65, 0.5], [0.43, 0.64], [0.57, 0.64]]) { g.beginPath(); g.ellipse(s * x, s * y, s * 0.017, s * 0.03, 0, 0, Math.PI * 2); g.fill(); }
+        break;
+      }
+      case "BELL": {
+        g.beginPath(); g.moveTo(s * 0.16, s * 0.74); g.quadraticCurveTo(s * 0.24, s * 0.66, s * 0.26, s * 0.48); g.bezierCurveTo(s * 0.28, s * 0.2, s * 0.72, s * 0.2, s * 0.74, s * 0.48); g.quadraticCurveTo(s * 0.76, s * 0.66, s * 0.84, s * 0.74); g.closePath();
+        g.fillStyle = lg(s * 0.2, 0, s * 0.8, 0, [[0, "#9a6a08"], [0.3, "#ffe27a"], [0.55, "#f7b91c"], [1, "#8a5a05"]]); g.fill(); ink();
+        g.beginPath(); g.roundRect ? g.roundRect(s * 0.14, s * 0.72, s * 0.72, s * 0.08, s * 0.04) : g.rect(s * 0.14, s * 0.72, s * 0.72, s * 0.08);
+        g.fillStyle = lg(0, s * 0.72, 0, s * 0.8, [[0, "#ffe9a0"], [1, "#a8720a"]]); g.fill(); ink(lw * 0.8);
+        ball(c, s * 0.86, s * 0.065, [[0, "#fff2c0"], [1, "#a8720a"]]);
+        g.beginPath(); g.arc(c, s * 0.2, s * 0.05, Math.PI, 0); ink(lw * 1.1);
+        glint(s * 0.37, s * 0.42, s * 0.04, s * 0.11, 0.15, 0.6); break;
+      }
+      case "BAR": {
+        g.beginPath(); g.roundRect ? g.roundRect(s * 0.08, s * 0.3, s * 0.84, s * 0.4, s * 0.08) : g.rect(s * 0.08, s * 0.3, s * 0.84, s * 0.4);
+        g.fillStyle = lg(0, s * 0.3, 0, s * 0.7, [[0, "#3a3a3a"], [0.5, "#111"], [1, "#000"]]); g.fill(); ink(lw * 1.2);
+        g.beginPath(); g.roundRect ? g.roundRect(s * 0.13, s * 0.35, s * 0.74, s * 0.3, s * 0.05) : g.rect(s * 0.13, s * 0.35, s * 0.74, s * 0.3);
+        g.lineWidth = lw * 0.8; g.strokeStyle = "#f2c14e"; g.stroke();
+        label("BAR", s * 0.505, s * 0.25, "#fff4d6", "#000"); break;
+      }
+      case "SEVEN": {
+        g.font = `400 ${s * 0.86}px ${MARQUEE}`; g.textAlign = "center"; g.textBaseline = "middle";
+        g.lineWidth = s * 0.12; g.strokeStyle = INK; g.strokeText("7", c, s * 0.53);
+        g.lineWidth = s * 0.06; g.strokeStyle = "#ffd75a"; g.strokeText("7", c, s * 0.53);
+        g.fillStyle = lg(0, s * 0.15, 0, s * 0.9, [[0, "#ff8a7a"], [0.45, "#ff2a1f"], [1, "#9a0610"]]); g.fillText("7", c, s * 0.53);
+        break;
+      }
+      case "WILD": {
+        star(g, c, s * 0.47, s * 0.43, s * 0.2, 5);
+        g.fillStyle = rg(c, s * 0.47, s * 0.43, [[0, "#fff6c4"], [0.45, "#ffc93a"], [1, "#b8730a"]]); g.fill(); ink(lw * 1.1);
+        g.beginPath(); g.roundRect ? g.roundRect(s * 0.1, s * 0.52, s * 0.8, s * 0.2, s * 0.05) : g.rect(s * 0.1, s * 0.52, s * 0.8, s * 0.2);
+        g.fillStyle = lg(0, s * 0.52, 0, s * 0.72, [[0, "#ff5a4a"], [1, "#a30d16"]]); g.fill(); ink();
+        label("WILD", s * 0.625, s * 0.15, "#fff6dc", "#5c0409"); break;
+      }
+      case "SCATTER": {
+        const pts = [[c, s * 0.1], [s * 0.86, s * 0.38], [c, s * 0.86], [s * 0.14, s * 0.38]];
+        g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+        g.fillStyle = lg(s * 0.14, s * 0.1, s * 0.86, s * 0.86, [[0, "#c8f4ff"], [0.4, "#2fb8f0"], [1, "#0a3e8a"]]); g.fill(); ink(lw * 1.1);
+        // Facets.
+        g.beginPath(); g.moveTo(s * 0.14, s * 0.38); g.lineTo(s * 0.86, s * 0.38); g.moveTo(c, s * 0.1); g.lineTo(s * 0.35, s * 0.38); g.lineTo(c, s * 0.86); g.lineTo(s * 0.65, s * 0.38); g.lineTo(c, s * 0.1);
+        g.lineWidth = lw * 0.6; g.strokeStyle = "rgba(255,255,255,0.55)"; g.stroke();
+        g.beginPath(); g.moveTo(c, s * 0.1); g.lineTo(s * 0.35, s * 0.38); g.lineTo(s * 0.14, s * 0.38); g.closePath(); g.fillStyle = "rgba(255,255,255,0.45)"; g.fill();
+        label("SCATTER", s * 0.9, s * 0.12, "#e8fbff", "#062a4a"); break;
+      }
     }
     g.restore();
   }
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   function star(g, x, y, R, r, n) { g.beginPath(); for (let i = 0; i < n * 2; i++) { const a = (Math.PI * i) / n - Math.PI / 2; const d = i % 2 ? r : R; g.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); } g.closePath(); }
+  // Win-line colours: each line its own lamp colour, as on a real cabinet's line lamps.
+  const LINE_COLORS = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#bf5af2", "#ff9f0a", "#64d2ff", "#ff375f", "#30d158", "#5e5ce6"];
 
   // ── renderer ─────────────────────────────────────────────────────────────
   const R = {
@@ -133,34 +209,63 @@
     }
     return sp;
   }
+  function reelShade(g, x, y, w, h) {
+    // Ivory drum: darker at the top and bottom edges, so the reel reads as a cylinder.
+    const gr = g.createLinearGradient(0, y, 0, y + h);
+    gr.addColorStop(0, "rgba(90,55,25,0.55)"); gr.addColorStop(0.1, "rgba(90,55,25,0.12)"); gr.addColorStop(0.22, "rgba(90,55,25,0)");
+    gr.addColorStop(0.78, "rgba(90,55,25,0)"); gr.addColorStop(0.9, "rgba(90,55,25,0.12)"); gr.addColorStop(1, "rgba(90,55,25,0.55)");
+    g.fillStyle = gr; g.fillRect(x, y, w, h);
+  }
   function draw(now) {
     const g = R.ctx, cell = R.cell, ox = (R.w - cell * 5) / 2, oy = (R.h - cell * 3) / 2;
-    g.fillStyle = "#0d0816"; g.fillRect(0, 0, R.w, R.h);
+    g.fillStyle = "#1a0507"; g.fillRect(0, 0, R.w, R.h);
+    const hl = R.highlight;
     for (let col = 0; col < 5; col++) {
       const strip = S.rules.reels[col], L = strip.length, reel = R.reels[col];
       const x = ox + col * cell;
-      g.fillStyle = col % 2 ? "#150d22" : "#130b1f"; g.fillRect(x, oy, cell, cell * 3);
+      g.fillStyle = col % 2 ? "#f4ecda" : "#f8f2e4"; g.fillRect(x, oy, cell, cell * 3);
       g.save(); g.beginPath(); g.rect(x, oy, cell, cell * 3); g.clip();
       const base = Math.floor(reel.pos), frac = reel.pos - base;
+      const moving = reel.anim || reel.spinning;
       for (let k = -1; k <= 3; k++) {
         const sym = strip[(((base + k) % L) + L) % L];
         const y = oy + (k - frac) * cell;
         const sp = sprite(sym), pad = (cell - sp.width) / 2;
-        const lit = !R.highlight || R.highlight.cells.has(`${k},${col}`) || reel.anim || reel.spinning;
-        g.globalAlpha = lit ? 1 : 0.32;
-        if (reel.spinning && !reduceMotion?.matches) { g.globalAlpha = 0.85; g.drawImage(sp, x + pad, y + pad, sp.width, sp.height * 1.0); }
-        else g.drawImage(sp, x + pad, y + pad);
+        const win = hl && !moving && hl.cells.has(`${k},${col}`);
+        if (win) {
+          // A lit lamp-glass behind a winning symbol.
+          const gr = g.createRadialGradient(x + cell / 2, y + cell / 2, cell * 0.05, x + cell / 2, y + cell / 2, cell * 0.62);
+          gr.addColorStop(0, "rgba(255,236,150,0.95)"); gr.addColorStop(1, "rgba(255,170,40,0)");
+          g.fillStyle = gr; g.fillRect(x, y, cell, cell);
+        }
+        g.globalAlpha = !hl || moving || win ? 1 : 0.28;
+        if (reel.spinning && !reduceMotion?.matches) {
+          // Motion blur: the sprite stretched and smeared down the drum.
+          g.globalAlpha = 0.55; g.drawImage(sp, x + pad, y + pad - cell * 0.12, sp.width, sp.height * 1.24);
+          g.globalAlpha = 0.35; g.drawImage(sp, x + pad, y + pad + cell * 0.1, sp.width, sp.height);
+        } else g.drawImage(sp, x + pad, y + pad);
+        g.globalAlpha = 1;
+        if (win) { g.lineWidth = Math.max(2, cell * 0.04); g.strokeStyle = "#ffb000"; roundRect(g, x + cell * 0.05, y + cell * 0.05, cell * 0.9, cell * 0.9, cell * 0.12); g.stroke(); }
       }
-      g.restore(); g.globalAlpha = 1;
+      g.restore();
+      reelShade(g, x, oy, cell, cell * 3);
     }
-    // Win line (one at a time), over the board.
-    if (R.highlight?.line) {
-      g.save(); g.lineWidth = Math.max(2, cell * 0.06); g.strokeStyle = "rgba(255, 224, 138, 0.95)"; g.shadowColor = "rgba(255, 190, 80, 0.9)"; g.shadowBlur = cell * 0.15;
-      g.beginPath(); R.highlight.line.forEach(([row, col], i) => { const px = ox + (col + 0.5) * cell, py = oy + (row + 0.5) * cell; i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.stroke(); g.restore();
+    // Win line (one at a time), over the board, in that line's lamp colour.
+    if (hl?.line) {
+      const col = LINE_COLORS[((hl.lineNo || 1) - 1) % LINE_COLORS.length];
+      g.save(); g.lineJoin = "round"; g.lineCap = "round";
+      const path = () => { g.beginPath(); hl.line.forEach(([row, c], i) => { const px = ox + (c + 0.5) * cell, py = oy + (row + 0.5) * cell; i ? g.lineTo(px, py) : g.moveTo(px, py); }); };
+      path(); g.lineWidth = Math.max(5, cell * 0.12); g.strokeStyle = "rgba(42,20,8,0.75)"; g.stroke();
+      path(); g.lineWidth = Math.max(3, cell * 0.07); g.strokeStyle = col; g.shadowColor = col; g.shadowBlur = cell * 0.25; g.stroke();
+      g.restore();
     }
-    // Frame between reels.
-    g.strokeStyle = "rgba(255, 214, 140, 0.18)"; g.lineWidth = 1 * R.dpr;
-    for (let col = 1; col < 5; col++) { g.beginPath(); g.moveTo(ox + col * cell, oy); g.lineTo(ox + col * cell, oy + cell * 3); g.stroke(); }
+    // Chrome dividers between the drums.
+    for (let col = 1; col < 5; col++) {
+      const x = ox + col * cell, w = Math.max(3, cell * 0.045);
+      const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+      gr.addColorStop(0, "#4a4f57"); gr.addColorStop(0.5, "#f4f6f8"); gr.addColorStop(1, "#4a4f57");
+      g.fillStyle = gr; g.fillRect(x - w / 2, oy, w, cell * 3);
+    }
   }
   function step(now) {
     R.raf = 0;
@@ -179,11 +284,13 @@
     draw(now);
     if (moving) kick();
   }
+  /** The marquee's bulbs chase while a win is on show (CSS only; off with reduced motion). */
+  function lights(on) { document.body.classList.toggle("lights", Boolean(on)); }
   function kick() { if (!R.raf) R.raf = requestAnimationFrame(step); }
 
   /** Spin all reels (strip scrolls downward: pos decreases). */
   function startReels() {
-    R.highlight = null;
+    R.highlight = null; lights(false);
     const now = performance.now();
     for (const reel of R.reels) { reel.spinning = true; reel.speed = (22 + Math.random() * 2) / speed(); reel.last = now; reel.anim = null; }
     kick();
@@ -291,6 +398,7 @@
     for (const w of r.line_wins || []) for (const p of w.positions) cells.add(`${p.row},${p.col}`);
     for (const p of r.scatter?.positions || []) if (r.scatter.count >= 3) cells.add(`${p.row},${p.col}`);
     R.highlight = { cells, line: null }; kick();
+    lights(true);
     const x = total / bet;
     const tier = x >= 50 ? ["EPIC WIN", "win_epic"] : x >= 25 ? ["MEGA WIN", "win_mega"] : x >= 10 ? ["BIG WIN", "win_big"] : null;
     countUp(total, tier ? 300 : 500 * speed());
@@ -299,7 +407,7 @@
     if (tier) await celebrate(tier[0], total, tier[1]);
     // Walk the winning lines once (skipped by quick stop / turbo / autoplay pace).
     if (!S.quickStop && !S.turbo && (r.line_wins || []).length > 1) {
-      for (const w of r.line_wins.slice(0, 6)) { if (S.quickStop) break; R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]) }; kick(); await sleep(420); }
+      for (const [li, w] of r.line_wins.slice(0, 6).entries()) { if (S.quickStop) break; sfx("line_show", { i: li }); R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]), lineNo: w.line }; kick(); await sleep(420); }
       R.highlight = { cells, line: null }; kick();
     }
     if (r.free_spins_awarded > 0) {
@@ -312,7 +420,7 @@
   function countUp(to, ms) {
     cancelAnimationFrame(countTimer);
     const t0 = performance.now();
-    const tick = (now) => { const t = Math.min(1, (now - t0) / ms); el.win.textContent = fmt(to * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop) countTimer = requestAnimationFrame(tick); else el.win.textContent = fmt(to); };
+    const tick = (now) => { const t = Math.min(1, (now - t0) / ms); el.win.textContent = fmt(to * (1 - Math.pow(1 - t, 3))); if (t < 1) sfx("win_tick", { progress: t }); if (t < 1 && !S.quickStop) countTimer = requestAnimationFrame(tick); else el.win.textContent = fmt(to); };
     countTimer = requestAnimationFrame(tick);
   }
   function celebrate(title, amount, sound) {
@@ -394,7 +502,25 @@
   el.spin.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSpinPress(); } });
   document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); onSpinPress(); } });
   // The rules text is built when the dialog opens (it shows pays at the current bet), not on every bet change.
-  const showBet = () => { el.bet.textContent = fmt(S.bets[S.betIndex]); el.betDown.disabled = S.betIndex === 0 || S.inFlight; el.betUp.disabled = S.betIndex === S.bets.length - 1 || S.inFlight; if (el.info.open) renderRules(); };
+  /** The pay glass: the four top symbols' pays at the current bet (from rules.json, as paid). */
+  const PAY_GLASS = ["SEVEN", "BAR", "BELL", "MELON"];
+  function renderPays() {
+    const box = $("pays"); if (!box || !S.rules) return;
+    const lb = lineBet(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    box.replaceChildren();
+    for (const sym of PAY_GLASS) {
+      const p = S.rules.paytable[sym]; if (!p) continue;
+      const tile = document.createElement("div"); tile.className = "pay";
+      const cv = document.createElement("canvas"); cv.width = cv.height = Math.round(38 * dpr); drawSymbol(cv.getContext("2d"), sym, cv.width);
+      const big = document.createElement("b"); big.textContent = fmt(p[2] * lb);
+      const small = document.createElement("span"); small.textContent = `4: ${fmt(p[1] * lb)} · 3: ${fmt(p[0] * lb)}`;
+      tile.append(cv, big, small); box.append(tile);
+    }
+    const note = document.createElement("p");
+    note.textContent = `5 in a line, ${S.lines} lines. 3+ scatters anywhere: ${S.rules.free_spins.awards[0]}+ free spins, every win ×${S.rules.free_spins.multiplier}.`;
+    box.append(note);
+  }
+  const showBet = () => { renderPays(); el.bet.textContent = fmt(S.bets[S.betIndex]); el.betDown.disabled = S.betIndex === 0 || S.inFlight; el.betUp.disabled = S.betIndex === S.bets.length - 1 || S.inFlight; if (el.info.open) renderRules(); };
   el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex++; sfx("bet_change"); showBet(); } });
   el.betDown.addEventListener("click", () => { if (S.betIndex > 0) { S.betIndex--; sfx("bet_change"); showBet(); } });
   el.turbo.addEventListener("click", () => { S.turbo = !S.turbo; el.turbo.setAttribute("aria-pressed", String(S.turbo)); sfx("turbo_toggle", { on: S.turbo }); });
@@ -471,6 +597,9 @@
       session = await api("GET", "/game/v1/session");
     }
     S.rules = await rulesP;
+    // The marquee face draws BAR, 7, WILD and SCATTER: wait for it (capped) so no sprite is cached in a fallback.
+    await Promise.race([document.fonts?.load?.('400 32px "C5 Marquee"') ?? Promise.resolve(), sleep(1500)]).catch(() => {});
+    R.sprites.clear();
     const variant = S.rules.rtp_profiles.find((p) => p.game_id === session.game?.code) || S.rules.rtp_profiles[0];
     S.lines = variant.lines;
     S.currency = session.currency;
