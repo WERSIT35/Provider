@@ -4,8 +4,12 @@
  * - Server-authoritative: every outcome comes from the RGS (/game/v1/*). The reels land on
  *   the server's own `stops` on the real strips (rules.json, the file the engine pays from),
  *   so what the player sees is exactly what was paid. Visuals never feed back into play.
- * - Shared shell: the casino bridge (/play/embed-bridge.js), the sound engine
- *   (/play/audio/audio.js), haptics, autoplay with stop conditions, turbo, quick stop.
+ * - The Lumina Shell (/play/shell/shell.js) owns every control, readout and dialog, the same
+ *   as in every Lumina game; this file owns the board and tells the shell what is happening.
+ *   Market rules (autoplay, speed, slam stop, pacing, no win effects at or below the stake)
+ *   come from the session's regulatory profile through the shell.
+ * - Shared engines: the casino bridge (/play/embed-bridge.js), the sound engine
+ *   (/play/audio/audio.js), the motion table (/play/shell/motion.js).
  * - Light by design: symbols are drawn once per size into sprites; the canvas loop runs only
  *   while something moves (a resting board costs nothing); no layout ever moves the board.
  */
@@ -13,12 +17,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const el = {
-    canvas: $("reels"), board: $("board"), msg: $("msg"), balance: $("balance"), bet: $("bet"), win: $("win"),
-    spin: $("spinBtn"), betUp: $("betUp"), betDown: $("betDown"), auto: $("autoBtn"), autoPop: $("autoPop"), turbo: $("turboBtn"),
-    sound: $("soundBtn"), info: $("info"), infoBtn: $("infoBtn"), rules: $("rulesBody"), fsBadge: $("fsBadge"),
-    cel: $("celebration"), celTitle: $("celTitle"), celAmount: $("celAmount"), reality: $("reality"), realityText: $("realityText")
-  };
+  const el = { canvas: $("reels"), board: $("board"), cel: $("celebration"), celTitle: $("celTitle"), celAmount: $("celAmount") };
   const Sound = window.Sound;
   // Classic 5x3's own events on top of the shared engine's (its sounds: audio/manifest.json).
   if (Sound?.defineEvents) {
@@ -35,7 +34,7 @@
   // ── state ────────────────────────────────────────────────────────────────
   const S = {
     token: null, rules: null, currency: "", bets: [], betIndex: 0, balance: null, lines: 20,
-    inFlight: false, featureRun: false, quickStop: false, turbo: false, paused: false,
+    inFlight: false, featureRun: false, quickStop: false, resultShown: false, paused: false, lastAnswerAt: 0, minRoundMs: 0,
     autoplay: null, // { left, limits, startBalance }
     freeSpinsLeft: 0, featureWin: 0, stats: { startedManual: 0, startedAuto: 0 }
   };
@@ -44,7 +43,11 @@
 
   const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const speed = () => (S.turbo ? T.turbo : 1) * (reduceMotion?.matches ? T.reduced : 1);
+  // Presentation speed from the player's choice in the shell (normal / quick / turbo; only
+  // where the market allows it). Reduced motion keeps the timing (every cause step stays
+  // readable) and drops the decoration instead (sway, ghosting, moths).
+  const speed = () => ({ normal: 1, quick: T.quick, turbo: T.turbo })[shell?.speed?.() || "normal"] || 1;
+  const calm = () => Boolean(shell?.reducedMotion?.() ?? reduceMotion?.matches);
 
   // ── haptics (touch devices only, off with reduced motion, player can switch it off) ──
   const Haptics = (() => {
@@ -60,8 +63,9 @@
     };
   })();
 
-  // ── messages ─────────────────────────────────────────────────────────────
-  function say(text, win = false) { el.msg.textContent = text; el.msg.classList.toggle("win", win); }
+  // ── messages: the shell's ticker is the one message line ──────────────────
+  let shell = null;
+  function say(text, win = false, celebrate = true) { if (!shell) return; win ? shell.ticker.win(text, celebrate) : shell.ticker.say(text); }
   const lineBet = () => S.bets[S.betIndex] / S.lines;
 
   // ── symbols: Moth & Lantern, cut paper (docs/brand/classic-5x3.md) ─────────
@@ -209,6 +213,17 @@
     }
     g.restore();
   }
+  const FOLD_MS = 240, STAMP_MS = 300;
+  /** A small paper tag with centred text (amounts, line numbers). */
+  function tag(g, cx, cy, text, size, ink, paper) {
+    g.save();
+    g.font = `600 ${Math.round(size)}px "ML Display", Georgia, serif`;
+    const w = g.measureText(text).width + size * 0.9, h = size * 1.45;
+    g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = size * 0.3; g.shadowOffsetY = size * 0.12;
+    roundRect(g, cx - w / 2, cy - h / 2, w, h, size * 0.25); g.fillStyle = paper; g.fill();
+    g.shadowColor = "transparent"; g.fillStyle = ink; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, cx, cy + size * 0.05);
+    g.restore();
+  }
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   // Paper grain for the strips: one small noise tile, made once (Math.random is visual only).
   const GRAIN = (() => {
@@ -221,7 +236,9 @@
   const R = {
     ctx: el.canvas.getContext("2d"), w: 0, h: 0, dpr: 1, cell: 0, sprites: new Map(),
     reels: [], // { pos (cells, fractional), anim: { from, to, t0, dur } | null, spinning, speed }
-    highlight: null, // { cells:Set("r,c"), line: [[row,col]...] | null }
+    highlight: null, // { cells:Set("r,c"), line: [[row,col]...] | null, neutral }
+    anticipate: -1,  // the first reel still to land while anticipation runs (-1: none)
+    flips: new Map(), // "row,col" → t0: a lantern (wild) unfolding as its reel lands
     raf: 0, dirty: true
   };
   function resize() {
@@ -268,7 +285,7 @@
     if (resting) for (let col = 0; col < 5; col++) { const strip = S.rules.reels[col], L = strip.length, base = Math.round(R.reels[col].pos); for (let k = 0; k < 3; k++) if (strip[(((base + k) % L) + L) % L] === "WILD") lamps.push([col, k]); }
     for (let col = 0; col < 5; col++) {
       const strip = S.rules.reels[col], L = strip.length, reel = R.reels[col];
-      const sway = reel.spinning && !reduceMotion?.matches ? Math.sin(now / 85 + col * 1.7) * cell * 0.016 : 0;
+      const sway = reel.spinning && !calm() ? Math.sin(now / 85 + col * 1.7) * cell * 0.016 : 0;
       const x = ox + col * cell + gap / 2 + sway, w = cell - gap;
       g.save();
       g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = cell * 0.06; g.shadowOffsetY = cell * 0.02;
@@ -287,18 +304,42 @@
         const y = oy + (k - frac) * cell;
         const sp = sprite(sym), pad = (cell - sp.width) / 2;
         const win = hl && !moving && hl.cells.has(`${k},${col}`);
-        if (win) {
+        // A celebrated win glows amber; a no-celebrate win (market rule: return ≤ stake) gets
+        // only a neutral ink mark, so the player still sees what paid, without a party.
+        if (win && !hl.neutral) {
           const gr = g.createRadialGradient(x + w / 2, y + cell / 2, cell * 0.05, x + w / 2, y + cell / 2, cell * 0.6);
           gr.addColorStop(0, "rgba(255,181,71,0.7)"); gr.addColorStop(1, "rgba(255,181,71,0)");
           g.fillStyle = gr; g.fillRect(x, y, w, cell);
         }
-        g.globalAlpha = !hl || moving || win ? 1 : 0.3;
+        // Anticipation: on the landed reels, everything but the moons steps back and the moons
+        // breathe (5%), so the player sees why the next reel is slower.
+        const tease = R.anticipate >= 0 && !moving && col < R.anticipate;
+        const moon = tease && sym === "SCATTER";
+        g.globalAlpha = !hl || moving || win ? (tease && !moon ? 0.8 : 1) : hl.neutral ? 0.7 : 0.3;
         const sx = ox + col * cell + pad + sway;
-        if (reel.spinning && !reduceMotion?.matches) {
+        if (reel.spinning && !calm()) {
           g.globalAlpha = 0.5; g.drawImage(sp, sx, y + pad - cell * 0.1, sp.width, sp.height * 1.2);
           g.globalAlpha = 0.3; g.drawImage(sp, sx, y + pad + cell * 0.1, sp.width, sp.height);
-        } else g.drawImage(sp, sx, y + pad);
+        } else if (moon) {
+          const k5 = 1 + 0.05 * (calm() ? 1 : 0.5 + 0.5 * Math.sin(now / 130));
+          const sw = sp.width * k5, dx = sx - (sw - sp.width) / 2, dy = y + pad - (sw - sp.height) / 2;
+          const gr = g.createRadialGradient(x + w / 2, y + cell / 2, cell * 0.1, x + w / 2, y + cell / 2, cell * 0.62);
+          gr.addColorStop(0, "rgba(207,227,255,0.55)"); gr.addColorStop(1, "rgba(207,227,255,0)"); g.fillStyle = gr; g.fillRect(x, y, w, cell);
+          g.drawImage(sp, dx, dy, sw, sw);
+        } else {
+          // A lantern (wild) unfolds as it lands: a paper fold opening left to right.
+          const f0 = !moving && sym === "WILD" ? R.flips.get(`${k},${col}`) : undefined;
+          const fk = f0 === undefined ? 1 : Math.min(1, (now - f0) / FOLD_MS);
+          if (fk < 1) { const e = 1 - Math.pow(1 - fk, 3), fw = Math.max(1, sp.width * e); g.drawImage(sp, sx + (sp.width - fw) / 2, y + pad, fw, sp.height); }
+          else g.drawImage(sp, sx, y + pad);
+          // On a winning line the lantern burns brighter: it is what completed the line.
+          if (win && !hl.neutral && sym === "WILD" && hl.line) {
+            const gr = g.createRadialGradient(x + w / 2, y + cell / 2, cell * 0.1, x + w / 2, y + cell / 2, cell * 0.75);
+            gr.addColorStop(0, "rgba(255,214,140,0.55)"); gr.addColorStop(1, "rgba(255,181,71,0)"); g.fillStyle = gr; g.fillRect(x, y, w, cell);
+          }
+        }
         g.globalAlpha = 1;
+        if (win && hl.neutral) { g.lineWidth = Math.max(1.5, cell * 0.018); g.strokeStyle = "rgba(11,16,38,0.55)"; roundRect(g, x + cell * 0.06, y + cell * 0.06, w - cell * 0.12, cell * 0.88, cell * 0.08); g.stroke(); }
       }
       // The strip curls slightly away at the top and bottom of the window.
       const sh = g.createLinearGradient(0, oy, 0, oy + cell * 3);
@@ -306,9 +347,9 @@
       g.fillStyle = sh; g.fillRect(x, oy - cell * 0.02, w, cell * 3 + cell * 0.04);
       g.restore();
     }
-    // Win line: a dotted firefly trail.
-    if (hl?.line) {
-      const pts = hl.line.map(([row, c]) => [ox + (c + 0.5) * cell, oy + (row + 0.5) * cell]);
+    // Win lines: dotted firefly trails (all winning lines together, or the one being shown).
+    for (const line of hl?.lines || (hl?.line ? [hl.line] : [])) {
+      const pts = line.map(([row, c]) => [ox + (c + 0.5) * cell, oy + (row + 0.5) * cell]);
       g.save();
       g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py)));
       g.lineWidth = Math.max(2, cell * 0.025); g.strokeStyle = "rgba(255,181,71,0.35)"; g.stroke();
@@ -319,6 +360,24 @@
         for (let j = 0; j < n; j++) { const t = j / n; g.beginPath(); g.arc(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, cell * (j % 3 === 0 ? 0.034 : 0.022), 0, Math.PI * 2); g.fill(); }
       }
       g.restore();
+    }
+    // The line's number, on a paper tag at the board's left edge (it matches the paylines in Info).
+    if (hl?.lineNo && hl.line) tag(g, ox + cell * 0.2, oy + (hl.line[0][0] + 0.5) * cell, String(hl.lineNo), cell * 0.17, "#0b1026", "#f3e6c8");
+    // Amounts: a paper tag at the end of each winning line; in free spins a lantern stamp (×3)
+    // lands on it and the amount triples in place: base → ×3 → result, every line.
+    for (const l of hl?.labels || []) {
+      const cx = ox + (l.col + 0.5) * cell, cy = oy + (l.row + 0.5) * cell + cell * 0.3;
+      tag(g, cx, cy, l.text, cell * 0.15, "#0b1026", "#f3e6c8");
+      if (l.stamp) {
+        const age = Math.min(1, (now - l.stamp.t0) / STAMP_MS), k = calm() ? 1 : age < 1 ? 1.6 - 0.6 * (1 - Math.pow(1 - age, 3)) : 1;
+        g.save(); g.translate(cx + cell * 0.32, cy - cell * 0.22); g.scale(k, k);
+        g.shadowColor = "rgba(255,150,40,0.9)"; g.shadowBlur = cell * 0.22;
+        g.beginPath(); g.arc(0, 0, cell * 0.15, 0, Math.PI * 2);
+        const lg2 = g.createRadialGradient(0, -cell * 0.04, cell * 0.02, 0, 0, cell * 0.16); lg2.addColorStop(0, "#fff1c8"); lg2.addColorStop(0.5, "#ffb547"); lg2.addColorStop(1, "#ff7a3d");
+        g.fillStyle = lg2; g.fill(); g.shadowBlur = 0;
+        g.fillStyle = "#3a1b05"; g.font = `600 ${Math.round(cell * 0.15)}px "ML Display", Georgia, serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(l.stamp.text, 0, cell * 0.01);
+        g.restore();
+      }
     }
   }
   function step(now) {
@@ -336,7 +395,10 @@
     }
     if (!S.rules) return; // a resize before the rules arrived: boot draws the first frame
     draw(now);
-    if (moving) kick();
+    const now2 = performance.now();
+    for (const [key, t0] of R.flips) if (now2 - t0 > FOLD_MS) R.flips.delete(key);
+    const stamping = (R.highlight?.labels || []).some((l) => l.stamp && now2 - l.stamp.t0 < STAMP_MS);
+    if (moving || R.anticipate >= 0 || R.flips.size || stamping) kick();
   }
   function kick() { if (!R.raf) R.raf = requestAnimationFrame(step); }
 
@@ -386,100 +448,168 @@
   Bridge?.on?.("getState", () => emit("state", { paused: S.paused, in_round: S.inFlight, in_feature: S.freeSpinsLeft > 0, balance: S.balance, currency: S.currency }));
 
   // ── one round ────────────────────────────────────────────────────────────
-  function setBalance(b) { if (Number.isFinite(b)) { S.balance = b; el.balance.textContent = fmt(b); emit("balanceChanged", { balance: b, currency: S.currency }); } }
+  function setBalance(b) { if (Number.isFinite(b)) { S.balance = b; shell.setBalance(b); emit("balanceChanged", { balance: b, currency: S.currency }); } }
+  /** The shell's controls follow the round: one place decides what the player can press. */
   function setControls() {
-    const busy = S.inFlight || S.freeSpinsLeft > 0;
-    el.betUp.disabled = el.betDown.disabled = busy || Boolean(S.autoplay);
-    el.spin.classList.toggle("busy", S.inFlight || Boolean(S.autoplay));
-    el.spin.textContent = S.autoplay ? "STOP" : S.inFlight ? "STOP" : "SPIN";
-    el.auto.setAttribute("aria-pressed", String(Boolean(S.autoplay)));
+    const feature = S.freeSpinsLeft > 0 || S.featureRun;
+    const phase = S.autoplay ? "autoplay" : S.inFlight ? (S.resultShown ? "result" : "flight") : feature ? "feature" : "ready";
+    shell.setPhase(phase);
+    // The face says what a press does now: Stop autoplay, Skip (slam where allowed, or the
+    // presentation once the result is shown), else Spin.
+    const canSkip = S.inFlight && (S.resultShown || shell.slamAllowed());
+    shell.setSpinMode(S.autoplay ? "stop" : canSkip ? "skip" : "spin");
+    shell.setAutoplay(S.autoplay ? S.autoplay.left : 0);
+  }
+
+  /** Before a new paid round: the market's pace, measured from the RGS answer (never the press). */
+  async function paceRound() {
+    const wait = S.minRoundMs - (performance.now() - S.lastAnswerAt);
+    if (S.minRoundMs > 0 && wait > 0) await sleep(wait);
   }
 
   async function playRound({ auto = false } = {}) {
     if (S.inFlight || S.paused || (S.featureRun && !auto)) return null;
-    S.inFlight = true; S.quickStop = false;
-    auto ? S.stats.startedAuto++ : S.stats.startedManual++;
-    setControls();
     const free = S.freeSpinsLeft > 0;
     const bet = S.bets[S.betIndex];
+    if (!free && Number.isFinite(S.balance) && S.balance + 1e-9 < bet) { await notEnoughCredit(); return null; }
+    S.inFlight = true; S.quickStop = false; S.resultShown = false;
+    auto ? S.stats.startedAuto++ : S.stats.startedManual++;
+    setControls();
+    if (!free) await paceRound();
     sfx("spin_start");
     emit("roundStarted", { bet, ante: false, free_spin: free, free_round: false, buy: false });
-    if (!free) { el.win.textContent = "0.00"; if (Number.isFinite(S.balance)) el.balance.textContent = fmt(S.balance - bet); }
-    say(free ? `Night · ${S.freeSpinsLeft} left` : "The moths take flight…");
+    stopCount();
+    if (!free) { shell.setWin(0); if (Number.isFinite(S.balance)) shell.setBalance(S.balance - bet); }
+    shell.ticker.spin(free ? `Night · ${S.freeSpinsLeft} left` : "The moths take flight…");
     startReels();
     const minSpin = sleep(T.minSpin * speed());
+    shell.waiting(true);
     let r;
     try {
       [r] = await Promise.all([api("POST", "/game/v1/spin", { bet_amount: bet }, uuid()), minSpin]);
     } catch (err) {
+      shell.waiting(false);
+      S.lastAnswerAt = performance.now();
       await Promise.all(R.reels.map((reel, col) => landReel(col, Math.round(reel.pos), T.errorLand)));
       S.inFlight = false; setControls();
       if (err.code === "REALITY_CHECK_REQUIRED") { await realityCheck(err.details); return null; }
-      say(err.code === "INSUFFICIENT_FUNDS" ? "Not enough credit for this bet" : `Round not played (${err.code || err.message})`);
-      if (Number.isFinite(S.balance)) el.balance.textContent = fmt(S.balance);
+      if (Number.isFinite(S.balance)) shell.setBalance(S.balance);
+      if (err.code === "INSUFFICIENT_FUNDS") await notEnoughCredit();
+      else say(`Round not played (${err.code || err.message})`);
       emit("error", { code: err.code || "CLIENT_ERROR", message: err.message });
       return null;
+    } finally {
+      shell.waiting(false);
     }
-    // Land reels left to right; scatter anticipation slows the rest once two scatters show.
+    S.lastAnswerAt = performance.now();
+    // Land reels left to right. Anticipation: only while the board can still complete a
+    // trigger and has not already (a pure function of the landed reels; LuminaMotion A5).
+    const need = 3, slam = () => S.quickStop && shell.slamAllowed();
     let scattersSoFar = 0;
     for (let col = 0; col < 5; col++) {
-      const anticipate = scattersSoFar >= 2 && !S.quickStop;
-      const dur = (S.quickStop ? T.reelLandQuick : (anticipate ? T.reelLandAnticipate : T.reelLand) * speed()) + (S.quickStop ? 0 : col * T.reelLandColExtra);
-      if (!S.quickStop && col > 0) await sleep((anticipate ? T.reelGapAnticipate : T.reelGap) * speed());
-      if (anticipate) say("…");
+      const reelsLeft = 5 - col; // a strip holds at most one moon, so each reel left adds ≤ 1
+      const anticipate = scattersSoFar >= need - 1 && scattersSoFar < need && scattersSoFar + reelsLeft >= need && !slam();
+      const dur = (slam() ? T.reelLandQuick : (anticipate ? T.reelLandAnticipate : T.reelLand) * speed()) + (slam() ? 0 : col * T.reelLandColExtra);
+      if (!slam() && col > 0) await sleep((anticipate ? T.reelGapAnticipate : T.reelGap) * speed());
+      R.anticipate = anticipate ? col : -1; kick();
+      if (anticipate) shell.ticker.say("One more moon…");
       await landReel(col, r.stops[col], dur);
       sfx("reel_stop", { index: col });
+      if (!calm()) for (let row = 0; row < 3; row++) if (r.matrix[row][col] === "WILD") { R.flips.set(`${row},${col}`, performance.now()); kick(); }
       const here = [0, 1, 2].filter((row) => r.matrix[row][col] === "SCATTER").length;
-      if (here) { scattersSoFar += here; sfx("scatter_land", { n: scattersSoFar, need: 3 }); }
+      if (here) { scattersSoFar += here; sfx("scatter_land", { n: scattersSoFar, need }); }
     }
+    if (R.anticipate >= 0) { R.anticipate = -1; kick(); }
+    S.resultShown = true; setControls();
     await presentWin(r, bet);
     setBalance(Number(r.balance?.amount ?? r.balance ?? r.balance_after));
     S.freeSpinsLeft = Number(r.free_spins_left || 0);
     if (r.is_free_spin || r.free_spins_awarded > 0) S.featureWin = Number(r.bonus_round_win ?? S.featureWin + r.total_win);
+    if (S.featureRun || S.freeSpinsLeft > 0) shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" });
     emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
-    S.inFlight = false; setControls();
+    S.inFlight = false; S.resultShown = false; setControls();
     Sound?.warmMusic?.();
     // The night bed starts once the first round has been shown (never during load).
     if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
     return r;
   }
 
+  // The shared ladder (LuminaMotion.BIG_WIN, × the stake), named in the garden's voice.
+  const TIER_NAMES = { big: "Lanterns rise", mega: "Moonlit", epic: "The Queen's gift", legendary: "A thousand moths" };
+  const TIER_SOUND = { big: "win_big", mega: "win_mega", epic: "win_epic", legendary: "win_epic" };
+
   /** Lines one at a time (tap skips), the meter counts up, big wins get their screen. */
   async function presentWin(r, bet) {
     const total = Number(r.total_win || 0);
+    // Win effects only when the round returns MORE than the stake where the market says so
+    // (RTS 14F / AGCO 2.20). In free spins the feature's running total is the round.
+    const celebrate = shell.celebrates(r.is_free_spin ? Math.max(total, Number(r.bonus_round_win || 0)) : total, bet);
     if (!(total > 0) && !(r.free_spins_awarded > 0)) { say(S.freeSpinsLeft > 0 ? `Night · ${r.free_spins_left} left` : "The garden is quiet."); return; }
     const cells = new Set();
     for (const w of r.line_wins || []) for (const p of w.positions) cells.add(`${p.row},${p.col}`);
     for (const p of r.scatter?.positions || []) if (r.scatter.count >= 3) cells.add(`${p.row},${p.col}`);
-    R.highlight = { cells, line: null }; kick();
-    const x = total / bet;
-    const tier = x >= 50 ? ["The Queen's gift", "win_epic"] : x >= 25 ? ["Moonlit", "win_mega"] : x >= 10 ? ["Lanterns rise", "win_big"] : null;
-    countUp(total, tier ? T.countUpTier : T.countUpPlain * speed());
-    if (total > 0) say(`Moonlight win: ${fmt(total)}`, true);
-    sfx(x >= 5 ? "win_land" : total > 0 ? "win_small" : "click");
-    if (tier) await celebrate(tier[0], total, tier[1]);
-    // Walk the winning lines once (skipped by quick stop / turbo / autoplay pace).
-    if (!S.quickStop && !S.turbo && (r.line_wins || []).length > 1) {
-      for (const [li, w] of r.line_wins.slice(0, 6).entries()) { if (S.quickStop) break; sfx("line_show", { i: li }); R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]), lineNo: w.line }; kick(); await sleep(T.linePerLine); }
-      R.highlight = { cells, line: null }; kick();
+    R.highlight = { cells, line: null, neutral: !celebrate }; kick();
+    const tier = celebrate ? window.LuminaMotion.tierFor(total / bet) : null;
+    // Lines explain the win: all winning lines with their amounts, then (free spins) the ×3
+    // landing on each, then one line at a time with its number. A press skips; turbo skips
+    // the one-at-a-time walk. Timings: LuminaMotion grammar.
+    const lines = r.line_wins || [];
+    if (celebrate && lines.length && !S.quickStop) {
+      const M = window.LuminaMotion, sp = shell.motionSpeed();
+      const mult = Number(r.multiplier_applied || 1);
+      const poly = (w) => S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]);
+      const end = (w) => w.positions[w.positions.length - 1];
+      const base = (w) => Math.round(w.payout * Number(r.line_bet) * 100) / 100;
+      const labels = lines.map((w) => ({ row: end(w).row, col: end(w).col, text: fmt(mult > 1 ? base(w) : w.amount) }));
+      R.highlight = { cells, lines: lines.map(poly), labels }; kick();
+      sfx("line_show", { i: 0 });
+      await sleep(M.ms("linesAll", sp));
+      if (mult > 1 && !S.quickStop) {
+        const t0 = performance.now();
+        labels.forEach((l) => { l.stamp = { text: `×${mult}`, t0 }; });
+        sfx("line_show", { i: 4 }); kick();
+        await sleep(M.ms("multiplierApply", sp));
+        labels.forEach((l, i) => { l.text = fmt(lines[i].amount); }); kick();
+        await sleep(M.ms("multiplierSum", sp));
+      }
+      if (lines.length > 1 && !S.quickStop && shell.speed() !== "turbo") {
+        for (const [li, w] of lines.slice(0, 8).entries()) {
+          if (S.quickStop) break;
+          sfx("line_show", { i: li + 1 });
+          R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: poly(w), lineNo: w.line, labels: [{ row: end(w).row, col: end(w).col, text: fmt(w.amount) }] }; kick();
+          await sleep(M.ms("linePerLine", sp));
+        }
+      }
+      R.highlight = { cells, lines: lines.map(poly), labels: labels.map((l, i) => ({ row: l.row, col: l.col, text: fmt(lines[i].amount) })) }; kick();
     }
+    // A no-celebrate round shows its amount plainly: a short, silent count (≤ 300 ms).
+    const counted = countUp(total, !celebrate ? window.LuminaMotion.ms("neutralCredit") : tier ? T.countUpTier : T.countUpPlain * speed(), celebrate);
+    if (total > 0) say(celebrate ? `Moonlight win: ${fmt(total)}` : `Credit ${fmt(total)}`, true, celebrate);
+    sfx(!celebrate ? "click" : total / bet >= 5 ? "win_land" : "win_small");
+    if (tier) await celebrate_(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key]);
+    await counted;
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
-      say(r.is_free_spin ? `More moths — +${r.free_spins_awarded} free spins` : `The moths gather — ${r.free_spins_awarded} free spins.`, true);
+      say(r.is_free_spin ? `More moths — +${r.free_spins_awarded} free spins` : `The moths gather — ${r.free_spins_awarded} free spins.`, true, true);
       await sleep(T.featureAward * speed());
     }
   }
-  let countTimer = 0;
-  function countUp(to, ms) {
-    cancelAnimationFrame(countTimer);
-    const t0 = performance.now();
-    const tick = (now) => { const t = Math.min(1, (now - t0) / ms); el.win.textContent = fmt(to * (1 - Math.pow(1 - t, 3))); if (t < 1) sfx("win_tick", { progress: t }); if (t < 1 && !S.quickStop) countTimer = requestAnimationFrame(tick); else el.win.textContent = fmt(to); };
-    countTimer = requestAnimationFrame(tick);
+  let countTimer = 0, countDone = null;
+  /** Count the Win readout up to `to` (never past it). Resolves when it lands; a press lands it now. */
+  function countUp(to, ms, ticks = true) {
+    stopCount();
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      countDone = () => { countDone = null; shell.setWin(to); resolve(); };
+      const tick = (now) => { const t = Math.min(1, (now - t0) / ms); shell.setWin(to * (1 - Math.pow(1 - t, 3))); if (t < 1 && ticks) sfx("win_tick", { progress: t }); if (t < 1 && !S.quickStop) countTimer = requestAnimationFrame(tick); else countDone?.(); };
+      countTimer = requestAnimationFrame(tick);
+    });
   }
+  function stopCount() { cancelAnimationFrame(countTimer); countDone?.(); }
   /** Big win: paper moths spiral up out of the board toward the lanterns (not with reduced motion). */
   const MOTH_SVG = '<svg viewBox="-26 -14 52 32" aria-hidden="true"><path d="M0 0 C-10 -12 -26 -10 -24 2 C-22 10 -10 8 0 2Z M0 0 C10 -12 26 -10 24 2 C22 10 10 8 0 2Z" fill="#ffd27a" stroke="#0b1026" stroke-width="1.5"/><path d="M0 2 C-6 6 -14 12 -10 16 C-6 18 -2 10 0 4Z M0 2 C6 6 14 12 10 16 C6 18 2 10 0 4Z" fill="#f3e6c8" stroke="#0b1026" stroke-width="1.2"/><ellipse cx="0" cy="4" rx="2" ry="7" fill="#0b1026"/></svg>';
   function releaseMoths() {
-    if (reduceMotion?.matches || !el.cel.animate) return;
+    if (calm() || !el.cel.animate) return;
     for (let i = 0; i < 14; i++) {
       const m = document.createElement("div"); m.className = "moth"; m.innerHTML = MOTH_SVG; el.cel.appendChild(m);
       const turns = 1.2 + Math.random() * 0.8, r0 = 20 + Math.random() * 60, dir = Math.random() < 0.5 ? -1 : 1, frames = [];
@@ -490,14 +620,14 @@
       m.animate(frames, { duration: 2200 + Math.random() * 900, delay: i * 70, easing: "ease-in-out", fill: "forwards" }).finished.then(() => m.remove(), () => m.remove());
     }
   }
-  function celebrate(title, amount, sound) {
+  function celebrate_(title, amount, sound) {
     return new Promise((resolve) => {
       el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
       releaseMoths();
-      const t0 = performance.now(), ms = S.turbo ? T.celebrateTurbo : T.celebrate;
+      const t0 = performance.now(), ms = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
       let done = false;
       const finish = () => { if (done) return; done = true; el.cel.hidden = true; el.cel.removeEventListener("pointerdown", finish); resolve(); };
-      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1) requestAnimationFrame(tick); else setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold); };
+      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop) requestAnimationFrame(tick); else { el.celAmount.textContent = fmt(amount); setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold); } };
       requestAnimationFrame(tick);
       el.cel.addEventListener("pointerdown", finish);
     });
@@ -507,27 +637,26 @@
   async function runFreeSpins() {
     if (S.freeSpinsLeft <= 0 || S.featureRun) return 0;
     S.featureRun = true;
-    try { return await playFeature(); } finally { S.featureRun = false; setControls(); }
+    try { return await playFeature(); } finally { S.featureRun = false; shell.featureHud(null); setControls(); }
   }
   async function playFeature() {
     S.featureWin = S.featureWin || 0;
-    el.fsBadge.hidden = false;
+    shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" });
     document.body.classList.add("night"); // dusk turns to deep night; the lanterns light one by one
     emit("featureState", { active: true, free_spins_left: S.freeSpinsLeft, bonus_win: S.featureWin });
     Sound?.setMusic?.("freeSpins");
     sfx("fs_intro");
     while (S.freeSpinsLeft > 0 && !S.paused) {
-      el.fsBadge.textContent = `Night · ${S.freeSpinsLeft} left`;
       const r = await playRound({ auto: true });
       if (!r) break;
       await sleep(T.betweenFreeSpins * speed());
     }
-    el.fsBadge.hidden = true;
     document.body.classList.remove("night");
     Sound?.setMusic?.("base");
     sfx("fs_outro");
     const total = S.featureWin;
-    say(total > 0 ? `The night gave ${fmt(total)}` : "Dawn returns.", total > 0);
+    const bet = S.bets[S.betIndex];
+    say(total > 0 ? `The night gave ${fmt(total)}` : "Dawn returns.", total > 0, shell.celebrates(total, bet));
     emit("featureState", { active: false, free_spins_left: S.freeSpinsLeft, bonus_win: total });
     S.featureWin = 0;
     return total;
@@ -537,14 +666,17 @@
     S.autoplay = null; setControls();
     if (why) say(`Autoplay stopped · ${why}`);
   }
-  async function startAutoplay(n) {
-    if (S.autoplay || S.inFlight || S.paused) return;
-    el.autoPop.hidden = true;
+  async function startAutoplay(n, limits) {
+    if (S.autoplay || S.inFlight || S.paused || !shell.rule("autoplay_enabled", true)) return;
     const bet = S.bets[S.betIndex];
-    S.autoplay = { left: n, startBalance: S.balance, limits: { loss: Number($("apLoss").value) * bet, win: Number($("apWin").value) * bet, feature: $("apFeature").checked } };
+    const cap = shell.autoplayCap();
+    const count = cap === null ? n : Math.min(n, cap);
+    if (!(count > 0)) return;
+    S.autoplay = { left: count, startBalance: S.balance, limits: { loss: Number(limits?.lossX || 0) * bet, win: Number(limits?.winX || 0) * bet, feature: Boolean(limits?.feature) } };
     setControls();
     while (S.autoplay && S.autoplay.left > 0) {
       if (S.autoplay.left !== Infinity) S.autoplay.left--;
+      setControls();
       const r = await playRound({ auto: true });
       if (!r) { stopAutoplay(); break; }
       const featureTriggered = r.free_spins_awarded > 0;
@@ -555,23 +687,30 @@
       if (a.limits.loss > 0 && a.startBalance - S.balance >= a.limits.loss - 1e-9) { stopAutoplay("loss limit reached"); break; }
       if (a.limits.win > 0 && roundWin >= a.limits.win - 1e-9) { stopAutoplay(`win of ${fmt(roundWin)}`); break; }
       if (a.limits.feature && featureTriggered) { stopAutoplay("Free Spins won"); break; }
-      await sleep(S.turbo ? T.autoplayGapTurbo : T.autoplayGap);
+      await sleep(shell.speed() === "turbo" ? T.autoplayGapTurbo : T.autoplayGap);
     }
     stopAutoplay();
   }
 
-  // ── controls ─────────────────────────────────────────────────────────────
+  async function notEnoughCredit() {
+    shell.setPhase("broke");
+    await shell.notice("Not enough credit", `<p>Your balance is ${fmt(S.balance)} and the bet is ${fmt(S.bets[S.betIndex])}. Lower the bet with − or the Bet readout, or add funds at the casino.</p>`);
+    setControls();
+  }
+
+  // ── controls (the shell calls these) ─────────────────────────────────────
   async function onSpinPress() {
     Sound?.unlock?.();
-    if (S.autoplay) { stopAutoplay("stopped"); S.quickStop = true; return; }
-    if (S.inFlight || S.featureRun) { S.quickStop = true; return; } // quick stop: land everything now (never a new round mid-feature)
+    if (S.autoplay) { stopAutoplay("stopped"); if (S.resultShown || shell.slamAllowed()) S.quickStop = true; return; }
+    if (S.inFlight || S.featureRun) {
+      // Never a new round mid-round or mid-feature. A press shows the result sooner only where
+      // slam stop is allowed; elsewhere it may only skip presentation AFTER the result is shown.
+      if (S.inFlight && (S.resultShown || shell.slamAllowed())) S.quickStop = true;
+      return;
+    }
     const r = await playRound();
     if (r && S.freeSpinsLeft > 0) await runFreeSpins();
   }
-  el.spin.addEventListener("pointerdown", (e) => { if (e.button === 0) { e.preventDefault(); onSpinPress(); } });
-  el.spin.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSpinPress(); } });
-  document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); onSpinPress(); } });
-  // The rules text is built when the dialog opens (it shows pays at the current bet), not on every bet change.
   /** The pay glass: the four top symbols' pays at the current bet (from rules.json, as paid). */
   const PAY_GLASS = ["SEVEN", "BAR", "BELL", "MELON"];
   function renderPays() {
@@ -587,23 +726,17 @@
       tile.append(cv, big, small); box.append(tile);
     }
   }
-  const showBet = () => { renderPays(); el.bet.textContent = fmt(S.bets[S.betIndex]); el.betDown.disabled = S.betIndex === 0 || S.inFlight; el.betUp.disabled = S.betIndex === S.bets.length - 1 || S.inFlight; if (el.info.open) renderRules(); };
-  el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex++; sfx("bet_change"); showBet(); } });
-  el.betDown.addEventListener("click", () => { if (S.betIndex > 0) { S.betIndex--; sfx("bet_change"); showBet(); } });
-  el.turbo.addEventListener("click", () => { S.turbo = !S.turbo; el.turbo.setAttribute("aria-pressed", String(S.turbo)); sfx("turbo_toggle", { on: S.turbo }); });
-  el.auto.addEventListener("click", (e) => { e.stopPropagation(); if (S.autoplay) return stopAutoplay("stopped"); el.autoPop.hidden = !el.autoPop.hidden; });
-  el.autoPop.addEventListener("click", (e) => { const b = e.target.closest("button[data-n]"); if (b) startAutoplay(b.dataset.n === "inf" ? Infinity : Number(b.dataset.n)); });
-  document.addEventListener("click", (e) => { if (!el.autoPop.hidden && !el.autoPop.contains(e.target) && e.target !== el.auto) el.autoPop.hidden = true; });
-  const syncSound = () => { const m = Sound?.isMuted?.() ?? false; el.sound.classList.toggle("muted", m); el.sound.setAttribute("aria-pressed", String(!m)); };
-  el.sound.addEventListener("click", () => { Sound?.unlock?.(); Sound?.toggleMuted?.(); syncSound(); });
-  el.infoBtn.addEventListener("click", () => { renderRules(); el.info.showModal(); });
-  el.info.addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === el.info) el.info.close(); });
-  if (document.fullscreenEnabled) {
-    const fs = $("fsBtn"); fs.hidden = false;
-    fs.addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: "hide" })).catch(() => {}));
-    document.addEventListener("fullscreenchange", () => { fs.setAttribute("aria-pressed", String(Boolean(document.fullscreenElement))); fs.textContent = document.fullscreenElement ? "Exit full screen" : "Full screen"; });
+  function showBet() {
+    shell.setBets(S.bets, S.betIndex);
+    shell.setBet(S.bets[S.betIndex]);
+    renderPays();
   }
-  if (Haptics.supported) { $("hapticsRow").hidden = false; $("haptics").checked = Haptics.on; $("haptics").addEventListener("change", (e) => Haptics.set(e.target.checked)); }
+  function setBetIndex(i) {
+    if (S.inFlight || S.featureRun || S.autoplay || i === S.betIndex || i < 0 || i >= S.bets.length) return;
+    const cap = Number(shell.rule("max_stake", 0)) || 0;
+    if (cap > 0 && S.bets[i] > cap + 1e-9) { shell.ticker.flash(`The maximum stake here is ${fmt(cap)}`, "info", 1800); return; }
+    S.betIndex = i; sfx("bet_change"); showBet();
+  }
 
   /** Paytable and rules from rules.json (the file the engine pays from): displayed pays = paid pays. */
   const icons = new Map();
@@ -611,34 +744,49 @@
     if (!icons.has(sym)) { const cv = document.createElement("canvas"); cv.width = cv.height = 52; drawSymbol(cv.getContext("2d"), sym, 52); icons.set(sym, cv.toDataURL()); }
     return icons.get(sym);
   }
-  function renderRules() {
-    if (!S.rules) return;
-    const r = S.rules, lb = lineBet();
-    const rows = Object.entries(r.paytable).reverse().map(([sym, p]) => `<tr><td><img src="${icon(sym)}" alt="" width="26" height="26" style="vertical-align:middle;margin-right:8px">${NAMES[sym] || sym}</td>${p.map((x) => `<td>${fmt(x * lb)}</td>`).join("")}</tr>`).join("");
-    el.rules.innerHTML = `
-      <p>${S.lines} fixed lines. Total bet ${fmt(S.bets[S.betIndex])} (line bet ${fmt(lb)}). Line wins pay left to right from the first reel, 3 or more in a row; the highest win per line is paid and wins on different lines add up.</p>
+  const ico = (sym) => `<img src="${icon(sym)}" alt="" width="26" height="26" style="vertical-align:middle;margin-right:8px">`;
+  function rulesHtml() {
+    if (!S.rules) return "";
+    const r = S.rules, lb = lineBet(), bet = S.bets[S.betIndex];
+    const rows = Object.entries(r.paytable).reverse().map(([sym, p]) => `<tr><td>${ico(sym)}${NAMES[sym] || sym}</td>${p.map((x) => `<td>${fmt(x * lb)}</td>`).join("")}</tr>`).join("");
+    return `
+      <p>${S.lines} fixed lines. Total bet ${fmt(bet)} (line bet ${fmt(lb)}). Line wins pay left to right from the first reel, 3 or more in a row; the highest win per line is paid and wins on different lines add up.</p>
       <table><thead><tr><th>Symbol</th><th>×3</th><th>×4</th><th>×5</th></tr></thead><tbody>${rows}</tbody></table>
-      <p><img src="${icon("WILD")}" alt="" width="26" height="26" style="vertical-align:middle"> <b>The Lantern</b> is wild. It appears on reels 2, 3 and 4 and stands in for every symbol except the Full Moon.</p>
-      <p><img src="${icon("SCATTER")}" alt="" width="26" height="26" style="vertical-align:middle"> <b>The Full Moon</b> pays anywhere: 3 = ${fmt(r.scatter.pays[0] * S.bets[S.betIndex])}, 4 = ${fmt(r.scatter.pays[1] * S.bets[S.betIndex])}, 5 = ${fmt(r.scatter.pays[2] * S.bets[S.betIndex])}.
+      <p>${ico("WILD")}<b>The Lantern</b> is wild. It appears on reels 2, 3 and 4 and stands in for every symbol except the Full Moon.</p>
+      <p>${ico("SCATTER")}<b>The Full Moon</b> pays anywhere: 3 = ${fmt(r.scatter.pays[0] * bet)}, 4 = ${fmt(r.scatter.pays[1] * bet)}, 5 = ${fmt(r.scatter.pays[2] * bet)}.
       3, 4 or 5 Full Moons award ${r.free_spins.awards.join(", ")} free spins, played at the same bet. Every free-spin win is multiplied by ${r.free_spins.multiplier}. Free spins can be won again during free spins.</p>
       <p>Maximum win: ${r.max_win_x.toLocaleString()}× the total bet for a spin and the free spins it awards; the feature ends when it is reached.</p>
       <p>Theoretical return to player: ${Number(r.theoretical_rtp).toFixed(2)}%. Over a short session results vary widely.</p>
-      <p>Autoplay stops when you press Stop, when the spins run out, when a round can't be played, or when a stop condition you chose is met. Turbo and quick stop change only how fast a round is shown, never its result. A malfunction voids all pays and plays.</p>`;
+      <p>Autoplay stops when you press Stop, when the spins run out, when a round can't be played, or when a stop condition you chose is met.</p>`;
   }
 
   async function realityCheck(details) {
     stopAutoplay();
-    el.realityText.textContent = details ? `You have played for ${Math.round((details.elapsed_ms || 0) / 60000)} minutes. Wagered ${fmt(details.total_bet ?? 0)}, won ${fmt(details.total_win ?? 0)}.` : "Time for a break?";
     emit("realityCheck", details || {});
-    el.reality.showModal();
-    const choice = await new Promise((res) => { $("realityContinue").onclick = () => res("continue"); $("realityExit").onclick = () => res("exit"); });
-    el.reality.close();
-    if (choice === "exit") { emit("exitRequested", { reason: "reality_check" }); say("Session ended"); return; }
+    const text = details ? `You have played for ${Math.round((details.elapsed_ms || 0) / 60000)} minutes. Wagered ${fmt(details.wagered ?? details.total_bet ?? 0)}, won ${fmt(details.won ?? details.total_win ?? 0)}.` : "Time for a break?";
+    const choice = await shell.ask("Session reminder", `<p>${text}</p>`, [{ reason: "exit", label: "Exit game" }, { reason: "continue", label: "Keep playing", primary: true }]);
+    if (choice !== "continue") { S.paused = true; emit("exitRequested", { reason: "reality_check" }); say("Session ended"); return; }
     await api("POST", "/game/v1/reality-check/ack", {}, uuid()).catch(() => {});
     say("Lanterns lit.");
   }
 
   // ── boot ─────────────────────────────────────────────────────────────────
+  shell = window.LuminaShell.mount({
+    game: "classic", stage: $("mlStage"), haptics: Haptics,
+    features: { buy: false, ante: false, autoplay: true, turbo: true, stop: true },
+    fmt,
+    build: { title: "Moth & Lantern" },
+    on: {
+      spin: () => onSpinPress(),
+      betStep: (d) => setBetIndex(S.betIndex + d),
+      betIndex: (i) => setBetIndex(i),
+      autoplay: (n, limits) => startAutoplay(n, limits),
+      autoplayStop: () => stopAutoplay("stopped"),
+      info: () => rulesHtml(),
+      pref: () => { R.dirty = true; kick(); }
+    }
+  });
+
   async function boot() {
     resize();
     new ResizeObserver(() => resize()).observe(el.board);
@@ -675,13 +823,16 @@
     const variant = S.rules.rtp_profiles.find((p) => p.game_id === session.game?.code) || S.rules.rtp_profiles[0];
     S.lines = variant.lines;
     S.currency = session.currency;
+    shell.setCurrency(S.currency);
+    shell.applyMarket(session.regulatory || {});
+    S.minRoundMs = Number(shell.rule("min_round_ms", 0)) || 0;
     S.bets = session.allowed_bets.slice().sort((a, b) => a - b);
     const resumeBet = session.resume?.bet_amount;
     S.betIndex = Math.max(0, S.bets.indexOf(resumeBet ?? S.bets[Math.min(2, S.bets.length - 1)]));
     S.freeSpinsLeft = Number(session.free_spins_left || 0);
     S.featureWin = Number(session.resume?.feature?.bonus_round_win || 0);
     setBalance(Number(session.balance?.amount ?? session.balance));
-    showBet(); syncSound(); Sound?.onChange?.(syncSound);
+    showBet(); shell.setWin(0);
     R.reels = S.rules.reels.map((strip) => ({ pos: Math.floor(Math.random() * strip.length), anim: null, spinning: false, speed: 0 }));
     // First frame, then playable.
     await new Promise((res) => requestAnimationFrame(() => { draw(performance.now()); res(); }));
@@ -695,7 +846,8 @@
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
-    say(S.freeSpinsLeft > 0 ? `Night · ${S.freeSpinsLeft} left · tap Spin` : "Lanterns lit.");
+    if (S.freeSpinsLeft > 0) { shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" }); say(`Night · ${S.freeSpinsLeft} left · tap Spin`); }
+    else shell.ticker.idle(["Lanterns lit."]);
     setControls();
   }
   boot().catch((err) => { say(`Could not start the game (${err.code || err.message})`); document.body.classList.add("app-ready"); });

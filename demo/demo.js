@@ -108,6 +108,16 @@
     backLink();
   }
 
+  // ?market=UKGC (or ON, DE, SE…) plays the demo under that market's switches, for review:
+  // the shell hides what the market switches off and applies its no-celebrate rule. The
+  // values mirror the platform presets (illustrative, not legal advice).
+  var DEMO_MARKETS = {
+    UKGC: { jurisdiction: "UKGC", min_round_ms: 2500, autoplay_enabled: false, max_autoplay_spins: 0, turbo_enabled: false, slam_stop_enabled: false, buy_feature_enabled: true, celebrate_threshold: "gt_stake", max_stake: 5 },
+    ON: { jurisdiction: "ON", min_round_ms: 2500, autoplay_enabled: false, max_autoplay_spins: 0, turbo_enabled: false, slam_stop_enabled: false, buy_feature_enabled: true, celebrate_threshold: "gt_stake" },
+    DE: { jurisdiction: "DE", min_round_ms: 5000, autoplay_enabled: false, max_autoplay_spins: 0, turbo_enabled: false, slam_stop_enabled: false, buy_feature_enabled: false, celebrate_threshold: "gt_stake", max_stake: 1 }
+  };
+  var demoMarket = DEMO_MARKETS[String(new URLSearchParams(location.search).get("market") || "").toUpperCase()] || null;
+
   if (game === "classic") {
     // game.js resumes a stored session when there is no launch token: point it at ours.
     try { sessionStorage.setItem("classic5x3.session", "demo"); } catch (e) { /* game.js shows its own message */ }
@@ -128,6 +138,7 @@
         allowed_bets: engine.getAllowedBets(), balance: { amount: engine.session.balance, currency: engine.session.currency },
         free_spins_left: engine.session.freeSpinsLeft,
         resume: inFeature && f ? { bet_amount: f.bet, feature: { bonus_round_win: engine.session.bonusRoundWin } } : null,
+        regulatory: demoMarket || { jurisdiction: "DEFAULT" },
         embed: { allowed_hosts: [] }
       };
     };

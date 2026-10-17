@@ -10,6 +10,7 @@
   <link rel="preload" href="rules.json" as="fetch" crossorigin>
   <link rel="preload" href="game.js" as="script">
   <link rel="preload" href="assets/fonts/fraunces-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/play/shell/shell.css">
   <script>
     (function () {
       var lt = new URLSearchParams(location.search).get("lt");
@@ -56,10 +57,32 @@
     button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
     :focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
 
-    .game {
-      position: fixed; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
-      padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
+    /* The game's stage inside the Lumina Shell (client/shell): the sky (logo, lanterns) and
+       the garden. Every control, readout and dialog is the shell's; this page only themes it. */
+    .ml-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); position: relative; z-index: 1; }
+    .lsh { z-index: 1; }
+    /* Shell theme: cut paper on ink. Paper buttons with ink icons, a lantern-disc Spin. */
+    :root {
+      --lsh-deck: rgba(11, 16, 38, 0.84); --lsh-deck-line: rgba(243, 230, 200, 0.12);
+      --lsh-face: var(--grain) , #f3e6c8; --lsh-face-hover: var(--grain) , #fff3d6; --lsh-face-ink: #0b1026;
+      --lsh-ink: #f3e6c8; --lsh-muted: #b9b6c9; --lsh-win: #ffb547;
+      --lsh-read-bg: var(--grain) , #f3e6c8; --lsh-read-ink: #0b1026; --lsh-read-k: #6d6150; --lsh-feature-ink: #a2380f;
+      --lsh-accent: #ffb547; --lsh-accent-2: #ff7a3d; --lsh-accent-ink: #3a1b05;
+      --lsh-spin-face: var(--grain), radial-gradient(circle at 50% 45%, #fff1c8 0%, #ffb547 42%, #ff7a3d 100%);
+      --lsh-spin-ring: 0 0 0 3px #0b1026, 0 0 0 5px rgba(243, 230, 200, 0.5), 0 0 26px 6px rgba(255, 181, 71, 0.45), 0 4px 0 rgba(0, 0, 0, 0.5);
+      --lsh-sheet: #f3e6c8; --lsh-radius: 10px;
+      --lsh-font-ui: "ML UI", "Trebuchet MS", system-ui, sans-serif; --lsh-font-num: "ML Display", Georgia, serif;
     }
+    .lsh-sheet__panel { color: #0b1026; background: var(--grain), #f3e6c8; --lsh-ink: #0b1026; --lsh-muted: #5a5266; --lsh-deck-line: rgba(11, 16, 38, 0.14); --lsh-face: rgba(11, 16, 38, 0.08); --lsh-face-hover: rgba(11, 16, 38, 0.12); --lsh-face-ink: #0b1026; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked { background: #0b1026; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked::after { background: #ffb547; }
+    .lsh-sheet__title { font-family: var(--display); font-weight: 600; }
+    .lsh-read { box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); border-radius: 3px; }
+    .lsh-read__v { font-weight: 600; }
+    .lsh-btn { box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
+    .lsh-btn[aria-pressed="true"] { background: var(--grain), #ffb547; color: #0b1026; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
+    .lsh-ticker { font: 600 0.98rem var(--display); }
+    body:not(.app-ready) .lsh { visibility: hidden; }
 
     /* ── Sky: the logo, and five paper lanterns that light one by one when night falls. ── */
     .sky { position: relative; display: grid; justify-items: center; gap: 2px; padding-top: 6px; }
@@ -110,84 +133,23 @@
       .garden { width: min(100cqw, calc((100cqh - var(--hang) - 130px) * 5 / 3)); }
     }
 
-    /* ── Deck: cut-paper controls on ink. ── */
-    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 10px;
-      background: rgba(11, 16, 38, 0.82); box-shadow: inset 0 0 0 1px rgba(243, 230, 200, 0.1), 0 -6px 18px rgba(0, 0, 0, 0.3); }
-    .sys, .play { display: flex; align-items: center; gap: 8px; }
-    .status { min-width: 0; width: 100%; max-width: 460px; justify-self: center; display: grid; gap: 6px; }
-    .msg { height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 600 0.98rem var(--display); color: var(--muted); text-align: center; }
-    .msg.win { color: var(--amber); }
-    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; font-variant-numeric: tabular-nums; }
-    .readouts div { display: grid; text-align: center; padding: 3px 6px 4px; border-radius: 3px; background: var(--paper) var(--grain); color: var(--ink); min-width: 0; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
-    .readouts span { font-size: 0.62rem; color: #6d6150; }
-    .readouts strong { font: 600 1rem/1.15 var(--display); font-variant-numeric: tabular-nums lining-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .icon, .bet { display: grid; place-items: center; color: var(--ink); background: var(--paper) var(--grain); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
-    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; font-size: 1.05rem; }
-    .bet { width: 38px; height: 38px; border-radius: 50%; font-size: 1.3rem; }
-    .icon:active, .bet:active { transform: translateY(2px); box-shadow: 0 0 0 rgba(0, 0, 0, 0.45); }
-    .icon[aria-pressed="true"] { background: var(--amber) var(--grain); }
-    .icon.muted { opacity: 0.5; }
-    /* Spin: a lit lantern disc. */
-    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: #3a1b05; font: 600 1.15rem var(--display);
-      background: var(--grain), radial-gradient(circle at 50% 45%, #fff1c8 0%, var(--amber) 42%, var(--ember) 100%);
-      box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(243, 230, 200, 0.5), 0 0 26px 6px rgba(255, 181, 71, 0.45), 0 4px 0 rgba(0, 0, 0, 0.5); }
-    .spin:active { transform: translateY(3px); }
-    .spin.busy { background: var(--grain), radial-gradient(circle at 50% 45%, #ffffff, var(--moon) 50%, #7f95c9); color: var(--ink); box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(243, 230, 200, 0.5), 0 0 22px 4px rgba(207, 227, 255, 0.45); }
-    .spin:disabled, .bet:disabled, .icon:disabled { filter: grayscale(0.7); opacity: 0.5; }
-    .wrap { position: relative; }
-    .pop { position: absolute; bottom: calc(100% + 12px); right: 0; z-index: 5; width: min(270px, calc(100vw - 24px)); padding: 12px; border-radius: 6px; background: var(--paper) var(--grain); color: var(--ink);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: grid; gap: 8px; font-size: 0.84rem; }
-    .pop[hidden] { display: none; }
-    .pop .counts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-    .pop .counts button { height: 40px; border-radius: 50%; background: var(--ink); color: var(--paper); }
-    .pop label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .pop select { background: #fff8e6; color: var(--ink); border: 1px solid var(--paper-shade); border-radius: 4px; min-height: 32px; font: inherit; }
-
-    dialog { width: min(92vw, 640px); max-height: 86vh; border: 0; border-radius: 6px; padding: 18px 20px; background: var(--paper) var(--grain); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); user-select: text; }
-    dialog::backdrop { background: rgba(11, 16, 38, 0.78); }
-    dialog h2 { margin: 0 0 10px; font: 600 1.5rem var(--display); }
-    dialog table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
-    dialog td, dialog th { padding: 5px 6px; border-bottom: 1px solid rgba(11, 16, 38, 0.12); text-align: right; }
-    dialog td:first-child, dialog th:first-child { text-align: left; }
-    dialog p, dialog li { font-size: 0.9rem; line-height: 1.5; color: #2a2a3a; font-weight: 700; }
-    dialog .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
-    dialog .row button, dialog .row label { min-height: 42px; padding: 0 14px; border-radius: 99px; background: var(--ink); color: var(--paper); display: inline-flex; align-items: center; gap: 8px; }
-    .close { float: right; width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: var(--paper); }
-    body:not(.app-ready) .deck { visibility: hidden; }
-
-    @media (max-width: 560px) {
-      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; padding: 10px; }
-      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; gap: 7px; }
-      :root { --btn: 42px; --spin: 68px; }
-      .bet { width: 36px; height: 36px; }
-      .sky { padding-top: 30px; }
-    }
-    @media (max-width: 370px) {
-      :root { --btn: 40px; --spin: 62px; }
-      .deck { grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; justify-items: center; }
-      .sys { gap: 10px; }
-    }
+    /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the lanterns or the logo. */
+    @media (max-width: 560px) { .sky { padding-top: 30px; } }
+    @media (orientation: portrait) and (max-height: 700px) { .lanterns { height: 22px; } .lantern { width: 13px; height: 18px; } .logo svg { width: clamp(200px, 62vw, 300px); } }
     @media (orientation: landscape) and (max-height: 520px) {
-      .game { grid-template-columns: minmax(0, 1fr) clamp(200px, 30vw, 260px); grid-template-rows: auto minmax(0, 1fr); }
-      .sky { grid-column: 2; grid-row: 1; padding-top: 30px; }
+      .ml-stage { grid-template-rows: auto minmax(0, 1fr); gap: 4px; }
       .lanterns { display: none; }
-      .logo svg { width: min(100%, 230px); }
-      .stage { grid-column: 1; grid-row: 1 / span 2; }
-      .deck { grid-column: 2; grid-row: 2; grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; align-content: center; justify-items: center; gap: 6px; background: transparent; box-shadow: none; padding: 0; }
-      .msg { font-size: 0.85rem; }
-      .readouts strong { font-size: 0.9rem; }
-      .status { grid-area: status; width: 100%; } .play { grid-area: play; flex-wrap: wrap; justify-content: center; } .sys { grid-area: sys; }
-      .readouts { grid-template-columns: 1fr 1fr; } .readouts div:first-child { grid-column: 1 / -1; }
-      :root { --spin: 62px; --btn: 40px; }
+      .logo svg { width: min(52vw, 240px); }
+      .sky { padding-left: 84px; }
+      .sky { padding-top: 0; }
     }
     @media (prefers-reduced-motion: reduce) {
       body, body::before, .lantern { transition: none !important; }
-      .spin:active, .icon:active, .bet:active { transform: none; }
     }
   </style>
 </head>
 <body>
-  <main class="game">
+  <div class="ml-stage" id="mlStage">
     <header class="sky">
       <div class="lobby-slot"></div>
       <div class="lanterns" aria-hidden="true"><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i></div>
@@ -232,57 +194,15 @@
       </div>
       <div class="pays" id="pays" aria-label="Pays at this bet"></div>
     </div>
-    <footer class="deck" aria-label="Controls">
-      <div class="sys">
-        <button class="icon" id="infoBtn" aria-label="Game info and settings">i</button>
-        <button class="icon" id="soundBtn" aria-label="Sound" aria-pressed="true">&#9835;</button>
-      </div>
-      <div class="status">
-        <div class="msg" id="msg" role="status" aria-live="polite">Loading…</div>
-        <div class="readouts">
-          <div><span>Credit</span><strong id="balance">—</strong></div>
-          <div><span>Bet</span><strong id="bet">—</strong></div>
-          <div><span>Win</span><strong id="win">0.00</strong></div>
-        </div>
-      </div>
-      <div class="play">
-        <button class="bet" id="betDown" aria-label="Decrease bet">−</button>
-        <button class="spin" id="spinBtn" aria-label="Spin">Spin</button>
-        <button class="bet" id="betUp" aria-label="Increase bet">+</button>
-        <div class="wrap">
-          <button class="icon" id="autoBtn" aria-label="Autoplay" aria-pressed="false">&#8635;</button>
-          <div class="pop" id="autoPop" hidden role="menu" aria-label="Autoplay">
-            <div class="counts"><button data-n="10">10</button><button data-n="25">25</button><button data-n="50">50</button><button data-n="100">100</button><button data-n="inf">&#8734;</button></div>
-            <label>Stop if loss reaches <select id="apLoss"><option value="0">No limit</option><option value="10">10× bet</option><option value="25">25× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select></label>
-            <label>Stop on a win of <select id="apWin"><option value="0">No limit</option><option value="10">10× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select></label>
-            <label><span>Stop when free spins are won</span><input type="checkbox" id="apFeature"></label>
-          </div>
-        </div>
-        <button class="icon" id="turboBtn" aria-label="Turbo" aria-pressed="false">&#9889;</button>
-      </div>
-    </footer>
-  </main>
-
-  <dialog id="info" aria-label="Game info">
-    <button class="close" data-close aria-label="Close">&#10005;</button>
-    <h2>Moth &amp; Lantern</h2>
-    <div class="row">
-      <button id="fsBtn" hidden aria-pressed="false">Full screen</button>
-      <label id="hapticsRow" hidden><input type="checkbox" id="haptics" checked> Vibration</label>
-    </div>
-    <div id="rulesBody"></div>
-  </dialog>
-  <dialog id="reality" aria-label="Session reminder">
-    <h2>Session reminder</h2>
-    <p id="realityText"></p>
-    <div class="row"><button id="realityContinue">Keep playing</button><button id="realityExit">Exit game</button></div>
-  </dialog>
+  </div>
 
   <!-- Its own sounds (audio/, built by tools/build-game-audio.mjs), through the shared engine. -->
   <script>window.VX_AUDIO_BASE = "audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
   <script src="/play/embed-bridge.js"></script>
   <script src="/play/audio/audio.js"></script>
+  <script src="/play/notify.js"></script>
   <script src="/play/shell/motion.js"></script>
+  <script src="/play/shell/shell.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
