@@ -77,7 +77,8 @@ try {
   log("playable", timeToReadyMs, "ms");
   const nav = await page.evaluate(() => {
     const n = performance.getEntriesByType("navigation")[0]; const p = performance.getEntriesByType("paint").find((x) => x.name === "first-contentful-paint");
-    return { fcp: p ? Math.round(p.startTime) : null, dcl: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd) };
+    const m = performance.getEntriesByName("app-ready")[0]; // the page's own mark, if it sets one
+    return { fcp: p ? Math.round(p.startTime) : null, dcl: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd), readyMark: m ? Math.round(m.startTime) : null };
   });
   await sleep(1500);
 
@@ -217,7 +218,7 @@ try {
     spins: roundMs.length, spinsRequested: SPINS, stoppedByTimeBudget: stoppedEarly,
     roundMs: roundMs.length ? { p50: q([...roundMs].sort((x, y) => x - y), 0.5), max: Math.max(...roundMs) } : null,
     tapsThatDidNotStartASpin: stuck, tapsReadAsHoldStartingAutoplay: tapsReadAsHold, holdRacesRecovered,
-    timeToPlayableMs: timeToReadyMs, fcpMs: nav.fcp, domContentLoadedMs: nav.dcl, loadEventMs: nav.load,
+    timeToPlayableMs: timeToReadyMs, playableMarkMs: nav.readyMark, fcpMs: nav.fcp, domContentLoadedMs: nav.dcl, loadEventMs: nav.load,
     requestsBeforePlayable: all.filter((r) => r.beforeReady).length, kbBeforePlayable: kb(all.filter((r) => r.beforeReady)), kbPerSession: kb(all),
     kbByType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, +(v / 1024).toFixed(0)])),
     firstTapToSpinRequestMs: tapToRequestMs,
@@ -244,5 +245,6 @@ try {
   await sleep(500);
 }
 console.log(JSON.stringify(result, null, 2));
-console.log("→", writeResult(`client-${MODE}`, result));
+const game = process.env.BENCH_GAME && process.env.BENCH_GAME !== "bananax" ? `-${process.env.BENCH_GAME}` : "";
+console.log("→", writeResult(`client-${MODE}${game}`, result));
 process.exit(0);

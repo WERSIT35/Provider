@@ -20,6 +20,8 @@ Build the platform first: `npm --prefix platform run build`. The suite runs the 
 
 `load.mjs`: `--players`, `--duration` (s), `--think-min` / `--think-max` (ms; `0` = no think time, finds the ceiling), `--wallet sandbox|webhook`, `--pg`.
 `chaos.mjs`: `--players` (200), `--kills` (3), `--interval` (s between kills, 18), `--settle` (s for the reconciler, 45).
+**Any game:** `BENCH_GAME=<code>` (e.g. `classic-5x3`) launches that game; the bench server registers every game in `games/`, and results go to `client-<mode>-<code>.json`. A page can set `performance.mark("app-ready")`; the result then also carries `playableMarkMs`, the page's own playable time (puppeteer's ready poll can land late on a busy single-process renderer).
+
 `client.mjs`: `--mode mobile|soak`, `--spins`, `--pause` (ms before each tap, 300), `--profile <file>` (the page's JS CPU profile across the spins), `--trace <file>` (a Chrome timeline trace: style, layout, paint, raster), `--snapshots <dir>` (V8 heap snapshots at spins 100 and the last; compare them with `node tools/bench/heap-diff.cjs a b`). Heap samples count the game only: the bench's per-frame log moves to Node and the inspector's console entries are discarded before each sample (both used to be counted as the game's heap).
 
 ## Environment

@@ -26,6 +26,7 @@ The Chrome path is hard-coded to `C:/Program Files/Google/Chrome/Application/chr
 | `perf-probe.js` | 4× CPU-throttled phone profile: draw() ms, frame cadence per quality tier, GC share, allocations per round. |
 | `ui-shot-probe.js` | Screenshots (not a gate): the board idle and mid win-celebration at desktop, phone landscape and portrait, for reviewing styling by eye. `SHOTS_DIR`, `LABEL`. |
 | `paytable-probe.js` | Displayed pays = paid pays (lab item O2): the player Info modal (public mode) shows Base game + Free Spins paytables; every cell, for every profile and allowed bet, equals the engine pay for that board scaled and rounded as `spin-engine.js` does; RTP lines show only the active profile; rules copy has no stale Banana X / 5x4 / Apex Wild / market text. |
+| `classic-e2e.mjs` | classic-5x3 against the real platform (needs `npm --prefix platform run build`): a burst of presses is one spin, presses through a whole feature start no round, an autoplay loss limit stops the run, no buy/ante. |
 | `hit-target-probe.js` | Every control's 44px hit area. **Known pre-existing failure:** autoplay/turbo at 844×390 and 740×360 (hit area extends past the left screen edge). |
 
 Timer-based checks assert the **scheduled** times; headless timers jitter by ±10ms. The first
