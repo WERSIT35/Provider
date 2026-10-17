@@ -55,7 +55,7 @@ describe("/play serves each game its own client", () => {
     const lt = launch("classic-5x3_40");
     const page = await app.inject({ method: "GET", url: `/play/g/classic-5x3/?lt=${lt}` });
     expect(page.statusCode).toBe(200);
-    expect(page.body).toContain("<title>Classic 5x3</title>");
+    expect(page.body).toContain("<title>Moth &amp; Lantern</title>");
     expect(page.headers["content-security-policy"]).toBe("frame-ancestors casino.example.com");
     expect(page.headers["cache-control"]).toBe("no-store");
     expect((await app.inject({ method: "GET", url: "/play/g/classic-5x3/" })).headers["content-security-policy"]).toBe("frame-ancestors 'none'");
