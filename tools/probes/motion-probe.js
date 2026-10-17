@@ -72,7 +72,7 @@ async function evaluate(cdp, expression) {
 
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
-  const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
+  const chrome = spawn(process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${tempProfile("vx-probe-")}`,
     "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
@@ -381,7 +381,7 @@ async function evaluate(cdp, expression) {
     check(`(${tag}) the whole fall keeps the busy frame cadence (no idle throttle mid-drop)`, fly.maxGap <= fly.cap + 25, `max gap ${fly.maxGap.toFixed(0)}ms (cap ${fly.cap}ms)`);
   }
 
-  console.log("\nmultiplier strike: a full board, then lightning turns a stand-in into the multiplier");
+  console.log("\nmultiplier reveal: a full board, then the laser cuts a stand-in into the multiplier");
   // A tumble refill of reel 3 (and reel 5 with two=true), a new multiplier at
   // row 4. It must fall in its reel's stack as a stand-in (no gap, no tell),
   // then be struck beatMs after the drop has landed and turn at the flash.
@@ -414,7 +414,7 @@ async function evaluate(cdp, expression) {
   check("a full board: the multiplier's cell falls in its reel's stack as a stand-in (no gap, no tell)",
     S1.sameStack && S1.missingInGrid === 0 && S1.standInFrames > 10 && S1.standIns.every((x) => x && x !== "SCATTER" && x !== "MULTI"),
     `stand-in ${S1.standIns.join(",")}, ${S1.frames} frames, ${S1.missingInGrid} missing`);
-  check("lightning strikes beatMs after the drop has landed, and the art turns at the flash",
+  check("the laser cut starts beatMs after the drop has landed, and the art turns as it closes",
     Math.abs(S1.bolts[0].bolt - (S1.landed + S1.beat)) < 40 && S1.bolts[0].swapped && S1.after === "MULTI",
     `landed @${S1.landed.toFixed(0)}ms, bolt @${S1.bolts[0].bolt.toFixed(0)}ms (beat ${S1.beat})`);
   check("the cell is never transparent through the strike (art opacity stays up)", S1.minAlpha >= 0.5, `min alpha ${S1.minAlpha.toFixed(2)}`);
@@ -451,14 +451,14 @@ async function evaluate(cdp, expression) {
   })()`);
   check("the stand-in can never form or suggest a win (500 random boards)", fuzz.bad === 0, `worst ${fuzz.worst} copies shown (limit ${fuzz.minMatch - 2})`);
 
-  console.log("\nmultiplier emblem: winged sun disc, fits its cell, big numbers");
+  console.log("\nmultiplier emblem: machined hex plate, fits its cell, big numbers");
   const emb = await evaluate(cdp, `(async () => {
     await THEME.fontsReady; const R = __reelRenderer; const { laneW, rowStep } = R.getLayout();
     const cs = Math.min(laneW, rowStep); const out = [];
     for (const v of [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100, 250, 500, 1000]) {
       const w = laneW * MULTI_EMBLEM.boxW, h = rowStep * MULTI_EMBLEM.boxH;
       const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
-      const m = drawWingedSun(c.getContext("2d"), w, h, getMultiplierTier(v).key, v);
+      const m = drawHexPlate(c.getContext("2d"), w, h, getMultiplierTier(v).key, v);
       const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
       for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 8) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
       out.push({ v, cap: m.capPx / cs, bw: (x1 - x0 + 1) / laneW, bh: (y1 - y0 + 1) / rowStep });

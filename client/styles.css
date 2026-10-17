@@ -88,6 +88,7 @@
   --tier-big:          #F2C14E;
   --tier-mega:         #FF2A3A;
   --tier-epic:         #FFE7A3;
+  --tier-legendary:    #7FF6E6;
   --tier-max:          #FFFFFF;
 
   /* — Multiplier rarity: cold steel → hot laser — */
@@ -3770,6 +3771,7 @@ pre,
 .big-win-overlay[data-tier="big"]  { --bw-color: var(--tier-big); }
 .big-win-overlay[data-tier="mega"] { --bw-color: var(--tier-mega); }
 .big-win-overlay[data-tier="epic"] { --bw-color: var(--tier-epic); }
+.big-win-overlay[data-tier="legendary"] { --bw-color: var(--tier-legendary, #7ff6e6); }
 .big-win-overlay[data-tier="max"]  { --bw-color: var(--tier-max); }
 
 .bw-canvas {
@@ -3803,13 +3805,13 @@ pre,
     0 0 10px 2px color-mix(in srgb, var(--accent-laser) 80%, transparent),
     0 0 34px 6px color-mix(in srgb, var(--accent-laser) 35%, transparent);
 }
-.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers {
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="legendary"], [data-tier="max"]) .bw-lasers {
   opacity: 1;
 }
-.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers::before {
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="legendary"], [data-tier="max"]) .bw-lasers::before {
   animation: bwLaserSweepA 2.4s ease-in-out infinite alternate;
 }
-.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="max"]) .bw-lasers::after {
+.big-win-overlay.is-open:is([data-tier="mega"], [data-tier="epic"], [data-tier="legendary"], [data-tier="max"]) .bw-lasers::after {
   animation: bwLaserSweepB 3.1s ease-in-out infinite alternate;
 }
 @keyframes bwLaserSweepA {
