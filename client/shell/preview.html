@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <title>Lumina Shell · preview</title>
+  <!-- Development page: the shared shell with a placeholder board, for review and probes
+       (tools/probes/shell-parity.mjs). Not linked from any game. ?feature=1 shows the
+       feature rail; ?market=UKGC applies a market profile; ?hand=left left-hand mode. -->
+  <link rel="stylesheet" href="shell.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0f14; }
+    .pv-stage { flex: 1; min-height: 0; display: grid; place-items: center; container-type: size; }
+    .pv-board { width: min(100cqw, 120cqh); aspect-ratio: 6 / 5; display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+    .pv-board i { border-radius: 8px; background: linear-gradient(160deg, #24303c, #141b22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  </style>
+</head>
+<body>
+  <div class="pv-stage" id="pvStage"><div class="pv-board" id="pvBoard"></div></div>
+  <script src="../notify.js"></script>
+  <script src="motion.js"></script>
+  <script src="shell.js"></script>
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var board = document.getElementById("pvBoard");
+      for (var i = 0; i < 30; i++) board.appendChild(document.createElement("i"));
+      var bets = [0.2, 0.4, 1, 2, 5, 10, 20, 50, 100], idx = 2;
+      if (p.get("hand") === "left") { try { localStorage.setItem("lumina.shell.prefs", JSON.stringify({ leftHand: true })); } catch (e) {} }
+      var shell = window.LuminaShell.mount({
+        game: "preview", stage: document.getElementById("pvStage"), currency: "EUR",
+        features: { buy: p.get("feature") === "1", ante: p.get("feature") === "1" },
+        build: { title: "Shell preview", version: "dev" },
+        on: {
+          spin: function () { shell.setPhase("flight"); shell.setSpinMode("skip"); shell.ticker.spin("Good luck…"); setTimeout(function () { shell.setPhase("ready"); shell.setSpinMode("spin"); shell.setWin(1.25); shell.ticker.win("WIN 1.25", shell.celebrates(1.25, bets[idx])); }, 900); },
+          betStep: function (d) { idx = Math.max(0, Math.min(bets.length - 1, idx + d)); shell.setBets(bets, idx); shell.setBet(bets[idx]); },
+          betIndex: function (i) { idx = i; shell.setBets(bets, idx); shell.setBet(bets[idx]); },
+          info: function () { return "<p>Placeholder rules.</p>"; }
+        }
+      });
+      shell.applyMarket({ jurisdiction: p.get("market") || "DEFAULT" });
+      shell.setBets(bets, idx); shell.setBet(bets[idx]); shell.setBalance(100000); shell.setWin(0);
+      shell.ticker.idle(["Shell preview", "Tap Spin"]);
+      window.__shell = shell;
+      document.body.classList.add("app-ready");
+    })();
+  </script>
+</body>
+</html>

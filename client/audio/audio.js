@@ -59,14 +59,16 @@
   function loadPrefs() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { muted: false, volume: 0.8 };
+      if (!raw) return { muted: false, volume: 0.8, musicOff: false, effectsOff: false };
       const parsed = JSON.parse(raw);
       return {
         muted: Boolean(parsed.muted),
-        volume: typeof parsed.volume === "number" ? clamp(parsed.volume, 0, 1) : 0.8
+        volume: typeof parsed.volume === "number" ? clamp(parsed.volume, 0, 1) : 0.8,
+        musicOff: Boolean(parsed.musicOff),
+        effectsOff: Boolean(parsed.effectsOff)
       };
     } catch (e) {
-      return { muted: false, volume: 0.8 };
+      return { muted: false, volume: 0.8, musicOff: false, effectsOff: false };
     }
   }
 
@@ -123,7 +125,7 @@
     const buses = {};
     for (const [name, level] of Object.entries(BUS_LEVEL)) {
       const g = ctx.createGain();
-      g.gain.value = level;
+      g.gain.value = level * groupGain(name);
       buses[name] = g;
     }
     // Music runs through its own duck stage before the music bus.
@@ -151,6 +153,32 @@
     return ctx;
   }
 
+  // The player's Music / Sound effects switches (Lumina shell menu): a group mute is a
+  // bus gain, so a muted group costs nothing to mix and the master mute is untouched.
+  const GROUP_OF = { music: "music", ambience: "music", sfx: "effects", ui: "effects" };
+  function groupGain(bus) {
+    const g = GROUP_OF[bus];
+    return (g === "music" && prefs.musicOff) || (g === "effects" && prefs.effectsOff) ? 0 : 1;
+  }
+  function applyGroupGains() {
+    if (!state.ctx) return;
+    const now = state.ctx.currentTime;
+    for (const [name, node] of Object.entries(state.buses)) {
+      node.gain.cancelScheduledValues(now);
+      node.gain.setTargetAtTime((BUS_LEVEL[name] ?? 1) * groupGain(name), now, 0.02);
+    }
+  }
+  function setGroupMuted(group, muted) {
+    if (group === "music") prefs.musicOff = Boolean(muted);
+    else if (group === "effects") prefs.effectsOff = Boolean(muted);
+    else return false;
+    savePrefs(prefs);
+    applyGroupGains();
+    notify();
+    return Boolean(muted);
+  }
+  const isGroupMuted = (group) => (group === "music" ? prefs.musicOff : group === "effects" ? prefs.effectsOff : false);
+
   function applyMasterGain() {
     if (!state.master || !state.ctx) return;
     const target = prefs.muted ? 0 : prefs.volume;
@@ -162,7 +190,7 @@
   function notify() {
     state.listeners.forEach((fn) => {
       try {
-        fn({ muted: prefs.muted, volume: prefs.volume });
+        fn({ muted: prefs.muted, volume: prefs.volume, musicOff: prefs.musicOff, effectsOff: prefs.effectsOff });
       } catch (e) {
         /* ignore listener errors */
       }
@@ -696,6 +724,8 @@
     setMuted,
     toggleMuted,
     setVolume,
+    setGroupMuted,
+    isGroupMuted,
     onChange,
     startMusic,
     stopMusic,
