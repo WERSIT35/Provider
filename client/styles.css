@@ -379,6 +379,11 @@ button:disabled {
   0%, 100% { opacity: 0; }
   50%      { opacity: 1; }
 }
+/* An empty badge is invisible (opacity 0, laid out for the souls to fly to: every
+   base-game round). Its glow must not pulse behind it: an infinite animation asks
+   the compositor for a new frame on every vsync, for nothing on screen. It starts
+   with the first catch, exactly when the badge fades in. */
+.bonus-multi-badge.is-empty::after { animation: none; }
 
 /* Pop the value (not the badge) on each increase so it never collides with the
    badge's infinite glow pulse. */
@@ -2676,8 +2681,8 @@ pre {
   border: 0;
   /* Relative path (see .bet-stepper) so this matches the URL main.js preloads.
      This panel lives inside a display:none subtree until it is shown, so the
-     browser will not fetch this background on its own — the preload is the
-     only reason it is warm by the time the panel appears. */
+     browser will not fetch this background on its own: main.js loads it right
+     after the reveal (deferredUiAssets) and showFeature() waits for it. */
   background:
     url("assets/symbols/FREESPINS_INFO-removebg-preview.webp") center / contain no-repeat;
   text-align: center;
@@ -3041,15 +3046,20 @@ body {
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
-/* Keep the game UI out of sight until assets are ready, then fade both. */
-body:not(.app-ready) .sanctum { opacity: 0; }
-.sanctum { transition: opacity 0.4s ease; }
+/* The game UI stays unpainted until the splash has painted (fast first paint), then
+   renders at full opacity UNDER the opaque splash (z-index 9999, `ui-prerender`, set
+   by index.html on first contentful paint): the browser rasterizes it while the last
+   assets load, and the reveal is a cheap fade of the splash alone. It used to fade
+   in with the splash: the whole screen's first raster plus a full-screen blend per
+   frame landed exactly on the player's first tap (bench, Slow 4G + 4x CPU, software
+   GPU: that tap waited 4-7 s). Nothing shows until the splash fades. */
+body:not(.app-ready):not(.ui-prerender) .sanctum { visibility: hidden; }
 body.app-ready .boot-loader {
   opacity: 0;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .boot-loader, .boot-loader__bar, .sanctum { transition: none; }
+  .boot-loader, .boot-loader__bar { transition: none; }
 }
 
 /* ── Graceful degradation on weak devices ──────────────────────────────────
@@ -4012,3 +4022,15 @@ body.public-mode .vx-ante:has(.vx-ante__input:checked) {
 
 /* Controls a jurisdiction profile switches off: hidden in place, so nothing moves. */
 .is-reg-off { visibility: hidden !important; pointer-events: none !important; }
+
+/* Low tier: controls change colour, border, glow and filter instantly. Those are
+   paint properties: a transition on them repaints the control on every frame it
+   runs (twice per round, at start and settle), on top of the reels animating.
+   Transform stays animated (composited, cheap). Measured with tools/bench
+   (client --trace): on the low tier, the CSS on screen during a spin cost about
+   as much as the reels themselves. */
+body.perf-low button,
+body.perf-low .vx-ante,
+body.perf-low .crazy-toggle {
+  transition-property: transform !important;
+}

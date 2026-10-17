@@ -164,18 +164,23 @@ const payouts = {
 // All art is WebP, generated from the source PNGs by `npm run assets:optimize`
 // (tools/optimize-assets.js). The PNGs stay in the repo as the authoring
 // originals; only the .webp files are ever fetched by the game.
+// Phones get 160 px art (a cell is drawn at ≤ ~130 px there; 256 px files are a
+// third of a slow phone's whole first download). The SAME media query is on the
+// <link rel="preload"> tags in index.html, so each image is fetched exactly once.
+const PHONE_ART = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (max-width: 600px)").matches;
+const symbolArt = (file) => `assets/symbols/${PHONE_ART ? "sm/" : ""}${file}`;
 const symbolAssets = {
-  TOP_CROWN: "assets/symbols/Crown.webp",
-  HOURGLASS: "assets/symbols/HourGlass.webp",
-  RING: "assets/symbols/Ring.webp",
-  CHALICE: "assets/symbols/Chaile.webp",
-  RED_GEM: "assets/symbols/RedGem.webp",
-  PURPLE_TRIANGLE: "assets/symbols/PurpleGem.webp",
-  YELLOW_HEX: "assets/symbols/YellowGem.webp",
-  GREEN_TRIANGLE: "assets/symbols/GreenGem.webp",
-  BLUE_DIAMOND: "assets/symbols/BlueGem.webp",
+  TOP_CROWN: symbolArt("Crown.webp"),
+  HOURGLASS: symbolArt("HourGlass.webp"),
+  RING: symbolArt("Ring.webp"),
+  CHALICE: symbolArt("Chaile.webp"),
+  RED_GEM: symbolArt("RedGem.webp"),
+  PURPLE_TRIANGLE: symbolArt("PurpleGem.webp"),
+  YELLOW_HEX: symbolArt("YellowGem.webp"),
+  GREEN_TRIANGLE: symbolArt("GreenGem.webp"),
+  BLUE_DIAMOND: symbolArt("BlueGem.webp"),
   // Multipliers have no art file: they are drawn in code (MULTI_EMBLEM).
-  SCATTER: "assets/symbols/Scatter.webp"
+  SCATTER: symbolArt("Scatter.webp")
 };
 
 // Art that is NOT drawn on the canvas: <img> buttons and CSS backgrounds. None
@@ -188,7 +193,14 @@ const symbolAssets = {
 // otherwise the browser treats them as different resources and the preload is
 // wasted. See the note on <base href> in index.html.
 const uiAssets = {
-  UI_BACKGROUND: "assets/symbols/Background.webp",
+  UI_BACKGROUND: "assets/symbols/Background.webp"
+};
+
+// Art first shown well after the reveal (the free-spins award screen): loaded right
+// after the game is playable instead of holding a slow phone behind the splash for
+// it. Never painted in progressively either: showFeature() waits for it (capped)
+// before the screen opens, and it is warm long before a first bonus in practice.
+const deferredUiAssets = {
   UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
 };
 
@@ -1317,7 +1329,18 @@ class ReelCanvasRenderer {
     // first time they are shown. Their HTMLImageElements go into `this.images`
     // too, so they stay referenced and cannot be evicted mid-session.
     this.imageLoads = new Map();
-    Object.entries({ ...symbolAssets, ...uiAssets }).forEach(([name, src]) => {
+    this.loadImages({ ...symbolAssets, ...uiAssets });
+  }
+
+  /** The deferred art (deferredUiAssets), once; resolves when all of it is ready to paint. */
+  preloadDeferred() {
+    this.loadImages(deferredUiAssets);
+    return Promise.all(Object.keys(deferredUiAssets).map((name) => this.imageLoads.get(name)));
+  }
+
+  loadImages(entries) {
+    Object.entries(entries).forEach(([name, src]) => {
+      if (this.imageLoads.has(name)) return;
       const image = new Image();
       image.decoding = "async";
       this.imageLoads.set(name, new Promise((resolve) => {
@@ -4767,22 +4790,32 @@ function platformSaveToken(token) {
   } catch { /* storage unavailable: a reload falls back to the launch token */ }
 }
 
+/** The request index.html already sent for exactly this call, if any (taken once). */
+function takeEarlySession(saved) {
+  const early = window.__vxEarlySession;
+  window.__vxEarlySession = null;
+  if (!early || early.lt !== _platform.launchToken || early.saved !== saved) return null;
+  return early.res;
+}
+
 async function platformInitSession() {
   let body = null;
   const saved = platformSavedToken();
+  const early = takeEarlySession(saved);
   if (saved) {
     // Reload: read the existing session's state; opens nothing new.
     try {
-      const res = await fetch("/game/v1/session", { headers: { authorization: `Bearer ${saved}` } });
+      const res = await (early ?? fetch("/game/v1/session", { headers: { authorization: `Bearer ${saved}` } }));
       if (res.ok) body = { ...(await res.json()), session_token: saved };
       else platformSaveToken(null); // expired or closed: start over from the launch token
     } catch { /* network: fall back to the launch token below */ }
   }
   if (!body) {
-    const res = await fetch("/game/v1/session/init", {
+    // The early request is used only when it WAS the launch-token init (no saved token).
+    const res = await ((!saved && early) || fetch("/game/v1/session/init", {
       method: "POST",
       headers: { authorization: `Bearer ${_platform.launchToken}` }
-    });
+    }));
     body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw platformError(body, res.status, "session init failed");
@@ -5039,6 +5072,7 @@ const lifecycleStats = { startedManual: 0, startedAuto: 0, blockedPresses: 0 };
 window.__spinLifecycle = {
   get phase() { return spinLock.phase; },
   get inFlight() { return isRoundInFlight(); },
+  get autoplayActive() { return Boolean(state.autoplayActive); },
   get stats() { return { ...lifecycleStats }; }
 };
 
@@ -6839,6 +6873,9 @@ async function spin(options = {}) {
     ticker.roundEnd();
     freeRoundsUi.settle(); // after roundEnd, so a completion line wins over the tips
     state.roundSettledAt = performance.now();
+    // The first settled round lets the music download start (audio.js warmMusic): on a
+    // slow phone it no longer competes with the first spin.
+    window.Sound?.warmMusic?.();
   }
 }
 
@@ -7025,7 +7062,9 @@ async function buyFreeSpins() {
 
 /** The feature screen (a VxNotify "feature"): resolves when it is dismissed
  *  (a tap anywhere on it, or dismissFeature()). */
-function showFeature(title, copy) {
+async function showFeature(title, copy) {
+  // Its panel art is deferred (deferredUiAssets): never open it half-painted.
+  await Promise.race([reelRenderer.preloadDeferred(), sleep(1500)]);
   return VxNotify.open("feature", { kicker: "Feature", title, body: copy });
 }
 
@@ -7801,50 +7840,72 @@ reelRenderer.onAnticipation = (phase, ms) => {
 // through spin(), which stops autoplay (the current round still finishes) and
 // fast-stops — the #28 rule that a press can only ever accelerate.
 // Dragging off the button cancels a press, as with any button.
+//
+// Tap or hold is decided from the input events' OWN timestamps, never from when a
+// timer happens to run: on a busy main thread the 400 ms timer can fire after the
+// finger already lifted (the release is queued behind a long frame), and a tap used
+// to become endless autoplay (1.6% of taps under load, docs/perf-baseline.md). So
+// the timer first yields once (a queued release is dispatched before it decides),
+// and if it still lost the race, the release's timestamp shows a tap: autoplay is
+// cancelled and turbo restored. The round already started is that tap's one spin.
 const SPIN_HOLD_MS = 400;
-const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0 };
+const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0, downAt: 0, turboBefore: false, autoplayByHold: false };
+const yieldTask = (fn) => { const ch = new MessageChannel(); ch.port1.onmessage = fn; ch.port2.postMessage(0); };
 
-function spinHoldStart(source) {
+function spinHoldStart(source, at = performance.now()) {
   if (spinHold.active || el.spinBtn.disabled) return;
   spinHold.active = true;
   spinHold.source = source;
   spinHold.fired = false;
+  spinHold.autoplayByHold = false;
+  spinHold.downAt = at;
   if (isRoundInFlight()) {
     spinHold.fired = true;
     spin();
     return;
   }
-  spinHold.timer = setTimeout(() => {
+  spinHold.timer = setTimeout(() => yieldTask(() => {
+    if (!spinHold.active || spinHold.fired) return; // released meanwhile: a tap
     spinHold.fired = true;
     if (isRoundInFlight()) {
       spin();
       return;
     }
+    spinHold.turboBefore = state.turbo;
+    spinHold.autoplayByHold = true;
     if (!state.turbo) setTurbo(true);
     startAutoplay(Infinity);
-  }, SPIN_HOLD_MS);
+  }), SPIN_HOLD_MS);
 }
 
-function spinHoldEnd(commit) {
+function spinHoldEnd(commit, at = performance.now()) {
   if (!spinHold.active) return;
   clearTimeout(spinHold.timer);
   spinHold.active = false;
   spinHold.endedAt = performance.now();
+  // The hold timer won a race it should have lost: by the events' own clock this
+  // press was a tap. One spin (already running), no autoplay, turbo as it was.
+  if (spinHold.autoplayByHold && at - spinHold.downAt < SPIN_HOLD_MS) {
+    stopAutoplay();
+    if (state.turbo !== spinHold.turboBefore) setTurbo(spinHold.turboBefore);
+    spinHold.autoplayByHold = false;
+    return;
+  }
   if (commit && !spinHold.fired) spin();
 }
 
 el.spinBtn.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && e.button !== 0) return;
-  spinHoldStart("pointer");
+  spinHoldStart("pointer", e.timeStamp);
 });
-el.spinBtn.addEventListener("pointerup", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(true);
+el.spinBtn.addEventListener("pointerup", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(true, e.timeStamp);
 });
-el.spinBtn.addEventListener("pointerleave", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(false);
+el.spinBtn.addEventListener("pointerleave", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(false, e.timeStamp);
 });
-el.spinBtn.addEventListener("pointercancel", () => {
-  if (spinHold.source === "pointer") spinHoldEnd(false);
+el.spinBtn.addEventListener("pointercancel", (e) => {
+  if (spinHold.source === "pointer") spinHoldEnd(false, e.timeStamp);
 });
 // No long-press context menu on touch: a hold here means autoplay.
 el.spinBtn.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -7864,12 +7925,12 @@ window.addEventListener("keydown", (e) => {
   if (typing && t !== el.spinBtn) return;
   e.preventDefault();
   if (e.repeat) return;
-  spinHoldStart("key");
+  spinHoldStart("key", e.timeStamp);
 });
 window.addEventListener("keyup", (e) => {
   if (e.code !== "Space" || spinHold.source !== "key") return;
   e.preventDefault();
-  spinHoldEnd(true);
+  spinHoldEnd(true, e.timeStamp);
 });
 // Losing focus mid-hold (alt-tab) must not leave a hold armed.
 window.addEventListener("blur", () => spinHoldEnd(false));
@@ -7948,6 +8009,7 @@ function runBootLoader() {
 // The hero <img> is currently commented out in index.html, so this is a no-op
 // until the art is re-enabled.
 function loadDeferredAssets() {
+  reelRenderer.preloadDeferred();
   const hero = document.getElementById("stageCharacter");
   if (hero && hero.dataset.src && !document.body.classList.contains("perf-low")) {
     hero.src = hero.dataset.src;

@@ -1,6 +1,6 @@
 {
   "name": "client-mobile",
-  "at": "2026-10-16T16:05:31.470Z",
+  "at": "2026-10-17T04:16:46.740Z",
   "node": "v22.22.0",
   "mode": "mobile",
   "throttling": "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU",
@@ -10,61 +10,80 @@
   "spinsRequested": 20,
   "stoppedByTimeBudget": false,
   "roundMs": {
-    "p50": 2404,
-    "max": 9236
+    "p50": 1979,
+    "max": 19543
   },
   "tapsThatDidNotStartASpin": 0,
   "tapsReadAsHoldStartingAutoplay": 0,
-  "timeToPlayableMs": 9433,
-  "fcpMs": 3796,
-  "domContentLoadedMs": 7146,
-  "loadEventMs": 9387,
-  "requestsBeforePlayable": 47,
-  "kbBeforePlayable": 1027,
-  "kbPerSession": 3630,
+  "holdRacesRecovered": 1,
+  "timeToPlayableMs": 4208,
+  "fcpMs": 3280,
+  "domContentLoadedMs": 3635,
+  "loadEventMs": 4175,
+  "requestsBeforePlayable": 20,
+  "kbBeforePlayable": 328,
+  "kbPerSession": 2197,
   "kbByType": {
-    "Document": 33,
-    "Image": 268,
+    "Document": 9,
+    "Image": 136,
     "Font": 76,
-    "Stylesheet": 122,
-    "Script": 494,
-    "Fetch": 2637
+    "Stylesheet": 30,
+    "Script": 72,
+    "Fetch": 1875
   },
-  "firstTapToSpinRequestMs": 226,
+  "firstTapToSpinRequestMs": 5892,
   "inputEventMs": {
     "n": 60,
-    "p50": 328,
-    "max": 1520
+    "p50": 72,
+    "max": 2824
   },
   "frames": {
-    "n": 1148,
-    "avgFps": 14.9,
-    "p95Ms": 233.4,
-    "p99Ms": 366.6,
-    "over20msPct": 53.7,
-    "over50msPct": 35.45
+    "n": 3848,
+    "avgFps": 43,
+    "p95Ms": 33.2,
+    "p99Ms": 250,
+    "over20msPct": 5.1,
+    "over50msPct": 1.95
+  },
+  "animatingFrames": {
+    "n": 2457,
+    "avgFps": 38.5,
+    "p95Ms": 33.3,
+    "over50msPct": 2.69
   },
   "longTasks": {
-    "n": 37,
-    "maxMs": 172,
-    "totalMs": 2521
+    "n": 23,
+    "maxMs": 114,
+    "totalMs": 1466
   },
   "heap": [],
+  "requestsBeforePlayableList": [
+    "9.0 KB /play/",
+    "42.2 KB /play/assets/symbols/Background.webp",
+    "11.2 KB /play/assets/symbols/sm/Crown.webp",
+    "6.7 KB /play/assets/symbols/sm/HourGlass.webp",
+    "8.1 KB /play/assets/symbols/sm/Ring.webp",
+    "11.5 KB /play/assets/symbols/sm/Chaile.webp",
+    "2.8 KB /play/assets/symbols/sm/RedGem.webp",
+    "3.4 KB /play/assets/symbols/sm/PurpleGem.webp",
+    "3.6 KB /play/assets/symbols/sm/YellowGem.webp",
+    "3.3 KB /play/assets/symbols/sm/GreenGem.webp",
+    "4.9 KB /play/assets/symbols/sm/BlueGem.webp",
+    "11.1 KB /play/assets/symbols/sm/Scatter.webp",
+    "47.6 KB /play/assets/fonts/inter-latin-wght-normal.woff2",
+    "28.2 KB /play/assets/fonts/oswald-latin-wght-normal.woff2",
+    "30.3 KB /play/styles.css",
+    "71.6 KB /play/app.bundle.js",
+    "1.2 KB /game/v1/session/init",
+    "2.5 KB /play/math/game-rules-v2.json",
+    "1.1 KB /play/assets/audio/manifest.json",
+    "27.5 KB /play/assets/symbols/FREESPINS_INFO-removebg-preview.webp"
+  ],
   "biggestDownloads": [
-    {
-      "kb": 754,
-      "path": "/play/assets/audio/music/free_spins.ogg",
-      "beforePlayable": false
-    },
     {
       "kb": 684,
       "path": "/play/assets/audio/music/base.ogg",
       "beforePlayable": false
-    },
-    {
-      "kb": 348,
-      "path": "/play/main.js",
-      "beforePlayable": true
     },
     {
       "kb": 316,
@@ -72,23 +91,33 @@
       "beforePlayable": false
     },
     {
-      "kb": 122,
-      "path": "/play/styles.css",
-      "beforePlayable": true
-    },
-    {
       "kb": 109,
       "path": "/play/assets/audio/sfx/riser_1.ogg",
       "beforePlayable": false
     },
     {
-      "kb": 48,
-      "path": "/play/assets/symbols/Scatter.webp",
+      "kb": 72,
+      "path": "/play/app.bundle.js",
       "beforePlayable": true
     },
     {
       "kb": 48,
       "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
+      "beforePlayable": true
+    },
+    {
+      "kb": 46,
+      "path": "/play/assets/audio/sfx/feature_award_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 45,
+      "path": "/play/assets/audio/sfx/max_win_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 42,
+      "path": "/play/assets/symbols/Background.webp",
       "beforePlayable": true
     }
   ]

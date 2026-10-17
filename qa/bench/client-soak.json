@@ -1,91 +1,151 @@
 {
   "name": "client-soak",
-  "at": "2026-10-16T16:25:35.811Z",
+  "at": "2026-10-17T03:48:25.143Z",
   "node": "v22.22.0",
   "mode": "soak",
   "throttling": "none",
   "chrome": "HeadlessChrome/153.0.8010.0",
   "tier": "perf-low perf-handheld",
-  "spins": 500,
-  "spinsRequested": 500,
+  "spins": 1000,
+  "spinsRequested": 1000,
   "stoppedByTimeBudget": false,
   "roundMs": {
-    "p50": 1234,
-    "max": 99520
+    "p50": 992,
+    "max": 87735
   },
   "tapsThatDidNotStartASpin": 0,
-  "tapsReadAsHoldStartingAutoplay": 8,
-  "timeToPlayableMs": 509,
-  "fcpMs": 224,
-  "domContentLoadedMs": 275,
-  "loadEventMs": 413,
-  "requestsBeforePlayable": 47,
-  "kbBeforePlayable": 1027,
-  "kbPerSession": 4883,
+  "tapsReadAsHoldStartingAutoplay": 0,
+  "holdRacesRecovered": 5,
+  "timeToPlayableMs": 747,
+  "fcpMs": null,
+  "domContentLoadedMs": 569,
+  "loadEventMs": 663,
+  "requestsBeforePlayable": 21,
+  "kbBeforePlayable": 394,
+  "kbPerSession": 5639,
   "kbByType": {
-    "Document": 33,
-    "Image": 268,
+    "Document": 9,
+    "Image": 136,
     "Font": 76,
-    "Stylesheet": 122,
-    "Script": 494,
-    "Fetch": 3890
+    "Stylesheet": 30,
+    "Script": 133,
+    "Fetch": 5255
   },
-  "firstTapToSpinRequestMs": 194,
+  "firstTapToSpinRequestMs": 43,
   "inputEventMs": {
-    "n": 1523,
-    "p50": 280,
-    "max": 1464
+    "n": 2782,
+    "p50": 232,
+    "max": 13632
   },
   "frames": {
-    "n": 20711,
-    "avgFps": 17.6,
-    "p95Ms": 200,
-    "p99Ms": 316.7,
-    "over20msPct": 48.1,
-    "over50msPct": 30.1
+    "n": 45460,
+    "avgFps": 21.1,
+    "p95Ms": 149.9,
+    "p99Ms": 233.4,
+    "over20msPct": 45.1,
+    "over50msPct": 28.61
+  },
+  "animatingFrames": {
+    "n": 37255,
+    "avgFps": 21.4,
+    "p95Ms": 133.4,
+    "over50msPct": 27.78
   },
   "longTasks": {
     "n": 15,
-    "maxMs": 329,
-    "totalMs": 1331
+    "maxMs": 499,
+    "totalMs": 1708
   },
   "heap": [
     {
       "spin": 25,
-      "heapMB": 2.73,
-      "nodes": 1652,
+      "heapMB": 2.33,
+      "nodes": 1646,
       "listeners": 85
     },
     {
       "spin": 100,
-      "heapMB": 2.95,
-      "nodes": 1657,
+      "heapMB": 2.73,
+      "nodes": 1670,
       "listeners": 85
     },
     {
       "spin": 200,
-      "heapMB": 3.03,
-      "nodes": 1661,
+      "heapMB": 2.91,
+      "nodes": 1667,
       "listeners": 85
     },
     {
       "spin": 300,
-      "heapMB": 3.1,
-      "nodes": 1673,
+      "heapMB": 2.99,
+      "nodes": 1680,
       "listeners": 85
     },
     {
       "spin": 400,
-      "heapMB": 3.15,
-      "nodes": 1662,
+      "heapMB": 3.04,
+      "nodes": 1666,
       "listeners": 85
     },
     {
       "spin": 500,
-      "heapMB": 3.5,
-      "nodes": 1665,
+      "heapMB": 3.1,
+      "nodes": 1671,
+      "listeners": 85
+    },
+    {
+      "spin": 600,
+      "heapMB": 3.15,
+      "nodes": 1678,
+      "listeners": 85
+    },
+    {
+      "spin": 700,
+      "heapMB": 3.22,
+      "nodes": 1677,
+      "listeners": 85
+    },
+    {
+      "spin": 800,
+      "heapMB": 3.26,
+      "nodes": 1666,
+      "listeners": 85
+    },
+    {
+      "spin": 900,
+      "heapMB": 3.29,
+      "nodes": 1666,
+      "listeners": 85
+    },
+    {
+      "spin": 1000,
+      "heapMB": 3.29,
+      "nodes": 1666,
       "listeners": 85
     }
+  ],
+  "requestsBeforePlayableList": [
+    "9.0 KB /play/",
+    "42.2 KB /play/assets/symbols/Background.webp",
+    "11.2 KB /play/assets/symbols/sm/Crown.webp",
+    "6.7 KB /play/assets/symbols/sm/HourGlass.webp",
+    "8.1 KB /play/assets/symbols/sm/Ring.webp",
+    "11.5 KB /play/assets/symbols/sm/Chaile.webp",
+    "2.8 KB /play/assets/symbols/sm/RedGem.webp",
+    "3.4 KB /play/assets/symbols/sm/PurpleGem.webp",
+    "3.6 KB /play/assets/symbols/sm/YellowGem.webp",
+    "3.3 KB /play/assets/symbols/sm/GreenGem.webp",
+    "4.9 KB /play/assets/symbols/sm/BlueGem.webp",
+    "11.1 KB /play/assets/symbols/sm/Scatter.webp",
+    "47.6 KB /play/assets/fonts/inter-latin-wght-normal.woff2",
+    "28.2 KB /play/assets/fonts/oswald-latin-wght-normal.woff2",
+    "30.3 KB /play/styles.css",
+    "133.1 KB /play/app.bundle.js",
+    "1.2 KB /game/v1/session/init",
+    "2.5 KB /play/math/game-rules-v2.json",
+    "1.1 KB /play/assets/audio/manifest.json",
+    "5.0 KB /play/assets/audio/sfx/spin_start_1.ogg",
+    "27.5 KB /play/assets/symbols/FREESPINS_INFO-removebg-preview.webp"
   ],
   "biggestDownloads": [
     {
@@ -99,18 +159,13 @@
       "beforePlayable": false
     },
     {
-      "kb": 348,
-      "path": "/play/main.js",
-      "beforePlayable": true
-    },
-    {
       "kb": 316,
       "path": "/play/assets/audio/music/big_win.ogg",
       "beforePlayable": false
     },
     {
-      "kb": 122,
-      "path": "/play/styles.css",
+      "kb": 133,
+      "path": "/play/app.bundle.js",
       "beforePlayable": true
     },
     {
@@ -120,13 +175,18 @@
     },
     {
       "kb": 48,
-      "path": "/play/assets/symbols/Scatter.webp",
+      "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
       "beforePlayable": true
     },
     {
-      "kb": 48,
-      "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
-      "beforePlayable": true
+      "kb": 46,
+      "path": "/play/assets/audio/sfx/feature_award_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 45,
+      "path": "/play/assets/audio/sfx/max_win_1.ogg",
+      "beforePlayable": false
     }
   ]
 }
