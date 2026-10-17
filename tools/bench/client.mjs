@@ -13,7 +13,7 @@ import puppeteer from "puppeteer-core";
 import { args, launchPlayer, sleep, startServer, writeResult, pinGeneratorSide } from "./common.mjs";
 pinGeneratorSide();
 
-const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20, profile: "", trace: "", perf: "", snapshots: "" });
+const a = args({ mode: "mobile", spins: 0, pause: 300, minutes: 20, profile: "", trace: "", perf: "", snapshots: "", warmup: 300 });
 const MODE = a.mode;
 const SPINS = a.spins || (MODE === "soak" ? 500 : 20);
 
@@ -72,10 +72,29 @@ try {
   const url = `http://127.0.0.1:${srv.cred.port}/play?lt=${await launchPlayer(srv.cred, `bench-client-${Date.now()}`)}${a.perf ? `&perf=${a.perf}` : ""}`;
   const navStart = Date.now();
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 0 });
-  await page.waitForFunction(() => document.body.classList.contains("app-ready"), { timeout: 180_000, polling: 50 });
+  // A plain evaluate loop, not page.waitForFunction: puppeteer's poller injects a script and
+  // leaves objects in the page every call (counted as the game's heap in a soak), and on a
+  // busy single-process renderer its result arrived seconds late.
+  // Every in-page read goes through Runtime.evaluate with the SAME source text per call
+  // site: V8's compilation cache reuses it, so a soak's thousands of reads add no new
+  // scripts or JIT code to the page's heap (page.evaluate wraps each call afresh).
+  const inPage = async (fn) => {
+    const r = await cdp.send("Runtime.evaluate", { expression: `(${fn})()`, returnByValue: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
+    return r.result.value;
+  };
+  const pollPage = async (fn, timeout, interval = 50) => {
+    const end = Date.now() + timeout;
+    for (;;) {
+      if (await inPage(fn).catch(() => false)) return true;
+      if (Date.now() > end) return false;
+      await sleep(interval);
+    }
+  };
+  if (!(await pollPage(() => document.body.classList.contains("app-ready"), 180_000))) throw new Error("page never became playable");
   const timeToReadyMs = Date.now() - navStart; ready = true;
   log("playable", timeToReadyMs, "ms");
-  const nav = await page.evaluate(() => {
+  const nav = await inPage(() => {
     const n = performance.getEntriesByType("navigation")[0]; const p = performance.getEntriesByType("paint").find((x) => x.name === "first-contentful-paint");
     const m = performance.getEntriesByName("app-ready")[0]; // the page's own mark, if it sets one
     return { fcp: p ? Math.round(p.startTime) : null, dcl: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd), readyMark: m ? Math.round(m.startTime) : null };
@@ -87,7 +106,7 @@ try {
   // soak reports is the game's own, not the bench's ever-growing per-frame log.
   const acc = { frames: [], animFrames: [], long: [], events: [] };
   const drain = async () => {
-    const b = await page.evaluate(() => { const b = window.__bench; const out = { frames: b.frames, animFrames: b.animFrames, long: b.long, events: b.events };
+    const b = await inPage(() => { const b = window.__bench; const out = { frames: b.frames, animFrames: b.animFrames, long: b.long, events: b.events };
       b.frames = []; b.animFrames = []; b.long = []; b.events = []; return out; });
     for (const k of Object.keys(acc)) for (const x of b[k]) acc[k].push(x);
   };
@@ -96,7 +115,7 @@ try {
   const heap = async () => { await drain(); await cdp.send("Runtime.discardConsoleEntries").catch(() => {}); await cdp.send("HeapProfiler.collectGarbage"); const h = await cdp.send("Runtime.getHeapUsage"); const d = await cdp.send("Memory.getDOMCounters");
     return { heapMB: +(h.usedSize / 1048576).toFixed(2), nodes: d.nodes, listeners: d.jsEventListeners }; };
   // Same as tools/spin-e2e.js: the bonus feature screen waits for a click. Other popups close.
-  const dismiss = () => page.evaluate(() => {
+  const dismiss = () => inPage(() => {
     const f = document.getElementById("featureScreen"); if (f && !f.classList.contains("hidden")) f.click();
     for (const b of document.querySelectorAll("[data-vx-close], .ps-modal__close")) if (b.offsetParent) b.click();
   });
@@ -104,7 +123,7 @@ try {
   const waitIdle = async () => {
     const t = Date.now();
     for (;;) {
-      const idle = await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 3000, polling: 50 }).then(() => true, () => false);
+      const idle = await pollPage(() => !window.__spinLifecycle.inFlight, 3000);
       if (idle) return;
       await dismiss(); // a bonus feature screen holds the round until it is clicked
       if (Date.now() - t > 60_000 && shots < 3) {
@@ -115,8 +134,8 @@ try {
       }
     }
   };
-  if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
-  await page.evaluate(() => { window.__bench.frames = []; window.__bench.animFrames = []; window.__bench.long = []; window.__bench.events = []; });
+  if (MODE === "soak") await inPage(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
+  await inPage(() => { window.__bench.frames = []; window.__bench.animFrames = []; window.__bench.long = []; window.__bench.events = []; });
   for (const k of Object.keys(acc)) acc[k].length = 0;
 
   // A finger's tap: touch down and up 80 ms apart BY THEIR TIMESTAMPS, sent straight
@@ -125,14 +144,25 @@ try {
   // page) and sends touch-up only once touch-down was handled, so on a slow page its
   // "tap" lasted ~700 ms by the events' own clock: a hold, not a tap.
   const tapSpin = async () => {
-    const box = await page.evaluate(() => { const r = document.getElementById("spinBtn").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const box = await inPage(() => { const r = document.getElementById("spinBtn").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     const t0 = Date.now() / 1000;
     const down = cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x, y: box.y }], timestamp: t0 });
     const up = cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: t0 + 0.08 });
     await Promise.all([down, up]);
   };
+  // Self size (KB) by node kind in a V8 heap snapshot. "objects" = what the game's code
+  // allocates; "code" = V8's compiled code. Snapshot "number" nodes are mostly fields of
+  // V8's own maps (not the page's values) and are left out of both.
+  const OBJECT_KINDS = new Set(["object", "array", "closure", "string", "concatenated string", "sliced string", "regexp", "symbol", "bigint"]);
+  const heapByKind = (snap) => {
+    const m = snap.snapshot.meta, n = m.node_fields.length, it = m.node_fields.indexOf("type"), is = m.node_fields.indexOf("self_size"), types = m.node_types[0];
+    let objects = 0, code = 0;
+    for (let k = 0; k < snap.nodes.length; k += n) { const t = types[snap.nodes[k + it]]; if (OBJECT_KINDS.has(t)) objects += snap.nodes[k + is]; else if (t === "code") code += snap.nodes[k + is]; }
+    return { objectsKB: Math.round(objects / 1024), codeKB: Math.round(code / 1024) };
+  };
+  const heapKinds = [];
   const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0; let tapsReadAsHold = 0; let holdRacesRecovered = 0;
-  let autoBefore = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
+  let autoBefore = await inPage(() => window.__spinLifecycle.stats.startedAuto);
   // --profile <file>: a JS CPU profile of the page across the spins (.cpuprofile).
   // --trace <file>: a Chrome timeline trace (style, layout, paint, raster, GPU) across the spins.
   const traceEvents = [];
@@ -148,18 +178,25 @@ try {
     await waitIdle();
     await dismiss();
     await sleep(a.pause); // a human never re-taps inside SPIN_SETTLE_GUARD_MS (250 ms): such a press is dropped by design
-    if (MODE === "soak" && (i === 25 || (i > 0 && i % 100 === 0))) heapSamples.push({ spin: i, ...(await heap()) });
-    // --snapshots <dir>: V8 heap snapshots at spins 100 and SPINS-1 (diff them to find a leak's retainers).
-    if (a.snapshots && (i === 100 || i === SPINS - 1)) {
+    if (MODE === "soak" && (i === 25 || i === a.warmup || (i > 0 && i % 100 === 0))) heapSamples.push({ spin: i, ...(await heap()) });
+    // Soak: a V8 heap snapshot at the warm-up spin and at the last spin, split by kind. The
+    // leak verdict reads the game's own objects (objects, arrays, strings, closures); the
+    // compiled code V8 adds as more paths get hot is reported next to it, not mixed in.
+    // --snapshots <dir> also writes both files (diff them to find a leak's retainers).
+    if (MODE === "soak" && (i === a.warmup || i === SPINS - 1)) {
       await drain(); await cdp.send("Runtime.discardConsoleEntries").catch(() => {});
       const chunks = []; const onChunk = (e) => chunks.push(e.chunk);
       cdp.on("HeapProfiler.addHeapSnapshotChunk", onChunk);
       await cdp.send("HeapProfiler.collectGarbage");
       await cdp.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false });
       cdp.off("HeapProfiler.addHeapSnapshotChunk", onChunk);
-      mkdirSync(a.snapshots, { recursive: true });
-      writeFileSync(`${a.snapshots}/spin-${i}.heapsnapshot`, chunks.join(""));
-      log("heap snapshot", `${a.snapshots}/spin-${i}.heapsnapshot`);
+      const raw = chunks.join("");
+      heapKinds.push({ spin: i, ...heapByKind(JSON.parse(raw)) });
+      if (a.snapshots) {
+        mkdirSync(a.snapshots, { recursive: true });
+        writeFileSync(`${a.snapshots}/spin-${i}.heapsnapshot`, raw);
+        log("heap snapshot", `${a.snapshots}/spin-${i}.heapsnapshot`);
+      }
     }
     const s0 = Date.now();
     let sent = false;
@@ -171,7 +208,7 @@ try {
     }
     if (!sent) { log("giving up at spin", i); break; }
     if (i === 0) tapToRequestMs = Date.now() - s0;
-    await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 5000, polling: 16 }).catch(() => {});
+    await pollPage(() => window.__spinLifecycle.inFlight, 5000, 16);
     // A tap read as a HOLD starts infinite autoplay (client/main.js SPIN_HOLD_MS timer
     // fires when the main thread is too busy to handle the release in time). Count it
     // (a real defect on slow phones) and stop the autoplay with another press.
@@ -179,8 +216,8 @@ try {
     // client may lose the timer race for an instant and then cancel by the events'
     // own timestamps (that is the fix; counted separately as recovered).
     // The release may still be queued behind a long frame: give it up to 1 s.
-    await page.waitForFunction(() => !window.__spinLifecycle.autoplayActive, { timeout: 1000, polling: 16 }).catch(() => {});
-    const { autoNow, active } = await page.evaluate(() => ({ autoNow: window.__spinLifecycle.stats.startedAuto, active: window.__spinLifecycle.autoplayActive }));
+    await pollPage(() => !window.__spinLifecycle.autoplayActive, 1000, 16);
+    const { autoNow, active } = await inPage(() => ({ autoNow: window.__spinLifecycle.stats.startedAuto, active: window.__spinLifecycle.autoplayActive }));
     if (autoNow > autoBefore) {
       if (active) {
         tapsReadAsHold++;
@@ -214,7 +251,7 @@ try {
   result = {
     mode: MODE, throttling: MODE === "mobile" ? "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU" : "none",
     chrome: await browser.version(),
-    tier: await page.evaluate(() => [...document.body.classList].filter((c) => c.startsWith("perf-")).join(" ")),
+    tier: await inPage(() => [...document.body.classList].filter((c) => c.startsWith("perf-")).join(" ")),
     spins: roundMs.length, spinsRequested: SPINS, stoppedByTimeBudget: stoppedEarly,
     roundMs: roundMs.length ? { p50: q([...roundMs].sort((x, y) => x - y), 0.5), max: Math.max(...roundMs) } : null,
     tapsThatDidNotStartASpin: stuck, tapsReadAsHoldStartingAutoplay: tapsReadAsHold, holdRacesRecovered,
@@ -234,6 +271,15 @@ try {
     },
     longTasks: { n: st.long.length, maxMs: st.long.length ? Math.max(...st.long) : 0, totalMs: Math.round(st.long.reduce((s, x) => s + x, 0)) },
     heap: heapSamples,
+    // Leak verdict: growth over the spins AFTER a warm-up (V8 compiles hot code during the
+    // first few hundred), plus the from-start figure, so neither is hidden.
+    ...(MODE === "soak" && heapSamples.length > 1 ? (() => {
+      const first = heapSamples[0], last = heapSamples.at(-1), base = heapSamples.find((h) => h.spin === a.warmup);
+      const pct = (from) => +(100 * (last.heapMB - from.heapMB) / from.heapMB).toFixed(1);
+      const [kw, ke] = heapKinds;
+      const kinds = kw && ke ? { heapKinds, objectsAfterWarmupPct: +(100 * (ke.objectsKB - kw.objectsKB) / kw.objectsKB).toFixed(1), codeAfterWarmupKB: ke.codeKB - kw.codeKB } : {};
+      return { heapFromStartPct: pct(first), heapWarmupSpins: a.warmup, heapAfterWarmupPct: base ? pct(base) : null, heapAfterWarmupSpins: base ? last.spin - base.spin : 0, ...kinds };
+    })() : {}),
     // Every request before playable, in order: what the critical path is made of.
     requestsBeforePlayableList: all.filter((r) => r.beforeReady).map((r) => `${(r.bytes / 1024).toFixed(1)} KB ${r.url.replace(/^https?:\/\/[^/]+/, "").replace(/\?.*/, "")}`),
     biggestDownloads: all.sort((x, y) => y.bytes - x.bytes).slice(0, 8)

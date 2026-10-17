@@ -65,7 +65,7 @@ describe("/play assets: one bundle, compressed, cacheable", () => {
     const plain = await app.inject({ method: "GET", url: "/play/main.js" });
     expect(plain.headers["content-encoding"]).toBeUndefined();
     expect(plain.rawPayload.equals(raw)).toBe(true);
-    const font = await app.inject({ method: "GET", url: "/play/assets/fonts/inter-latin-wght-normal.woff2", headers: { "accept-encoding": "br" } });
+    const font = await app.inject({ method: "GET", url: "/play/assets/fonts/inter-sub-wght-400-900.woff2", headers: { "accept-encoding": "br" } });
     expect(font.statusCode).toBe(200);
     expect(font.headers["content-encoding"]).toBeUndefined();
   });

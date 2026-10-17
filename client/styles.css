@@ -13,15 +13,18 @@
    Inter + Oswald, SIL OFL 1.1 — licences live next to the files. */
 @font-face {
   font-family: "Vault UI";
-  src: url("assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
+  /* Subset to the characters the game can show and the weights it uses (400-900): 48 -> 28 KB. */
+  src: url("assets/fonts/inter-sub-wght-400-900.woff2") format("woff2");
+  font-weight: 400 900;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2010-2027, U+2030-203A, U+2044, U+20A0-20CF, U+2122, U+2190-2199, U+2212, U+221E, U+2260, U+2264-2265;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Vault Display";
-  src: url("assets/fonts/oswald-latin-wght-normal.woff2") format("woff2");
-  font-weight: 200 700;
+  src: url("assets/fonts/oswald-sub-wght-400-700.woff2") format("woff2");
+  font-weight: 400 700;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2010-2027, U+2030-203A, U+2044, U+20A0-20CF, U+2122, U+2190-2199, U+2212, U+221E, U+2260, U+2264-2265;
   font-style: normal;
   font-display: swap;
 }
@@ -3037,6 +3040,17 @@ body {
      fills the whole game; the reel table and controls float on top. */
   background: url("assets/symbols/Background.webp") center / cover no-repeat fixed;
   background-color: var(--bg-vault-door);
+}
+/* Phones: the 640 px backdrop (same query as PHONE_ART in main.js and the preload). */
+@media (pointer: coarse) and (max-width: 600px) {
+  body {
+    background-image: url("assets/symbols/sm/Background.webp");
+  }
+  .altar {
+    background-image:
+      linear-gradient(180deg, rgba(20, 13, 11, 0.66), rgba(10, 7, 6, 0.82)),
+      url("assets/symbols/sm/Background.webp");
+  }
 }
 
 /* ── Boot loader ───────────────────────────────────────────────────────────

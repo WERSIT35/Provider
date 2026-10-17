@@ -8,7 +8,7 @@ import { verifyToken } from "../lib/tokens";
 /**
  * Player-facing game client — the real Banana X canvas game in `client/`.
  *
- *   /play                  redirect to /play/
+ *   /play                  same page as /play/ with <base href="/play/"> (no redirect round trip)
  *   /play/                 serves client/index.html (with ?lt=… preserved)
  *   /play/<sub/path>       serves client/<sub/path>
  *
@@ -126,7 +126,9 @@ async function loadAsset(root: string, rel: string): Promise<Asset | null> {
     cached.checkedAt = Date.now();
     return cached;
   }
-  const asset = makeAsset(path.extname(target).toLowerCase(), await fs.readFile(target), stat.mtimeMs);
+  const ext = path.extname(target).toLowerCase();
+  const raw = await fs.readFile(target);
+  const asset = makeAsset(ext, ext === ".css" ? await minifyCss(raw) : raw, stat.mtimeMs);
   assets.set(target, asset);
   return asset;
 }
@@ -178,6 +180,22 @@ async function minify(code: string): Promise<string> {
     return (await transform(code, { minify: true, keepNames: true, target: "es2019", legalComments: "none" })).code;
   } catch {
     return code;
+  }
+}
+
+/**
+ * Stylesheets minified once per edit (Vault 20K's styles.css: brotli 30.9 → 15.9 KB, on
+ * the critical path before the first paint). esbuild's minifier: whitespace, comments and
+ * shorter equivalent values; no target, so no syntax is lowered. PLAY_MINIFY=0 or an esbuild failure serves the file
+ * as it is.
+ */
+async function minifyCss(body: Buffer): Promise<Buffer> {
+  if (process.env.PLAY_MINIFY === "0") return body;
+  try {
+    const { transform } = await import("esbuild");
+    return Buffer.from((await transform(body.toString("utf8"), { loader: "css", minify: true, legalComments: "none" })).code);
+  } catch {
+    return body;
   }
 }
 
@@ -242,16 +260,27 @@ const playPageRoutes: FastifyPluginAsync = async (app) => {
 
   const launchToken = (req: FastifyRequest): unknown => (req.query as Record<string, unknown> | undefined)?.lt;
 
-  // /play (no slash) → /play/ so the canvas client's relative paths resolve; another
-  // game's launch goes straight to its own folder (one redirect, not two: each is a
-  // round trip, 562 ms on Slow 4G).
-  app.get("/play", (req, reply) => {
+  // /play (no slash) serves Vault 20K's page as it is: its <base href> script turns
+  // "/play" into "/play/", so every relative path still resolves into this handler, and
+  // the casino's launch URL costs no redirect (a round trip, 562 ms on Slow 4G). Another
+  // game's launch goes straight to its own folder (one redirect).
+  let slashless: { from: Asset; asset: Asset } | null = null; // /play's page with its <base>, made once per edit
+  app.get("/play", async (req, reply) => {
     const search = (req.raw.url || "").includes("?") ? (req.raw.url as string).slice((req.raw.url as string).indexOf("?")) : "";
     const game = gameOf(launchToken(req));
-    const target = game && game !== app.container.games.default.gameCode ? `/play/g/${game}/` : "/play/";
-    return reply.code(302).header("location", target + search).send();
+    if (game && game !== app.container.games.default.gameCode) return reply.code(302).header("location", `/play/g/${game}/${search}`).send();
+    // A real <base href="/play/"> in the HTML: the browser's preload scanner reads the
+    // page before any script runs, so without it the preloads resolved against "/play"
+    // (to /assets/…, 404) and every critical asset was fetched twice.
+    const index = await loadAsset(root, "index.html");
+    if (!index) return notFound(reply);
+    const page = (await bundleFor(root, index))?.html ?? index;
+    if (slashless?.from !== page) {
+      const html = page.body.toString("utf8").replace(/<head>/i, '<head>\n    <base href="/play/">');
+      slashless = { from: page, asset: makeAsset(".html", Buffer.from(html), page.mtimeMs) };
+    }
+    return send(req, reply, slashless.asset, framingHeaders(app, launchToken(req)));
   });
-
   // Multi-game: a launch for another game than Vault 20K goes to that game's own client,
   // /play/g/<code>/ (served from games/<code>/<client>), with the same query (?lt=…).
   const gameOf = (lt: unknown): string | null => {

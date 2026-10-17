@@ -195,7 +195,9 @@ const symbolAssets = {
 // otherwise the browser treats them as different resources and the preload is
 // wasted. See the note on <base href> in index.html.
 const uiAssets = {
-  UI_BACKGROUND: "assets/symbols/Background.webp"
+  // Phones get the 640 px backdrop (29 KB instead of 42 KB on the critical path); the CSS
+  // and the preload in index.html switch on the same query, so it is fetched once.
+  UI_BACKGROUND: symbolArt("Background.webp")
 };
 
 // Art first shown well after the reveal (the free-spins award screen): loaded right
