@@ -117,6 +117,8 @@
     DE: { jurisdiction: "DE", min_round_ms: 5000, autoplay_enabled: false, max_autoplay_spins: 0, turbo_enabled: false, slam_stop_enabled: false, buy_feature_enabled: false, celebrate_threshold: "gt_stake", max_stake: 1 }
   };
   var demoMarket = DEMO_MARKETS[String(new URLSearchParams(location.search).get("market") || "").toUpperCase()] || null;
+  // Vault 20K plays locally (no RGS session), so its client reads the market from here.
+  if (game === "vault" && demoMarket) window.VX_DEMO_REGULATORY = demoMarket;
 
   if (game === "classic") {
     // game.js resumes a stored session when there is no launch token: point it at ours.

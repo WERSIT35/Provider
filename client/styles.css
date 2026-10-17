@@ -1249,7 +1249,8 @@ body.public-mode .ps-deck-status {
   white-space: nowrap;
   vertical-align: middle;
 }
-.ps-ticker[data-state="spin"] { color: var(--text-hud); }
+.ps-ticker[data-state="spin"],
+.ps-ticker[data-state="neutral"] { color: var(--text-hud); }
 /* The win stat (#46): 1.5x the old 0.8 size so a win commands the deck. It is
    still one line in the same fixed box, so nothing moves; on the narrowest
    phones the vw cap keeps a six-figure win ("WIN: 123,456.78") unclipped. */
