@@ -25,6 +25,7 @@
     const steps = [];
     let totalX = 0;
     let mult = null;
+    let embersTotal = 0;
     let truncated = false;
     for (let i = 0; ; i += 1) {
       const found = Cluster.findClusters(board, { paying: ctx.paying, wild: ctx.wild, min: ctx.minCluster });
@@ -42,7 +43,11 @@
       const detonation = pending.length ? Specials.detonateAll(board, ctx.paying) : { cleared: [], events: [] };
       const collected = pending.length ? Specials.collect(board, detonation.cleared, clusterCells, ctx.paying, ctx.minCluster, ctx.paytable) : [];
       const created = Specials.createSpecials(board, found, ctx.specialBands, ctx.wild, rng);
-      const removed = uniqueCells(clusterCells.concat(detonation.cleared));
+      // Embers next to an exploding cluster or inside a detonation are collected (they
+      // leave the board with the step's other cleared cells).
+      const embers = ctx.ember ? root.RelicForge.ForgeMeter.collectEmbers(board, clusterCells, detonation.cleared, ctx.ember) : [];
+      embersTotal += embers.length;
+      const removed = uniqueCells(clusterCells.concat(detonation.cleared, embers));
       const left = Specials.placeSpecials(Cascade.removeCells(board, removed), created);
       const fallen = Cascade.applyGravity(left);
       const filled = Cascade.refill(fallen.board, ctx.table, rng);
@@ -58,6 +63,7 @@
         detonations: detonation.events,
         collected,
         specials_created: created,
+        embers_collected: embers,
         base_x: baseX,
         mult,
         line_burst: burstRows,
@@ -70,7 +76,7 @@
       });
     }
     // final_mult: the Mult the spin ended on (null = no step), which Surge carries over.
-    return { initial, steps, total_x: totalX, final: Grid.symbolsOf(board), final_mult: mult, truncated };
+    return { initial, steps, total_x: totalX, final: Grid.symbolsOf(board), final_mult: mult, embers: embersTotal, truncated };
   }
 
   function uniqueCells(cells) {

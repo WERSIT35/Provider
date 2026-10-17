@@ -12,6 +12,7 @@
       "paytable.js",
       "specials.js",
       "mult.js",
+      "forge-meter.js",
       "round.js",
       "spin-engine.js"
     ]

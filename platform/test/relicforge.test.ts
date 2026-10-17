@@ -71,6 +71,14 @@ describe("Relic Forge on the RGS", () => {
       expect(body.total_win).toBeLessThanOrEqual(10000);
       expect(c.verification.verify(body.round_ref)?.verdict).toBe("legitimate");
     }
+    // The Forge meter at this bet survives into the next visit.
+    const last = c.ledger.lastRoundForSession(init.json().session_id);
+    const meter = (last?.outcome as { player_state?: unknown } | undefined)?.player_state;
+    const lt2 = c.sessions.createLaunchToken({ operator_id: operatorId, game_code: "relicforge", operator_player_id: "p1", currency: "GEL", origin: ORIGIN });
+    const again = await app.inject({ method: "POST", url: "/game/v1/session/init", headers: { authorization: `Bearer ${lt2}` } });
+    expect(again.json().resume.player_states["1.00"]).toEqual(meter);
+    expect((meter as { embers: number }).embers).toBeGreaterThanOrEqual(0);
+
     const page = await app.inject({ method: "GET", url: "/play/g/relicforge/" });
     expect(page.statusCode).toBe(200);
     expect(page.body).toContain("Relic Forge");

@@ -16,14 +16,15 @@ test("same seed, same round; another seed, another round", () => {
 });
 
 test("the RGS contract: core fields, money in currency, state carried through", () => {
-  const r = spinWith("seed-3", loadRules(), { playerState: { meter: 4 } });
+  const r = spinWith("seed-3", loadRules(), { playerState: { embers: 4 } });
   for (const k of ["spin_id", "is_free_spin", "bet_amount", "bet_charged", "total_win", "free_spins_left", "free_spins_awarded", "feature_state", "player_state"]) {
     assert.ok(k in r, `missing ${k}`);
   }
   assert.equal(r.bet_amount, 2);
   assert.equal(r.bet_charged, 2);
   assert.equal(r.total_win, Math.round(r.win_x * 2 * 100) / 100);
-  assert.deepEqual(r.player_state, { meter: 4 });
+  assert.equal(r.meter.before, 4);
+  assert.deepEqual(r.player_state, { embers: r.meter.after });
   assert.equal(r.feature_state, null);
 });
 

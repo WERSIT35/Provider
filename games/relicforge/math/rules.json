@@ -27,6 +27,13 @@
     "inc": 1,
     "line_burst": 2
   },
+  "forge_meter": {
+    "embers_to_fill": 50
+  },
+  "forge": {
+    "free_spins": 10,
+    "scatters_to_trigger": 3
+  },
   "symbols": {
     "low": [
       "COPPER",
@@ -56,6 +63,16 @@
       "GOLD": 3,
       "EMBER": 2,
       "SCATTER": 1
+    },
+    "bonus": {
+      "COPPER": 22,
+      "IRON": 20,
+      "BRONZE": 18,
+      "SILVER": 15,
+      "RUBY": 8,
+      "SAPPHIRE": 6,
+      "EMERALD": 5,
+      "GOLD": 3
     }
   },
   "paytable": {
