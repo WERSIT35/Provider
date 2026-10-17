@@ -146,8 +146,11 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
    * when the round's rules hash is the loaded one (otherwise the scaler may differ).
    */
   function paysFor(round: RoundRecord): { scaler: number; basis: "base" | "free_spin" } | null {
-    if (!round.rules_hash || round.rules_hash !== app.container.engine.rulesHash()) return null;
-    const profile = app.container.engine.getRtpProfile(round.pre_state?.game_code);
+    const gameCode = round.pre_state?.game_code;
+    if (!app.container.games.has(gameCode)) return null;
+    const engine = app.container.games.engineFor(gameCode);
+    if (!round.rules_hash || round.rules_hash !== engine.rulesHash()) return null;
+    const profile = engine.getRtpProfile(gameCode);
     const scaler = Number(round.is_free_spin ? profile.free_spin_payout_scaler : profile.payout_scaler);
     return Number.isFinite(scaler) ? { scaler, basis: round.is_free_spin ? "free_spin" : "base" } : null;
   }
@@ -391,6 +394,10 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const body = (req.body ?? {}) as { code?: string; title?: string };
     if (!body.code || !body.title) {
       return reply.code(422).send(envelope("VALIDATION", "code + title required", req.id));
+    }
+    // A game the RGS has no engine for would be launched and then fail every round.
+    if (!app.container.games.has(body.code)) {
+      return reply.code(422).send(envelope("GAME_ENGINE_NOT_FOUND", `no game in games/ answers to "${body.code}"`, req.id));
     }
     try {
       const g = app.container.mgmt.registerGame({ code: body.code, title: body.title });

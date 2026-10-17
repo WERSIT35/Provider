@@ -1,4 +1,4 @@
-import { EngineService, type SessionSnapshot } from "../engine/engine.service";
+import type { EngineService, EngineSource, SessionSnapshot } from "../engine/engine.service";
 import type { SpinInput, SpinResult } from "../engine/engine.types";
 import { generateSeed, RNG_ALGO } from "../../lib/seeded-rng";
 import { outcomeHash } from "../../lib/outcome-hash";
@@ -20,22 +20,29 @@ export interface AuthoritativeRound {
  * confirms it reproduces the stored hash — the auditability guarantee from plan §5/§8.
  */
 export class AuthoritativeResolver {
-  constructor(private readonly engine: EngineService) {}
+  /** One game's engine, or the GameRegistry (each round resolves with its session's game). */
+  constructor(private readonly engines: EngineSource) {}
 
-  /** Version of the engine this resolver replays with. */
-  engineVersion(): string {
-    return this.engine.engineVersion();
+  /** Version of the engine this resolver replays a game's rounds with (none = Vault 20K). */
+  engineVersion(gameCode?: string | null): string {
+    return this.engines.engineFor(gameCode).engineVersion();
   }
 
-  /** Hash of the rules payload this resolver replays with. */
-  rulesHash(): string {
-    return this.engine.rulesHash();
+  /** Hash of the rules payload this resolver replays a game's rounds with. */
+  rulesHash(gameCode?: string | null): string {
+    return this.engines.engineFor(gameCode).rulesHash();
+  }
+
+  /** The engine of the snapshot's game (its session game code; an RTP variant included). */
+  private engineOf(snapshot: SessionSnapshot): EngineService {
+    return this.engines.engineFor(snapshot.gameId);
   }
 
   resolve(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
-    const { result, bytesDrawn } = this.engine.resolveDeterministic(snapshot, input, seedHex);
-    this.assertPayable(result, input, "spin");
+    const engine = this.engineOf(snapshot);
+    const { result, bytesDrawn } = engine.resolveDeterministic(snapshot, input, seedHex);
+    this.assertPayable(engine, result, input, "spin");
     return {
       seed_hex: seedHex,
       rng_algo: RNG_ALGO,
@@ -48,8 +55,9 @@ export class AuthoritativeResolver {
   /** Server-authoritative Buy-Free-Spins resolution (forces the bonus trigger). */
   resolveBuy(snapshot: SessionSnapshot, input: SpinInput): AuthoritativeRound {
     const seedHex = generateSeed().toString("hex");
-    const { result, bytesDrawn } = this.engine.resolveDeterministicBuy(snapshot, input, seedHex);
-    this.assertPayable(result, input, "buy");
+    const engine = this.engineOf(snapshot);
+    const { result, bytesDrawn } = engine.resolveDeterministicBuy(snapshot, input, seedHex);
+    this.assertPayable(engine, result, input, "buy");
     return {
       seed_hex: seedHex,
       rng_algo: RNG_ALGO,
@@ -66,7 +74,7 @@ export class AuthoritativeResolver {
    * orchestrator's resolve-failure path: the debit is rolled back and nothing is
    * recorded or credited. rgs_engine_integrity_violations_total must stay 0.
    */
-  private assertPayable(result: SpinResult, input: SpinInput, mode: "spin" | "buy"): void {
+  private assertPayable(engine: EngineService, result: SpinResult, input: SpinInput, mode: "spin" | "buy"): void {
     const fail = (check: string, detail: string): never => {
       metrics.engineIntegrity.inc({ check });
       throw new Error(`ENGINE_INTEGRITY:${check}: ${detail}`);
@@ -78,7 +86,7 @@ export class AuthoritativeResolver {
     }
     const win = Number(result.total_win);
     // The cap covers a whole feature round, so no single round can pay more than it.
-    const cap = this.engine.maxWinMultiplier() * input.bet_amount;
+    const cap = engine.maxWinMultiplier() * input.bet_amount;
     if (!Number.isFinite(win) || win < 0 || win > cap + 1e-6) fail("total_win", `win ${result.total_win} outside [0, ${cap}]`);
   }
 
@@ -99,10 +107,11 @@ export class AuthoritativeResolver {
     input: SpinInput,
     mode: "spin" | "buy"
   ): { ok: boolean; recomputed_hash: string; result: SpinResult } {
+    const engine = this.engineOf(snapshot);
     const { result } =
       mode === "buy"
-        ? this.engine.resolveDeterministicBuy(snapshot, input, round.seed_hex)
-        : this.engine.resolveDeterministic(snapshot, input, round.seed_hex);
+        ? engine.resolveDeterministicBuy(snapshot, input, round.seed_hex)
+        : engine.resolveDeterministic(snapshot, input, round.seed_hex);
     const recomputed_hash = outcomeHash(result);
     return { ok: recomputed_hash === round.outcome_hash, recomputed_hash, result };
   }

@@ -6,6 +6,7 @@ COPY platform/package*.json ./platform/
 RUN cd platform && npm ci
 
 COPY client ./client
+COPY games ./games
 COPY platform ./platform
 RUN cd platform && npm run build && npm prune --omit=dev
 
@@ -18,6 +19,7 @@ ENV PORT=8080
 WORKDIR /app
 
 COPY --from=build --chown=node:node /app/client ./client
+COPY --from=build --chown=node:node /app/games ./games
 COPY --from=build --chown=node:node /app/platform/package*.json ./platform/
 COPY --from=build --chown=node:node /app/platform/node_modules ./platform/node_modules
 COPY --from=build --chown=node:node /app/platform/dist ./platform/dist
