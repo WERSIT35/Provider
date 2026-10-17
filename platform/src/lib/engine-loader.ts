@@ -105,8 +105,14 @@ export function loadGameEngine(code: string = DEFAULT_GAME_CODE, opts: { engineD
 
   // The seeded controller must exist before the engine captures `crypto` (rng.js reads it once).
   const crypto = installSeededCrypto();
-  const sandbox: Record<string, unknown> = { crypto, console, setTimeout, clearTimeout };
-  const context = vm.createContext(sandbox, { name: `game:${code}`, codeGeneration: { strings: false, wasm: false } });
+  // DONT_CONTEXTIFY (Node >= 22.8): the context's global is an ordinary object, not a
+  // proxy with interceptors over a sandbox. With a sandbox, every global the engine
+  // touches (Math, Uint32Array, its own namespace) went through those interceptors and a
+  // resolve cost 2.1x more (bench:micro 220 -> 475 us); this way it costs the same.
+  const dontContextify = (vm.constants as unknown as { DONT_CONTEXTIFY?: unknown } | undefined)?.DONT_CONTEXTIFY;
+  const context = vm.createContext((dontContextify ?? {}) as vm.Context, { name: `game:${code}`, codeGeneration: { strings: false, wasm: false } });
+  const sandbox = context as unknown as Record<string, unknown>;
+  Object.assign(sandbox, { crypto, console, setTimeout, clearTimeout });
   for (const file of manifest.engine.files) {
     const filename = path.join(engineDir, file);
     const src = fs.readFileSync(filename, "utf8");

@@ -12,7 +12,7 @@ A server-authoritative slot game (**Vault 20K** by Lumina Games, `6x5`, symbols-
 
 Three consumers load these exact same files, in this exact order, so results are provably identical ("parity"):
 - The **browser client** (`client/index.html` → `client/main.js` = canvas renderer + UI).
-- The **platform RGS** — `platform/src/lib/engine-loader.ts` reads the JS files and runs each game's engine in its OWN `vm` context (globals: the seeded `crypto`, `console`, timers; no `process`/`require`, no eval), so two games never collide on `SlotEngine`.
+- The **platform RGS** — `platform/src/lib/engine-loader.ts` reads the JS files and runs each game's engine in its OWN `vm` context (an ordinary global, `DONT_CONTEXTIFY`: a contextified sandbox made every resolve 2.1x slower; globals: the seeded `crypto`, `console`, timers; no `process`/`require`, no eval), so two games never collide on `SlotEngine`.
 - **`tools/rtp-parity.js`** — seeded, sharded Monte Carlo over the engine (one sample = a paid round incl. its whole bonus, or one bonus buy); passes when |measured − target| ≤ Z·SE and SE ≤ MAX_SE.
 
 When changing math, change it in `client/engine/`, then run `npm run test:rtp-parity`. The engine file list (load order), namespace, rules and client folder live in ONE place: the game's manifest, `games/<code>/game.json` (Vault 20K = `games/bananax`, pointing at `client/engine` and `client/math`); the RGS and `tools/rtp-parity.js` (`GAME_CODE`) both read it.
