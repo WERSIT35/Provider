@@ -209,29 +209,20 @@ const deferredUiAssets = {
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
-const ANIMATION_TIMING = {
-  // Pacing (#48; calmer pace 2026-10-08: players could not keep up). Every
-  // value is a real-time ms budget before turbo (TURBO_SCALE); a Stop
-  // collapses the one it lands in.
-  spinBurst: 420,
-  // GRAVITY (#47): every drop falls under the same gravity, so these three
-  // are equal: the time a full-reel fall (5 rows) takes. Old board out, new
-  // board in, tumble refills. Cascade momentum still quickens a chain.
-  oldBoardDropOff: 480,
-  introDrop: 480,
-  tumbleDrop: 480,
-  // The win beat: the caught cluster is held, glowing, with the rest of the
-  // board stepped back (win focus) for 400-500ms, then it bursts, and the
-  // refill falls in as soon as the burst's symbols are gone (BLAST_GONE),
-  // under the still-flying shards. The opening catch gets the longer hold;
-  // chained catches are snappier so a cascade accelerates.
-  celebrateHoldFirst: 500,
-  celebrateHoldChain: 400,
-  explode: 460
-};
+// Durations live in the shared motion table (client/shell/motion.js, LuminaMotion):
+// one place for every game's timings. The comments below describe what each does.
+const MOTION_TABLE = window.LuminaMotion.game("vault");
+// Pacing (#48; calmer pace 2026-10-08: players could not keep up). Every value is a
+// real-time ms budget before turbo (TURBO_SCALE); a Stop collapses the one it lands in.
+// spinBurst; GRAVITY (#47): oldBoardDropOff = introDrop = tumbleDrop = the time a
+// full-reel fall (5 rows) takes. The win beat: the caught cluster is held, glowing, with
+// the rest of the board stepped back (win focus): celebrateHoldFirst for the opening
+// catch, celebrateHoldChain for chained catches (a cascade accelerates), then it bursts
+// (explode) and the refill falls in as soon as the burst's symbols are gone (BLAST_GONE).
+const ANIMATION_TIMING = MOTION_TABLE.ANIMATION_TIMING;
 // The burst's lead-in (#48): the winners "inhale" for charge[strength] ms
 // before they pop, and on a great win pop in a sweep, burstStaggerMs apart.
-const PACING = { charge: { small: 0, medium: 80, great: 150 }, burstStaggerMs: 6 };
+const PACING = MOTION_TABLE.PACING;
 
 // Reel release (#47). A reel's symbols are all released at the same moment and
 // fall under one gravity (GRAVITY), so the reel falls as a stack: symbols that
@@ -240,7 +231,7 @@ const PACING = { charge: { small: 0, medium: 80, great: 150 }, burstStaggerMs: 6
 // the reels that actually drop: `spinColMs` apart on a spin (each old reel
 // falls out and its new reel follows straight behind it) and `tumbleColMs`
 // apart on a tumble refill. Turbo-scaled; cascade momentum tightens tumbles.
-const WATERFALL = { spinColMs: 100, tumbleColMs: 40 };
+const WATERFALL = MOTION_TABLE.WATERFALL;
 // The reel mask. A symbol IN FLIGHT is clipped to the grid: entering from
 // above, it is only visible below row 0's top edge; leaving on the spin-out,
 // only above the last row's bottom edge. Symbol art is drawn larger than its
@@ -285,7 +276,7 @@ if (window.Sound?.play) {
 
 // Base autoplay: a fixed, NOT turbo-scaled gap between rounds, so the player can
 // read each settled board even at full speed.
-const AUTOPLAY_GAP_MS = 500;
+const AUTOPLAY_GAP_MS = MOTION_TABLE.AUTOPLAY_GAP_MS;
 const fmt = (v) => Number(v || 0).toFixed(2);
 const mfmt = (v) => (Number.isInteger(Number(v || 0)) ? `${Number(v || 0)}x` : `${Number(v || 0).toFixed(1)}x`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -296,7 +287,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // to follow; the shapes and the order of events stay the same). Applied
 // centrally inside the renderer animation methods + animationSleep. A Stop
 // still wins: it slams the board in the air (FAST_ZIP).
-const TURBO_SCALE = 0.6;
+const TURBO_SCALE = MOTION_TABLE.TURBO_SCALE;
 const turboScale = () => (state.turbo ? TURBO_SCALE : 1);
 // Fast-stop / skip (Stop): the board in the air zips into place (FAST_ZIP);
 // a board that starts falling while a Stop is pending is born zipping. Only
@@ -306,7 +297,7 @@ const FAST_STOP_SETTLE_MS = 0;
 // player hammering spin would start fresh PAID spins with taps meant as skips.
 // A manual press this soon after a round settles is treated as a late skip and
 // ignored. Autoplay is unaffected.
-const SPIN_SETTLE_GUARD_MS = 250;
+const SPIN_SETTLE_GUARD_MS = MOTION_TABLE.SPIN_SETTLE_GUARD_MS;
 const FAST_STOP_DROP_MS = 1;
 // For a duration ALREADY turbo-scaled (a renderer method scales its own, so
 // its fx timing and its wait agree): waits it in real time; a Stop pressed
@@ -406,12 +397,12 @@ function dropTravel(t, prof) {
 
 // Cascade momentum: each tumble in a chain falls (and staggers) in `perStep`
 // of the previous one's time, floored so long chains stay readable.
-const TUMBLE_MOMENTUM = { perStep: 0.92, floor: 0.6 };
+const TUMBLE_MOMENTUM = MOTION_TABLE.TUMBLE_MOMENTUM;
 const tumbleTempo = (step) => Math.max(TUMBLE_MOMENTUM.floor, TUMBLE_MOMENTUM.perStep ** Math.max(0, step - 1));
 // Fast-stop zip: every reel still moving zips from where it is into its slot,
 // left to right, the k-th moving reel locking at firstMs + k·colMs (≤ 110ms
 // for six), then a double latch-click (clickGapMs apart) seals the board.
-const FAST_ZIP = { firstMs: 30, colMs: 16, clickGapMs: 50 };
+const FAST_ZIP = MOTION_TABLE.FAST_ZIP;
 // A fast-stop during the spin-out runs the old board's fall this much faster.
 const EXIT_FAST = 6;
 
@@ -449,7 +440,7 @@ const CLUSTER_BLAST = {
 // one scatter short of the trigger, every later column waits (holdMs each,
 // stacking left to right) and falls slower (slowFall ×). Turbo-scaled; a
 // fast-stop cancels it.
-const ANTICIPATION = { holdMs: 650, slowFall: 1.6 };
+const ANTICIPATION = MOTION_TABLE.ANTICIPATION;
 
 // Pure function of the board: columns land left to right, so scan them in that
 // order and find the first column after which the scatters on screen are one
@@ -479,7 +470,7 @@ const MOTION = {
 // A multiplier's landing punch: swells by `scale` and settles over `ms`
 // (sin arc: never below 1, never transparent). Its art is visible the whole
 // fall: no decoy, no hide-and-pop (user: symbols must never vanish).
-const MULTI_PUNCH = { scale: 0.08, ms: 200 };
+const MULTI_PUNCH = MOTION_TABLE.MULTI_PUNCH;
 // Multiplier strike (user, 2026-10-08: the player must not know a multiplier
 // is coming, and it should arrive like a lightning strike). Every board lands
 // FULL: a new multiplier falls in its reel's stack as a stand-in symbol (one
@@ -489,7 +480,7 @@ const MULTI_PUNCH = { scale: 0.08, ms: 200 };
 // flash's peak (flashPeakMs) the art turns into the multiplier (always at
 // full opacity), which then punches and BANGs. Several strike left to right,
 // gapMs apart. Turbo-scaled; a Stop strikes at once (stopMs per strike).
-const STRIKE = { beatMs: 140, gapMs: 160, flickerMs: 60, flashPeakMs: 90, flashMs: 220, stopMs: 120, flash: "#fff4c8" };
+const STRIKE = { ...MOTION_TABLE.STRIKE, flash: "#fff4c8" };
 const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0 });
 
 // Win focus (#55). From the moment a cluster is caught until the board moves
@@ -498,7 +489,7 @@ const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, bre
 // brightest thing on screen. Fades in over inMs, out over outMs (both
 // easeInOutCubic, turbo-scaled) from wherever it is. One fillRect plus each
 // symbol's own globalAlpha: no extra layers, no filters.
-const FOCUS = { dim: 0.4, backdrop: 0.32, inMs: 250, outMs: 260 };
+const FOCUS = MOTION_TABLE.FOCUS;
 
 // A resting board is perfectly still: no idle float, bob or scale wobble on
 // any symbol (user rule 2026-10-08: idle motion looked bad on phones).
@@ -5780,16 +5771,16 @@ function combineLaunchOffset(overlay, leftFrac, node) {
  *  `emptyBadge` (base game): the badge empties as its chip leaves it; in the
  *  bonus it keeps the persistent total. Turbo-scaled (--combine-t). */
 // The Total Win chip's pop peaks 20% into its 1.5s combineTotalIn (styles.css).
-const COMBINE_TOTAL_PEAK_MS = 300;
+const COMBINE_TOTAL_PEAK_MS = MOTION_TABLE.COMBINE.totalPeak;
 function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false } = {}) {
   if (!el.reels?.parentElement) return Promise.resolve();
   const stage = el.reels.parentElement;
   // Phase timings (ms), turbo-scaled; the CSS durations read --combine-t.
   const t = turboScale();
-  const ENTER = Math.round(480 * t);
-  const HOLD  = Math.round(320 * t);
-  const SLAM  = Math.round(360 * t);
-  const REVEAL = Math.round(1500 * t);
+  const ENTER = Math.round(MOTION_TABLE.COMBINE.enter * t);
+  const HOLD  = Math.round(MOTION_TABLE.COMBINE.hold * t);
+  const SLAM  = Math.round(MOTION_TABLE.COMBINE.slam * t);
+  const REVEAL = Math.round(MOTION_TABLE.COMBINE.reveal * t);
   // A VxNotify celebration: built here, removed when its time is up.
   return VxNotify.celebrate("winCombine", stage, (overlay) => {
     overlay.style.setProperty("--combine-t", String(t));
@@ -7672,7 +7663,7 @@ el.psInfoBtn?.addEventListener("click", () => psModal.open("rules", el.psInfoBtn
 //         meter as later tumbles add to it.
 // flash(text) is a transient notice (multiplier locked, feature bought…):
 // shown for its duration, then the current state's line comes back.
-const TICKER = { rotateMs: 4500, flashMinMs: 900 };
+const TICKER = MOTION_TABLE.TICKER;
 /** Free spins left once the one starting now is played (#46): n − 1, never below 0. */
 const freeSpinsRemainingAfter = (left) => Math.max(0, (Number(left) || 0) - 1);
 const ticker = (() => {
@@ -7935,7 +7926,7 @@ reelRenderer.onAnticipation = (phase, ms) => {
 // the timer first yields once (a queued release is dispatched before it decides),
 // and if it still lost the race, the release's timestamp shows a tap: autoplay is
 // cancelled and turbo restored. The round already started is that tap's one spin.
-const SPIN_HOLD_MS = 400;
+const SPIN_HOLD_MS = MOTION_TABLE.SPIN_HOLD_MS;
 const spinHold = { timer: 0, active: false, fired: false, source: "", endedAt: 0, downAt: 0, turboBefore: false, autoplayByHold: false };
 const yieldTask = (fn) => { const ch = new MessageChannel(); ch.port1.onmessage = fn; ch.port2.postMessage(0); };
 
