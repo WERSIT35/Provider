@@ -478,6 +478,31 @@ button:disabled {
   background: linear-gradient(180deg, #ecdcb7, #b89c6d);
 }
 
+.autoplay-limits {
+  display: grid;
+  gap: 6px;
+  font: 600 0.7rem/1.2 "SF Pro Display", "Segoe UI", sans-serif;
+  color: #c7d4ea;
+}
+.autoplay-limits label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+}
+.autoplay-limits select {
+  min-height: 30px;
+  padding: 0 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(165, 203, 255, 0.28);
+  background: rgba(8, 14, 30, 0.9);
+  color: #ecdcb7;
+  font: inherit;
+}
+.autoplay-limits__check { justify-content: flex-start !important; }
+.autoplay-limits input[type="checkbox"] { width: 18px; height: 18px; accent-color: #d9b878; }
+
 /* Richer themed reel frame — warmer inner glow reads more premium. */
 body.public-mode .reels-stage {
   border: 1px solid rgba(245, 214, 169, 0.22);
@@ -1102,6 +1127,27 @@ body.public-mode .ps-slot--mascot {
   text-shadow: none;
 }
 .ps-modal__tab:hover:not(:disabled) { transform: none; filter: none; }
+
+/* ── Settings dialog: device controls (full screen, vibration) ── */
+.ps-settings-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+.ps-settings-controls:not(:has(> :not([hidden]))) { display: none; }
+.ps-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--steel-edge);
+  background: radial-gradient(circle at 50% 30%, var(--bg-panel-raised), var(--bg-gunmetal));
+  color: var(--steel-sheen);
+  font: 700 0.85rem/1 "SF Pro Display", "Segoe UI", sans-serif;
+  box-shadow: none;
+  cursor: pointer;
+}
+.ps-setting[hidden] { display: none; }
+.ps-setting[aria-pressed="true"] { border-color: rgba(255, 226, 138, 0.7); }
+.ps-setting input { width: 18px; height: 18px; accent-color: #d9b878; }
 
 /* ── Deck: system buttons ── */
 body.public-mode .ps-deck-sys {

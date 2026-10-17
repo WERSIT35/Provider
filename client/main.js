@@ -137,7 +137,9 @@ const state = {
   // performance.now() when the last round (or autoplay run) fully settled.
   roundSettledAt: -Infinity,
   autoplayLeft: 0,
-  autoplayInitial: 0
+  autoplayInitial: 0,
+  // The last Free Spins feature's total win (autoplay's win limit counts it with its trigger spin).
+  lastBonusWin: 0
 };
 
 // Single lifecycle lock guarding the whole spin (dropOff → network → animation).
@@ -247,6 +249,38 @@ const WATERFALL = { spinColMs: 100, tumbleColMs: 40 };
 // than its slot (at least the largest overhang, (1.12 - 1) / 2), so not even
 // its bottom edge is inside the grid before it is released.
 const REEL_MASK = { spawnPad: 0.14, settleRows: 0.5 };
+// Haptics: a short buzz on phones at the moments the player feels (navigator.vibrate;
+// iPhone Safari has none, so it is simply absent there). Only on touch devices, never
+// with reduced motion or a hidden page, and the player can switch it off (Settings,
+// remembered). It follows the game's sound events, whatever the sound mute is.
+const Haptics = (() => {
+  const KEY = "vx.haptics";
+  const supported = typeof navigator.vibrate === "function" && window.matchMedia?.("(pointer: coarse)").matches === true;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  let on = true;
+  try { on = localStorage.getItem(KEY) !== "0"; } catch { /* storage blocked: default on */ }
+  // Sound event → vibration pattern (ms). Big wins grow with their tier.
+  const FOR_EVENT = {
+    spin_start: 8, scatter_land: 16, scatter_catch: [20, 40, 20], feature_award: [30, 50, 30, 50, 60],
+    multiplier_strike: 14, combine_slam: 20, win_big: [40, 60, 40], win_mega: [50, 60, 50, 60, 70], win_epic: [60, 50, 60, 50, 60, 50, 120], max_win: [80, 60, 80, 60, 160]
+  };
+  return {
+    supported,
+    get on() { return on; },
+    set(value) { on = Boolean(value); try { localStorage.setItem(KEY, on ? "1" : "0"); } catch { /* not remembered */ } },
+    onEvent(event) {
+      const pattern = FOR_EVENT[event];
+      if (pattern === undefined || !supported || !on || reduce?.matches || document.hidden) return;
+      // In a task after the current handler: the buzz never lengthens a press's input response.
+      setTimeout(() => { try { navigator.vibrate(pattern); } catch { /* blocked (no user gesture yet, or a frame without permission) */ } }, 0);
+    }
+  };
+})();
+if (window.Sound?.play) {
+  const play = window.Sound.play.bind(window.Sound);
+  window.Sound.play = (event, opts) => { Haptics.onEvent(event); return play(event, opts); };
+}
+
 // Base autoplay: a fixed, NOT turbo-scaled gap between rounds, so the player can
 // read each settled board even at full speed.
 const AUTOPLAY_GAP_MS = 500;
@@ -6910,6 +6944,7 @@ async function autoplayBonus() {
       }
       await animationSleep(120);
     }
+    state.lastBonusWin = total; // a base-autoplay win limit counts the bonus with the spin that won it
     window.Sound?.play("fs_outro");
     await showFeature(`Bonus Win ${fmt(total)}`, "Press anywhere to continue.");
     pushGameMessage(`Bonus autoplay complete. Total bonus win: ${fmt(total)}.`, "bonus");
@@ -6974,12 +7009,17 @@ async function startAutoplay(count) {
   state.autoplayLeft = count;
   state.autoplayInitial = count;
   updateAutoplayUi();
+  const limits = autoplayLimits();
+  const startBalance = state.lastBalance;
   try {
     while (state.autoplayActive && state.autoplayLeft > 0 && state.sessionId) {
       if (state.autoplayLeft !== Infinity) state.autoplayLeft -= 1;
       updateAutoplayUi();
+      state.lastBonusWin = 0;
       const payload = await spin({ autoplay: true });
       if (!payload || !state.autoplayActive) break;
+      const stop = autoplayStopReason(limits, startBalance, payload);
+      if (stop) { ticker.flash(`Autoplay stopped · ${stop}`, "info", 2600); break; }
       await sleep(AUTOPLAY_GAP_MS);
     }
   } finally {
@@ -6992,6 +7032,24 @@ async function startAutoplay(count) {
     setControls(false);
     state.roundSettledAt = performance.now();
   }
+}
+
+/** The run's stop conditions, read once when it starts (bet multiples → amounts). */
+function autoplayLimits() {
+  const bet = Number(el.betSelect?.value || 1);
+  const x = (id) => Number(document.getElementById(id)?.value || 0);
+  return { loss: x("apLossLimit") * bet, win: x("apWinLimit") * bet, feature: Boolean(document.getElementById("apStopFeature")?.checked) };
+}
+
+/** Why the run stops after this round, or null. Loss = the balance drop since the
+ *  run began (as the server reports it); a round's win includes the Free Spins it
+ *  triggered (they are played inside spin()). */
+function autoplayStopReason(limits, startBalance, payload) {
+  if (limits.loss > 0 && Number.isFinite(startBalance) && Number.isFinite(state.lastBalance) && startBalance - state.lastBalance >= limits.loss - 1e-9) return "loss limit reached";
+  const win = Number(payload?.total_win || 0) + Number(state.lastBonusWin || 0);
+  if (limits.win > 0 && win >= limits.win - 1e-9) return `win of ${fmt(win)}`;
+  if (limits.feature && Number(payload?.free_spins_awarded || 0) > 0) return "Free Spins won";
+  return null;
 }
 
 function stopAutoplay() {
@@ -7394,6 +7452,33 @@ if (el.soundToggle) {
   });
   window.Sound?.onChange(syncSoundToggle);
   syncSoundToggle();
+}
+// Settings: full screen (only where the page may go full screen: not on iPhone, not in a
+// casino frame without allow="fullscreen") and vibration (only where Haptics works).
+{
+  const fsBtn = document.getElementById("fullscreenBtn");
+  const root = document.documentElement;
+  if (fsBtn && document.fullscreenEnabled && root.requestFullscreen) {
+    fsBtn.hidden = false;
+    const sync = () => {
+      const on = Boolean(document.fullscreenElement);
+      fsBtn.setAttribute("aria-pressed", String(on));
+      fsBtn.textContent = on ? "Exit full screen" : "Full screen";
+    };
+    fsBtn.addEventListener("click", () => {
+      const req = document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen({ navigationUI: "hide" });
+      req?.catch?.(() => {});
+    });
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+  }
+  const hapticsRow = document.getElementById("hapticsRow");
+  const hapticsToggle = document.getElementById("hapticsToggle");
+  if (hapticsRow && hapticsToggle && Haptics.supported) {
+    hapticsRow.hidden = false;
+    hapticsToggle.checked = Haptics.on;
+    hapticsToggle.addEventListener("change", () => { Haptics.set(hapticsToggle.checked); if (hapticsToggle.checked) Haptics.onEvent("spin_start"); });
+  }
 }
 if (el.autoplayBtn) {
   el.autoplayBtn.addEventListener("click", (e) => {

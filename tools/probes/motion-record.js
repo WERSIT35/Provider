@@ -252,8 +252,8 @@ async function writeWebp(frames, file, speed, width) {
 
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
-  const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
+  const chrome = spawn(process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", [
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, ...(process.platform === "linux" ? ["--no-sandbox"] : []),
     "--no-first-run", "--hide-scrollbars", `--force-device-scale-factor=${DPR}`, "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const base = await new Promise((resolve) => {

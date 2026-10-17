@@ -1,6 +1,6 @@
 {
   "name": "client-mobile",
-  "at": "2026-10-17T04:16:46.740Z",
+  "at": "2026-10-17T06:17:22.791Z",
   "node": "v22.22.0",
   "mode": "mobile",
   "throttling": "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU",
@@ -10,55 +10,55 @@
   "spinsRequested": 20,
   "stoppedByTimeBudget": false,
   "roundMs": {
-    "p50": 1979,
-    "max": 19543
+    "p50": 1940,
+    "max": 15846
   },
   "tapsThatDidNotStartASpin": 0,
   "tapsReadAsHoldStartingAutoplay": 0,
-  "holdRacesRecovered": 1,
-  "timeToPlayableMs": 4208,
-  "fcpMs": 3280,
-  "domContentLoadedMs": 3635,
-  "loadEventMs": 4175,
+  "holdRacesRecovered": 0,
+  "timeToPlayableMs": 4271,
+  "fcpMs": 3476,
+  "domContentLoadedMs": 3935,
+  "loadEventMs": 4215,
   "requestsBeforePlayable": 20,
-  "kbBeforePlayable": 328,
-  "kbPerSession": 2197,
+  "kbBeforePlayable": 329,
+  "kbPerSession": 1880,
   "kbByType": {
     "Document": 9,
     "Image": 136,
     "Font": 76,
-    "Stylesheet": 30,
+    "Stylesheet": 31,
     "Script": 72,
-    "Fetch": 1875
+    "Fetch": 1555
   },
-  "firstTapToSpinRequestMs": 5892,
+  "firstTapToSpinRequestMs": 1926,
   "inputEventMs": {
-    "n": 60,
-    "p50": 72,
-    "max": 2824
+    "n": 57,
+    "p50": 64,
+    "max": 2264
   },
   "frames": {
-    "n": 3848,
-    "avgFps": 43,
-    "p95Ms": 33.2,
-    "p99Ms": 250,
-    "over20msPct": 5.1,
-    "over50msPct": 1.95
+    "n": 3546,
+    "avgFps": 53.3,
+    "p95Ms": 16.8,
+    "p99Ms": 50,
+    "over20msPct": 3.8,
+    "over50msPct": 0.96
   },
   "animatingFrames": {
-    "n": 2457,
-    "avgFps": 38.5,
-    "p95Ms": 33.3,
-    "over50msPct": 2.69
+    "n": 2198,
+    "avgFps": 50.8,
+    "p95Ms": 16.8,
+    "over50msPct": 1.27
   },
   "longTasks": {
-    "n": 23,
-    "maxMs": 114,
-    "totalMs": 1466
+    "n": 21,
+    "maxMs": 111,
+    "totalMs": 1291
   },
   "heap": [],
   "requestsBeforePlayableList": [
-    "9.0 KB /play/",
+    "9.4 KB /play/",
     "42.2 KB /play/assets/symbols/Background.webp",
     "11.2 KB /play/assets/symbols/sm/Crown.webp",
     "6.7 KB /play/assets/symbols/sm/HourGlass.webp",
@@ -72,8 +72,8 @@
     "11.1 KB /play/assets/symbols/sm/Scatter.webp",
     "47.6 KB /play/assets/fonts/inter-latin-wght-normal.woff2",
     "28.2 KB /play/assets/fonts/oswald-latin-wght-normal.woff2",
-    "30.3 KB /play/styles.css",
-    "71.6 KB /play/app.bundle.js",
+    "30.6 KB /play/styles.css",
+    "72.4 KB /play/app.bundle.js",
     "1.2 KB /game/v1/session/init",
     "2.5 KB /play/math/game-rules-v2.json",
     "1.1 KB /play/assets/audio/manifest.json",
@@ -83,11 +83,6 @@
     {
       "kb": 684,
       "path": "/play/assets/audio/music/base.ogg",
-      "beforePlayable": false
-    },
-    {
-      "kb": 316,
-      "path": "/play/assets/audio/music/big_win.ogg",
       "beforePlayable": false
     },
     {
@@ -119,6 +114,11 @@
       "kb": 42,
       "path": "/play/assets/symbols/Background.webp",
       "beforePlayable": true
+    },
+    {
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_1.ogg",
+      "beforePlayable": false
     }
   ]
 }

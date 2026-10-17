@@ -215,6 +215,34 @@ async function main() {
       `resolved spins=${calls.spin}`);
     await waitIdle();
 
+    // ── 2b. autoplay stop conditions (Phase 5) ───────────────────────────────
+    // A 1× bet loss limit / a 0.01× bet win limit (options added for the test; the
+    // player's lists are 10×+) end an unlimited run on their own.
+    const runUntilStopped = async (selectId, value) => {
+      await ev(`(() => {
+        for (const id of ["apLossLimit", "apWinLimit"]) document.getElementById(id).value = "0";
+        const sel = document.getElementById(${JSON.stringify(selectId)});
+        sel.add(new Option("test", ${JSON.stringify(value)})); sel.value = ${JSON.stringify(value)};
+        window.__apStart = state.lastBalance; window.__apWins = [];
+        document.getElementById("autoplayBtn").click();
+        document.querySelector('#autoplayPopover button[data-autoplay="inf"]').click();
+      })()`);
+      const until = Date.now() + 90000;
+      while (Date.now() < until && await ev(`state.autoplayActive`)) { await dismissFeature(); await sleep(150); }
+      await waitIdle();
+      return ev(`({ active: state.autoplayActive, start: window.__apStart, now: state.lastBalance, bet: Number(document.getElementById("betSelect").value), ticker: document.getElementById("psTickerText").textContent })`);
+    };
+    const lossRun = await runUntilStopped("apLossLimit", "1");
+    check("autoplay: a loss limit ends an unlimited run once the loss reaches it",
+      !lossRun.active && lossRun.start - lossRun.now >= lossRun.bet - 1e-9 && /loss limit/.test(lossRun.ticker),
+      `start=${lossRun.start} now=${lossRun.now} bet=${lossRun.bet} ticker="${lossRun.ticker}"`);
+    for (let i = 0; i < 40 && await ev(`performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS`); i++) await sleep(25);
+    const winRun = await runUntilStopped("apWinLimit", "0.01");
+    check("autoplay: a win limit ends an unlimited run on a winning spin",
+      !winRun.active && /win of/.test(winRun.ticker), `ticker="${winRun.ticker}"`);
+    await ev(`for (const id of ["apLossLimit", "apWinLimit"]) document.getElementById(id).value = "0";`);
+    for (let i = 0; i < 40 && await ev(`performance.now() - state.roundSettledAt < SPIN_SETTLE_GUARD_MS`); i++) await sleep(25);
+
     // ── 3. BONUS: buy the feature, then hammer spin all the way through ──────
     // Every press during the bought round and during free-spin autoplay must be
     // a fast-stop. The only spin requests allowed are the free spins themselves.
