@@ -27,6 +27,8 @@ describe("password hashing (scrypt)", () => {
     expect(verifyPassword("x", "not-a-hash")).toBe(false);
     expect(verifyPassword("x", "scrypt$16384$zz$zz")).toBe(false);
     const stored = hashPassword("x");
-    expect(verifyPassword("x", stored.slice(0, -2) + "00")).toBe(false);
+    // Change the last two chars to something guaranteed different ("00" alone matched ~1/256 hashes).
+    const tail = stored.slice(-2) === "00" ? "11" : "00";
+    expect(verifyPassword("x", stored.slice(0, -2) + tail)).toBe(false);
   });
 });
