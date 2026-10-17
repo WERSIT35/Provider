@@ -19,6 +19,14 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 
 **Multi-game (Phase 6):** `container.games` (`modules/games/game-registry.ts`) loads every manifest; `engineFor(session.game_code)` picks a round's math (a game answers to its code and each RTP profile's `game_id`, e.g. `bananax_94`). The orchestrator, resolver, round verification and the inspector's pay basis all go through it; `container.engine` = `games.default` (Vault 20K). A game code no engine answers to is refused (`GAME_ENGINE_NOT_FOUND` 422 at registration, `GAME_NOT_FOUND` 404 at session init) — it used to fall back to Vault 20K's default profile silently. Gate: `npx tsx platform/scripts/engine-isolation-parity.ts --spins 10000000` (vm loader vs the old global loader, byte-identical results) and `test/game-registry.test.ts`.
 
+**Stateful games (Relic Forge phase 1, `docs/relic-forge/`):** opt-in engine flags; Vault 20K declares none, so none of its paths, payloads or round hashes change (`test/stateful-game.test.ts` proves it).
+- `USES_FEATURE_STATE`: the engine returns `feature_state` (opaque JSON) → `player_sessions.feature_state` (migration 0015) → back in as `SessionSnapshot.featureState` → `session.featureState`.
+- `USES_PLAYER_STATE`: state per operator + player + game + currency + bet that outlives sessions (the Forge meter). `modules/player-state/player-state.store.ts`, table `player_game_state` (versioned upsert). A row reads back empty under another `rules_hash` (the disclosed reset policy). One round at a time per state (`PLAYER_STATE_BUSY` 409).
+- `SUPPORTS_CHOICE`: `POST /game/v1/spin` takes `choice` (integer). The orchestrator checks it against `engine.choiceOptions(feature_state)` before money moves (`CHOICE_REQUIRED` / `INVALID_CHOICE` 422).
+- Replay: `pre_state.feature_state` / `player_state` / `choice` are recorded only for such games and are used by verification, export and `scripts/relicforge-replay.ts`.
+- `/play/g/<code>/` serves a game's manifest `client` folder. The manifest's `presentation: { turbo, slam_stop }` caps the market's switches (`regulatory.slam_stop_enabled` is new; a missing value follows turbo).
+- Relic Forge (`games/relicforge`, namespace `RelicForge`) has its own engine files and unit tests (`npm run test:relicforge`, `node:test`; part of `verify:release`).
+
 > Exception: `backend/server.js` (the MVP, below) does NOT use the shared engine — it re-implements the math directly from the rules JSON. Treat it as a separate, legacy path.
 
 ## The browser client (presentation rules)
