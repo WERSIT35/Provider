@@ -49,7 +49,16 @@ const ci = path.join(classic, "index.html");
 writeFileSync(ci, readFileSync(ci, "utf8").replaceAll('"/play/', '"/vault/'));
 inject(ci, '<link rel="preload" href="rules.json"', '<script src="engine.js"></script>\n  <script src="/demo/demo.js" data-game="classic"></script>\n  ');
 
-for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp"]) {
+// Relic Forge: its client, its engine files in the manifest's load order, and its rules.
+const rf = path.join(out, "relicforge");
+const rfManifest = JSON.parse(readFileSync(p("games", "relicforge", "game.json"), "utf8"));
+cpSync(p("games", "relicforge", "client"), rf, { recursive: true });
+cpSync(p("games", "relicforge", rfManifest.engine.dir), path.join(rf, "engine"), { recursive: true });
+cpSync(p("games", "relicforge", rfManifest.rules), path.join(rf, "rules.json"));
+const rfTags = rfManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
+inject(path.join(rf, "index.html"), '<script src="game.js">', rfTags + '\n  <script src="/demo/demo.js" data-game="relicforge"></script>\n  ');
+
+for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp"]) {
   if (!existsSync(path.join(out, f))) throw new Error(`missing in the build: ${f}`);
 }
-console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/)`);
+console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/)`);

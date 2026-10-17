@@ -2,8 +2,8 @@
  * Demo mode for the static demo site (tools/build-demo.mjs), never served by the RGS.
  *
  * One play-money balance for every game, kept in this browser (localStorage), that the
- * lobby can reset. Each game page loads this file first, with data-game="vault" or
- * data-game="classic":
+ * lobby can reset. Each game page loads this file first, with data-game="vault",
+ * "classic" or "relicforge":
  *
  *  - vault:   Vault 20K's local engine keeps its session in localStorage
  *             ("bananax.session.v1"). The shared balance is written into it before the
@@ -13,6 +13,9 @@
  *             are answered in the page by the game's own engine (engine.js, the same file
  *             the RGS runs), with the shared balance as the wallet. Same request and
  *             response shapes, so game.js is unchanged.
+ *  - relicforge: the same, with Relic Forge's engine files; the Forge in progress and
+ *             the Forge meter per bet (server-side state on the RGS) are kept in
+ *             localStorage.
  *
  * Play money only: nothing here moves real money, and the outcomes are made in the
  * browser, not by the server as on the real platform.
@@ -150,6 +153,88 @@
         r.round_ref = "DEMO-" + String(r.spin_id).slice(0, 8);
         r.balance = { amount: r.balance_after, currency: engine.session.currency };
         return reply(200, r);
+      });
+    };
+    backLink();
+  }
+
+  if (game === "relicforge") {
+    // As for Classic 5x3: the client's /game/v1/* calls answered in the page by the game's
+    // own engine files (loaded before this script, in the manifest's order). What the RGS
+    // keeps server-side is kept here in localStorage: the Forge in progress (the engine's
+    // feature_state and its locked bet) and the Forge meter per bet.
+    var RF_KEY = "lumina.demo.relicforge";
+    try { sessionStorage.setItem("relicforge.session", "demo"); } catch (e) { /* game.js shows its own message */ }
+    var rfLoad = function () {
+      var s = null;
+      try { s = JSON.parse(store.get(RF_KEY) || "null"); } catch (e) { s = null; }
+      return s && typeof s === "object" ? s : { feature_state: null, bet: null, player_states: {} };
+    };
+    var rfSave = function (s) { store.set(RF_KEY, JSON.stringify(s)); };
+    var rfReady = fetch("rules.json").then(function (r) { return r.json(); }).then(function (rules) {
+      return new window.RelicForge.SpinEngine({ rules: rules });
+    });
+    var rfReply = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { "content-type": "application/json" } }); };
+    var rfSession = function (engine) {
+      var s = rfLoad();
+      var forge = s.feature_state && s.feature_state.forge;
+      var inForge = Boolean(forge && forge.spins_left > 0);
+      return {
+        session_token: "demo", game: { code: "relicforge" }, currency: "GEL",
+        allowed_bets: engine.getAllowedBets(), balance: { amount: read(), currency: "GEL" },
+        free_spins_left: inForge ? forge.spins_left : 0,
+        resume: {
+          resumed: inForge, bet_amount: inForge ? s.bet : s.last_bet || null, ante_enabled: false,
+          feature: inForge ? { free_spins_left: forge.spins_left, locked_bet: s.bet, locked_ante: false, feature_state: s.feature_state } : null,
+          player_states: s.player_states || {}
+        },
+        regulatory: { turbo_enabled: false, slam_stop_enabled: false },
+        embed: { allowed_hosts: [] }
+      };
+    };
+    var rfFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var url = new URL(typeof input === "string" ? input : input.url, location.href);
+      if (url.origin !== location.origin || url.pathname.indexOf("/game/v1/") !== 0) return rfFetch(input, init);
+      var path = url.pathname.slice("/game/v1/".length);
+      return rfReady.then(function (engine) {
+        if (path === "session/init" || path === "session") return rfReply(200, rfSession(engine));
+        if (path === "reality-check/ack") return rfReply(200, { ok: true });
+        if (path !== "spin") return rfReply(404, { error: { code: "NOT_FOUND", message: "not in the demo" } });
+        var body = {};
+        try { body = JSON.parse((init && init.body) || "{}"); } catch (e) { body = {}; }
+        var s = rfLoad();
+        var forge = s.feature_state && s.feature_state.forge;
+        var inForge = Boolean(forge && forge.spins_left > 0);
+        // As the RGS: the Forge plays at its locked bet; a pick is required exactly when an
+        // offer is pending, and must index it.
+        var bet = inForge ? s.bet : Number(body.bet_amount);
+        if (!inForge && engine.getAllowedBets().indexOf(bet) < 0) return rfReply(422, { error: { code: "INVALID_BET" } });
+        var options = engine.choiceOptions(s.feature_state);
+        if (options > 0 && body.choice === undefined) return rfReply(422, { error: { code: "CHOICE_REQUIRED" } });
+        if (body.choice !== undefined && !(Number.isInteger(body.choice) && body.choice >= 0 && body.choice < options)) return rfReply(422, { error: { code: "INVALID_CHOICE" } });
+        var balance = read();
+        if (!inForge && balance < bet) return rfReply(402, { error: { code: "INSUFFICIENT_FUNDS", message: "Not enough demo credit: reset it in the lobby" } });
+        var key = Number(bet).toFixed(2);
+        engine.session = { gameId: "relicforge", featureState: s.feature_state || null, playerState: (s.player_states || {})[key] || null };
+        var input = { bet_amount: bet };
+        if (body.choice !== undefined) input.choice = body.choice;
+        var r;
+        try { r = engine.spin(input); } catch (err) { return rfReply(422, { error: { code: String(err.message || "ROUND_FAILED") } }); }
+        balance = cents(balance - r.bet_charged + r.total_win);
+        write(balance);
+        s.feature_state = r.feature_state || null;
+        if (!r.is_free_spin) {
+          s.bet = bet;
+          s.last_bet = bet;
+          s.player_states = s.player_states || {};
+          if (r.player_state) s.player_states[key] = r.player_state;
+        }
+        if (!s.feature_state) s.bet = null;
+        rfSave(s);
+        r.round_ref = "DEMO-" + String(r.spin_id).slice(0, 8);
+        r.balance = { amount: balance, currency: "GEL" };
+        return rfReply(200, r);
       });
     };
     backLink();
