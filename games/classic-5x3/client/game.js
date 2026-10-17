@@ -175,6 +175,7 @@
         if (t >= 1) { reel.pos = a.to; reel.anim = null; a.done(); } else moving = true;
       }
     }
+    if (!S.rules) return; // a resize before the rules arrived: boot draws the first frame
     draw(now);
     if (moving) kick();
   }

@@ -346,8 +346,10 @@ Run a single platform test: `npx vitest run test/engine.service.test.ts` (add `-
 ## Deployment
 
 The production target is **`platform/`**, not the root MVP server. `netlify.toml` and
-`vercel.json` publish **`client/`** as a static SPA only; use them for a visual/demo page, not for
-the real provider/RGS.
+`vercel.json` publish the **static demo site** built by `node tools/build-demo.mjs` (`dist-demo/`):
+a lobby at `/` (`demo/lobby.html`), Vault 20K at `/vault/` and Classic 5x3 at `/classic/`, with one
+play-money balance (100,000) that the lobby resets (`demo/demo.js`). Rounds there are made in the
+browser by each game's own engine; it is a visual/demo page, not the real provider/RGS.
 
 Release check:
 

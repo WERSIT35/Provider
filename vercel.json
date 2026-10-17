@@ -1,7 +1,6 @@
 {
-  "buildCommand": null,
-  "outputDirectory": "client",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "buildCommand": "node tools/build-demo.mjs",
+  "installCommand": "echo \"no install: the demo build has no dependencies\"",
+  "outputDirectory": "dist-demo",
+  "trailingSlash": true
 }
