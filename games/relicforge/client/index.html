@@ -7,6 +7,7 @@
   <title>Relic Forge</title>
   <link rel="preload" href="rules.json" as="fetch" crossorigin>
   <link rel="preload" href="assets/fonts/cinzel-decorative-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/play/shell/shell.css">
   <style>
     /* Relic Forge: an alchemist's forge from a lost manuscript. Ink, parchment, molten gold.
        Brand sheet: docs/brand/relicforge.md. Cinzel Decorative + Cormorant Garamond + IBM Plex
@@ -33,12 +34,39 @@
     button:disabled { cursor: default; opacity: 0.45; }
     :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
-    .game {
-      position: fixed; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
-      padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
-      opacity: 0; transition: opacity 0.25s;
+    /* The game's stage inside the Lumina Shell (client/shell): the engraved title, the crucible
+       (Forge meter) or the Forge status, the relic plates, and the manuscript page. Every
+       control, readout and dialog is the shell's; this page only themes it. */
+    .rf-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); }
+    body:not(.app-ready) .lsh { visibility: hidden; }
+    /* Shell theme: ink and brass on the desk, parchment controls, a molten-gold seal for Spin. */
+    :root {
+      --lsh-deck: linear-gradient(180deg, #2a1f17, #17110c); --lsh-deck-line: rgba(233, 220, 192, 0.14);
+      --lsh-face: var(--grain), #e9dcc0; --lsh-face-hover: var(--grain), #f3e8cf; --lsh-face-ink: #1c1611;
+      --lsh-ink: #e9dcc0; --lsh-muted: #b5a283; --lsh-win: #ffb000;
+      --lsh-read-bg: var(--grain), #e9dcc0; --lsh-read-ink: #1c1611; --lsh-read-k: #3a332c; --lsh-feature-ink: #8a3a00;
+      --lsh-accent: #ffb000; --lsh-accent-2: #ff5e1a; --lsh-accent-ink: #1c1611;
+      --lsh-spin-face: radial-gradient(circle at 45% 35%, #fff2c4, #ffd25a 30%, #ffb000 60%, #ff5e1a);
+      --lsh-spin-ring: 0 0 0 2px #1c1611, 0 0 0 5px #5a4f45, 0 0 0 6px #000, 0 0 24px rgba(255, 176, 0, 0.5), 0 5px 0 #000;
+      --lsh-sheet: #e9dcc0; --lsh-radius: 4px;
+      --lsh-font-ui: "RF Text", Garamond, Georgia, serif; --lsh-font-num: "RF Num", "Arial Narrow", system-ui, sans-serif;
     }
-    body.app-ready .game { opacity: 1; }
+    .lsh::before { background: var(--lsh-deck); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(233, 220, 192, 0.12); }
+    .lsh-btn { box-shadow: 0 0 0 1.5px #1c1611, 0 3px 0 #000; }
+    .lsh-btn[aria-pressed="true"] { background: linear-gradient(180deg, #ffe08a, #ffb000); color: #1c1611; box-shadow: 0 0 0 1.5px #1c1611, 0 3px 0 #000; }
+    .lsh-read { box-shadow: 0 0 0 1px #000; border-radius: 2px; }
+    .lsh-read__k { letter-spacing: 0.08em; font-weight: 600; }
+    .lsh-ticker { font: italic 600 1.08rem var(--text-face); color: var(--muted); }
+    .lsh-ticker[data-state="win"] { font-style: normal; }
+    .lsh-spin__label { font: 600 0.95rem var(--text-face); letter-spacing: 0.1em; }
+    .lsh-sheet__panel { color: #1c1611; background: var(--grain), #e9dcc0; box-shadow: 0 0 0 2px #1c1611, 0 20px 50px rgba(0, 0, 0, 0.7); --lsh-ink: #1c1611; --lsh-muted: #5c4e3c; --lsh-deck-line: rgba(28, 22, 17, 0.16); --lsh-face: rgba(28, 22, 17, 0.08); --lsh-face-hover: rgba(28, 22, 17, 0.12); --lsh-face-ink: #1c1611; user-select: text; }
+    .lsh-sheet__title { font: 700 1.3rem var(--display); }
+    .lsh-sheet__panel h3 { font: 700 1.02rem var(--display); color: #3a332c; }
+    .lsh-sheet__panel p, .lsh-sheet__panel li { font-size: 1.05rem; line-height: 1.4; color: #3a2f24; }
+    .lsh-sheet__panel table { display: block; overflow-x: auto; }
+    .lsh-sheet__panel td svg { width: 26px; height: 26px; vertical-align: middle; margin-right: 6px; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked { background: #1c1611; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked::after { background: #ffb000; }
 
     /* ── Top: the engraved title, the crucible (Forge meter) or the Forge status, the relic plates. ── */
     .top { position: relative; display: grid; gap: 6px; justify-items: center; min-width: 0; }
@@ -118,66 +146,25 @@
     .banner span { display: block; margin-top: 6px; font: 600 clamp(1.3rem, 5.5vmin, 2.8rem)/1.1 var(--num); color: #8a3a00; font-variant-numeric: tabular-nums; }
     .banner small { display: block; margin-top: 8px; color: var(--iron); font-size: 1rem; }
 
-    @keyframes rf-shake { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-4px, 2px); } 40% { transform: translate(4px, -2px); } 60% { transform: translate(-3px, -1px); } 80% { transform: translate(2px, 1px); } }
-    body.fx .board-wrap.shake { animation: rf-shake 0.32s linear; }
-    body.fx .combo.shake { animation: rf-shake 0.25s linear; }
 
-    /* ── Deck: ink and brass on the desk. ── */
-    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 4px;
-      background: linear-gradient(180deg, #2a1f17, #17110c); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(233, 220, 192, 0.12); }
-    .sys, .play { display: flex; align-items: center; gap: 8px; }
-    .status { min-width: 0; width: 100%; max-width: 460px; justify-self: center; display: grid; gap: 6px; }
-    .msg { height: 1.35em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 1.08rem; color: var(--muted); text-align: center; font-style: italic; }
-    .msg.win { color: var(--gold); font-style: normal; }
-    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; }
-    .readouts div { display: grid; text-align: center; padding: 2px 6px 4px; border-radius: 2px; background: var(--parch) var(--grain); color: var(--ink); min-width: 0; box-shadow: 0 0 0 1px #000; }
-    .readouts span { font-size: 0.78rem; color: var(--iron); }
-    .readouts strong { font: 600 1.02rem/1.15 var(--num); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; display: grid; place-items: center; font: 700 1.1rem var(--text-face); color: var(--ink);
-      background: var(--parch) var(--grain); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 #000; }
-    .icon:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 1.5px var(--ink), 0 1px 0 #000; }
-    /* Spin: a molten-gold seal. */
-    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: var(--ink); font: 600 1.15rem var(--text-face); letter-spacing: 0.08em; text-transform: uppercase;
-      background: radial-gradient(circle at 45% 35%, #fff2c4, #ffd25a 30%, var(--gold) 60%, var(--core));
-      box-shadow: 0 0 0 2px var(--ink), 0 0 0 5px #5a4f45, 0 0 0 6px #000, 0 0 24px rgba(255, 176, 0, 0.5), 0 5px 0 #000; }
-    .spin:not(:disabled):hover { filter: brightness(1.06); }
-    .spin:active:not(:disabled) { transform: translateY(3px); }
-
-    @media (max-width: 560px) {
-      .deck { grid-template-columns: 1fr auto; grid-template-areas: "status status" "sys play"; padding: 10px; }
-      .status { grid-area: status; } .sys { grid-area: sys; } .play { grid-area: play; }
-      .top { padding-top: 30px; }
-    }
-    @media (max-width: 340px) {
-      :root { --btn: 40px; --spin: 62px; }
-    }
+    @media (orientation: portrait) and (max-height: 700px) { .title svg { width: clamp(190px, 58vw, 300px); } }
+    /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the title. */
+    @media (max-width: 560px) { .top { padding-top: 30px; } }
     @media (orientation: landscape) and (max-height: 520px) {
-      .game { grid-template-columns: clamp(150px, 24vw, 230px) minmax(0, 1fr) clamp(170px, 24vw, 220px); grid-template-rows: minmax(0, 1fr); }
-      .top { grid-column: 1; grid-row: 1; align-content: center; padding-top: 34px; }
-      .title svg { width: 100%; }
-      .meter { flex-wrap: wrap; justify-content: center; }
-      .meter-bar { flex-basis: calc(100% - 34px); }
-      .meter-num { min-width: 0; text-align: center; flex-basis: 100%; }
-      .stage { grid-column: 2; grid-row: 1; }
-      .deck { grid-column: 3; grid-row: 1; grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; align-content: center; justify-items: center; gap: 12px; }
-      .status { grid-area: status; } .play { grid-area: play; } .sys { grid-area: sys; }
-      .readouts { grid-template-columns: 1fr 1fr; } .readouts div:first-child { grid-column: 1 / -1; }
-      :root { --spin: 62px; --btn: 40px; }
+      .rf-stage { gap: 4px; }
+      .top { grid-template-columns: auto 1fr; align-items: center; justify-items: start; column-gap: 12px; }
+      .title svg { width: 170px; }
+      .top { padding-left: 84px; }
+      .relics { grid-column: 1 / -1; justify-content: flex-start; }
+      .stage { padding-top: 40px; }
     }
-
     /* Draft, evolution, info, settings, reality check: one modal layer, a parchment leaf. */
-    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(14, 10, 7, 0.82); }
-    .modal[hidden] { display: none; }
-    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 3px; background: var(--grain), var(--parch); color: var(--ink); box-shadow: 0 0 0 2px var(--ink), 0 20px 50px rgba(0, 0, 0, 0.7); padding: 18px; user-select: text; }
-    .sheet h2 { margin: 0 0 4px; font: 700 1.35rem var(--display); color: var(--ink); }
-    .sheet h3 { margin: 16px 0 4px; font: 700 1.02rem var(--display); color: var(--iron); }
-    .sheet p, .sheet li { margin: 6px 0; color: #3a2f24; font-size: 1.05rem; line-height: 1.4; }
-    .sheet .close { float: right; }
+    /* The relic draft (a shell sheet) is wider than the others: three plates side by side. */
+    .lsh-sheet__panel:has(.cards) { width: min(760px, 100%); }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
     @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
     .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 2px; background: #f3e8cf; color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 rgba(0, 0, 0, 0.35); transition: box-shadow 0.15s, transform 0.15s; }
     .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(255, 176, 0, 0.5); }
-    body.fx .card:hover { transform: translateY(-2px); }
     .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 700 1.05rem var(--display); }
     .card h4 small { color: #8a3a00; font: 600 0.85rem var(--num); }
     .card p { margin: 0; font-size: 1rem; color: #2a221a; }
@@ -185,25 +172,21 @@
     .vol { justify-self: start; padding: 1px 8px; border-radius: 2px; font-size: 0.85rem; box-shadow: 0 0 0 1px var(--ink); color: var(--iron); }
     .vol[data-v="low"] { color: var(--verd); } .vol[data-v="medium"] { color: #8a6000; } .vol[data-v="high"] { color: #a83200; }
     table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 8px 0 12px; }
-    .sheet table { display: block; overflow-x: auto; }
     th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(28, 22, 17, 0.15); font-family: var(--num); }
     th:first-child, td:first-child { text-align: left; font-family: var(--text-face); }
     th { color: var(--iron); }
     td svg { width: 26px; height: 26px; vertical-align: middle; margin-right: 6px; }
-    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(28, 22, 17, 0.15); }
-    .toggle button { padding: 6px 14px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ink); }
-    .toggle button[aria-pressed="true"] { background: var(--gold); font-weight: 700; }
-    .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
-    .actions button { padding: 10px 16px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ink); }
-    .actions .primary { background: linear-gradient(180deg, #ffe08a, var(--gold)); font-weight: 700; box-shadow: 0 0 0 1.5px var(--ink); }
-    .evo-moment { text-align: center; padding: 28px 12px; }
+    .evo-moment { position: absolute; inset: 14px; z-index: 6; display: grid; place-content: center; text-align: center; padding: 28px 12px; cursor: pointer;
+      background: radial-gradient(circle at 50% 50%, rgba(255, 224, 138, 0.95), rgba(233, 220, 192, 0.97) 65%); color: var(--ink); }
+    .evo-moment[hidden] { display: none; }
+    .evo-moment p { max-width: 34ch; margin: 10px auto 0; font-size: 1.05rem; color: #3a2f24; }
     .evo-moment b { display: block; font: 700 clamp(2rem, 9vmin, 4.2rem)/1 var(--display); color: var(--ink); text-shadow: 0 0 24px rgba(255, 176, 0, 0.9); }
 
     @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip, .mult { transition: none; } }
   </style>
 </head>
 <body>
-  <div class="game">
+  <div class="rf-stage" id="rfStage">
     <header class="top">
       <div class="lobby-slot"></div>
       <h1 class="title" aria-label="Relic Forge">
@@ -224,9 +207,7 @@
         <span class="meter-num" id="meterText">0 / 40</span>
       </div>
       <div class="forge-bar" aria-live="polite">
-        <span class="pill" id="forgeSpins">Forge spin <b>1</b> / 10</span>
         <span class="pill" id="forgeBonus">Relic bonus <b>×1.00</b></span>
-        <span class="pill" id="forgeTotal">Forge win <b>0.00</b></span>
         <span class="pill meltdown" id="meltdownPill" hidden>Meltdown</span>
       </div>
       <div class="relics" id="relics"></div>
@@ -241,36 +222,18 @@
         <span class="marg bl" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
         <span class="marg br" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
         <div class="banner" id="banner" hidden></div>
+        <div class="evo-moment" id="evoMoment" hidden role="status" aria-live="polite"></div>
       </div>
     </main>
 
-    <footer class="deck">
-      <div class="sys">
-        <button class="icon" id="infoBtn" type="button" aria-label="Game rules">i</button>
-        <button class="icon" id="settingsBtn" type="button" aria-label="Settings">⚙</button>
-      </div>
-      <div class="status">
-        <div class="msg" id="msg" aria-live="polite">Loading…</div>
-        <div class="readouts">
-          <div><span>Balance</span><strong id="balance">—</strong></div>
-          <div><span>Bet</span><strong id="betText">—</strong></div>
-          <div><span>Win</span><strong id="winText">0.00</strong></div>
-        </div>
-      </div>
-      <div class="play">
-        <button class="icon" id="betDown" type="button" aria-label="Lower bet">−</button>
-        <button class="icon" id="betUp" type="button" aria-label="Raise bet">+</button>
-        <button class="spin" id="spinBtn" type="button" disabled>SPIN</button>
-      </div>
-    </footer>
   </div>
-
-  <div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 
   <!-- Its own sounds (audio/, built by tools/build-game-audio.mjs), through the shared engine. -->
   <script>window.VX_AUDIO_BASE = "audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
   <script src="/play/audio/audio.js"></script>
+  <script src="/play/notify.js"></script>
   <script src="/play/shell/motion.js"></script>
+  <script src="/play/shell/shell.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

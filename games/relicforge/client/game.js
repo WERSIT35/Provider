@@ -10,22 +10,20 @@
  *   bet gets no win tier, no Mult colour climax and a flat cascade pitch. The whole round is
  *   known before it is shown, so the gate is decided up front.
  * - No turbo and no slam-stop (the manifest ships both off).
- * - Shake is element-level only (the board or the cascade counter), and off under
- *   prefers-reduced-motion or with Settings → Screen effects off.
- * - Sound: hooks only (`relicforge:sound` events, GDD §8 names); no audio files yet.
+ * - The Lumina Shell (/play/shell/shell.js) owns every control, readout and dialog, the same
+ *   as in every Lumina game; this file owns the stage (title, crucible, relic plates, page).
+ * - Nothing shakes, ever (studio rule): impact is light, ink and sound.
+ * - Sound: its own set through the shared engine; every hook also fires `relicforge:sound`.
  */
 (function () {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
   const el = {
-    board: $("board"), boardWrap: $("boardWrap"), stage: $("stage"), banner: $("banner"),
+    board: $("board"), boardWrap: $("boardWrap"), stage: $("stage"), banner: $("banner"), evo: $("evoMoment"),
     hud: $("hud"), combo: $("combo"), calc: $("calc"), mult: $("mult"),
     meter: $("meter"), meterText: $("meterText"), meterFill: $("meterFill"),
-    forgeSpins: $("forgeSpins"), forgeBonus: $("forgeBonus"), forgeTotal: $("forgeTotal"), meltdownPill: $("meltdownPill"), relics: $("relics"),
-    msg: $("msg"), balance: $("balance"), betText: $("betText"), winText: $("winText"),
-    betDown: $("betDown"), betUp: $("betUp"), spinBtn: $("spinBtn"), infoBtn: $("infoBtn"), settingsBtn: $("settingsBtn"),
-    modal: $("modal"), sheet: $("sheet")
+    forgeBonus: $("forgeBonus"), meltdownPill: $("meltdownPill"), relics: $("relics")
   };
 
   const RELIC_NAMES = { IGNITE: "Ignite", CHAIN: "Chain", EXPAND: "Expand", MAGNET: "Magnet", HOARD: "Hoard", SURGE: "Surge" };
@@ -44,8 +42,11 @@
   const S = {
     token: null, rules: null, profile: null, currency: "", bets: [], betIndex: 0, balance: 0,
     playerStates: {}, forge: null, forgeBet: null, busy: false, rows: 5, cols: 6, cell: 56,
-    board: null, specials: [], lastAnswerAt: 0, minRoundMs: 0, fx: store.get("rf.fx") !== "0"
+    board: null, specials: [], lastAnswerAt: 0, minRoundMs: 0, autoplay: null, drafting: false, paused: false
   };
+  let shell = null;
+  // A free-spins run is ONE lifecycle: no other round may start between its spins (probes read this).
+  window.__spinLifecycle = { get inFlight() { return S.busy; }, get autoplayActive() { return Boolean(S.autoplay); } };
 
   // ── helpers ─────────────────────────────────────────────────────────────
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -54,14 +55,15 @@
   const betKey = (b) => Number(b).toFixed(2);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""));
-  function say(text, win) { el.msg.textContent = text; el.msg.classList.toggle("win", Boolean(win)); }
+  /** The shell's ticker is the one message line. `celebrate` false paints a win line neutral. */
+  function say(text, win, celebrate = true) { if (!shell) return; win ? shell.ticker.win(text, celebrate) : shell.ticker.say(text); }
   // ── sound: Relic Forge's own set (audio/manifest.json), played by the shared engine ──
   // Every hook keeps firing its `relicforge:sound` event; each also voices `rf_<name>`.
   const Sound = window.Sound;
   (function defineSounds() {
     if (!Sound?.defineEvents) return;
     const { semis, colPan } = Sound.util;
-    const WIN = { "Big win": "rf_win_big", "Mega win": "rf_win_mega", "Epic win": "rf_win_epic" };
+    const WIN = { big: "rf_win_big", mega: "rf_win_mega", epic: "rf_win_epic", legendary: "rf_win_epic" };
     Sound.defineEvents({
       rf_click: { minGap: 30, voice: () => ({ key: "ui_click", bus: "ui" }) },
       rf_confirm: { minGap: 60, voice: () => ({ key: "ui_confirm", bus: "ui" }) },
@@ -92,14 +94,6 @@
   function hook(name, detail) {
     dispatchEvent(new CustomEvent("relicforge:sound", { detail: Object.assign({ name }, detail || {}) }));
     sfx("rf_" + name, detail);
-  }
-  function fxOn() { return S.fx && !reduced.matches; }
-  function syncFx() { document.body.classList.toggle("fx", fxOn()); }
-  function shake(node) {
-    if (!fxOn()) return;
-    node.classList.remove("shake");
-    void node.offsetWidth; // restart the animation
-    node.classList.add("shake");
   }
 
   async function api(method, url, body, key) {
@@ -306,8 +300,8 @@
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   const currentBet = () => (S.forge ? S.forgeBet : S.bets[S.betIndex]);
-  function setBalance(v) { S.balance = v; el.balance.textContent = money(v); }
-  function showBet() { el.betText.textContent = money(currentBet()); showMeter(); }
+  function setBalance(v) { S.balance = v; shell.setBalance(v); }
+  function showBet() { shell.setBets(S.bets, S.betIndex); shell.setBet(currentBet()); showMeter(); }
   function showMeter() {
     const full = S.rules?.forge_meter?.embers_to_fill || 40;
     const n = Math.min(full, Number(S.playerStates[betKey(S.bets[S.betIndex])]?.embers || 0));
@@ -321,11 +315,10 @@
   function showForge() {
     document.body.classList.toggle("in-forge", Boolean(S.forge));
     const f = S.forge;
-    if (!f) { el.relics.replaceChildren(); el.meltdownPill.hidden = true; return; }
-    const spinNo = f.spins_total - f.spins_left + 1;
-    el.forgeSpins.innerHTML = `Forge spin <b>${Math.min(spinNo, f.spins_total)}</b> / ${f.spins_total}`;
+    if (!f) { el.relics.replaceChildren(); el.meltdownPill.hidden = true; shell.featureHud(null); return; }
+    // The shell's free-spins HUD takes the bet stepper's place: spins left and the Forge win.
+    shell.featureHud({ left: f.spins_left, win: Number(f.round_x || 0) * S.forgeBet, label: "Spins", winLabel: "Forge win" });
     el.forgeBonus.innerHTML = `Relic bonus <b>×${Number(f.relic_bonus || 1).toFixed(2)}</b>`;
-    el.forgeTotal.innerHTML = `Forge win <b>${money(Number(f.round_x || 0) * S.forgeBet)}</b>`;
     el.meltdownPill.hidden = f.spins_left !== 1;
     relicTray(f.relics, f.evolutions, false);
   }
@@ -343,14 +336,12 @@
     }
     el.relics.innerHTML = chips.join("");
   }
+  /** The shell's controls follow the round: one place decides what the player can press. */
   function setControls() {
-    const idle = !S.busy && el.modal.hidden;
-    el.spinBtn.disabled = !idle;
-    el.spinBtn.textContent = S.forge ? (S.forge.pending_offer ? "PICK" : "SPIN") : "SPIN";
-    el.betDown.disabled = !idle || Boolean(S.forge) || S.betIndex <= 0;
-    el.betUp.disabled = !idle || Boolean(S.forge) || S.betIndex >= S.bets.length - 1;
-    el.infoBtn.disabled = S.busy;
-    el.settingsBtn.disabled = S.busy;
+    if (!shell) return;
+    shell.setPhase(S.autoplay ? "autoplay" : S.busy ? "flight" : S.forge ? "feature" : "ready");
+    shell.setSpinMode(S.autoplay ? "stop" : S.busy ? "wait" : S.forge && S.forge.pending_offer ? "pick" : "spin", S.forge && S.forge.pending_offer && !S.busy ? "PICK" : "");
+    shell.setAutoplay(S.autoplay ? S.autoplay.left : 0);
   }
 
   // ── rules text (from rules.json and the session's profile) ───────────────
@@ -376,35 +367,9 @@
     return "";
   }
 
-  // ── modal ────────────────────────────────────────────────────────────────
-  let modalDone = null;
-  function openModal(html, onClose) {
-    el.sheet.innerHTML = html;
-    el.modal.hidden = false;
-    modalDone = onClose || null;
-    setControls();
-    el.sheet.querySelector("[data-focus]")?.focus() || el.sheet.querySelector("button")?.focus();
-  }
-  function closeModal(reason) {
-    if (el.modal.hidden) return;
-    el.modal.hidden = true;
-    el.sheet.innerHTML = "";
-    const done = modalDone;
-    modalDone = null;
-    setControls();
-    if (done) done(reason);
-  }
-  el.modal.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-close]");
-    if (b) closeModal(b.dataset.close);
-    else if (e.target === el.modal && !el.sheet.querySelector(".cards")) closeModal("backdrop");
-  });
-  addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !el.modal.hidden && !el.sheet.querySelector(".cards")) closeModal("escape");
-    if ((e.key === " " || e.key === "Enter") && el.modal.hidden && document.activeElement === document.body && !el.spinBtn.disabled) { e.preventDefault(); onSpin(); }
-  });
-
-  function openInfo() {
+  // ── rules (the shell's Info sheet) ─────────────────────────────────────
+  /** Rules from rules.json and the session's profile (displayed pays = paid pays). The shell adds the market line and the build footer. */
+  function rulesHtml() {
     const p = S.profile;
     const sizes = PAY_BANDS.map((b) => `<th>${b}</th>`).join("");
     const rowsFor = (scaler) => [...S.rules.symbols.premium.slice().reverse(), ...S.rules.symbols.low.slice().reverse()]
@@ -412,9 +377,7 @@
     const relicRows = Object.keys(RELIC_NAMES).map((r) => `<tr><td>${RELIC_NAMES[r]}</td>${[1, 2, 3].map((l) => `<td style="text-align:left">${esc(relicLevelText(r, l))}</td>`).join("")}</tr>`).join("");
     const evoRows = Object.keys(S.rules.evolutions).map((e) => `<li><b>${EVO_NAMES[e]}</b> (${S.rules.evolutions[e].from.map((r) => RELIC_NAMES[r]).join(" + ")} at Lv3): ${esc(evoText(e))}</li>`).join("");
     const sp = S.rules.specials;
-    openModal(`
-      <button class="icon close" data-close="x" aria-label="Close">✕</button>
-      <h2>Relic Forge rules</h2>
+    return `
       <p>6×5 cluster pays: ${S.rules.layout.min_cluster} or more of a symbol touching up, down, left or right pay. Winning clusters leave, symbols fall, new ones drop in, and the cascade goes on while new clusters form. Each cascade adds to the Mult (×${S.rules.mult.start}, then +${S.rules.mult.inc} per cascade); a cascade that clears a whole row is a Line Burst and pays ×${S.rules.mult.line_burst} for that cascade.</p>
       <p>Specials: a cluster of ${sp.RUNE.min}–${sp.RUNE.max} leaves a Rune (clears its row and column), ${sp.BOMB.min}–${sp.BOMB.max} a Bomb (clears the 3×3 around it), ${sp.PRISM.min}+ a Prism (clears every cell of the most common symbol). Touching specials combine. Cleared cells pay as clusters of their symbol.</p>
       <h3>Pays (× bet, by cluster size)</h3>
@@ -431,25 +394,8 @@
       <p>If you leave during the Forge, it continues when you return. If the game has to finish it for you, the first relic of each choice is taken.</p>
       <h3>Max win and return</h3>
       <p>Wins are capped at ${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}× the bet per round, including the whole Forge. When the cap is reached, the round ends.</p>
-      <p>Theoretical return to player: ${Number(p.theoretical_percent).toFixed(2)}%. Over a short session results vary widely. Every outcome is decided by the server; malfunction voids all pays and plays.</p>
-      <div class="actions"><button class="primary" data-close="ok" data-focus>Close</button></div>`);
+      <p>Theoretical return to player: ${Number(p.theoretical_percent).toFixed(2)}%. Over a short session results vary widely. Every outcome is decided by the server.</p>`;
   }
-  function openSettings() {
-    const pressed = S.fx ? "true" : "false";
-    openModal(`
-      <button class="icon close" data-close="x" aria-label="Close">✕</button>
-      <h2>Settings</h2>
-      <div class="toggle"><span>Screen effects (board shake)${reduced.matches ? " — off: your device asks for reduced motion" : ""}</span><button id="fxToggle" aria-pressed="${pressed}" ${reduced.matches ? "disabled" : ""}>${S.fx ? "On" : "Off"}</button></div>
-      <div class="actions"><button class="primary" data-close="ok" data-focus>Done</button></div>`);
-    $("fxToggle")?.addEventListener("click", (e) => {
-      S.fx = !S.fx;
-      store.set("rf.fx", S.fx ? "1" : "0");
-      e.currentTarget.setAttribute("aria-pressed", String(S.fx));
-      e.currentTarget.textContent = S.fx ? "On" : "Off";
-      syncFx();
-    });
-  }
-
   /** The offer as cards. `info` is the server's offer_next; on a resume it is rebuilt from the stored offer. */
   function openDraft(info) {
     const f = S.forge;
@@ -466,22 +412,23 @@
           if ((f.relics[other] || 0) >= 3) evoHint = `<span class="evo-hint">★ Completes ${EVO_NAMES[name]}: ${esc(evoText(name))}</span>`;
         }
       }
-      return `<button class="card" data-pick="${i}" ${i === 0 ? "data-focus" : ""}>
+      return `<button class="card" data-pick="${i}" data-vx-close="pick-${i}" ${i === 0 ? "data-vx-autofocus" : ""}>
         <h4>${RELIC_NAMES[o.relic]} <small>LV ${lv}</small></h4>
         <p>${esc(relicLevelText(o.relic, lv))}</p>${evoHint}
         ${o.volatility ? `<span class="vol" data-v="${o.volatility}">Volatility · ${o.volatility}</span>` : ""}
       </button>`;
     }).join("");
-    openModal(`
-      <h2>Choose your relic</h2><p>Forge spin ${spinNo} of ${f.spins_total}</p>
+    // A blocking shell sheet: the choice is never auto-made in manual play.
+    S.drafting = true; setControls();
+    shell.ask("Choose your relic", `<p>Forge spin ${spinNo} of ${f.spins_total}</p>
       <p>All three choices are worth the same on average; they differ in how much the result can swing.${f.spins_left === 1 ? " <b>Next is Meltdown:</b> every relic fires." : ""}</p>
-      <div class="cards">${cards}</div>`);
-    el.sheet.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
+      <div class="cards">${cards}</div>`, []).then((reason) => {
+      S.drafting = false;
+      const choice = Number(String(reason).replace("pick-", ""));
+      if (!Number.isInteger(choice)) { setControls(); return; }
       sfx("rf_confirm");
-      const choice = Number(b.dataset.pick);
-      closeModal("pick");
       spin(choice);
-    }));
+    });
   }
 
   // ── banners ──────────────────────────────────────────────────────────────
@@ -495,7 +442,10 @@
       t = setTimeout(done, reduced.matches ? Math.min(ms, T.bannerReducedCap) : ms);
     });
   }
-  function winTier(totalX) { return totalX >= 200 ? "Epic win" : totalX >= 50 ? "Mega win" : totalX >= 10 ? "Big win" : null; }
+  // The shared big-win ladder (LuminaMotion.BIG_WIN, × the bet), named in the forge's voice.
+  const TIER_NAMES = { big: "Well forged", mega: "Master's work", epic: "The Great Work", legendary: "Philosopher's gold" };
+  function winTier(totalX) { const t = window.LuminaMotion.tierFor(totalX); return t ? TIER_NAMES[t.key] : null; }
+  function winTierKey(totalX) { return window.LuminaMotion.tierFor(totalX)?.key || null; }
 
   /** Evolution: 1.5 s full-screen moment, skippable after the player's first view of it. */
   function evolutionMoment(name) {
@@ -504,8 +454,12 @@
     const seen = store.get(key) === "1";
     store.set(key, "1");
     return new Promise((res) => {
-      openModal(`<div class="evo-moment"><b>${EVO_NAMES[name]}</b><p>${esc(evoText(name))}</p>${seen ? '<div class="actions" style="justify-content:center"><button data-close="skip" data-focus>Skip</button></div>' : ""}</div>`, () => res());
-      setTimeout(() => closeModal("timer"), reduced.matches ? T.evolutionReduced : T.evolution);
+      el.evo.innerHTML = `<b>${EVO_NAMES[name]}</b><p>${esc(evoText(name))}</p>`;
+      el.evo.hidden = false;
+      let t = 0;
+      const done = () => { clearTimeout(t); el.evo.hidden = true; el.evo.removeEventListener("click", done); res(); };
+      if (seen) el.evo.addEventListener("click", done); // skippable after the first view
+      t = setTimeout(done, reduced.matches ? T.evolutionReduced : T.evolution);
     });
   }
 
@@ -514,8 +468,9 @@
     const free = Boolean(r.is_free_spin);
     const scaler = free ? S.profile.free_spin_payout_scaler : S.profile.payout_scaler;
     const bonus = free ? Number(r.relic_bonus || 1) : 1;
-    // Celebration gate: a base round below the bet, or a Forge spin below the bet, gets none.
-    const celebrate = Number(r.total_win) >= bet;
+    // Celebration gate (GDD §6, §8, and the market rule RTS 14F / AGCO 2.20): a round that
+    // returns at or below the bet gets no win tier, no Mult climax, a flat cascade pitch.
+    const celebrate = Number(r.total_win) > bet + 1e-9 && shell.celebrates(r.total_win, bet);
 
     if (free) {
       if (r.pick) {
@@ -530,7 +485,6 @@
         document.body.classList.add("meltdown"); say("Meltdown.", true);
         el.meltdownPill.hidden = false;
         relicTray(r.relics, r.evolutions, true);
-        shake(el.boardWrap);
         for (const chip of el.relics.children) {
           chip.classList.add("fire");
           hook("meltdown_fire", { relic: chip.dataset.relic || chip.dataset.evo });
@@ -549,12 +503,11 @@
     }
 
     let running = 0;
-    el.winText.textContent = money(0);
+    shell.setWin(0);
     for (let i = 0; i < r.steps.length; i += 1) {
       const st = r.steps[i];
       el.hud.classList.add("on");
       el.combo.textContent = `Cascade ${i + 1}`;
-      if (i >= 2) shake(el.combo);
       el.mult.textContent = `×${st.mult}`;
       el.mult.dataset.tier = String(multTier(st.mult, celebrate));
       if (multTier(st.mult, celebrate)) hook("mult_tier", { tier: multTier(st.mult, celebrate) });
@@ -566,14 +519,13 @@
       for (const d of st.detonations) {
         mark(d.cells, "blast");
         hook(d.kind.includes("_") ? "combo" : "special_detonate", { kind: d.kind });
-        if (d.kind.includes("_") || d.kind === "PRISM") shake(el.boardWrap);
       }
       if (st.line_burst.length) { burstRows(st.line_burst); hook("line_burst"); }
       if (st.embers_collected.length) { mark(st.embers_collected, "blast"); hook("ember_collect", { n: st.embers_collected.length }); }
       await pace(st.detonations.length ? T.stepHoldDetonation : T.stepHold);
 
       running += st.step_x * scaler * bonus * bet;
-      el.winText.textContent = money(running);
+      shell.setWin(running);
       for (const s of st.specials_created) hook("special_create", { kind: s.kind });
       await pop(st.removed, i);
       await render(st.board, st.specials, { moves: st.moves, drops: st.drops });
@@ -582,50 +534,57 @@
     el.hud.classList.remove("on");
     document.body.classList.remove("meltdown");
     // The server's total is the paid one (capped, rounded); the running figure was the story.
-    el.winText.textContent = money(r.total_win);
+    shell.setWin(r.total_win);
 
     if (r.cap_reached) {
       hook("max_win");
       await banner(`<b>Max win</b><span>${money(r.total_win)}</span><small>${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}× the bet: the round ends here</small>`, T.bannerMaxWin);
     } else if (celebrate && winTier(r.total_win / bet)) {
-      hook("win_tier", { tier: winTier(r.total_win / bet) });
+      hook("win_tier", { tier: winTierKey(r.total_win / bet) });
       await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, T.bannerTier);
     }
     if (r.total_win > 0 && !(celebrate && winTier(r.total_win / bet)) && !r.cap_reached) sfx("rf_win");
-    if (r.total_win > 0) say(`Forged: ${money(r.total_win)}`, celebrate);
+    // The end-of-round line: the win (neutral when it does not celebrate), else the quiet line.
+    if (r.total_win > 0) say(celebrate ? `Forged: ${money(r.total_win)}` : `Credit ${money(r.total_win)}`, true, celebrate);
+    else say(free ? "The hammer rests." : "The forge is cold.");
     // The furnace drone starts once the first round has been shown (not during load).
     if (Sound && !S.musicOn) { S.musicOn = true; Sound.warmMusic?.(); Sound.startMusic?.(); }
-    else say(free ? "The hammer rests." : "The forge is cold.");
   }
 
   // ── spin ─────────────────────────────────────────────────────────────────
   async function onSpin() {
-    if (S.busy || !el.modal.hidden) return;
+    Sound?.unlock?.();
+    if (S.autoplay) { stopAutoplay("stopped"); return; }
+    if (S.busy || S.drafting) return; // no slam stop in this game; a press never starts a round mid-round
     if (S.forge && S.forge.pending_offer) { openDraft(S.lastOffer || null); return; }
     await spin(undefined);
   }
 
   async function spin(choice) {
-    if (S.busy) return;
-    S.busy = true;
-    setControls();
+    if (S.busy || S.paused) return null;
     const bet = currentBet();
     const wasForge = Boolean(S.forge);
+    if (!wasForge && S.balance + 1e-9 < bet) { await notEnoughCredit(); return null; }
+    S.busy = true;
+    setControls();
     try {
       // Pace from the RGS answer, never from the send (the RGS enforces it anyway).
       const wait = S.minRoundMs - (Date.now() - S.lastAnswerAt);
       if (!wasForge && wait > 0) await sleep(wait);
-      if (!wasForge) { setBalance(S.balance - bet); say("The hammer falls…"); }
+      if (!wasForge) { setBalance(S.balance - bet); shell.ticker.spin("The hammer falls…"); }
       sfx("rf_spin");
       let r;
+      shell.waiting(true);
       try {
         r = await api("POST", "/game/v1/spin", Object.assign({ bet_amount: bet }, choice === undefined ? {} : { choice }), uuid());
       } catch (err) {
         if (!wasForge) setBalance(S.balance + bet);
-        if (err.code === "REALITY_CHECK_REQUIRED") { realityCheck(err.details); return; }
-        say(err.code === "INSUFFICIENT_FUNDS" ? "Not enough credit for this bet" : `Round not played (${err.code || err.message})`);
-        return;
+        if (err.code === "REALITY_CHECK_REQUIRED") { await realityCheck(err.details); return null; }
+        if (err.code === "INSUFFICIENT_FUNDS") await notEnoughCredit();
+        else say(`Round not played (${err.code || err.message})`);
+        return null;
       } finally {
+        shell.waiting(false);
         S.lastAnswerAt = Date.now();
       }
       await playRound(r, bet);
@@ -644,6 +603,7 @@
 
       const next = r.feature_state && r.feature_state.forge;
       if (!r.is_free_spin && r.forge_trigger) {
+        if (S.autoplay) stopAutoplay("The Forge started");
         S.forge = next;
         S.forgeBet = bet;
         Sound?.setMusic?.("freeSpins");
@@ -652,56 +612,108 @@
         await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why}. Choose your relic.</small>`, T.bannerForge);
         showForge();
         showBet();
+        S.busy = false;
         openDraft(r.offer_next);
-        return;
+        return r;
       }
       if (r.is_free_spin) {
         if (next) {
           S.forge = next;
           S.lastOffer = r.offer_next;
           showForge();
+          S.busy = false;
           openDraft(r.offer_next);
-          return;
+          return r;
         }
         // The Forge is over (all spins played, or the max win).
         const totalX = Number(r.forge_round_x || 0);
         const total = totalX * S.forgeBet;
+        const celebrate = totalX > 1 + 1e-9 && shell.celebrates(total, S.forgeBet);
         S.forge = null;
         S.lastOffer = null;
         Sound?.setMusic?.("base");
         showForge();
         showBet();
-        const big = totalX >= 1 ? winTier(totalX) : null;
-        if (totalX >= 1) await banner(`<b>${big || "Forge complete"}</b><span>${money(total)}</span><small>Forge total, including the spin that started it</small>`, T.bannerForgeTotal);
+        const big = celebrate ? winTier(totalX) : null;
+        if (celebrate) await banner(`<b>${big || "Forge complete"}</b><span>${money(total)}</span><small>Forge total, including the spin that started it</small>`, T.bannerForgeTotal);
         else await banner(`<span>Forge complete</span><small>Forge total ${money(total)}</small>`, T.bannerForgeEmpty);
-        say(`Forged in all: ${money(total)}`, totalX >= 1);
+        shell.setWin(total); // the Forge's own total, including the spin that started it
+        say(`Forged in all: ${money(total)}`, total > 0, celebrate);
       }
+      return r;
     } finally {
       S.busy = false;
       setControls();
     }
   }
 
-  function realityCheck(details) {
-    const mins = details && details.session_minutes != null ? ` You have played for ${Math.round(details.session_minutes)} minutes.` : "";
-    openModal(`<h2>Reality check</h2><p>Time for a break?${mins}</p><div class="actions"><button data-close="leave">Leave the game</button><button class="primary" data-close="continue" data-focus>Keep playing</button></div>`, async (reason) => {
-      if (reason === "leave") { say("You can close the game now"); return; }
-      await api("POST", "/game/v1/reality-check/ack", {}, uuid()).catch(() => {});
-      say("The forge is cold.");
-    });
+  // ── autoplay (base spins only: the Forge's relic choices are always the player's) ──
+  function stopAutoplay(why) {
+    if (!S.autoplay) return;
+    S.autoplay = null; setControls();
+    if (why) say(`Autoplay stopped · ${why}`);
+  }
+  async function startAutoplay(n, limits) {
+    if (S.autoplay || S.busy || S.forge || S.paused || !shell.rule("autoplay_enabled", true)) return;
+    const cap = shell.autoplayCap();
+    const count = cap === null ? n : Math.min(n, cap);
+    if (!(count > 0)) return;
+    const bet = currentBet();
+    S.autoplay = { left: count, startBalance: S.balance, limits: { loss: Number(limits?.lossX || 0) * bet, win: Number(limits?.winX || 0) * bet, feature: Boolean(limits?.feature) } };
+    setControls();
+    while (S.autoplay && S.autoplay.left > 0 && !S.forge) {
+      if (S.autoplay.left !== Infinity) S.autoplay.left--;
+      setControls();
+      const r = await spin(undefined);
+      if (!r) { stopAutoplay(); break; }
+      const a = S.autoplay; if (!a) break;
+      if (a.limits.loss > 0 && a.startBalance - S.balance >= a.limits.loss - 1e-9) { stopAutoplay("loss limit reached"); break; }
+      if (a.limits.win > 0 && Number(r.total_win || 0) >= a.limits.win - 1e-9) { stopAutoplay(`win of ${money(r.total_win)}`); break; }
+      await sleep(400);
+    }
+    stopAutoplay();
   }
 
-  // ── controls ─────────────────────────────────────────────────────────────
-  el.spinBtn.addEventListener("click", onSpin);
-  el.betDown.addEventListener("click", () => { if (S.betIndex > 0) { S.betIndex -= 1; sfx("rf_click"); showBet(); setControls(); } });
-  el.betUp.addEventListener("click", () => { if (S.betIndex < S.bets.length - 1) { S.betIndex += 1; sfx("rf_click"); showBet(); setControls(); } });
-  el.infoBtn.addEventListener("click", openInfo);
-  el.settingsBtn.addEventListener("click", openSettings);
-  reduced.addEventListener?.("change", syncFx);
+  async function notEnoughCredit() {
+    shell.setPhase("broke");
+    await shell.notice("Not enough credit", `<p>Your balance is ${money(S.balance)} and the bet is ${money(currentBet())}. Lower the bet with − or the Bet readout, or add funds at the casino.</p>`);
+    setControls();
+  }
+
+  async function realityCheck(details) {
+    stopAutoplay();
+    const mins = details && details.elapsed_ms != null ? ` You have played for ${Math.round(details.elapsed_ms / 60000)} minutes.` : "";
+    const choice = await shell.ask("Reality check", `<p>Time for a break?${mins}</p>`, [{ reason: "leave", label: "Leave the game" }, { reason: "continue", label: "Keep playing", primary: true }]);
+    if (choice !== "continue") { S.paused = true; say("You can close the game now"); return; }
+    await api("POST", "/game/v1/reality-check/ack", {}, uuid()).catch(() => {});
+    say("The forge is cold.");
+  }
+
+  function setBetIndex(i) {
+    if (S.busy || S.forge || S.autoplay || i === S.betIndex || i < 0 || i >= S.bets.length) return;
+    const cap = Number(shell.rule("max_stake", 0)) || 0;
+    if (cap > 0 && S.bets[i] > cap + 1e-9) { shell.ticker.flash(`The maximum stake here is ${money(cap)}`, "info", 1800); return; }
+    S.betIndex = i; sfx("rf_click"); showBet(); setControls();
+  }
+
+  // ── the shell ────────────────────────────────────────────────────────────
+  shell = window.LuminaShell.mount({
+    game: "relicforge", stage: $("rfStage"),
+    features: { buy: false, ante: false, autoplay: true, turbo: true, stop: false },
+    fmt: money,
+    build: { title: "Relic Forge" },
+    on: {
+      spin: () => onSpin(),
+      betStep: (d) => setBetIndex(S.betIndex + d),
+      betIndex: (i) => setBetIndex(i),
+      autoplay: (n, limits) => startAutoplay(n, limits),
+      autoplayStop: () => stopAutoplay("stopped"),
+      info: () => rulesHtml()
+    }
+  });
 
   // ── boot ─────────────────────────────────────────────────────────────────
   async function boot() {
-    syncFx();
     const KEY = "relicforge.session";
     const lt = new URLSearchParams(location.search).get("lt");
     const rulesP = fetch("rules.json", { credentials: "same-origin", mode: "cors" }).then((r) => r.json());
@@ -726,8 +738,10 @@
     S.rules = await rulesP;
     S.profile = S.rules.rtp_profiles.find((p) => p.game_id === session.game?.code) || S.rules.rtp_profiles[0];
     S.currency = session.currency;
+    shell.setCurrency(S.currency);
+    shell.applyMarket(session.regulatory || {});
     S.bets = session.allowed_bets.slice().sort((a, b) => a - b);
-    S.minRoundMs = Number(session.regulatory?.min_round_ms || 0);
+    S.minRoundMs = Number(shell.rule("min_round_ms", 0)) || 0;
     S.playerStates = Object.assign({}, session.resume?.player_states || {});
     const feature = session.resume?.feature;
     const forge = feature?.feature_state?.forge;
@@ -747,6 +761,7 @@
     await render(idle, [], null);
     showBet();
     showForge();
+    shell.setWin(0);
     document.body.classList.add("app-ready");
     performance.mark("app-ready");
     setControls();
@@ -755,7 +770,7 @@
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
     if (S.forge) { say("The Forge still burns. Choose your relic."); openDraft(null); }
-    else say("The forge is cold.");
+    else shell.ticker.idle(["The forge is cold."]);
   }
   boot().catch((err) => { say(`Could not start the game (${err.code || err.message})`); document.body.classList.add("app-ready"); });
 })();
