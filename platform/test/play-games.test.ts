@@ -43,6 +43,8 @@ describe("/play serves each game its own client", () => {
     const vaultDirect = await app.inject({ method: "GET", url: `/play?lt=${launch("bananax")}` });
     expect(vaultDirect.statusCode).toBe(200);
     expect(vaultDirect.body).toContain("app.bundle.js");
+    // A real <base>, so the preload scanner resolves the page's relative URLs under /play/.
+    expect(vaultDirect.body).toMatch(/<head>\s*<base href="\/play\/">/);
     expect(vaultDirect.headers["content-security-policy"]).toContain("frame-ancestors");
     const vault = await app.inject({ method: "GET", url: `/play/?lt=${launch("bananax")}` });
     expect(vault.statusCode).toBe(200);

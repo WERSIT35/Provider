@@ -8,7 +8,7 @@ import { verifyToken } from "../lib/tokens";
 /**
  * Player-facing game client — the real Banana X canvas game in `client/`.
  *
- *   /play                  same as /play/ (no redirect; the page sets its own <base href>)
+ *   /play                  same page as /play/ with <base href="/play/"> (no redirect round trip)
  *   /play/                 serves client/index.html (with ?lt=… preserved)
  *   /play/<sub/path>       serves client/<sub/path>
  *
@@ -264,13 +264,23 @@ const playPageRoutes: FastifyPluginAsync = async (app) => {
   // "/play" into "/play/", so every relative path still resolves into this handler, and
   // the casino's launch URL costs no redirect (a round trip, 562 ms on Slow 4G). Another
   // game's launch goes straight to its own folder (one redirect).
+  let slashless: { from: Asset; asset: Asset } | null = null; // /play's page with its <base>, made once per edit
   app.get("/play", async (req, reply) => {
     const search = (req.raw.url || "").includes("?") ? (req.raw.url as string).slice((req.raw.url as string).indexOf("?")) : "";
     const game = gameOf(launchToken(req));
     if (game && game !== app.container.games.default.gameCode) return reply.code(302).header("location", `/play/g/${game}/${search}`).send();
-    return serveFile(root, "index.html", req, reply, framingHeaders(app, launchToken(req)));
+    // A real <base href="/play/"> in the HTML: the browser's preload scanner reads the
+    // page before any script runs, so without it the preloads resolved against "/play"
+    // (to /assets/…, 404) and every critical asset was fetched twice.
+    const index = await loadAsset(root, "index.html");
+    if (!index) return notFound(reply);
+    const page = (await bundleFor(root, index))?.html ?? index;
+    if (slashless?.from !== page) {
+      const html = page.body.toString("utf8").replace(/<head>/i, '<head>\n    <base href="/play/">');
+      slashless = { from: page, asset: makeAsset(".html", Buffer.from(html), page.mtimeMs) };
+    }
+    return send(req, reply, slashless.asset, framingHeaders(app, launchToken(req)));
   });
-
   // Multi-game: a launch for another game than Vault 20K goes to that game's own client,
   // /play/g/<code>/ (served from games/<code>/<client>), with the same query (?lt=…).
   const gameOf = (lt: unknown): string | null => {
