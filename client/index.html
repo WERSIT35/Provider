@@ -270,6 +270,16 @@
                         <button type="button" data-autoplay="50">50</button>
                         <button type="button" data-autoplay="inf">&#8734;</button>
                       </div>
+                      <!-- Stop conditions, read when a run starts (startAutoplay). Bet multiples. -->
+                      <div class="autoplay-limits">
+                        <label>Stop if loss reaches
+                          <select id="apLossLimit"><option value="0">No limit</option><option value="10">10× bet</option><option value="25">25× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select>
+                        </label>
+                        <label>Stop on a win of
+                          <select id="apWinLimit"><option value="0">No limit</option><option value="10">10× bet</option><option value="50">50× bet</option><option value="100">100× bet</option><option value="500">500× bet</option></select>
+                        </label>
+                        <label class="autoplay-limits__check"><input type="checkbox" id="apStopFeature"> Stop when Free Spins are won</label>
+                      </div>
                     </div>
                   </div>
                   <button id="turboBtn" type="button" class="tool-btn" aria-label="Turbo spin" aria-pressed="false">
@@ -493,10 +503,16 @@
           </section>
           <section class="ps-modal__section" data-ps-section-id="settings" hidden>
             <h3>Settings</h3>
+            <!-- Shown only where the device supports them (main.js: fullscreen, Haptics). -->
+            <div class="ps-settings-controls">
+              <button type="button" id="fullscreenBtn" class="ps-setting" aria-pressed="false" hidden>Full screen</button>
+              <label class="ps-setting" id="hapticsRow" hidden><input type="checkbox" id="hapticsToggle" checked> Vibration</label>
+            </div>
             <ul>
               <li><strong>Sound:</strong> the speaker button turns all game sound on or off. Your choice is remembered on this device.</li>
               <li><strong>Turbo:</strong> the Turbo button makes every animation faster. Press it again to return to normal speed.</li>
               <li><strong>Quick stop:</strong> press Spin while the symbols are falling to land the board at once.</li>
+              <li><strong>Full screen / Vibration:</strong> shown when your device supports them. Vibration gives a short buzz on a spin, a Scatter landing, Free Spins and big wins; your choice is remembered on this device.</li>
               <li><strong>Space bar:</strong> press to spin. Hold it to switch on Turbo and start Autoplay.</li>
             </ul>
             <p>Turbo and quick stop only change how fast a spin is shown. They never change its result.</p>
@@ -520,7 +536,8 @@
               <li>you press Autoplay or Spin again (the current spin still finishes);</li>
               <li>the chosen number of spins has been played;</li>
               <li>a spin cannot be played, for example when the balance is too low;</li>
-              <li>the casino pauses the game or a session reminder is shown.</li>
+              <li>the casino pauses the game or a session reminder is shown;</li>
+              <li>a stop condition you chose is met: your loss in this run reaches the limit, one spin wins at least the amount you set (Free Spins count as part of the spin that won them), or Free Spins are won (after they are played).</li>
             </ul>
             <p>If Free Spins are won during Autoplay, they are played first. Autoplay then continues.</p>
             <p>Autoplay may not be available, or may be limited to fewer spins, in some markets.</p>

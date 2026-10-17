@@ -23,6 +23,7 @@
 //
 //   node tools/layout-check.js            # all viewports
 //   PORT=3111 node tools/layout-check.js  # pick the static port
+//   ONLY=4K node tools/layout-check.js    # only viewports whose name contains this
 
 const http = require("http");
 const path = require("path");
@@ -45,7 +46,11 @@ const VIEWPORTS = [
   { name: "tablet landscape (1024x768)", w: 1024, h: 768 },
   { name: "desktop narrow (1280x720)", w: 1280, h: 720 },
   { name: "desktop (1920x1080)", w: 1920, h: 1080 },
-  { name: "ultra-wide short (2560x900)", w: 2560, h: 900 }
+  { name: "ultra-wide short (2560x900)", w: 2560, h: 900 },
+  { name: "4K (3840x2160)", w: 3840, h: 2160 },
+  // Notched phones: the safe-area insets are emulated (CDP), so env(safe-area-inset-*) is real.
+  { name: "notched phone portrait (393x852, safe areas)", w: 393, h: 852, safe: { top: 59, bottom: 34, left: 0, right: 0 } },
+  { name: "notched phone landscape (852x393, safe areas)", w: 852, h: 393, safe: { top: 0, bottom: 21, left: 59, right: 59 } }
 ];
 
 let failures = 0;
@@ -251,13 +256,18 @@ async function main() {
     await cdp.send("Runtime.enable");
     await cdp.send("Page.enable");
 
-    for (const vp of VIEWPORTS) {
+    for (const vp of VIEWPORTS.filter((v) => !process.env.ONLY || v.name.includes(process.env.ONLY))) {
       console.log(`\n${vp.name}`);
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: vp.w, height: vp.h, deviceScaleFactor: 1,
         mobile: vp.w < 820,
         screenWidth: vp.w, screenHeight: vp.h
       });
+      // Safe areas: set for a notched viewport, cleared for the rest. A Chrome without
+      // the command cannot emulate a notch: that viewport is then reported, not passed.
+      let safeOk = true;
+      await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: vp.safe ?? {} }).catch(() => { safeOk = false; });
+      if (vp.safe && !safeOk) { check(`${vp.name}: this Chrome can emulate safe-area insets (Emulation.setSafeAreaInsetsOverride)`, false); continue; }
       await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/index.html` });
       // Wait for the renderer to have laid the board out at this size. The
       // ResizeObserver is debounced 150ms, so poll rather than guess.
@@ -272,7 +282,8 @@ async function main() {
         if (ready) break;
       }
       if (!ready) { check(`${vp.name}: game reached a laid-out state`, false); continue; }
-      await sleep(400); // let the debounced resize settle
+      // Let the debounced resize settle; a 4K frame rasterizes slowly in software (CI), so longer there.
+      await sleep(vp.w * vp.h > 4e6 ? 1500 : 400);
 
       // ---- 1. aspect ratio + no collapse -----------------------------------
       const base = await measure(cdp);
@@ -289,6 +300,18 @@ async function main() {
       check("no top bar: the board column starts with the board",
         !base.topBar && base.window.y - base.center.y <= EPS,
         `window.y=${base.window.y} center.y=${base.center.y}`);
+      if (vp.safe) {
+        // Nothing the player reads or touches sits under the notch or the home bar.
+        const inside = await evaluate(cdp, `(() => {
+          const s = ${JSON.stringify(vp.safe)}; const W = innerWidth, H = innerHeight; const bad = [];
+          for (const sel of [".reels-stage", "#psTicker", "#spinBtn", "#psMenuBtn", "#betUpBtn", "#betDownBtn", "#autoplayBtn"]) {
+            const e = document.querySelector(sel); if (!e || !e.offsetParent) continue; const r = e.getBoundingClientRect();
+            if (r.top < s.top - 0.5 || r.left < s.left - 0.5 || r.right > W - s.right + 0.5 || r.bottom > H - s.bottom + 0.5) bad.push(sel + " " + [r.left, r.top, r.right, r.bottom].map(Math.round).join(","));
+          }
+          return bad;
+        })()`);
+        check("notch-safe: board and controls inside the safe area", inside.length === 0, inside.join("; "));
+      }
       check("ticker visible (the only message line)", base.ticker && base.ticker.w > 40 && base.ticker.h > 4,
         base.ticker ? fmtBox(base.ticker) : "missing");
 
