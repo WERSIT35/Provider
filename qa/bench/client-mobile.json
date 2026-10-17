@@ -1,65 +1,66 @@
 {
   "name": "client-mobile",
-  "at": "2026-10-17T06:17:22.791Z",
+  "at": "2026-10-17T11:59:40.387Z",
   "node": "v22.22.0",
   "mode": "mobile",
   "throttling": "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU",
   "chrome": "HeadlessChrome/153.0.8010.0",
   "tier": "perf-low perf-handheld",
-  "spins": 20,
-  "spinsRequested": 20,
+  "spins": 5,
+  "spinsRequested": 5,
   "stoppedByTimeBudget": false,
   "roundMs": {
-    "p50": 1940,
-    "max": 15846
+    "p50": 2006,
+    "max": 23466
   },
-  "tapsThatDidNotStartASpin": 0,
+  "tapsThatDidNotStartASpin": 1,
   "tapsReadAsHoldStartingAutoplay": 0,
   "holdRacesRecovered": 0,
-  "timeToPlayableMs": 4271,
-  "fcpMs": 3476,
-  "domContentLoadedMs": 3935,
-  "loadEventMs": 4215,
+  "timeToPlayableMs": 3380,
+  "playableMarkMs": null,
+  "fcpMs": 2980,
+  "domContentLoadedMs": 3182,
+  "loadEventMs": 3337,
   "requestsBeforePlayable": 20,
-  "kbBeforePlayable": 329,
-  "kbPerSession": 1880,
+  "kbBeforePlayable": 272,
+  "kbPerSession": 1708,
   "kbByType": {
     "Document": 9,
-    "Image": 136,
-    "Font": 76,
-    "Stylesheet": 31,
+    "Image": 123,
+    "Font": 46,
+    "Stylesheet": 16,
     "Script": 72,
-    "Fetch": 1555
+    "Fetch": 1441
   },
-  "firstTapToSpinRequestMs": 1926,
+  "firstTapToSpinRequestMs": 18005,
   "inputEventMs": {
-    "n": 57,
-    "p50": 64,
-    "max": 2264
+    "n": 18,
+    "p50": 104,
+    "max": 3088
   },
   "frames": {
-    "n": 3546,
-    "avgFps": 53.3,
-    "p95Ms": 16.8,
-    "p99Ms": 50,
-    "over20msPct": 3.8,
-    "over50msPct": 0.96
+    "n": 911,
+    "avgFps": 39.4,
+    "p95Ms": 50,
+    "p99Ms": 233.3,
+    "over20msPct": 12,
+    "over50msPct": 4.17
   },
   "animatingFrames": {
-    "n": 2198,
-    "avgFps": 50.8,
-    "p95Ms": 16.8,
-    "over50msPct": 1.27
+    "n": 400,
+    "avgFps": 29.3,
+    "p95Ms": 99.9,
+    "over50msPct": 8.25
   },
   "longTasks": {
-    "n": 21,
-    "maxMs": 111,
-    "totalMs": 1291
+    "n": 9,
+    "maxMs": 102,
+    "totalMs": 588
   },
   "heap": [],
   "requestsBeforePlayableList": [
-    "9.4 KB /play/",
-    "42.2 KB /play/assets/symbols/Background.webp",
+    "9.5 KB /play",
+    "28.5 KB /play/assets/symbols/sm/Background.webp",
     "11.2 KB /play/assets/symbols/sm/Crown.webp",
     "6.7 KB /play/assets/symbols/sm/HourGlass.webp",
     "8.1 KB /play/assets/symbols/sm/Ring.webp",
@@ -70,10 +71,10 @@
     "3.3 KB /play/assets/symbols/sm/GreenGem.webp",
     "4.9 KB /play/assets/symbols/sm/BlueGem.webp",
     "11.1 KB /play/assets/symbols/sm/Scatter.webp",
-    "47.6 KB /play/assets/fonts/inter-latin-wght-normal.woff2",
-    "28.2 KB /play/assets/fonts/oswald-latin-wght-normal.woff2",
-    "30.6 KB /play/styles.css",
-    "72.4 KB /play/app.bundle.js",
+    "27.4 KB /play/assets/fonts/inter-sub-wght-400-900.woff2",
+    "19.0 KB /play/assets/fonts/oswald-sub-wght-400-700.woff2",
+    "16.1 KB /play/styles.css",
+    "72.5 KB /play/app.bundle.js",
     "1.2 KB /game/v1/session/init",
     "2.5 KB /play/math/game-rules-v2.json",
     "1.1 KB /play/assets/audio/manifest.json",
@@ -96,28 +97,28 @@
       "beforePlayable": true
     },
     {
-      "kb": 48,
-      "path": "/play/assets/fonts/inter-latin-wght-normal.woff2",
-      "beforePlayable": true
-    },
-    {
       "kb": 46,
       "path": "/play/assets/audio/sfx/feature_award_1.ogg",
       "beforePlayable": false
     },
     {
-      "kb": 45,
-      "path": "/play/assets/audio/sfx/max_win_1.ogg",
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_1.ogg",
       "beforePlayable": false
     },
     {
-      "kb": 42,
-      "path": "/play/assets/symbols/Background.webp",
-      "beforePlayable": true
+      "kb": 41,
+      "path": "/play/assets/audio/sfx/scatter_catch_2.ogg",
+      "beforePlayable": false
     },
     {
-      "kb": 41,
-      "path": "/play/assets/audio/sfx/scatter_catch_1.ogg",
+      "kb": 40,
+      "path": "/play/assets/audio/sfx/fs_outro_1.ogg",
+      "beforePlayable": false
+    },
+    {
+      "kb": 38,
+      "path": "/play/assets/audio/sfx/fs_intro_1.ogg",
       "beforePlayable": false
     }
   ]
