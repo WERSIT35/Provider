@@ -59,16 +59,39 @@ describe("jurisdiction profiles", () => {
     expect(buildRegulatoryProfile({ preset: "MGA", reality_check_minutes: 30 })).toMatchObject({ jurisdiction: "MGA", reality_check_minutes: 30 });
     // Autoplay off forces the cap to 0.
     expect(buildRegulatoryProfile({ autoplay_enabled: false, max_autoplay_spins: 50 }).max_autoplay_spins).toBe(0);
-    for (const bad of [{ preset: "XX" }, { min_round_ms: -1 }, { min_round_ms: 1.5 }, { reality_check_minutes: 0 }, { turbo_enabled: "no" }, { jurisdiction: "a b" }, { max_autoplay_spins: 2.5 }]) {
+    for (const bad of [{ preset: "XX" }, { min_round_ms: -1 }, { min_round_ms: 1.5 }, { reality_check_minutes: 0 }, { turbo_enabled: "no" }, { jurisdiction: "a b" }, { max_autoplay_spins: 2.5 },
+      { celebrate_threshold: "never" }, { max_stake: 0 }, { max_stake: "5" }, { max_stake_young: -2 }, { session_hud: "banner" }, { rtp_display: "popup" }, { no_input_queue: "yes" }]) {
       expect(() => buildRegulatoryProfile(bad as never), JSON.stringify(bad)).toThrow(/REGULATORY_INVALID/);
     }
+  });
+
+  it("market presets carry the client switches (celebration, stake cap, session strip, RTP display, input)", () => {
+    for (const [name, p] of Object.entries(REGULATORY_PRESETS)) {
+      expect(p.jurisdiction).toBe(name);
+      expect(["any", "gt_stake"]).toContain(p.celebrate_threshold);
+      expect(p.no_input_queue).toBe(true);
+      if (!p.autoplay_enabled) expect(p.max_autoplay_spins).toBe(0);
+    }
+    expect(REGULATORY_PRESETS.UKGC).toMatchObject({ celebrate_threshold: "gt_stake", max_stake: 5, max_stake_young: 2, session_hud: "net_time", turbo_enabled: false, slam_stop_enabled: false });
+    expect(REGULATORY_PRESETS.ON).toMatchObject({ min_round_ms: 2500, autoplay_enabled: false, celebrate_threshold: "gt_stake", session_hud: "net_time" });
+    expect(REGULATORY_PRESETS.DE).toMatchObject({ min_round_ms: 5000, max_stake: 1, buy_feature_enabled: false, rtp_display: "stake_area", session_hud: "panic" });
+    expect(REGULATORY_PRESETS.DEFAULT).toMatchObject({ celebrate_threshold: "any", max_stake: null });
+    expect(buildRegulatoryProfile({ preset: "de", max_stake: 3, session_hud: "none" })).toMatchObject({ jurisdiction: "DE", max_stake: 3, session_hud: "none" });
+  });
+
+  it("a profile stored before the client switches existed still loads; the session omits what it lacks", async () => {
+    const legacy = { jurisdiction: "UKGC", min_round_ms: 2500, reality_check_minutes: 60, autoplay_enabled: false, max_autoplay_spins: 0, turbo_enabled: false, slam_stop_enabled: false, buy_feature_enabled: false };
+    c.mgmt.setRegulatoryProfile(opId, legacy as never);
+    const s = await session();
+    expect(s.regulatory).toMatchObject({ jurisdiction: "UKGC", min_round_ms: 2500 });
+    expect(s.regulatory.celebrate_threshold).toBeUndefined(); // the client shell falls back on the jurisdiction
   });
 
   it("admin sets and clears a profile; the session carries it to the client", async () => {
     expect((await setProfile({ preset: "UKGC" })).json().regulatory).toMatchObject({ jurisdiction: "UKGC" });
     expect((await setProfile({ min_round_ms: -5 })).statusCode).toBe(422);
     const s = await session();
-    expect(s.regulatory).toMatchObject({ jurisdiction: "UKGC", min_round_ms: 2500, turbo_enabled: false, autoplay_enabled: false });
+    expect(s.regulatory).toMatchObject({ jurisdiction: "UKGC", min_round_ms: 2500, turbo_enabled: false, autoplay_enabled: false, celebrate_threshold: "gt_stake", max_stake: 5, session_hud: "net_time" });
     expect(Math.abs((s.regulatory.reality_check_due_in_ms as number) - 60 * 60_000)).toBeLessThan(5_000);
     expect(c.auditRepo.list({ operator_id: opId }).some((e) => e.action === "operator.regulatory.set")).toBe(true);
     expect((await setProfile({ preset: null })).json().regulatory).toEqual(REGULATORY_PRESETS.DEFAULT);
