@@ -10,17 +10,21 @@
    *      cells they clear as clusters per symbol (5+);
    *   3. leave new specials from this step's big clusters (one RNG draw each);
    *   4. remove cleared cells (the new specials stay), gravity, refill.
-   * The loop ends when a board has no cluster and no special.
+   * The step pays (clusters + collected) × its Mult (mult.js: +inc per step, × burst on a
+   * Line Burst). The loop ends when a board has no cluster and no special.
    *
-   * ctx: { cols, rows, table, paytable, paying, wild, minCluster, maxSteps, specialBands }
+   * ctx: { cols, rows, table, paytable, paying, wild, minCluster, maxSteps, specialBands,
+   *        mult?: { start, inc, burst } (default 1, 1, 2) }
    * Pays are in bet multiples, before the profile's payout scaler.
    */
   function resolveSpin(ctx, rng) {
-    const { Grid, Cluster, Cascade, Specials } = root.RelicForge;
+    const { Grid, Cluster, Cascade, Specials, Mult } = root.RelicForge;
+    const multRule = ctx.mult || { start: 1, inc: 1, burst: 2 };
     let board = Grid.createBoard(ctx.cols, ctx.rows, ctx.table, rng);
     const initial = Grid.symbolsOf(board);
     const steps = [];
     let totalX = 0;
+    let mult = null;
     let truncated = false;
     for (let i = 0; ; i += 1) {
       const found = Cluster.findClusters(board, { paying: ctx.paying, wild: ctx.wild, min: ctx.minCluster });
@@ -43,13 +47,20 @@
       const fallen = Cascade.applyGravity(left);
       const filled = Cascade.refill(fallen.board, ctx.table, rng);
       board = filled.board;
-      const stepX = clusters.reduce((sum, c) => sum + c.pay_x, 0) + collected.reduce((sum, c) => sum + c.pay_x, 0);
+      // Base × Mult: the step's Mult, doubled by a Line Burst (a full row cleared).
+      const burstRows = Mult.fullRows(removed, ctx.rows, ctx.cols);
+      mult = Mult.stepMult(mult, burstRows, multRule);
+      const baseX = clusters.reduce((sum, c) => sum + c.pay_x, 0) + collected.reduce((sum, c) => sum + c.pay_x, 0);
+      const stepX = baseX * mult;
       totalX += stepX;
       steps.push({
         clusters,
         detonations: detonation.events,
         collected,
         specials_created: created,
+        base_x: baseX,
+        mult,
+        line_burst: burstRows,
         step_x: stepX,
         removed: uniqueCells(removed.filter((p) => !created.some((s) => s.row === p.row && s.col === p.col))),
         moves: fallen.moves,
@@ -58,7 +69,8 @@
         specials: Specials.listSpecials(board)
       });
     }
-    return { initial, steps, total_x: totalX, final: Grid.symbolsOf(board), truncated };
+    // final_mult: the Mult the spin ended on (null = no step), which Surge carries over.
+    return { initial, steps, total_x: totalX, final: Grid.symbolsOf(board), final_mult: mult, truncated };
   }
 
   function uniqueCells(cells) {

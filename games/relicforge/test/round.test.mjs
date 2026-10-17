@@ -29,7 +29,9 @@ test("a cascade that forms a new cluster pays again (two steps)", () => {
   const rng = scriptedRng([...draws(initial), ...draws("GGGGG"), ...draws("RPESR")]);
   const out = plain(RF.Round.resolveSpin(ctx, rng));
   assert.deepEqual(out.steps.map((s) => s.clusters.map((c) => c.symbol)), [["COPPER"], ["GOLD"]]);
-  assert.equal(out.total_x, 0.1 + 1);
+  // Step 1 pays ×1, step 2 ×2 (no full row cleared: column 5 stays).
+  assert.deepEqual(out.steps.map((s) => s.mult), [1, 2]);
+  assert.equal(out.total_x, 0.1 * 1 + 1 * 2);
   assert.equal(rng.left(), 0);
 });
 

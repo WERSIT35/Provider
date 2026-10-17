@@ -120,5 +120,8 @@ test("in a round: a cluster of 7 leaves a Rune, which detonates on the next step
   assert.deepEqual(out.steps[1].clusters, []);
   assert.deepEqual(out.steps[1].detonations.map((d) => [d.kind, d.cells.length]), [["RUNE", 10]]);
   assert.deepEqual(out.steps[1].specials, []);
-  assert.equal(out.total_x, RF.Paytable.makePaytable(R).clusterPay("COPPER", 7));
+  // Step 1 clears row 0 (a Line Burst): ×1 doubled to ×2. Step 2 (the Rune clears row 0
+  // again): (2 + 1) × 2 = ×6, on a base of 0.
+  assert.deepEqual(out.steps.map((s) => [s.mult, s.line_burst]), [[2, [0]], [6, [0]]]);
+  assert.equal(out.total_x, RF.Paytable.makePaytable(R).clusterPay("COPPER", 7) * 2);
 });

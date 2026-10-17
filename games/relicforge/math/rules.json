@@ -22,6 +22,11 @@
       "min": 12
     }
   },
+  "mult": {
+    "start": 1,
+    "inc": 1,
+    "line_burst": 2
+  },
   "symbols": {
     "low": [
       "COPPER",

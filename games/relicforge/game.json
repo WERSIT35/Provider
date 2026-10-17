@@ -11,6 +11,7 @@
       "cascade.js",
       "paytable.js",
       "specials.js",
+      "mult.js",
       "round.js",
       "spin-engine.js"
     ]
