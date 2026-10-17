@@ -35,32 +35,38 @@ const ORIGIN = {
 const L = (f, o = {}) => ({ f, p: 0, d: 0, g: 0, ...o });
 const RECIPES = {
   "classic-5x3": {
-    title: "Classic 5x3",
-    note: "A fruit machine: dry and bright. Clicks, chips, bells and short jingles; no music bed.",
+    title: "Moth & Lantern (code classic-5x3)",
+    note: "A night garden: soft and airy. Paper flutter, glass chimes, glints, small bells and a quiet night bed. No chips, no coins.",
     sounds: {
-      ui_click: { v: [[L("kenney/interface-sounds/click_002.ogg")], [L("kenney/interface-sounds/click_004.ogg")]], db: -6 },
-      ui_toggle: { v: [[L("kenney/interface-sounds/toggle_004.ogg")]], db: -6 },
-      ui_confirm: { v: [[L("kenney/interface-sounds/select_001.ogg")]], db: -6 },
-      spin_start: { v: [[L("kenney/interface-sounds/maximize_002.ogg", { p: -2 }), L("kenney/casino-audio/chips-stack-2.ogg", { d: 40, g: -6 })]], db: -4 },
-      reel_stop: { v: [1, 2, 3].map((i) => [L("kenney/interface-sounds/click_001.ogg", { p: -8 }), L(`kenney/casino-audio/chips-collide-${i}.ogg`, { p: -4, g: -5 })]), db: -3, fade: 60 },
-      tick: { v: [1, 2, 3, 4].map((i) => [L(`kenney/impact-sounds/impactGlass_light_00${i - 1}.ogg`, { p: 2 })]), db: -8 },
-      scatter: { v: [[L("kenney/impact-sounds/impactBell_heavy_004.ogg", { p: 3 })]], db: -3 },
-      scatter_catch: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg", { p: 2 }), L("oga/bell_02.ogg", { d: 30, g: -4 })]], db: -2 },
-      line: { v: [[L("oga/item_gem_01.ogg")], [L("oga/item_gem_03.ogg")]], db: -6 },
-      win_small: { v: [[L("oga/item_gem_04.ogg", { t: [0, 0.45] })]], db: -5, fade: 120 },
-      win_land: { v: [[L("oga/item_coins_02.ogg"), L("kenney/casino-audio/chips-stack-3.ogg", { d: 60, g: -4 })]], db: -3 },
-      win_tick: { v: [1, 2, 4].map((i) => [L(`kenney/casino-audio/chips-collide-${i}.ogg`, { p: 3 })]), db: -9 },
-      win_big: { v: [[L("kenney/music-jingles/jingles_HIT01.ogg"), L("oga/item_coins_02.ogg", { d: 120, g: -6 })]], db: -2 },
-      win_mega: { v: [[L("kenney/music-jingles/jingles_HIT03.ogg"), L("oga/item_coins_02.ogg", { d: 160, g: -5 })]], db: -2 },
-      win_epic: { v: [[L("kenney/music-jingles/jingles_HIT11.ogg"), L("kenney/impact-sounds/impactBell_heavy_001.ogg", { g: -6 })]], db: -1 },
-      max_win: { v: [[L("kenney/music-jingles/jingles_HIT15.ogg"), L("oga/item_coins_02.ogg", { d: 200, g: -4 }), L("kenney/impact-sounds/impactBell_heavy_001.ogg", { d: 0, g: -5 })]], db: -1 },
-      bigwin_open: { v: [[L("kenney/impact-sounds/impactBell_heavy_001.ogg", { p: -2 })]], db: -3 },
-      feature_award: { v: [[L("kenney/music-jingles/jingles_HIT10.ogg"), L("kenney/impact-sounds/impactBell_heavy_002.ogg", { g: -5 })]], db: -2 },
-      feature_more: { v: [[L("kenney/music-jingles/jingles_HIT06.ogg")]], db: -2 },
-      fs_intro: { v: [[L("kenney/music-jingles/jingles_HIT12.ogg"), L("kenney/impact-sounds/impactBell_heavy_003.ogg", { d: 80, g: -6 })]], db: -2 },
-      fs_outro: { v: [[L("kenney/music-jingles/jingles_HIT16.ogg")]], db: -3 }
+      ui_click: { v: [[L("kenney/interface-sounds/click_002.ogg")], [L("kenney/interface-sounds/click_004.ogg")]], db: -8 },
+      ui_toggle: { v: [[L("kenney/interface-sounds/toggle_004.ogg")]], db: -8 },
+      ui_confirm: { v: [[L("kenney/interface-sounds/select_001.ogg")]], db: -8 },
+      // Paper strips released: two flutters.
+      spin_start: { v: [[L("oga/swish-3.wav", { p: 2 }), L("oga/swish-4.wav", { d: 70, g: -3 })]], db: -6 },
+      // A strip settles: a soft paper flap with a faint chime.
+      reel_stop: { v: [0, 1, 2].map((i) => [L("kenney/interface-sounds/minimize_002.ogg", { p: -6 - i }), L(`kenney/impact-sounds/impactGlass_light_00${i}.ogg`, { p: 5, g: -12 })]), db: -6, fade: 80 },
+      tick: { v: [1, 2, 3, 4].map((i) => [L(`kenney/impact-sounds/impactGlass_light_00${i - 1}.ogg`, { p: 7 })]), db: -12 },
+      scatter: { v: [[L("oga/bell_02.ogg", { p: 2 })]], db: -5 },
+      scatter_catch: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg", { p: 5 }), L("oga/bell_02.ogg", { d: 60, g: -3 })]], db: -3, echo: "0.8:0.7:220|440:0.35|0.2" },
+      line: { v: [[L("oga/item_gem_01.ogg", { p: 2 })], [L("oga/item_gem_03.ogg", { p: 2 })]], db: -7 },
+      win_small: { v: [[L("oga/item_gem_04.ogg", { t: [0, 0.45], p: 3 })]], db: -7, fade: 140 },
+      win_land: { v: [[L("oga/item_gem_03.ogg"), L("oga/bell_02.ogg", { d: 60, g: -7, p: 7 })]], db: -5 },
+      win_tick: { v: [0, 2, 4].map((i) => [L(`kenney/impact-sounds/impactGlass_light_00${i}.ogg`, { p: 9 })]), db: -13 },
+      win_big: { v: [[L("kenney/impact-sounds/impactBell_heavy_001.ogg", { p: 4 }), L("oga/item_gem_04.ogg", { d: 120, g: -4 })]], db: -3, echo: "0.8:0.7:260|520:0.35|0.2" },
+      win_mega: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg", { p: 4 }), L("oga/item_gem_01.ogg", { d: 140, g: -3 }), L("oga/item_gem_03.ogg", { d: 300, g: -3, p: 4 }), L("oga/item_gem_04.ogg", { d: 460, g: -5, p: 7 })]], db: -2, echo: "0.8:0.7:280|560:0.35|0.2" },
+      win_epic: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg", { p: 2 }), L("kenney/impact-sounds/impactBell_heavy_001.ogg", { d: 240, p: 7, g: -3 }), L("oga/item_gem_04.ogg", { d: 420, g: -3 }), L("oga/item_gem_01.ogg", { d: 640, p: 7, g: -4 })]], db: -1, echo: "0.8:0.75:300|620:0.4|0.25" },
+      max_win: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg"), L("kenney/impact-sounds/impactBell_heavy_001.ogg", { d: 300, p: 5 }), L("oga/item_gem_04.ogg", { d: 500 }), L("oga/bell_02.ogg", { d: 800, p: 12, g: -4 })]], db: -1, echo: "0.8:0.8:320|700:0.45|0.3", fade: 600 },
+      bigwin_open: { v: [[L("kenney/impact-sounds/impactBell_heavy_001.ogg", { p: 6 })]], db: -5 },
+      feature_award: { v: [[L("kenney/interface-sounds/open_002.ogg", { p: -3 }), L("kenney/impact-sounds/impactBell_heavy_002.ogg", { d: 120 }), L("oga/item_gem_01.ogg", { d: 260, p: 5, g: -4 })]], db: -3, echo: "0.8:0.7:260|520:0.35|0.2" },
+      feature_more: { v: [[L("kenney/impact-sounds/impactBell_heavy_003.ogg", { p: 3 }), L("oga/item_gem_03.ogg", { d: 120, p: 5, g: -4 })]], db: -4 },
+      fs_intro: { v: [[L("kenney/impact-sounds/impactBell_heavy_002.ogg", { p: -5 }), L("oga/swish-3.wav", { p: -6, g: -6 })]], db: -4, echo: "0.8:0.8:400|900:0.45|0.3", fade: 400 },
+      fs_outro: { v: [[L("oga/bell_02.ogg", { p: -3 })]], db: -5, echo: "0.8:0.75:380|820:0.4|0.25", fade: 400 }
     },
-    music: {}
+    // The night bed: bells two octaves down through long echoes; a deeper one for the night (free spins).
+    music: {
+      base: { v: [[L("kenney/impact-sounds/impactBell_heavy_000.ogg", { p: -19 }), L("oga/bell_02.ogg", { p: -24, d: 2600, g: -2 }), L("kenney/impact-sounds/impactBell_heavy_001.ogg", { p: -17, d: 5600, g: -4 })]], db: -14, echo: "0.8:0.85:900|1800|2700:0.55|0.4|0.3", pad: 14, fade: 2500 },
+      freeSpins: { v: [[L("kenney/impact-sounds/impactBell_heavy_001.ogg", { p: -22 }), L("oga/bell_02.ogg", { p: -26, d: 2000, g: -2 }), L("kenney/impact-sounds/impactBell_heavy_002.ogg", { p: -19, d: 5000, g: -4 })]], db: -13, echo: "0.8:0.85:800|1600|2500:0.6|0.45|0.3", pad: 14, fade: 2500 }
+    }
   },
   relicforge: {
     title: "Relic Forge",

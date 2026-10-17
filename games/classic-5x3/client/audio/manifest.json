@@ -101,5 +101,8 @@
     "fs_intro": 0,
     "fs_outro": 0
   },
-  "music": {}
+  "music": {
+    "base": "music/base",
+    "freeSpins": "music/freeSpins"
+  }
 }
