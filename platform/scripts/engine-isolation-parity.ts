@@ -3,7 +3,10 @@
  * resolved. Both engines run side by side in one process, on the same seeded rounds,
  * and every result is compared byte for byte (canonical JSON), plus the bytes drawn.
  *
- *   npx tsx scripts/engine-isolation-parity.ts [--spins 10000000] [--shards 2]
+ *   npx tsx scripts/engine-isolation-parity.ts [--spins 10000000] [--shards 2] [--start 0]
+ *
+ * --start runs rounds [start, start + spins), so a long gate can run in resumable chunks
+ * (the rounds and seeds are the same whatever the chunking).
  *
  * Rounds cycle through the paths the RGS drives: base spins (with and without ante, at
  * several bets), spins inside the Free Spins feature (persistent multiplier and bonus
@@ -21,6 +24,7 @@ const arg = (name: string, def: number) => { const i = process.argv.indexOf(`--$
 const SPINS = arg("spins", 1_000_000);
 const SHARDS = arg("shards", 2);
 const SHARD = arg("shard", -1);
+const START = arg("start", 0);
 
 /** The old loader, verbatim in effect: every file run as a function on the host's globalThis. */
 function loadLegacy(manifest: ReturnType<typeof loadGameEngine>["manifest"], engineDir: string) {
@@ -55,7 +59,7 @@ function runShard(shard: number): { n: number; digest: string } {
   const bets = a.getAllowedBets() as number[];
   const digest = createHash("sha256");
   let n = 0;
-  for (let i = shard; i < SPINS; i += SHARDS) {
+  for (let i = START + shard; i < START + SPINS; i += SHARDS) {
     const seed = createHash("sha256").update(`isolation-parity/${i}`).digest();
     const bet = bets[i % bets.length];
     const buy = isBuy(i);
@@ -82,13 +86,13 @@ if (SHARD >= 0) {
 } else {
   const t0 = Date.now();
   const kids = Array.from({ length: SHARDS }, (_, s) => new Promise<{ n: number; digest: string }>((resolve, reject) => {
-    const child = fork(__filename, ["--spins", String(SPINS), "--shards", String(SHARDS), "--shard", String(s)], { execArgv: process.execArgv });
+    const child = fork(__filename, ["--spins", String(SPINS), "--shards", String(SHARDS), "--shard", String(s), "--start", String(START)], { execArgv: process.execArgv });
     child.once("message", (m) => resolve(m as { n: number; digest: string }));
     child.once("exit", (code) => (code ? reject(new Error(`shard ${s} exited ${code}`)) : undefined));
   }));
   Promise.all(kids).then((rs) => {
     const total = rs.reduce((s, r) => s + r.n, 0);
-    console.log(JSON.stringify({ rounds: total, identical: total === SPINS, shardDigests: rs.map((r) => r.digest), seconds: Math.round((Date.now() - t0) / 1000) }));
+    console.log(JSON.stringify({ start: START, rounds: total, identical: total === SPINS, shardDigests: rs.map((r) => r.digest), seconds: Math.round((Date.now() - t0) / 1000) }));
     process.exit(total === SPINS ? 0 : 1);
   }, (e) => { console.error(String(e)); process.exit(1); });
 }
