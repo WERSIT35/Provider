@@ -176,3 +176,18 @@ test("the engine refuses a pick that is not in the offer", () => {
   assert.throws(() => engine(R, { featureState: forgeState() }).spin({ bet_amount: 1, choice: 3 }), /INVALID_CHOICE/);
   assert.throws(() => engine(R, { featureState: forgeState() }).spin({ bet_amount: 1 }), /INVALID_CHOICE/);
 });
+
+test("Hoard and Cathedral as per-symbol weight factors (0 removes a symbol)", () => {
+  const rules = loadRules();
+  rules.relics.HOARD = { factors: [{ COPPER: 0.3 }, { COPPER: 0, IRON: 0.6 }, { COPPER: 0, IRON: 0.3 }] };
+  rules.evolutions.CATHEDRAL = { from: ["EXPAND", "HOARD"], rows: 8, factors: { COPPER: 0, IRON: 0, BRONZE: 0.6, SILVER: 0.6 } };
+  const weights = (lv, evo = []) => plain(Relics.weightsFor(Relics.configFor(Relics.effective(levels(lv), evo, false), rules, 5), rules));
+  const base = rules.weights.bonus;
+  const h1 = weights({ HOARD: 1 });
+  assert.equal(h1.COPPER, base.COPPER * 0.3);
+  assert.equal(h1.IRON, base.IRON);
+  const h2 = weights({ HOARD: 2 });
+  assert.deepEqual(["COPPER" in h2, h2.IRON], [false, base.IRON * 0.6]);
+  const cat = weights({ EXPAND: 3, HOARD: 3 }, ["CATHEDRAL"]);
+  assert.deepEqual(["COPPER" in cat, "IRON" in cat, cat.BRONZE, cat.GOLD], [false, false, base.BRONZE * 0.6, base.GOLD]);
+});

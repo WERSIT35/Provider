@@ -36,14 +36,15 @@
 
   /**
    * The spin config for a relic set. Pure; values from the rules.
-   * → { wilds, wildMult, inc, rows, stickSpins, runeMin, removed, surge, burst,
-   *     premiumOnly, persistAll }
+   * → { wilds, wildMult, inc, rows, stickSpins, runeMin, removed, factors, surge,
+   *     carryBonus, burst, premiumOnly, persistAll }
    */
   function configFor(eff, rules, baseRows) {
     const R = rules.relics;
     const at = (relic, key) => {
       const level = eff.levels[relic];
-      return level > 0 ? R[relic][key][level - 1] : undefined;
+      const values = R[relic] && R[relic][key];
+      return level > 0 && values ? values[level - 1] : undefined;
     };
     const evo = (name) => eff.evolutions.indexOf(name) >= 0;
     const removed = at("HOARD", "remove") || [];
@@ -58,23 +59,33 @@
       surge: eff.levels.SURGE || 0,
       carryBonus: at("SURGE", "carry_bonus") || 0,
       burst: at("SURGE", "burst") || rules.mult.line_burst,
+      // Hoard as per-symbol weight factors (0 removes the symbol): removing whole symbol
+      // types is exponential in cluster pays, so the levels thin the lows step by step
+      // (docs/relic-forge/sim-reports). `remove` (the spec's literal form) still works.
+      factors: Object.assign({}, at("HOARD", "factors") || {}),
       premiumOnly: false,
       persistAll: evo("SINGULARITY")
     };
     if (evo("CATHEDRAL")) {
-      cfg.rows = rules.evolutions.CATHEDRAL.rows;
-      cfg.premiumOnly = true;
+      const c = rules.evolutions.CATHEDRAL;
+      cfg.rows = c.rows;
+      if (c.premium_only) cfg.premiumOnly = true;
+      for (const [sym, f] of Object.entries(c.factors || {})) cfg.factors[sym] = Math.min(f, cfg.factors[sym] === undefined ? 1 : cfg.factors[sym]);
     }
     return cfg;
   }
 
-  /** The Forge's symbol weights for a config: Hoard removes lows; Cathedral all of them. */
+  /**
+   * The Forge's symbol weights for a config: Hoard / Cathedral scale symbols by their
+   * factors (0 = gone), `remove` drops them, `premium_only` drops every low.
+   */
   function weightsFor(cfg, rules) {
     const out = {};
     for (const [symbol, weight] of Object.entries(rules.weights.bonus)) {
       if (cfg.premiumOnly && rules.symbols.low.indexOf(symbol) >= 0) continue;
       if (cfg.removed.indexOf(symbol) >= 0) continue;
-      out[symbol] = weight;
+      const f = cfg.factors[symbol] === undefined ? 1 : cfg.factors[symbol];
+      if (f > 0) out[symbol] = weight * f;
     }
     return out;
   }

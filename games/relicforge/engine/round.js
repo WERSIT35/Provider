@@ -69,9 +69,10 @@
       board = filled.board;
       // Base × Mult: the step's Mult, doubled by a Line Burst (a full row cleared).
       const burstRows = Mult.fullRows(removed, ctx.rows, ctx.cols);
-      mult = Mult.stepMult(mult, burstRows, multRule);
+      const stepped = Mult.stepMult(mult, burstRows, multRule);
+      mult = stepped.running;
       const baseX = clusters.reduce((sum, c) => sum + c.pay_x, 0) + collected.reduce((sum, c) => sum + c.pay_x, 0);
-      const stepX = baseX * mult;
+      const stepX = baseX * stepped.pay;
       totalX += stepX;
       steps.push({
         clusters,
@@ -80,7 +81,7 @@
         specials_created: created,
         embers_collected: embers,
         base_x: baseX,
-        mult,
+        mult: stepped.pay,
         line_burst: burstRows,
         step_x: stepX,
         removed: uniqueCells(removed.filter((p) => !created.some((s) => s.row === p.row && s.col === p.col))),
@@ -90,7 +91,7 @@
         specials: Specials.listSpecials(board)
       });
     }
-    // final_mult: the Mult the spin ended on (null = no step), which Surge carries over.
+    // final_mult: the running Mult the spin ended on (null = no step); Surge carries it.
     return {
       dealt,
       initial,

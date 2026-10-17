@@ -3,7 +3,7 @@
 
   // Bump on every change that alters what a seed resolves to (recorded on every RGS
   // round for replay verification, as for Vault 20K).
-  const ENGINE_VERSION = "rf-0.6.0";
+  const ENGINE_VERSION = "rf-0.7.0";
 
   function round2(n) {
     return Math.round(n * 100) / 100;
@@ -76,7 +76,7 @@
         minCluster: layout.min_cluster,
         maxSteps: layout.max_cascade_steps,
         specialBands: this.rules.specials,
-        mult: { start: m.start, inc: m.inc, burst: m.line_burst, max: m.max || 0 }
+        mult: { start: m.start, inc: m.inc, burst: m.line_burst, max: m.max || 0, scope: m.burst_scope || "running" }
       };
     }
 
@@ -187,7 +187,7 @@
         wildMult: cfg.wildMult,
         stuck: stuckIn,
         specialBands: Object.assign({}, rules.specials, { RUNE: { min: cfg.runeMin, max: rules.specials.RUNE.max } }),
-        mult: { start, inc: cfg.inc, burst: cfg.burst, max: rules.mult.max || 0 }
+        mult: { start, inc: cfg.inc, burst: cfg.burst, max: rules.mult.max || 0, scope: rules.mult.burst_scope || "running" }
       });
       const out = Round.resolveSpin(ctx, RNG);
 

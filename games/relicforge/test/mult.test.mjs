@@ -8,7 +8,11 @@ const BASE = { start: 1, inc: 1, burst: 2 };
 
 function sequence(bursts, rule = BASE) {
   let m = null;
-  return bursts.map((b) => (m = RF.Mult.stepMult(m, b ? [0] : [], rule)));
+  return bursts.map((b) => {
+    const s = RF.Mult.stepMult(m, b ? [0] : [], rule);
+    m = s.running;
+    return s.pay;
+  });
 }
 
 test("Mult: Ã—1 on the first evaluation, +1 per cascade step", () => {
@@ -28,6 +32,10 @@ test("the rule's numbers drive it (Chain: +2 per step; Surge: a carried start; Ã
 test("an optional ceiling bounds the Mult (off by default)", () => {
   assert.deepEqual(sequence([true, true, true, true], { start: 1, inc: 1, burst: 2, max: 20 }), [2, 6, 14, 20]);
   assert.deepEqual(sequence([true, true, true, true]), [2, 6, 14, 30]);
+});
+
+test("burst scope \"step\": a Line Burst doubles only its own step", () => {
+  assert.deepEqual(sequence([false, true, false, true], { start: 1, inc: 1, burst: 2, scope: "step" }), [1, 4, 3, 8]);
 });
 
 test("fullRows: only rows with every cell cleared, once each", () => {
