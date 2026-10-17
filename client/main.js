@@ -6873,6 +6873,9 @@ async function spin(options = {}) {
     ticker.roundEnd();
     freeRoundsUi.settle(); // after roundEnd, so a completion line wins over the tips
     state.roundSettledAt = performance.now();
+    // The first settled round lets the music download start (audio.js warmMusic): on a
+    // slow phone it no longer competes with the first spin.
+    window.Sound?.warmMusic?.();
   }
 }
 

@@ -37,6 +37,19 @@
         } catch (e) {}
       })();
     </script>
+    <script>
+      // Paint the splash first; once it is on screen, let the game render beneath it
+      // (styles.css .sanctum / ui-prerender) so its first raster is done by the reveal.
+      (function () {
+        var go = function () { document.body && document.body.classList.add("ui-prerender"); };
+        try {
+          new PerformanceObserver(function (list, obs) {
+            if (list.getEntries().some(function (e) { return e.name === "first-contentful-paint"; })) { obs.disconnect(); go(); }
+          }).observe({ type: "paint", buffered: true });
+        } catch (e) { addEventListener("load", go); }
+        setTimeout(go, 6000); // a browser that never reports paint timing
+      })();
+    </script>
     <link rel="icon" href="data:," />
     <!-- Start these fetches during HTML parse instead of waiting for main.js to
          run. Paths are relative so they resolve through the <base href> above to

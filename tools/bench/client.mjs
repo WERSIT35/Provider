@@ -106,6 +106,18 @@ try {
   if (MODE === "soak") await page.evaluate(() => { const t = document.getElementById("turboBtn"); if (t && t.getAttribute("aria-pressed") !== "true") t.click(); });
   await page.evaluate(() => { window.__bench.frames = []; window.__bench.animFrames = []; window.__bench.long = []; window.__bench.events = []; });
 
+  // A finger's tap: touch down and up 80 ms apart BY THEIR TIMESTAMPS, sent straight
+  // over CDP. puppeteer's page.tap() first scrolls and waits for the element to be
+  // stable (each step waits for a rendering frame: seconds on a busy, software-rendered
+  // page) and sends touch-up only once touch-down was handled, so on a slow page its
+  // "tap" lasted ~700 ms by the events' own clock: a hold, not a tap.
+  const tapSpin = async () => {
+    const box = await page.evaluate(() => { const r = document.getElementById("spinBtn").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const t0 = Date.now() / 1000;
+    const down = cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x, y: box.y }], timestamp: t0 });
+    const up = cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: t0 + 0.08 });
+    await Promise.all([down, up]);
+  };
   const heapSamples = []; const roundMs = []; let tapToRequestMs = null; let stuck = 0; let tapsReadAsHold = 0; let holdRacesRecovered = 0;
   let autoBefore = await page.evaluate(() => window.__spinLifecycle.stats.startedAuto);
   // --profile <file>: a JS CPU profile of the page across the spins (.cpuprofile).
@@ -128,7 +140,7 @@ try {
     let sent = false;
     for (let attempt = 0; attempt < 3 && !sent; attempt++) {
       const req = page.waitForRequest((r) => r.url().includes("/game/v1/spin"), { timeout: 15_000 }).then(() => true, () => false);
-      await page.tap("#spinBtn").catch(() => {});
+      await tapSpin().catch(() => {});
       sent = await req;
       if (!sent) { stuck++; log("tap did not start a spin", i, "attempt", attempt); await dismiss(); }
     }
@@ -148,7 +160,7 @@ try {
       if (active) {
         tapsReadAsHold++;
         log("tap was read as a hold: autoplay started; stopping it");
-        await page.tap("#spinBtn").catch(() => {});
+        await tapSpin().catch(() => {});
       } else holdRacesRecovered++;
       autoBefore = autoNow;
     }

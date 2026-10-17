@@ -270,13 +270,14 @@
     return state.manifestP;
   }
 
-  function loadFile(path) {
+  function loadFile(path, { low = false } = {}) {
     if (state.buffers.has(path)) return Promise.resolve(state.buffers.get(path));
     if (state.loading.has(path)) return state.loading.get(path);
     const ctx = ensureContext();
     if (!ctx) return Promise.resolve(null);
     const url = AUDIO_BASE + path + "." + state.ext;
-    const p = fetch(url)
+    // Background files ask for low priority: a spin request must never queue behind them.
+    const p = fetch(url, low ? { priority: "low" } : undefined)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("HTTP " + r.status))))
       .then((buf) => new Promise((res, rej) => ctx.decodeAudioData(buf, res, rej)))
       .then((decoded) => {
@@ -293,22 +294,40 @@
   function preloadAll() {
     const m = state.manifest;
     if (!m) return;
-    const keys = Object.keys(m.sounds);
-    const ordered = FIRST.filter((k) => m.sounds[k]).concat(keys.filter((k) => !FIRST.includes(k)));
-    let chain = Promise.resolve();
-    // Load in small batches so the first spin's files are not queued behind music.
-    for (let i = 0; i < ordered.length; i += 4) {
-      const batch = ordered.slice(i, i + 4);
-      chain = chain.then(() => Promise.all(batch.flatMap((k) => m.sounds[k].map(loadFile))));
-    }
-    // Only the current music mood is preloaded. The others (free spins, big win:
-    // ~1 MB that most sessions never play) load when the game first switches to them
-    // (playMood fetches on demand), not while a slow phone is starting to play.
-    chain.then(() => {
-      if (m.music && m.music[music.mood]) return loadFile(m.music[music.mood]).then(() => { if (music.wanted) playMood(music.mood); });
-    })
-      .then(() => (m.ir ? loadFile(m.ir) : null))
-      .then((ir) => { if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; } });
+    // The first spin's sounds, ONE file at a time (decoding runs on the browser's
+    // worker threads; twenty at once fought the first frames for a slow phone's two
+    // cores and the first tap waited seconds). The rest wait for the first settled
+    // round (warmMusic below). A sound not decoded yet is skipped, as before.
+    const first = FIRST.filter((k) => m.sounds[k]).flatMap((k) => m.sounds[k]);
+    first.reduce((p, f) => p.then(() => loadFile(f)), Promise.resolve());
+  }
+
+  /** Every other sound, one file at a time in idle time, at low priority. */
+  function trickleRest() {
+    const m = state.manifest;
+    if (!m) return;
+    const rest = Object.keys(m.sounds).filter((k) => !FIRST.includes(k)).flatMap((k) => m.sounds[k]);
+    const idle = (fn) => (root.requestIdleCallback ? root.requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 100));
+    const next = (i) => { if (i < rest.length) idle(() => loadFile(rest[i], { low: true }).then(() => next(i + 1))); };
+    next(0);
+  }
+
+  /**
+   * After the first settled round (warmMusic, called by main.js): the rest of the
+   * sounds, the music and the reverb impulse (the base mood alone is ~700 KB), so
+   * none of it competes with the first spin. Until then a mood is not fetched; once
+   * warm, playMood fetches on demand as before.
+   */
+  let musicWarm = false;
+  function warmMusic() {
+    if (musicWarm) return;
+    musicWarm = true;
+    (state.manifestP || loadManifest()).then((m) => {
+      if (!m) return;
+      trickleRest();
+      if (m.music && m.music[music.mood]) loadFile(m.music[music.mood], { low: true }).then(() => { if (music.wanted) playMood(music.mood); });
+      if (m.ir) loadFile(m.ir, { low: true }).then((ir) => { if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; } });
+    });
   }
 
   /** The next variation of sound `key`: round-robin, never the same twice in a row. */
@@ -428,8 +447,9 @@
       music.voice = { mood, src, gain };
       return;
     }
-    // Not decoded yet: keep what plays and crossfade once it is.
-    if (path) loadFile(path).then((b) => { if (b && music.mood === mood) playMood(mood); });
+    // Not decoded yet: keep what plays and crossfade once it is. The base mood waits
+    // for warmMusic(); a feature's or a big win's mood is fetched when it is asked for.
+    if (path && (musicWarm || mood !== "base")) loadFile(path).then((b) => { if (b && music.mood === mood) playMood(mood); });
   }
 
   function startMusic() {
@@ -661,6 +681,7 @@
     onChange,
     startMusic,
     stopMusic,
+    warmMusic,
     setMusic,
     endTemporaryMusic,
     duck,
