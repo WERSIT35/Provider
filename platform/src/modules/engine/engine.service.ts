@@ -1,4 +1,4 @@
-import { loadSlotEngine, type SlotEngineNamespace, type GameRules } from "../../lib/engine-loader";
+import { loadGameEngine, DEFAULT_GAME_CODE, type SlotEngineNamespace, type GameRules } from "../../lib/engine-loader";
 import { withSeed } from "../../lib/seeded-rng";
 import { hashPayload } from "../ledger/hash-chain";
 import type {
@@ -61,22 +61,53 @@ class MemoryStorage {
   }
 }
 
+/** A game code no registered game answers to (it would otherwise resolve with another game's math). */
+export class UnknownGameError extends Error {
+  readonly code = "GAME_NOT_FOUND";
+  constructor(readonly gameCode: string) {
+    super("GAME_NOT_FOUND"); // the stable domain code the HTTP layer maps (404); the code is on .gameCode
+  }
+}
+
+/** Where the RGS gets the engine for a session's game code (one game, or the registry). */
+export interface EngineSource {
+  engineFor(gameCode?: string | null): EngineService;
+}
+
 /**
- * Server-side facade over the Banana X engine. This is the only module that
- * touches engine internals; everything else depends on these typed methods.
+ * Server-side facade over ONE game's engine (games/<code>/game.json, loaded in its own
+ * vm context). This is the only module that touches engine internals; everything else
+ * depends on these typed methods. Several games: see GameRegistry.
  */
-export class EngineService {
+export class EngineService implements EngineSource {
+  readonly gameCode: string;
   private readonly ns: SlotEngineNamespace;
   private readonly rules: GameRules;
   private readonly template: InstanceType<SlotEngineNamespace["SpinEngine"]>;
   private readonly sessions = new Map<string, InstanceType<SlotEngineNamespace["SpinEngine"]>>();
+  private readonly ownCodes: Set<string>;
 
-  constructor(opts: { engineDir?: string; rulesPath?: string } = {}) {
-    const loaded = loadSlotEngine(opts);
+  constructor(opts: { gameCode?: string; engineDir?: string; rulesPath?: string } = {}) {
+    this.gameCode = opts.gameCode ?? DEFAULT_GAME_CODE;
+    const loaded = loadGameEngine(this.gameCode, opts);
     this.ns = loaded.ns;
     this.rules = loaded.rules;
     // A read-only engine for stateless lookups (allowed bets, rtp profiles).
     this.template = new this.ns.SpinEngine({ rules: this.rules, storage: new MemoryStorage() });
+    // The session game codes this game answers to: its own, plus each RTP profile's
+    // game_id (Vault 20K: bananax, bananax_94, bananax_92, …).
+    this.ownCodes = new Set([this.gameCode, ...((this.rules?.rtp_profiles ?? []) as Array<{ game_id?: string }>).map((p) => String(p.game_id ?? "").toLowerCase()).filter(Boolean)]);
+  }
+
+  /** The session game codes (RTP variants) this game resolves. */
+  codes(): string[] {
+    return [...this.ownCodes];
+  }
+
+  /** This engine, if it is the game for `gameCode` (none = this game); else GAME_NOT_FOUND. */
+  engineFor(gameCode?: string | null): EngineService {
+    if (!gameCode || this.ownCodes.has(String(gameCode).toLowerCase())) return this;
+    throw new UnknownGameError(String(gameCode));
   }
 
   isReady(): boolean {
@@ -106,6 +137,14 @@ export class EngineService {
   /** The rules' max-win cap, in multiples of the bet (what the engine itself enforces). */
   maxWinMultiplier(): number {
     return Number(this.template.MAX_WIN_CAP_X);
+  }
+
+  /** Does this game have a feature buy / an ante? (Vault 20K: both; an engine says otherwise with SUPPORTS_*: false.) */
+  supportsBuy(): boolean {
+    return (this.template as { SUPPORTS_BUY?: boolean }).SUPPORTS_BUY !== false;
+  }
+  supportsAnte(): boolean {
+    return (this.template as { SUPPORTS_ANTE?: boolean }).SUPPORTS_ANTE !== false;
   }
 
   getAllowedBets(): number[] {

@@ -1,4 +1,5 @@
-import { EngineService } from "./modules/engine/engine.service";
+import type { EngineService } from "./modules/engine/engine.service";
+import { GameRegistry } from "./modules/games/game-registry";
 import { AuthoritativeResolver } from "./modules/rng/authoritative-resolver";
 import { ManagementService } from "./modules/management/management.service";
 import { SessionService } from "./modules/session/session.service";
@@ -57,6 +58,9 @@ export interface PlatformConfig {
  */
 export interface Container {
   config: PlatformConfig;
+  /** Every game (games/<code>/game.json); a round resolves with its session's game. */
+  games: GameRegistry;
+  /** Vault 20K's engine (games.default): what single-game callers use. */
   engine: EngineService;
   mgmt: ManagementService;
   sessions: SessionService;
@@ -118,7 +122,8 @@ export function buildContainer(
   // window (see memory-repositories.ts WindowOptions); in-memory mode keeps everything.
   const pg = persistence instanceof PostgresPersistence ? persistence : null;
   const win = { ...HISTORY_WINDOW, ...(overrides.historyWindow ?? {}) };
-  const engine = new EngineService();
+  const games = new GameRegistry().preload();
+  const engine = games.default;
   // First: both ledgers sign every row they append with the active key.
   const signingKeyring = new SigningKeyring({ activePrivateKeyPem: config.exportSigningKey, expiresAt: config.exportSigningKeyExpiresAt ?? null }, persistence);
   const audit = new InMemoryAuditRepository(persistence, signingKeyring, pg ? { retain: win.audit } : {});
@@ -130,7 +135,7 @@ export function buildContainer(
   // available once buildContainer is already underway (constructor-order chicken/egg).
   const wallet = overrides.walletFactory ? overrides.walletFactory(mgmt) : (overrides.wallet ?? new SandboxWallet());
   sandboxOf(wallet)?.usePersistence(persistence);
-  const resolver = new AuthoritativeResolver(engine);
+  const resolver = new AuthoritativeResolver(games);
   const transactions = new InMemoryTransactionStore(persistence, pg ? { retain: win.transactions, cold: win.coldTransactions } : {});
   const campaigns = new InMemoryCampaignRepository(persistence);
   const debits = new DebitReconciler(wallet, transactions, { audit, retryDelaysMs: overrides.debitRetryDelaysMs });
@@ -154,7 +159,7 @@ export function buildContainer(
   );
   // Write-ahead round intents, committed through the same write-through (no-op in memory).
   const intents = new RoundIntentStore(persistence);
-  const orchestrator = new RoundOrchestrator(engine, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory, {
+  const orchestrator = new RoundOrchestrator(games, resolver, sessions, mgmt, wallet, ledger, transactions, campaigns, debits, regulatory, {
     intents,
     commit: () => persistence.flush(),
     ...(pg ? { keyUsed: (key: string) => history.keyUsed(key) } : {})
@@ -175,6 +180,7 @@ export function buildContainer(
 
   return {
     config,
+    games,
     engine,
     mgmt,
     sessions,

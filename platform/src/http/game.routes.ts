@@ -25,6 +25,7 @@ const gameRoutes: FastifyPluginAsync = async (app) => {
     }
     try {
       const { session, resumed } = app.container.sessions.initSessionDetailed(auth.slice(7));
+      app.container.games.engineFor(session.game_code); // GAME_NOT_FOUND (404) before any token or balance call
       const sessionToken = signToken(
         app.container.config.sessionSecret,
         { session_id: session.id, operator_id: session.operator_id },

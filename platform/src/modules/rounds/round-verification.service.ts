@@ -110,8 +110,8 @@ export class RoundVerificationService {
     // predates recording it), a hash mismatch proves nothing either way, so the verdict
     // is inconclusive. The chain check still guards against edits: the recorded
     // engine_version and rules_hash are themselves covered by the chain hash.
-    const currentEngine = this.resolver.engineVersion();
-    const currentRules = this.resolver.rulesHash();
+    const currentEngine = this.resolver.engineVersion(round.pre_state.game_code);
+    const currentRules = this.resolver.rulesHash(round.pre_state.game_code);
     const engineMismatch = round.engine_version !== currentEngine;
     const rulesMismatch = round.rules_hash !== currentRules;
     if (!replay.ok) {

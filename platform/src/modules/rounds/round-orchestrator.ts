@@ -1,4 +1,4 @@
-import type { EngineService, SessionSnapshot } from "../engine/engine.service";
+import type { EngineSource, SessionSnapshot } from "../engine/engine.service";
 import type { SpinInput, SpinResult } from "../engine/engine.types";
 import type { AuthoritativeRound } from "../rng/authoritative-resolver";
 import type { SessionService, Session, FeatureLock } from "../session/session.service";
@@ -102,7 +102,8 @@ export class RoundOrchestrator {
   private readonly debits: DebitReconciler;
 
   constructor(
-    private readonly engine: EngineService,
+    /** One game's engine, or the GameRegistry: a round uses its session's game. */
+    private readonly engines: EngineSource,
     private readonly resolver: ResolverPort,
     private readonly sessions: SessionService,
     private readonly mgmt: ManagementService,
@@ -251,6 +252,8 @@ export class RoundOrchestrator {
     // round that triggered the feature. See Session.locked_* for the exploit this stops.
     const featureLock = isFreeSpin ? this.featureLockFor(session) : null;
     if (!featureLock && !session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
+    // A game without an ante (classic-5x3) refuses one before any money moves.
+    if (!featureLock && req.ante_enabled && !this.engines.engineFor(session.game_code).supportsAnte()) throw new Error("ANTE_NOT_AVAILABLE");
     // Jurisdiction gate, before anything is consumed or debited: a due reality check
     // stops every round; pacing applies to round starts, not to a feature's free spins.
     this.regulatory?.beforeRound(session, isFreeSpin ? "feature_spin" : "round");
@@ -275,7 +278,7 @@ export class RoundOrchestrator {
       isFreeSpin || freeRound
         ? 0
         : anteEnabled
-          ? Number((betAmount * this.engine.anteMultiplier()).toFixed(2))
+          ? Number((betAmount * this.engines.engineFor(session.game_code).anteMultiplier()).toFixed(2))
           : betAmount;
     const roundRef = `r_${req.idempotency_key}`;
     const debitKey = `${req.idempotency_key}:debit`;
@@ -434,10 +437,12 @@ export class RoundOrchestrator {
     this.mgmt.assertOperatorActive(session.operator_id);
     if (session.free_spins_left > 0) throw new Error("FEATURE_IN_PROGRESS");
     if (!session.allowed_bets.includes(req.bet_amount)) throw new Error("INVALID_BET");
+    // A game without a feature buy (classic-5x3) refuses it before any money moves.
+    if (!this.engines.engineFor(session.game_code).supportsBuy()) throw new Error("FEATURE_BUY_DISABLED");
     this.regulatory?.beforeRound(session, "buy");
 
     const ctx = { operatorId: session.operator_id };
-    const charge = Number((req.bet_amount * this.engine.buyCostMultiplier()).toFixed(2));
+    const charge = Number((req.bet_amount * this.engines.engineFor(session.game_code).buyCostMultiplier()).toFixed(2));
     const roundRef = `r_${req.idempotency_key}`;
 
     // 1) DEBIT the buy cost. Decline aborts the buy entirely; an outcome that stays
@@ -606,8 +611,8 @@ export class RoundOrchestrator {
           is_free_spin: isFreeSpin,
           ante_enabled: anteEnabled,
           pre_state: preState,
-          engine_version: this.engine.engineVersion(),
-          rules_hash: this.engine.rulesHash(),
+          engine_version: this.engines.engineFor(session.game_code).engineVersion(),
+          rules_hash: this.engines.engineFor(session.game_code).rulesHash(),
           ...(campaign ? { campaign_id: campaign.campaign_id, grant_id: campaign.grant_id } : {})
         },
         resolved

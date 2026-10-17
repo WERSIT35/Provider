@@ -29,7 +29,8 @@ function operatorToken(container: Container, operatorId: string): string {
 function onboardCasino(container: Container, opts: { name: string; slug: string; domain: string }) {
   const op = container.mgmt.createOperator({ name: opts.name, slug: opts.slug });
   container.mgmt.addDomain(op.id, opts.domain, "prod");
-  const game = container.mgmt.registerGame({ code: `game-${opts.slug}`, title: "Test Game" });
+  // The game must be one the RGS has an engine for (games/): Vault 20K, shared by every casino here.
+  const game = container.mgmt.listGames().find((g) => g.code === "bananax") ?? container.mgmt.registerGame({ code: "bananax", title: "Vault 20K" });
   let cfg = container.mgmt.createMathConfig({
     game_id: game.id,
     version: "1.0.0",

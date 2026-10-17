@@ -35,22 +35,13 @@ const crypto = require("crypto");
 const { Worker, isMainThread, parentPort, workerData } = require("worker_threads");
 
 const ROOT = path.resolve(__dirname, "..");
-const ENGINE_DIR = path.join(ROOT, "client", "engine");
-const RULES_PATH = path.join(ROOT, "client", "math", "game-rules-v2.json");
-
-const ENGINE_FILES = [
-  "rng.js",
-  "config.js",
-  "symbols.js",
-  "multipliers.js",
-  "matrix.js",
-  "payouts.js",
-  "tumble.js",
-  "crazy-mode.js",
-  "session-store.js",
-  "spin-engine.js",
-  "simulator.js"
-];
+// The game's manifest is the one list of engine files, in load order (games/<code>/game.json;
+// the RGS loads the same list). Vault 20K = games/bananax.
+const MANIFEST_PATH = path.join(ROOT, "games", process.env.GAME_CODE || "bananax", "game.json");
+const MANIFEST = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+const ENGINE_DIR = path.resolve(path.dirname(MANIFEST_PATH), MANIFEST.engine.dir);
+const RULES_PATH = path.resolve(path.dirname(MANIFEST_PATH), MANIFEST.rules);
+const ENGINE_FILES = MANIFEST.engine.files;
 
 // ── Seeded RNG (xoshiro128**), installed as globalThis.crypto before the engine loads ──
 function seededCrypto(seedText) {

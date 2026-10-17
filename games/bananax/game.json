@@ -1,0 +1,11 @@
+{
+  "code": "bananax",
+  "title": "Vault 20K",
+  "engine": {
+    "dir": "../../client/engine",
+    "namespace": "SlotEngine",
+    "files": ["rng.js", "config.js", "symbols.js", "multipliers.js", "matrix.js", "payouts.js", "tumble.js", "crazy-mode.js", "session-store.js", "spin-engine.js", "simulator.js"]
+  },
+  "rules": "../../client/math/game-rules-v2.json",
+  "client": "../../client"
+}
