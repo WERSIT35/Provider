@@ -34,6 +34,8 @@
   const PAY_BANDS = ["5", "6", "7-8", "9-11", "12-14", "15+"];
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  // Every duration comes from the shared motion table (/play/shell/motion.js).
+  const T = window.LuminaMotion.game("relicforge");
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode: this page only */ } }
@@ -47,7 +49,7 @@
 
   // ── helpers ─────────────────────────────────────────────────────────────
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-  const pace = (ms) => sleep(reduced.matches ? Math.min(ms, 120) : ms);
+  const pace = (ms) => sleep(reduced.matches ? Math.min(ms, T.reducedCap) : ms);
   const money = (v) => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const betKey = (b) => Number(b).toFixed(2);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -254,29 +256,29 @@
     }
     const offsets = new Map();
     if (fall.mode === "enter") {
-      for (const n of nodes) offsets.set(n, { rows: rows + 1, delay: Number(n.dataset.col) * 55 });
-      for (let c = 0; c < S.cols; c += 1) setTimeout(() => sfx("rf_land", { col: c }), c * 55 + 230);
+      for (const n of nodes) offsets.set(n, { rows: rows + 1, delay: Number(n.dataset.col) * T.enterColStagger });
+      for (let c = 0; c < S.cols; c += 1) setTimeout(() => sfx("rf_land", { col: c }), c * T.enterColStagger + T.landSoundAt);
     } else {
       for (const m of fall.moves || []) { const n = cellAt(m.to.row, m.to.col); if (n) offsets.set(n, { rows: m.to.row - m.from.row, delay: 0 }); }
       const perCol = {};
       for (const d of fall.drops || []) perCol[d.col] = (perCol[d.col] || 0) + 1;
-      for (const d of fall.drops || []) { const n = cellAt(d.row, d.col); if (n) offsets.set(n, { rows: perCol[d.col], delay: 40 }); }
+      for (const d of fall.drops || []) { const n = cellAt(d.row, d.col); if (n) offsets.set(n, { rows: perCol[d.col], delay: T.dropDelay }); }
     }
     const runs = [];
     for (const [n, o] of offsets) {
       if (o.rows <= 0) continue;
-      const ms = 170 + 55 * Math.sqrt(o.rows) * 2;
+      const ms = T.fallBase + T.fallPerSqrtRow * Math.sqrt(o.rows);
       runs.push(n.animate([{ transform: `translateY(${-o.rows * S.cell}px)` }, { transform: "translateY(0)" }], { duration: ms, delay: o.delay, easing: "cubic-bezier(.5,0,.85,.55)", fill: "backwards" }).finished);
     }
     await Promise.all(runs);
   }
   function fade(nodes) {
-    return Promise.all(nodes.map((n) => n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120 }).finished));
+    return Promise.all(nodes.map((n) => n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T.fade }).finished));
   }
   async function exitBoard() {
     const nodes = Array.from(el.board.children);
     if (!nodes.length || reduced.matches) return;
-    await Promise.all(nodes.map((n) => n.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${S.rows * S.cell * 0.6}px)`, opacity: 0 }], { duration: 220, delay: Number(n.dataset.col) * 30, easing: "cubic-bezier(.5,0,1,.6)", fill: "forwards" }).finished));
+    await Promise.all(nodes.map((n) => n.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${S.rows * S.cell * 0.6}px)`, opacity: 0 }], { duration: T.exit, delay: Number(n.dataset.col) * T.exitColStagger, easing: "cubic-bezier(.5,0,1,.6)", fill: "forwards" }).finished));
   }
   function mark(cells, cls) { for (const p of cells) cellAt(p.row, p.col)?.classList.add(cls); }
   async function pop(cells, step) {
@@ -289,7 +291,7 @@
         { filter: "none", opacity: 1, transform: "scale(1)" },
         { filter: "sepia(1) saturate(6) brightness(1.5) drop-shadow(0 0 6px #ffb000)", opacity: 1, transform: "scale(1.04)", offset: 0.45 },
         { filter: "sepia(1) saturate(8) brightness(2.2) blur(1px)", opacity: 0, transform: "scale(.86)" }
-      ], { duration: reduced.matches ? 80 : 260, easing: "ease-in", fill: "forwards" }).finished);
+      ], { duration: reduced.matches ? T.popReduced : T.pop, easing: "ease-in", fill: "forwards" }).finished);
     }
     await Promise.all(runs);
   }
@@ -490,7 +492,7 @@
       let t = 0;
       const done = () => { clearTimeout(t); el.banner.hidden = true; el.banner.removeEventListener("click", done); res(); };
       el.banner.addEventListener("click", done);
-      t = setTimeout(done, reduced.matches ? Math.min(ms, 1400) : ms);
+      t = setTimeout(done, reduced.matches ? Math.min(ms, T.bannerReducedCap) : ms);
     });
   }
   function winTier(totalX) { return totalX >= 200 ? "Epic win" : totalX >= 50 ? "Mega win" : totalX >= 10 ? "Big win" : null; }
@@ -503,7 +505,7 @@
     store.set(key, "1");
     return new Promise((res) => {
       openModal(`<div class="evo-moment"><b>${EVO_NAMES[name]}</b><p>${esc(evoText(name))}</p>${seen ? '<div class="actions" style="justify-content:center"><button data-close="skip" data-focus>Skip</button></div>' : ""}</div>`, () => res());
-      setTimeout(() => closeModal("timer"), reduced.matches ? 900 : 1500);
+      setTimeout(() => closeModal("timer"), reduced.matches ? T.evolutionReduced : T.evolution);
     });
   }
 
@@ -532,7 +534,7 @@
         for (const chip of el.relics.children) {
           chip.classList.add("fire");
           hook("meltdown_fire", { relic: chip.dataset.relic || chip.dataset.evo });
-          await pace(160);
+          await pace(T.meltdownChip);
           chip.classList.remove("fire");
         }
       }
@@ -543,7 +545,7 @@
     if ((r.wilds_placed || []).length || (r.stuck_placed || []).length) {
       mark(r.wilds_placed || [], "mark");
       mark(r.stuck_placed || [], "mark");
-      await pace(380);
+      await pace(T.markHold);
     }
 
     let running = 0;
@@ -568,14 +570,14 @@
       }
       if (st.line_burst.length) { burstRows(st.line_burst); hook("line_burst"); }
       if (st.embers_collected.length) { mark(st.embers_collected, "blast"); hook("ember_collect", { n: st.embers_collected.length }); }
-      await pace(st.detonations.length ? 620 : 480);
+      await pace(st.detonations.length ? T.stepHoldDetonation : T.stepHold);
 
       running += st.step_x * scaler * bonus * bet;
       el.winText.textContent = money(running);
       for (const s of st.specials_created) hook("special_create", { kind: s.kind });
       await pop(st.removed, i);
       await render(st.board, st.specials, { moves: st.moves, drops: st.drops });
-      await pace(120);
+      await pace(T.afterRefill);
     }
     el.hud.classList.remove("on");
     document.body.classList.remove("meltdown");
@@ -584,10 +586,10 @@
 
     if (r.cap_reached) {
       hook("max_win");
-      await banner(`<b>Max win</b><span>${money(r.total_win)}</span><small>${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}× the bet: the round ends here</small>`, 3200);
+      await banner(`<b>Max win</b><span>${money(r.total_win)}</span><small>${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}× the bet: the round ends here</small>`, T.bannerMaxWin);
     } else if (celebrate && winTier(r.total_win / bet)) {
       hook("win_tier", { tier: winTier(r.total_win / bet) });
-      await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, 2600);
+      await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, T.bannerTier);
     }
     if (r.total_win > 0 && !(celebrate && winTier(r.total_win / bet)) && !r.cap_reached) sfx("rf_win");
     if (r.total_win > 0) say(`Forged: ${money(r.total_win)}`, celebrate);
@@ -635,7 +637,7 @@
         if (r.meter && r.meter.collected) {
           if (!(r.total_win > 0)) say("The crucible fills.");
           el.meter.classList.add("pulse");
-          setTimeout(() => el.meter.classList.remove("pulse"), 600);
+          setTimeout(() => el.meter.classList.remove("pulse"), T.meterPulse);
         }
         if (r.meter && r.meter.triggered) hook("meter_full");
       }
@@ -647,7 +649,7 @@
         Sound?.setMusic?.("freeSpins");
         S.lastOffer = r.offer_next;
         const why = r.forge_trigger === "scatter" ? "Anvil scatters" : r.forge_trigger === "meter" ? "The Forge meter is full" : "Meter full and Anvil scatters";
-        await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why}. Choose your relic.</small>`, 2600);
+        await banner(`<b>The Forge</b><span>${S.forge.spins_total} free spins</span><small>${why}. Choose your relic.</small>`, T.bannerForge);
         showForge();
         showBet();
         openDraft(r.offer_next);
@@ -670,8 +672,8 @@
         showForge();
         showBet();
         const big = totalX >= 1 ? winTier(totalX) : null;
-        if (totalX >= 1) await banner(`<b>${big || "Forge complete"}</b><span>${money(total)}</span><small>Forge total, including the spin that started it</small>`, 3000);
-        else await banner(`<span>Forge complete</span><small>Forge total ${money(total)}</small>`, 2200);
+        if (totalX >= 1) await banner(`<b>${big || "Forge complete"}</b><span>${money(total)}</span><small>Forge total, including the spin that started it</small>`, T.bannerForgeTotal);
+        else await banner(`<span>Forge complete</span><small>Forge total ${money(total)}</small>`, T.bannerForgeEmpty);
         say(`Forged in all: ${money(total)}`, totalX >= 1);
       }
     } finally {

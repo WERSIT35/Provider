@@ -29,6 +29,8 @@
   }
   const sfx = (name, opts) => { Haptics.onEvent(name); try { Sound?.play(name, opts); } catch { /* sound is never load-bearing */ } };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  // Every duration comes from the shared motion table (/play/shell/motion.js).
+  const T = window.LuminaMotion.game("classic");
 
   // ── state ────────────────────────────────────────────────────────────────
   const S = {
@@ -42,7 +44,7 @@
 
   const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const speed = () => (S.turbo ? 0.5 : 1) * (reduceMotion?.matches ? 0.6 : 1);
+  const speed = () => (S.turbo ? T.turbo : 1) * (reduceMotion?.matches ? T.reduced : 1);
 
   // ── haptics (touch devices only, off with reduced motion, player can switch it off) ──
   const Haptics = (() => {
@@ -405,12 +407,12 @@
     if (!free) { el.win.textContent = "0.00"; if (Number.isFinite(S.balance)) el.balance.textContent = fmt(S.balance - bet); }
     say(free ? `Night · ${S.freeSpinsLeft} left` : "The moths take flight…");
     startReels();
-    const minSpin = sleep(260 * speed());
+    const minSpin = sleep(T.minSpin * speed());
     let r;
     try {
       [r] = await Promise.all([api("POST", "/game/v1/spin", { bet_amount: bet }, uuid()), minSpin]);
     } catch (err) {
-      await Promise.all(R.reels.map((reel, col) => landReel(col, Math.round(reel.pos), 120)));
+      await Promise.all(R.reels.map((reel, col) => landReel(col, Math.round(reel.pos), T.errorLand)));
       S.inFlight = false; setControls();
       if (err.code === "REALITY_CHECK_REQUIRED") { await realityCheck(err.details); return null; }
       say(err.code === "INSUFFICIENT_FUNDS" ? "Not enough credit for this bet" : `Round not played (${err.code || err.message})`);
@@ -422,8 +424,8 @@
     let scattersSoFar = 0;
     for (let col = 0; col < 5; col++) {
       const anticipate = scattersSoFar >= 2 && !S.quickStop;
-      const dur = (S.quickStop ? 130 : (anticipate ? 900 : 360) * speed()) + (S.quickStop ? 0 : col * 25);
-      if (!S.quickStop && col > 0) await sleep((anticipate ? 380 : 110) * speed());
+      const dur = (S.quickStop ? T.reelLandQuick : (anticipate ? T.reelLandAnticipate : T.reelLand) * speed()) + (S.quickStop ? 0 : col * T.reelLandColExtra);
+      if (!S.quickStop && col > 0) await sleep((anticipate ? T.reelGapAnticipate : T.reelGap) * speed());
       if (anticipate) say("…");
       await landReel(col, r.stops[col], dur);
       sfx("reel_stop", { index: col });
@@ -452,19 +454,19 @@
     R.highlight = { cells, line: null }; kick();
     const x = total / bet;
     const tier = x >= 50 ? ["The Queen's gift", "win_epic"] : x >= 25 ? ["Moonlit", "win_mega"] : x >= 10 ? ["Lanterns rise", "win_big"] : null;
-    countUp(total, tier ? 300 : 500 * speed());
+    countUp(total, tier ? T.countUpTier : T.countUpPlain * speed());
     if (total > 0) say(`Moonlight win: ${fmt(total)}`, true);
     sfx(x >= 5 ? "win_land" : total > 0 ? "win_small" : "click");
     if (tier) await celebrate(tier[0], total, tier[1]);
     // Walk the winning lines once (skipped by quick stop / turbo / autoplay pace).
     if (!S.quickStop && !S.turbo && (r.line_wins || []).length > 1) {
-      for (const [li, w] of r.line_wins.slice(0, 6).entries()) { if (S.quickStop) break; sfx("line_show", { i: li }); R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]), lineNo: w.line }; kick(); await sleep(420); }
+      for (const [li, w] of r.line_wins.slice(0, 6).entries()) { if (S.quickStop) break; sfx("line_show", { i: li }); R.highlight = { cells: new Set(w.positions.map((p) => `${p.row},${p.col}`)), line: S.rules.lines.patterns[w.line - 1].map((row, col) => [row, col]), lineNo: w.line }; kick(); await sleep(T.linePerLine); }
       R.highlight = { cells, line: null }; kick();
     }
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
       say(r.is_free_spin ? `More moths — +${r.free_spins_awarded} free spins` : `The moths gather — ${r.free_spins_awarded} free spins.`, true);
-      await sleep(900 * speed());
+      await sleep(T.featureAward * speed());
     }
   }
   let countTimer = 0;
@@ -492,10 +494,10 @@
     return new Promise((resolve) => {
       el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
       releaseMoths();
-      const t0 = performance.now(), ms = S.turbo ? 900 : 2200;
+      const t0 = performance.now(), ms = S.turbo ? T.celebrateTurbo : T.celebrate;
       let done = false;
       const finish = () => { if (done) return; done = true; el.cel.hidden = true; el.cel.removeEventListener("pointerdown", finish); resolve(); };
-      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1) requestAnimationFrame(tick); else setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? 900 : 2500); };
+      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1) requestAnimationFrame(tick); else setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold); };
       requestAnimationFrame(tick);
       el.cel.addEventListener("pointerdown", finish);
     });
@@ -518,7 +520,7 @@
       el.fsBadge.textContent = `Night · ${S.freeSpinsLeft} left`;
       const r = await playRound({ auto: true });
       if (!r) break;
-      await sleep(260 * speed());
+      await sleep(T.betweenFreeSpins * speed());
     }
     el.fsBadge.hidden = true;
     document.body.classList.remove("night");
@@ -553,7 +555,7 @@
       if (a.limits.loss > 0 && a.startBalance - S.balance >= a.limits.loss - 1e-9) { stopAutoplay("loss limit reached"); break; }
       if (a.limits.win > 0 && roundWin >= a.limits.win - 1e-9) { stopAutoplay(`win of ${fmt(roundWin)}`); break; }
       if (a.limits.feature && featureTriggered) { stopAutoplay("Free Spins won"); break; }
-      await sleep(S.turbo ? 150 : 400);
+      await sleep(S.turbo ? T.autoplayGapTurbo : T.autoplayGap);
     }
     stopAutoplay();
   }
