@@ -10,7 +10,7 @@ This document is the specification. It contains no claim of certification or app
 
 | | Target | Exact (from strips + paytable) | 100M-spin simulation |
 |---|---|---|---|
-| RTP | 96.0% ± 0.1 | **96.0203%** | `qa/rtp-report.md` (100M paid spins; comes with the simulation tools, next PR) |
+| RTP | 96.0% ± 0.1 | **96.0203%** | **95.9742%** over 100M paid spins, 99% CI [95.8434%, 96.1050%] (`qa/rtp-report.md`) |
 | Volatility | medium | — | SD and volatility index in the report |
 | Max win | 5,000× total bet | cap enforced by the engine | largest win observed in the report |
 
