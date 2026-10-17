@@ -110,6 +110,7 @@
     // Moth & Lantern (games/classic-5x3/client/game.js).
     classic: {
       turbo: 0.5,              // speed() factor in turbo
+      quick: 0.75,             // speed() factor in quick spin
       reduced: 0.6,            // speed() factor under reduced motion
       minSpin: 260,            // reels spin at least this long before landing
       reelLand: 360,           // one reel's landing

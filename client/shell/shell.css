@@ -39,6 +39,7 @@
   --lsh-read-bg: transparent;              /* readout surface */
   --lsh-read-ink: var(--lsh-ink);          /* readout value */
   --lsh-read-k: var(--lsh-muted);          /* readout label */
+  --lsh-feature-ink: var(--lsh-accent);    /* readout values during a feature (spins left, feature win) */
   --lsh-spin-ring: 0 6px 18px rgba(0, 0, 0, 0.45);  /* outer shadow / glow of the spin face */
   --lsh-spin-face: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--lsh-accent) 70%, #fff) 0%, var(--lsh-accent) 46%, var(--lsh-accent-2) 100%);
 
@@ -160,7 +161,7 @@
 .lsh-read--bet { border-radius: 10px; min-height: var(--lsh-hit); }
 .lsh-read--bet:hover:not(:disabled) { filter: brightness(1.08); }
 .lsh-read--bet:disabled { cursor: default; }
-.lsh.is-feature .lsh-read--bet .lsh-read__v, .lsh.is-feature .lsh-read--win .lsh-read__v { color: var(--lsh-accent); }
+.lsh.is-feature .lsh-read--bet .lsh-read__v, .lsh.is-feature .lsh-read--win .lsh-read__v { color: var(--lsh-feature-ink); }
 
 /* ── portrait (default) ───────────────────────────────────────────────── */
 .lsh {
