@@ -3,44 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#0f0a08">
+  <meta name="theme-color" content="#1d150f">
   <title>Relic Forge</title>
   <link rel="preload" href="rules.json" as="fetch" crossorigin>
-  <link rel="preload" href="assets/fonts/cinzel-900.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/cinzel-decorative-700.woff2" as="font" type="font/woff2" crossorigin>
   <style>
-    /* Relic Forge: black iron and a molten seam. Cinzel (carved display) + Barlow Semi
-       Condensed (UI), both SIL OFL 1.1 (assets/fonts). */
-    @font-face { font-family: "RF Carved"; src: url("assets/fonts/cinzel-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
-    @font-face { font-family: "RF Carved"; src: url("assets/fonts/cinzel-900.woff2") format("woff2"); font-weight: 900; font-display: swap; }
-    @font-face { font-family: "RF UI"; src: url("assets/fonts/barlow-sc-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
-    @font-face { font-family: "RF UI"; src: url("assets/fonts/barlow-sc-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+    /* Relic Forge: an alchemist's forge from a lost manuscript. Ink, parchment, molten gold.
+       Brand sheet: docs/brand/relicforge.md. Cinzel Decorative + Cormorant Garamond + IBM Plex
+       Sans Condensed (numbers), all SIL OFL 1.1 (assets/fonts). */
+    @font-face { font-family: "RF Display"; src: url("assets/fonts/cinzel-decorative-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+    @font-face { font-family: "RF Text"; src: url("assets/fonts/cormorant-garamond-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    @font-face { font-family: "RF Num"; src: url("assets/fonts/plex-condensed-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
     :root {
-      --basalt: #0f0a08; --basalt-2: #1a1210; --iron: #2b2624; --iron-2: #3d3532; --iron-hi: #7c726b; --rivet: #9a8f87;
-      --molten: #ff6a1a; --molten-hi: #ffcf6b; --molten-deep: #a8300a; --slag: #3a1a0c;
-      --rune: #46e0c8; --gold: #f2c14e; --text: #f3e9df; --muted: #bba99b; --dim: #85766b; --danger: #ff7a6b;
+      --parch: #e9dcc0; --parch-2: #cbb68e; --ink: #1c1611; --iron: #3a332c; --gold: #ffb000; --core: #ff5e1a; --verd: #3e8c7a;
+      --desk: #15100c; --text: #e9dcc0; --muted: #b5a283; --dim: #8a7a62;
       --cell: 56px; --rows: 5; --cols: 6; --gap: clamp(6px, 1.5vmin, 14px); --btn: 44px; --spin: 70px;
-      --carved: "RF Carved", "Trajan Pro", Georgia, serif;
-      --ui: "RF UI", "Arial Narrow", system-ui, sans-serif;
-      font-family: var(--ui); font-weight: 500;
+      --display: "RF Display", "Trajan Pro", Georgia, serif;
+      --text-face: "RF Text", Garamond, Georgia, serif;
+      --num: "RF Num", "Arial Narrow", system-ui, sans-serif;
+      font-family: var(--text-face); font-weight: 600;
+      /* Parchment: grain + foxing, rasterised once. */
+      --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .25 0 0 0 0 .12 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
-    body {
-      background:
-        radial-gradient(120% 55% at 50% 112%, rgba(255, 106, 26, 0.32), rgba(168, 48, 10, 0.12) 45%, transparent 70%),
-        radial-gradient(80% 40% at 50% -10%, rgba(124, 114, 107, 0.16), transparent 70%),
-        linear-gradient(180deg, var(--basalt-2), var(--basalt) 60%, #140806);
-    }
+    /* The desk: dark oak and lamplight. */
+    body { background: radial-gradient(90% 60% at 50% 38%, #3a2a1c, #1d150f 60%, #0e0a07); }
     button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
     button:disabled { cursor: default; opacity: 0.45; }
-    :focus-visible { outline: 2px solid var(--molten-hi); outline-offset: 2px; }
-
-    /* Embers drift up from the seam: a handful of CSS sparks, off with reduced motion or
-       Settings → Screen effects off. Behind everything, never over the board. */
-    .embers { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
-    .embers i { position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; background: var(--molten-hi); box-shadow: 0 0 6px 2px rgba(255, 140, 40, 0.7); opacity: 0; }
-    body.fx .embers i { animation: ember var(--d, 7s) linear infinite; animation-delay: var(--t, 0s); }
-    @keyframes ember { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: 0.9; } 100% { transform: translate(var(--x, 20px), -105vh); opacity: 0; } }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
     .game {
       position: fixed; inset: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--gap);
@@ -49,114 +40,107 @@
     }
     body.app-ready .game { opacity: 1; }
 
-    /* ── Top: carved title, the crucible (Forge meter) or the Forge status, the relic tray. ── */
-    .top { position: relative; display: grid; gap: 8px; justify-items: center; min-width: 0; }
-    .title { margin: 0; font: 900 clamp(1.55rem, 7vw, 2.5rem)/1 var(--carved); letter-spacing: 0.04em;
-      background: linear-gradient(180deg, #fff1cf 0%, #ffcf6b 38%, #ff6a1a 62%, #7a2208 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 2px 0 #1a0a04) drop-shadow(0 0 14px rgba(255, 106, 26, 0.45)); }
-    .lobby-slot { position: absolute; left: 0; top: 0; }
-    .meter { width: min(100%, 440px); display: grid; gap: 5px; }
-    .meter-row { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .meter-row span:last-child { color: var(--molten-hi); font-weight: 700; }
-    /* The crucible: an iron channel, molten metal pours in from the left. */
-    .meter-bar { position: relative; height: 14px; border-radius: 4px; overflow: hidden;
-      background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), rgba(0, 0, 0, 0.55) calc(25% - 1px) 25%), linear-gradient(180deg, #0b0705, #1d1310);
-      box-shadow: 0 0 0 2px var(--iron-2), 0 0 0 3px #000, inset 0 2px 4px rgba(0, 0, 0, 0.9); }
+    /* ── Top: the engraved title, the crucible (Forge meter) or the Forge status, the relic plates. ── */
+    .top { position: relative; display: grid; gap: 6px; justify-items: center; min-width: 0; }
+    .lobby-slot { position: absolute; left: 0; top: 0; z-index: 2; }
+    .title { margin: 0; line-height: 0; }
+    .title svg { width: clamp(220px, 68vw, 380px); height: auto; overflow: visible; }
+    .title text { font-family: var(--display); font-weight: 700; }
+    .meter { display: flex; align-items: center; gap: 8px; width: min(100%, 420px); }
+    .meter svg.crucible { flex: none; width: 26px; height: 26px; }
+    .meter-row { display: none; }
+    .meter-bar { position: relative; flex: 1; height: 14px; border-radius: 2px 2px 7px 7px; overflow: hidden;
+      background: repeating-linear-gradient(115deg, rgba(28, 22, 17, 0.28) 0 1px, transparent 1px 4px), var(--parch) var(--grain);
+      box-shadow: inset 0 0 0 1.5px var(--ink); }
     .meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; transition: width 0.45s cubic-bezier(.3, .7, .3, 1);
-      background: linear-gradient(180deg, var(--molten-hi), var(--molten) 45%, var(--molten-deep)); box-shadow: 0 0 12px rgba(255, 106, 26, 0.7); }
-    .meter-fill::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #fff3d0; box-shadow: 0 0 10px 3px rgba(255, 220, 140, 0.9); }
-    .meter.pulse .meter-bar { box-shadow: 0 0 0 2px var(--molten-hi), 0 0 0 3px #000, 0 0 18px rgba(255, 106, 26, 0.7); }
-    .forge-bar { display: none; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+      background: linear-gradient(180deg, #ffe08a, var(--gold) 45%, var(--core)); box-shadow: inset 0 0 0 1.5px var(--ink), 0 0 10px rgba(255, 176, 0, 0.7); }
+    .meter-num { flex: none; min-width: 52px; text-align: right; font: 600 0.95rem var(--num); color: var(--gold); font-variant-numeric: tabular-nums; }
+    .meter.pulse .meter-bar { box-shadow: inset 0 0 0 1.5px var(--ink), 0 0 16px rgba(255, 176, 0, 0.8); }
+    .forge-bar { display: none; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
     body.in-forge .forge-bar { display: flex; }
     body.in-forge .meter { display: none; }
-    .pill { padding: 4px 11px; border-radius: 6px; background: linear-gradient(180deg, var(--iron-2), var(--iron)); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.12); font-size: 0.82rem; white-space: nowrap; }
-    .pill b { color: var(--molten-hi); }
-    .pill.meltdown { background: linear-gradient(180deg, #ff8a3d, #a8300a); color: #fff; font: 900 0.8rem var(--carved); letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(255, 106, 26, 0.7); }
+    .pill { padding: 3px 10px; border-radius: 2px; background: var(--parch) var(--grain); color: var(--ink); box-shadow: 0 0 0 1px var(--ink), 0 2px 0 rgba(0, 0, 0, 0.4); font-size: 0.95rem; white-space: nowrap; }
+    .pill b { font: 600 0.92rem var(--num); color: #8a3a00; }
+    .pill.meltdown { background: linear-gradient(180deg, #ffe08a, var(--gold) 50%, var(--core)); font: 700 0.8rem var(--display); letter-spacing: 0.04em; }
     .pill[hidden] { display: none; }
-    .relics { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; min-height: 0; }
-    .relic-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 6px; background: linear-gradient(180deg, var(--iron-2), var(--iron)); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.1); font-size: 0.8rem; transition: box-shadow 0.15s; }
-    .relic-chip i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 4px; font: 900 0.72rem var(--carved); font-style: normal; color: #1a0a04; background: linear-gradient(180deg, var(--molten-hi), var(--molten)); }
-    .relic-chip .pips { letter-spacing: 1px; color: var(--molten-hi); }
-    .relic-chip.evo { background: linear-gradient(180deg, #5c2a10, #2a1208); box-shadow: 0 0 0 1px var(--molten-hi); color: var(--molten-hi); font-weight: 700; }
+    .relics { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .relic-chip { display: flex; align-items: center; gap: 6px; padding: 2px 9px 2px 2px; border-radius: 2px; background: var(--parch) var(--grain); color: var(--ink); box-shadow: 0 0 0 1px var(--ink), 0 2px 0 rgba(0, 0, 0, 0.4); font-size: 0.9rem; transition: box-shadow 0.15s; }
+    .relic-chip i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 2px; font: 700 0.72rem var(--display); font-style: normal; color: var(--parch); background: var(--ink); }
+    .relic-chip .pips { letter-spacing: 1px; color: #8a3a00; }
+    .relic-chip.evo { background: linear-gradient(180deg, #ffe08a, var(--gold)); font-family: var(--display); font-size: 0.8rem; }
     .relic-chip.ghost { opacity: 0.55; }
-    .relic-chip.fire { box-shadow: 0 0 0 2px #fff, 0 0 18px var(--molten); opacity: 1; }
+    .relic-chip.fire { box-shadow: 0 0 0 2px var(--gold), 0 0 18px var(--gold); opacity: 1; }
 
-    /* ── Stage: the board sits in an iron plate with four rivets and a molten seam below. ── */
-    .stage { position: relative; min-height: 0; min-width: 0; display: grid; place-items: center; padding-top: 30px; }
-    .board-wrap { position: relative; padding: 10px; border-radius: 16px;
-      background: linear-gradient(160deg, #4a423e, var(--iron) 35%, #1c1715 70%, #3a322f);
-      box-shadow: 0 0 0 2px #000, inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 30px rgba(0, 0, 0, 0.6), 0 18px 36px -10px rgba(255, 106, 26, 0.45); }
-    .board-wrap::before { content: ""; position: absolute; inset: 4px; border-radius: 12px; pointer-events: none;
+    /* ── Stage: the manuscript page in an iron book clasp. ── */
+    .stage { position: relative; min-height: 0; min-width: 0; display: grid; place-items: center; padding-top: 50px; }
+    .board-wrap { position: relative; padding: 14px; border-radius: 4px;
+      background: var(--grain), radial-gradient(120% 120% at 50% 40%, var(--parch) 55%, #d6c29b 85%, #b89e70);
+      box-shadow: 0 0 0 3px var(--iron), 0 0 0 5px var(--ink), 0 0 0 6px #5a4f45, 0 18px 40px rgba(0, 0, 0, 0.65); }
+    /* Book clasps on the frame, left and right. */
+    .board-wrap::before, .board-wrap::after { content: ""; position: absolute; top: 50%; width: 10px; height: 46px; margin-top: -23px; border-radius: 2px; z-index: 3;
+      background: linear-gradient(90deg, #6b6158, #2c2620 60%, #4c443d); box-shadow: 0 0 0 1px #000, inset 0 0 0 2px rgba(255, 255, 255, 0.08); }
+    .board-wrap::before { left: -11px; } .board-wrap::after { right: -11px; }
+    /* Marginalia: hammer and tongs, alchemical marks, in the page's corners. */
+    .marg { position: absolute; width: 22px; height: 22px; pointer-events: none; opacity: 0.8; z-index: 1; }
+    .marg.tl { left: -2px; top: -2px; } .marg.tr { right: -2px; top: -2px; transform: scaleX(-1); } .marg.bl { left: -2px; bottom: -2px; transform: scaleY(-1); } .marg.br { right: -2px; bottom: -2px; transform: scale(-1, -1); }
+    .board { position: relative; z-index: 2; width: calc(var(--cell) * var(--cols)); height: calc(var(--cell) * var(--rows)); overflow: hidden;
+      /* Engraved stone sockets, one per cell. */
       background:
-        radial-gradient(circle at 0 0, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
-        radial-gradient(circle at 100% 0, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
-        radial-gradient(circle at 0 100%, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat,
-        radial-gradient(circle at 100% 100%, var(--rivet) 0 2.5px, #000 3px, transparent 3.6px) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat; }
-    .board-wrap::after { content: ""; position: absolute; left: 12%; right: 12%; bottom: -3px; height: 3px; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--molten-hi), var(--molten), var(--molten-hi), transparent); box-shadow: 0 0 14px 3px rgba(255, 106, 26, 0.65); }
-    .board { position: relative; width: calc(var(--cell) * var(--cols)); height: calc(var(--cell) * var(--rows)); border-radius: 8px; overflow: hidden;
-      /* Stone sockets, one per cell. */
-      background:
-        radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.035), transparent 62%) 0 0 / var(--cell) var(--cell),
-        linear-gradient(180deg, #161010, #0c0807);
-      box-shadow: inset 0 0 0 2px #000, inset 0 0 40px rgba(0, 0, 0, 0.75); }
-    .cell { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); padding: calc(var(--cell) * 0.05); }
-    .cell svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 calc(var(--cell) * 0.03) calc(var(--cell) * 0.03) rgba(0, 0, 0, 0.7)); }
-    .cell.win svg { filter: drop-shadow(0 0 calc(var(--cell) * 0.1) rgba(255, 200, 110, 0.95)); }
-    .cell.win::after { content: ""; position: absolute; inset: 2px; border-radius: 9px; box-shadow: inset 0 0 0 2px var(--molten-hi), inset 0 0 14px rgba(255, 140, 40, 0.55); }
-    .cell.blast::after { content: ""; position: absolute; inset: 0; border-radius: 6px; background: radial-gradient(circle, rgba(255, 245, 210, 0.95), rgba(255, 106, 26, 0.45) 55%, transparent 75%); }
-    .cell.mark::after { content: ""; position: absolute; inset: 2px; border-radius: 9px; box-shadow: inset 0 0 0 2px var(--rune), 0 0 12px rgba(70, 224, 200, 0.5); }
-    .cell .sp { position: absolute; right: 3%; top: 3%; width: 36%; height: 36%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.19); font-weight: 900; color: #0b0705; box-shadow: 0 0 0 2px #0b0705, 0 0 8px currentColor; }
-    .cell .sp.RUNE { background: radial-gradient(circle at 40% 35%, #d8fff7, var(--rune)); }
-    .cell .sp.BOMB { background: radial-gradient(circle at 40% 35%, #ffe0b0, #ff7a2a); }
-    .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 220, 160, 0.7), transparent); box-shadow: 0 0 20px rgba(255, 140, 40, 0.6); pointer-events: none; }
+        radial-gradient(circle at 50% 50%, transparent 54%, rgba(28, 22, 17, 0.16) 56%, transparent 60%) 0 0 / var(--cell) var(--cell),
+        repeating-linear-gradient(135deg, rgba(28, 22, 17, 0.05) 0 1px, transparent 1px 5px); }
+    .cell { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); padding: calc(var(--cell) * 0.06); }
+    .cell svg { width: 100%; height: 100%; display: block; }
+    .cell.win svg { filter: drop-shadow(0 0 calc(var(--cell) * 0.08) rgba(255, 176, 0, 0.95)) drop-shadow(0 0 2px rgba(255, 94, 26, 0.9)); }
+    .cell.win::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 16px rgba(255, 176, 0, 0.55); }
+    .cell.blast::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(255, 240, 190, 0.95), rgba(255, 176, 0, 0.55) 55%, transparent 75%); }
+    .cell.mark::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--verd); }
+    .cell .sp { position: absolute; right: 2%; top: 2%; width: 38%; height: 38%; border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--cell) * 0.18); font-weight: 700; color: var(--parch);
+      background: radial-gradient(circle at 40% 35%, #6fc3ae, var(--verd) 60%, #1f4f44); box-shadow: 0 0 0 1.5px var(--ink); }
+    .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 176, 0, 0.55), transparent); pointer-events: none; }
+    /* Meltdown: the page tints gold and the margins glow. */
+    body.meltdown .board-wrap { box-shadow: 0 0 0 3px var(--iron), 0 0 0 5px var(--ink), 0 0 0 6px #5a4f45, 0 0 40px 8px rgba(255, 176, 0, 0.55); }
+    body.meltdown .board-wrap { background: var(--grain), radial-gradient(120% 120% at 50% 40%, #ffe6a8 50%, #ffc14d 85%, #e08a1e); transition: background 0.4s; }
 
-    /* One line on how the Forge works, under the board on tall portrait screens only. */
-    .lore { display: none; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 440px); margin: 0; padding: 8px 12px; border-radius: 8px; text-align: center; font-size: 0.88rem; color: var(--muted);
-      background: rgba(15, 10, 8, 0.7); box-shadow: 0 0 0 1px var(--iron-2); }
-    body.in-forge .lore { visibility: hidden; }
-    @media (max-aspect-ratio: 3 / 4) and (min-height: 760px) { .lore { display: block; } .stage { padding-bottom: 64px; } }
-
-    /* Step readout above the board: cascade counter, Base × Mult (× Relic bonus). */
-    .hud { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
-    .combo, .mult, .calc { padding: 3px 10px; border-radius: 6px; background: rgba(15, 10, 8, 0.94); box-shadow: 0 0 0 1px var(--iron-hi); font-size: 0.86rem; opacity: 0; transition: opacity 0.15s; }
+    /* Step readout above the page: cascade, Base × Mult (× Relic bonus); the Mult is a wax seal. */
+    .hud { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; pointer-events: none; }
+    .combo, .calc { padding: 2px 9px; border-radius: 2px; background: var(--parch) var(--grain); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); font: 600 0.82rem var(--num); opacity: 0; transition: opacity 0.15s; }
+    .mult { display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 6px; border-radius: 50%; color: #fff1d0; font: 700 0.9rem var(--display); opacity: 0; transition: opacity 0.15s, transform 0.2s;
+      background: radial-gradient(circle at 40% 35%, #ff8a4d, var(--core) 55%, #8a2a00); box-shadow: 0 0 0 2px #6b2000, 0 2px 0 rgba(0, 0, 0, 0.4); }
     .hud.on .combo, .hud.on .mult, .hud.on .calc { opacity: 1; }
-    .mult { font: 900 0.95rem var(--carved); transition: opacity 0.15s, color 0.2s; }
-    .mult[data-tier="1"] { color: var(--gold); }
-    .mult[data-tier="2"] { color: var(--molten); }
-    .mult[data-tier="3"] { color: #fff; text-shadow: 0 0 12px var(--molten-hi); }
+    .mult[data-tier="1"] { transform: scale(1.1); }
+    .mult[data-tier="2"] { transform: scale(1.22); box-shadow: 0 0 0 2px #6b2000, 0 0 12px rgba(255, 176, 0, 0.7); }
+    .mult[data-tier="3"] { transform: scale(1.35); box-shadow: 0 0 0 2px #6b2000, 0 0 20px rgba(255, 176, 0, 0.95); }
 
-    .banner { position: absolute; inset: 10px; display: grid; place-content: center; text-align: center; border-radius: 8px; cursor: pointer; z-index: 5; padding: 12px;
-      background: radial-gradient(circle at 50% 60%, rgba(120, 40, 10, 0.85), rgba(10, 5, 3, 0.9)); }
+    .banner { position: absolute; inset: 14px; display: grid; place-content: center; text-align: center; cursor: pointer; z-index: 5; padding: 12px;
+      background: radial-gradient(circle at 50% 55%, rgba(255, 224, 138, 0.94), rgba(233, 220, 192, 0.96) 60%); color: var(--ink); }
     .banner[hidden] { display: none; }
-    .banner b { display: block; font: 900 clamp(1.4rem, 6.5vmin, 3.4rem)/1.05 var(--carved); letter-spacing: 0.04em;
-      background: linear-gradient(180deg, #fff1cf, #ffcf6b 40%, #ff6a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 16px rgba(255, 106, 26, 0.75)); }
-    .banner span { display: block; margin-top: 6px; font: 700 clamp(1.3rem, 5.5vmin, 2.8rem)/1.1 var(--ui); font-variant-numeric: tabular-nums; color: #fff; }
-    .banner small { display: block; margin-top: 8px; color: var(--muted); font-size: 0.85rem; }
+    .banner b { display: block; font: 700 clamp(1.4rem, 6.5vmin, 3.2rem)/1.05 var(--display); color: var(--ink); text-shadow: 0 0 18px rgba(255, 176, 0, 0.9); }
+    .banner span { display: block; margin-top: 6px; font: 600 clamp(1.3rem, 5.5vmin, 2.8rem)/1.1 var(--num); color: #8a3a00; font-variant-numeric: tabular-nums; }
+    .banner small { display: block; margin-top: 8px; color: var(--iron); font-size: 1rem; }
 
-    /* Element-level shake only (the board or the cascade counter), never the page layout.
-       Off under reduced motion or with Settings → Screen effects off (body.fx). */
     @keyframes rf-shake { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-4px, 2px); } 40% { transform: translate(4px, -2px); } 60% { transform: translate(-3px, -1px); } 80% { transform: translate(2px, 1px); } }
     body.fx .board-wrap.shake { animation: rf-shake 0.32s linear; }
     body.fx .combo.shake { animation: rf-shake 0.25s linear; }
 
-    /* ── Deck: a forged iron panel. ── */
-    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 14px;
-      background: linear-gradient(180deg, #3a3330, #1d1816 60%, #151110); box-shadow: 0 0 0 2px #000, inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+    /* ── Deck: ink and brass on the desk. ── */
+    .deck { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap); padding: 10px 12px; border-radius: 4px;
+      background: linear-gradient(180deg, #2a1f17, #17110c); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(233, 220, 192, 0.12); }
     .sys, .play { display: flex; align-items: center; gap: 8px; }
     .status { min-width: 0; width: 100%; max-width: 460px; justify-self: center; display: grid; gap: 6px; }
-    .msg { height: 1.35em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.92rem; color: var(--muted); text-align: center; }
-    .msg.win { color: var(--molten-hi); font-weight: 700; }
-    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; font-variant-numeric: tabular-nums; }
-    .readouts div { display: grid; text-align: center; padding: 3px 6px 4px; border-radius: 6px; background: #0b0705; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.08); min-width: 0; }
-    .readouts span { font-size: 0.68rem; color: var(--dim); }
-    .readouts strong { font: 700 1.05rem/1.15 var(--ui); color: var(--molten-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .icon { width: var(--btn); height: var(--btn); border-radius: 10px; display: grid; place-items: center; font-size: 1.05rem; font-weight: 700; color: var(--text);
-      background: linear-gradient(180deg, #5a514c, var(--iron) 55%, #1a1513); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 3px 0 #000; }
-    .icon:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 1px #000, 0 1px 0 #000; }
-    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: #2a0c02; font: 900 0.95rem var(--carved); letter-spacing: 0.04em;
-      background: radial-gradient(circle at 50% 32%, #fff3d0, var(--molten-hi) 25%, var(--molten) 55%, var(--molten-deep) 90%);
-      box-shadow: 0 0 0 3px #1a1513, 0 0 0 5px var(--iron-hi), 0 0 0 6px #000, 0 0 26px rgba(255, 106, 26, 0.55), 0 5px 0 #000; }
-    .spin:not(:disabled):hover { filter: brightness(1.08); }
+    .msg { height: 1.35em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 1.08rem; color: var(--muted); text-align: center; font-style: italic; }
+    .msg.win { color: var(--gold); font-style: normal; }
+    .readouts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 6px; }
+    .readouts div { display: grid; text-align: center; padding: 2px 6px 4px; border-radius: 2px; background: var(--parch) var(--grain); color: var(--ink); min-width: 0; box-shadow: 0 0 0 1px #000; }
+    .readouts span { font-size: 0.78rem; color: var(--iron); }
+    .readouts strong { font: 600 1.02rem/1.15 var(--num); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .icon { width: var(--btn); height: var(--btn); border-radius: 50%; display: grid; place-items: center; font: 700 1.1rem var(--text-face); color: var(--ink);
+      background: var(--parch) var(--grain); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 #000; }
+    .icon:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 1.5px var(--ink), 0 1px 0 #000; }
+    /* Spin: a molten-gold seal. */
+    .spin { width: var(--spin); height: var(--spin); border-radius: 50%; color: var(--ink); font: 600 1.15rem var(--text-face); letter-spacing: 0.08em; text-transform: uppercase;
+      background: radial-gradient(circle at 45% 35%, #fff2c4, #ffd25a 30%, var(--gold) 60%, var(--core));
+      box-shadow: 0 0 0 2px var(--ink), 0 0 0 5px #5a4f45, 0 0 0 6px #000, 0 0 24px rgba(255, 176, 0, 0.5), 0 5px 0 #000; }
+    .spin:not(:disabled):hover { filter: brightness(1.06); }
     .spin:active:not(:disabled) { transform: translateY(3px); }
 
     @media (max-width: 560px) {
@@ -166,13 +150,14 @@
     }
     @media (max-width: 340px) {
       :root { --btn: 40px; --spin: 62px; }
-      .readouts strong { font-size: 0.95rem; }
     }
-    /* Phones in landscape: title and meter on the left, the board in the middle, controls right. */
     @media (orientation: landscape) and (max-height: 520px) {
       .game { grid-template-columns: clamp(150px, 24vw, 230px) minmax(0, 1fr) clamp(170px, 24vw, 220px); grid-template-rows: minmax(0, 1fr); }
       .top { grid-column: 1; grid-row: 1; align-content: center; padding-top: 34px; }
-      .title { font-size: clamp(1.1rem, 3.4vw, 1.6rem); text-align: center; }
+      .title svg { width: 100%; }
+      .meter { flex-wrap: wrap; justify-content: center; }
+      .meter-bar { flex-basis: calc(100% - 34px); }
+      .meter-num { min-width: 0; text-align: center; flex-basis: 100%; }
       .stage { grid-column: 2; grid-row: 1; }
       .deck { grid-column: 3; grid-row: 1; grid-template-columns: 1fr; grid-template-areas: "status" "play" "sys"; align-content: center; justify-items: center; gap: 12px; }
       .status { grid-area: status; } .play { grid-area: play; } .sys { grid-area: sys; }
@@ -180,52 +165,63 @@
       :root { --spin: 62px; --btn: 40px; }
     }
 
-    /* Draft, evolution, info, settings, reality check: one modal layer. */
-    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(8, 4, 2, 0.82); }
+    /* Draft, evolution, info, settings, reality check: one modal layer, a parchment leaf. */
+    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(14, 10, 7, 0.82); }
     .modal[hidden] { display: none; }
-    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 14px; background: linear-gradient(180deg, #2a2320, #171210); box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--iron-hi), 0 20px 50px rgba(0, 0, 0, 0.7); padding: 18px; user-select: text; }
-    .sheet h2 { margin: 0 0 4px; font: 900 1.3rem var(--carved); color: var(--molten-hi); }
-    .sheet h3 { margin: 16px 0 4px; font: 700 1rem var(--carved); color: var(--molten-hi); }
-    .sheet p, .sheet li { margin: 6px 0; color: var(--muted); font-size: 0.95rem; line-height: 1.45; }
+    .sheet { width: min(100%, 760px); max-height: 100%; overflow: auto; border-radius: 3px; background: var(--grain), var(--parch); color: var(--ink); box-shadow: 0 0 0 2px var(--ink), 0 20px 50px rgba(0, 0, 0, 0.7); padding: 18px; user-select: text; }
+    .sheet h2 { margin: 0 0 4px; font: 700 1.35rem var(--display); color: var(--ink); }
+    .sheet h3 { margin: 16px 0 4px; font: 700 1.02rem var(--display); color: var(--iron); }
+    .sheet p, .sheet li { margin: 6px 0; color: #3a2f24; font-size: 1.05rem; line-height: 1.4; }
     .sheet .close { float: right; }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
     @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
-    .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 10px; background: linear-gradient(180deg, #3a2a20, #24170f); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 255, 255, 0.1); transition: box-shadow 0.15s, transform 0.15s; }
-    .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--molten-hi), 0 0 18px rgba(255, 106, 26, 0.4); }
+    .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 2px; background: #f3e8cf; color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 rgba(0, 0, 0, 0.35); transition: box-shadow 0.15s, transform 0.15s; }
+    .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(255, 176, 0, 0.5); }
     body.fx .card:hover { transform: translateY(-2px); }
-    .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 900 1.1rem var(--carved); }
-    .card h4 small { color: var(--molten-hi); font: 700 0.8rem var(--ui); }
-    .card p { margin: 0; font-size: 0.92rem; color: var(--text); }
-    .card .evo-hint { color: var(--molten-hi); font-size: 0.85rem; }
-    .vol { justify-self: start; padding: 2px 8px; border-radius: 4px; font-size: 0.76rem; box-shadow: 0 0 0 1px var(--iron-hi); color: var(--muted); }
-    .vol[data-v="low"] { color: var(--rune); } .vol[data-v="medium"] { color: var(--gold); } .vol[data-v="high"] { color: var(--danger); }
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; margin: 8px 0 12px; }
-    th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
-    th:first-child, td:first-child { text-align: left; }
-    th { color: var(--muted); font-weight: 700; }
-    td svg { width: 24px; height: 24px; vertical-align: middle; margin-right: 6px; }
-    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
-    .toggle button { padding: 6px 14px; border-radius: 6px; box-shadow: 0 0 0 1px var(--iron-hi); }
-    .toggle button[aria-pressed="true"] { background: var(--molten); color: #2a0c02; font-weight: 700; }
+    .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 700 1.05rem var(--display); }
+    .card h4 small { color: #8a3a00; font: 600 0.85rem var(--num); }
+    .card p { margin: 0; font-size: 1rem; color: #2a221a; }
+    .card .evo-hint { color: #8a3a00; font-size: 0.95rem; }
+    .vol { justify-self: start; padding: 1px 8px; border-radius: 2px; font-size: 0.85rem; box-shadow: 0 0 0 1px var(--ink); color: var(--iron); }
+    .vol[data-v="low"] { color: var(--verd); } .vol[data-v="medium"] { color: #8a6000; } .vol[data-v="high"] { color: #a83200; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 8px 0 12px; }
+    .sheet table { display: block; overflow-x: auto; }
+    th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(28, 22, 17, 0.15); font-family: var(--num); }
+    th:first-child, td:first-child { text-align: left; font-family: var(--text-face); }
+    th { color: var(--iron); }
+    td svg { width: 26px; height: 26px; vertical-align: middle; margin-right: 6px; }
+    .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(28, 22, 17, 0.15); }
+    .toggle button { padding: 6px 14px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ink); }
+    .toggle button[aria-pressed="true"] { background: var(--gold); font-weight: 700; }
     .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
-    .actions button { padding: 10px 16px; border-radius: 8px; box-shadow: 0 0 0 1px var(--iron-hi); }
-    .actions .primary { background: linear-gradient(180deg, var(--molten-hi), var(--molten)); color: #2a0c02; font-weight: 700; box-shadow: none; }
+    .actions button { padding: 10px 16px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ink); }
+    .actions .primary { background: linear-gradient(180deg, #ffe08a, var(--gold)); font-weight: 700; box-shadow: 0 0 0 1.5px var(--ink); }
     .evo-moment { text-align: center; padding: 28px 12px; }
-    .evo-moment b { display: block; font: 900 clamp(2rem, 9vmin, 4.4rem)/1 var(--carved);
-      background: linear-gradient(180deg, #fff1cf, #ffcf6b 40%, #ff6a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 24px rgba(255, 106, 26, 0.8)); }
+    .evo-moment b { display: block; font: 700 clamp(2rem, 9vmin, 4.2rem)/1 var(--display); color: var(--ink); text-shadow: 0 0 24px rgba(255, 176, 0, 0.9); }
 
-    @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip, .mult { transition: none; } }
   </style>
 </head>
 <body>
-  <div class="embers" aria-hidden="true"><i style="left:8%;--d:7s;--t:0s;--x:30px"></i><i style="left:19%;--d:9s;--t:2s;--x:-20px"></i><i style="left:31%;--d:6.5s;--t:4s;--x:25px"></i><i style="left:46%;--d:8s;--t:1s;--x:-30px"></i><i style="left:58%;--d:7.5s;--t:3s;--x:20px"></i><i style="left:69%;--d:9.5s;--t:5s;--x:-15px"></i><i style="left:81%;--d:6.8s;--t:2.5s;--x:28px"></i><i style="left:92%;--d:8.6s;--t:0.5s;--x:-24px"></i></div>
   <div class="game">
     <header class="top">
       <div class="lobby-slot"></div>
-      <h1 class="title">Relic Forge</h1>
-      <div class="meter" id="meter" aria-label="Forge meter">
-        <div class="meter-row"><span>Forge meter at this bet</span><span id="meterText">0 / 40</span></div>
+      <h1 class="title" aria-label="Relic Forge">
+        <svg viewBox="0 0 380 86" aria-hidden="true">
+          <defs><linearGradient id="rfSeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff5e1a"/><stop offset=".5" stop-color="#ffe08a"/><stop offset="1" stop-color="#ff5e1a"/></linearGradient>
+            <filter id="rfGlow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter></defs>
+          <text x="190" y="50" text-anchor="middle" font-size="44" fill="#e9dcc0" stroke="#1c1611" stroke-width="5" paint-order="stroke">Relic Forge</text>
+          <!-- A molten seam cracking through the letters. -->
+          <path d="M30 38 L58 35 L74 41 L104 33 L126 40 L158 31 L190 39 L222 32 L250 40 L284 33 L310 39 L350 34" fill="none" stroke="#ffb000" stroke-width="3" filter="url(#rfGlow)" opacity=".5"/>
+          <path d="M30 38 L58 35 L74 41 L104 33 L126 40 L158 31 L190 39 L222 32 L250 40 L284 33 L310 39 L350 34" fill="none" stroke="url(#rfSeam)" stroke-width="1.1" opacity=".9"/>
+          <!-- A small engraved anvil beneath. -->
+          <g transform="translate(190 70)" stroke="#e9dcc0" stroke-width="1.3" fill="#1c1611"><path d="M-22 -6 H14 C20 -6 25 -9 27 -12 V-3 C23 0 19 1 13 1 L11 6 H16 V11 H-16 V6 H-11 L-13 1 C-18 1 -21 -2 -22 -6Z"/></g>
+        </svg>
+      </h1>
+      <div class="meter" id="meter" aria-label="Forge meter at this bet">
+        <svg class="crucible" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 6 H23 L20 21 Q19.5 23 17.5 23 H8.5 Q6.5 23 6 21 Z" fill="#e9dcc0" stroke="#1c1611" stroke-width="1.6"/><path d="M5.2 13 H20.8 L19.6 20.6 Q19.2 21.6 18 21.6 H8 Q6.8 21.6 6.4 20.6 Z" fill="#ffb000" stroke="#1c1611" stroke-width="1"/><path d="M8 9 L18 9" stroke="#1c1611" stroke-width=".8"/></svg>
         <div class="meter-bar"><div class="meter-fill" id="meterFill"></div></div>
+        <span class="meter-num" id="meterText">0 / 40</span>
       </div>
       <div class="forge-bar" aria-live="polite">
         <span class="pill" id="forgeSpins">Forge spin <b>1</b> / 10</span>
@@ -237,10 +233,13 @@
     </header>
 
     <main class="stage" id="stage">
-      <p class="lore" id="lore">Embers fill the crucible. At 40 it pours: ten Forge spins, with a relic to choose before each.</p>
       <div class="board-wrap" id="boardWrap">
         <div class="hud" id="hud"><span class="combo" id="combo">Cascade 1</span><span class="calc" id="calc"></span><span class="mult" id="mult">×1</span></div>
         <div class="board" id="board" role="img" aria-label="Game board"></div>
+        <span class="marg tl" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
+        <span class="marg tr" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
+        <span class="marg bl" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
+        <span class="marg br" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
         <div class="banner" id="banner" hidden></div>
       </div>
     </main>
