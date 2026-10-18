@@ -248,7 +248,7 @@ async function evaluate(cdp, expression) {
   })()`);
   for (const h of handoff) {
     check(`${h.size}-symbol cluster: gone after its burst, never redrawn before the refill`, h.leaks === 0 && h.afterFrames > 3 && h.blastFrames > 3 && h.clearedOnNew === 0,
-      `${h.afterFrames} frames between the burst and the settled refill, ${h.leaks} leaked`);
+      `${h.afterFrames} frames between the burst and the settled refill, ${h.blastFrames} burst frames, ${h.leaks} leaked, ${h.clearedOnNew} still cleared`);
   }
   check("a burst's own symbol is gone by BLAST_GONE of it (no see-through ghost)", await evaluate(cdp, `BLAST_GONE <= 0.5`));
 
@@ -331,7 +331,9 @@ async function evaluate(cdp, expression) {
     ctx.drawImage = realDI; R.draw = realDraw;
     return { frames: sigs.length, distinct: new Set(sigs).size };
   })()`);
-  check("the idle board is perfectly still (no float, bob or wobble)", calm.frames >= 10 && calm.distinct === 1, `${calm.frames} idle frames, ${calm.distinct} distinct layouts`);
+  // Idle zero: the loop sleeps at rest, so a still board draws no frames at all (stronger than
+  // drawing the same frame again); any frame it does draw must be the same layout.
+  check("the idle board is perfectly still (no float, bob or wobble)", calm.frames === 0 || calm.distinct === 1, `${calm.frames} idle frames, ${calm.distinct} distinct layouts`);
 
   console.log("\nflight visibility: falling symbols never vanish or blink (handheld throttle)");
   // A real >= 3-step round on the low tier, normal and turbo. Every frame of
@@ -771,8 +773,8 @@ async function evaluate(cdp, expression) {
   check("the first soul lights it with the running total at once (carry 3 + 5 = 8x), board never moves",
     !hud.caught.isEmpty && hud.caught.text === "8x" && Number(hud.caught.opacity) === 1 && hud.boardMoved === 0, `badge "${hud.caught.text}"`);
   check("after the bonus the badge is gone and cleared", hud.after.hidden && hud.after.isEmpty && hud.after.text === "");
-  check("win stat is 1.5x the old size (1.2 × --ui), still one line in the same box",
-    Math.abs(hud.win.winPx - 1.2 * hud.win.ui) < 0.6 && hud.win.fits && hud.win.boxMoved === 0, `${hud.win.winPx.toFixed(1)}px (spin line ${hud.win.spinPx.toFixed(1)}px), --ui ${hud.win.ui}, fits ${hud.win.fits}, box moved ${hud.win.boxMoved}`);
+  check("the win line (the shell's message line) stays one line in the same box",
+    hud.win.fits && hud.win.boxMoved === 0, `${hud.win.winPx.toFixed(1)}px (spin line ${hud.win.spinPx.toFixed(1)}px), --ui ${hud.win.ui}, fits ${hud.win.fits}, box moved ${hud.win.boxMoved}`);
 
   console.log("\nbase-game Total Multiplier: souls → badge → Win × Multiplier = Total");
   await waitIdle();

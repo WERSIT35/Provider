@@ -83,7 +83,8 @@
     <link rel="preload" as="image" href="assets/symbols/Scatter.webp" media="not ((pointer: coarse) and (max-width: 600px))" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-sub-wght-400-900.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/oswald-sub-wght-400-700.woff2" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=20261008-5" />
+    <link rel="stylesheet" href="shell/shell.css?v=20261018-1" />
+    <link rel="stylesheet" href="styles.css?v=20261018-1" />
   </head>
   <body>
     <div id="bootLoader" class="boot-loader" role="progressbar" aria-label="Loading game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -139,29 +140,6 @@
                Art: every .ps-slot takes a background image through --slot-art.
                Drop the data-empty attribute to hide the placeholder label. -->
           <section class="vault-shell">
-            <aside class="ps-left" aria-label="Features">
-              <!-- Vector controls: no raster art, so they stay crisp at any DPR
-                   and re-theme from the :root tokens. -->
-              <div class="ps-feature ps-feature--buy">
-                <button id="buyFreeBtn" type="button" class="vx-buy" aria-label="Buy Free Spins">
-                  <span class="vx-buy__kicker">Buy</span>
-                  <span class="vx-buy__label">Feature</span>
-                </button>
-              </div>
-              <div class="ps-feature ps-feature--ante">
-                <label class="vx-ante" for="anteToggle">
-                  <input id="anteToggle" type="checkbox" class="vx-ante__input" role="switch" />
-                  <span class="vx-ante__track" aria-hidden="true"><span class="vx-ante__knob"></span></span>
-                  <span class="vx-ante__text">
-                    <span class="vx-ante__title">Ante Bet</span>
-                    <span class="vx-ante__sub">Bet ×1.25</span>
-                  </span>
-                </label>
-              </div>
-              <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
-              <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
-            </aside>
-
             <div class="ps-center">
               <!-- Round values main.js keeps as text (balance, bet, win meter,
                    bonus counters). Never rendered: the deck readouts and the
@@ -173,6 +151,11 @@
                 <span class="hidden" id="bonusTotalNode"><strong id="bonusTotal">0.00</strong></span>
                 <span class="hidden" id="freeSpinsNode"><strong id="freeSpins">0</strong></span>
                 <span class="hidden" id="activeMultiplierNode"><strong id="activeMultiplier">1x</strong></span>
+                <!-- The bet list, the ante state and the bet text main.js reads and writes;
+                     the Lumina Shell's controls (client/vault-shell.js) drive them. -->
+                <select id="betSelect" tabindex="-1"></select>
+                <input type="checkbox" id="anteState" tabindex="-1" />
+                <span id="betDisplay">1.00</span>
               </div>
               <div class="round-id-bar hidden" id="roundIdBar" aria-live="polite">
                 <span class="round-id-label">Round ID</span>
@@ -184,6 +167,7 @@
                 <div class="bonus-multi-badge hidden is-empty" id="bonusMultiBadge" aria-live="polite">
                   <span class="bonus-multi-badge-label">Total Multiplier</span>
                   <span class="bonus-multi-badge-value" id="bonusMultiBadgeValue"></span>
+                  <span class="bonus-multi-badge-sum" id="bonusMultiBadgeSum" aria-hidden="true"></span>
                 </div>
                 <div class="vault-aura"></div>
                 <div class="reels-stage" aria-live="polite">
@@ -199,103 +183,13 @@
               </div>
             </div>
 
-            <aside class="ps-right" aria-hidden="true">
-              <div class="ps-slot ps-slot--logo" data-slot="logo" data-empty>
-                <span class="ps-slot-label">Game logo</span>
-              </div>
-              <div class="ps-slot ps-slot--mascot" data-slot="mascot" data-empty>
-                <span class="ps-slot-label">Character</span>
-              </div>
-            </aside>
-
-            <footer class="ps-deck" aria-label="Controls">
-              <div class="ps-deck-sys">
-                <button id="psMenuBtn" type="button" class="ps-icon-btn" aria-label="Settings" aria-haspopup="dialog">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-                </button>
-                <!-- soundToggle keeps the id main.js binds, so the persisted
-                     mute setting works unchanged. -->
-                <button id="psInfoBtn" type="button" class="ps-icon-btn" aria-label="Game info" aria-haspopup="dialog">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
-                </button>
-                <button id="soundToggle" type="button" class="ps-icon-btn" aria-label="Sound" aria-pressed="true">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path class="ps-sound-wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
-                </button>
-              </div>
-
-              <div class="ps-deck-status">
-                <div class="ps-ticker" id="psTicker" data-state="idle" role="status" aria-live="polite"><span id="psTickerText">Hold space for turbo spin</span></div>
-                <div class="ps-readouts">
-                  <div class="ps-readout"><span>Credit</span><strong class="u-num" id="footerBalance">—</strong></div>
-                  <div class="ps-readout"><span id="betReadoutLabel">Bet</span><strong class="u-num" id="footerBet">1.00</strong></div>
-                </div>
-              </div>
-
-              <div class="ps-deck-spin">
-                <div class="ps-spin-row">
-                  <button type="button" class="ps-bet-btn" id="betDownBtn" aria-label="Decrease bet">−</button>
-                  <button id="spinBtn" type="button" class="vx-spin" aria-label="Spin">
-                    <!-- Two arrows chasing each other round the circle. One arc +
-                         head, drawn twice (the second rotated 180°). -->
-                    <!-- Skip (round in flight) and stop (autoplay) states. -->
-                    <svg class="vx-spin__skip" viewBox="0 0 64 64" aria-hidden="true">
-                      <path d="M20 20 L32 32 L20 44" /><path d="M33 20 L45 32 L33 44" />
-                    </svg>
-                    <svg class="vx-spin__stop" viewBox="0 0 64 64" aria-hidden="true">
-                      <rect x="22" y="22" width="20" height="20" rx="3" />
-                    </svg>
-                    <svg class="vx-spin__icon" viewBox="0 0 64 64" aria-hidden="true">
-                      <g class="vx-spin__arrow">
-                        <path d="M15.08 25.84 A18 18 0 0 1 48.92 25.84" />
-                        <path class="vx-spin__head" d="M50.29 29.6 L52.59 21.31 L43.19 24.73 Z" />
-                      </g>
-                      <g class="vx-spin__arrow" transform="rotate(180 32 32)">
-                        <path d="M15.08 25.84 A18 18 0 0 1 48.92 25.84" />
-                        <path class="vx-spin__head" d="M50.29 29.6 L52.59 21.31 L43.19 24.73 Z" />
-                      </g>
-                    </svg>
-                  </button>
-                  <button type="button" class="ps-bet-btn" id="betUpBtn" aria-label="Increase bet">+</button>
-                </div>
-                <div class="ps-spin-sub">
-                  <div class="tool-wrap">
-                    <button id="autoplayBtn" type="button" class="tool-btn" aria-label="Autoplay">
-                      <span class="tool-glyph" aria-hidden="true">&#10227;</span>
-                      <span class="tool-count"></span>
-                    </button>
-                    <div class="autoplay-popover hidden" id="autoplayPopover" role="menu" aria-label="Autoplay spins">
-                      <span class="autoplay-popover-head">Autoplay</span>
-                      <div class="autoplay-popover-grid">
-                        <button type="button" data-autoplay="10">10</button>
-                        <button type="button" data-autoplay="25">25</button>
-                        <button type="button" data-autoplay="50">50</button>
-                        <button type="button" data-autoplay="inf">&#8734;</button>
-                      </div>
-                      <!-- Stop conditions, read when a run starts (startAutoplay). Bet multiples. -->
-                      <div class="autoplay-limits">
-                        <label>Stop if loss reaches
-                          <select id="apLossLimit"><option value="0">No limit</option><option value="10">10× bet</option><option value="25">25× bet</option><option value="50">50× bet</option><option value="100">100× bet</option></select>
-                        </label>
-                        <label>Stop on a win of
-                          <select id="apWinLimit"><option value="0">No limit</option><option value="10">10× bet</option><option value="50">50× bet</option><option value="100">100× bet</option><option value="500">500× bet</option></select>
-                        </label>
-                        <label class="autoplay-limits__check"><input type="checkbox" id="apStopFeature"> Stop when Free Spins are won</label>
-                      </div>
-                    </div>
-                  </div>
-                  <button id="turboBtn" type="button" class="tool-btn" aria-label="Turbo spin" aria-pressed="false">
-                    <span class="tool-glyph" aria-hidden="true">&#9889;</span>
-                    <span class="tool-label">Turbo</span>
-                  </button>
-                </div>
-                <!-- Still read and written by main.js; the Bet readout shows the value in player view. -->
-                <span class="ps-bet-display" id="betDisplay">1.00</span>
-                <select id="betSelect" class="bet-select-hidden" aria-hidden="true" tabindex="-1"></select>
-              </div>
-            </footer>
           </section>
 
           <aside class="archive-panel admin-only" aria-label="Simulation and outputs">
+            <div class="test-actions">
+              <button id="simulateBtn" type="button" class="admin-only">Imitate 1M Spins</button>
+              <button id="simulateBonusBtn" type="button" class="admin-only">Imitate 1M Bonus Rounds</button>
+            </div>
             <section class="archive-band">
               <div class="band-head">
                 <h2>1M Simulation</h2>
@@ -447,16 +341,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </header>
-        <nav class="ps-modal__nav" aria-label="Info sections">
-          <button type="button" class="ps-modal__tab" data-ps-section="rules" aria-current="page">Game Rules</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="tumble">Tumble</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="free-spins">Free Spins &amp; Max Win</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="special-bets">Special Bets &amp; Buy</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="settings">Settings</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="bet">Bet Menu</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="autoplay">Autoplay Rules</button>
-          <button type="button" class="ps-modal__tab" data-ps-section="interface">Main Interface</button>
-        </nav>
         <div class="ps-modal__body">
           <section class="ps-modal__section" data-ps-section-id="rules">
             <h3>Game Rules &amp; How to Play</h3>
@@ -502,23 +386,6 @@
               <li>Ante Bet and Buy Feature may not be available in every market.</li>
             </ul>
           </section>
-          <section class="ps-modal__section" data-ps-section-id="settings" hidden>
-            <h3>Settings</h3>
-            <!-- Shown only where the device supports them (main.js: fullscreen, Haptics). -->
-            <div class="ps-settings-controls">
-              <button type="button" id="fullscreenBtn" class="ps-setting" aria-pressed="false" hidden>Full screen</button>
-              <label class="ps-setting" id="hapticsRow" hidden><input type="checkbox" id="hapticsToggle" checked> Vibration</label>
-            </div>
-            <ul>
-              <li><strong>Sound:</strong> the speaker button turns all game sound on or off. Your choice is remembered on this device.</li>
-              <li><strong>Turbo:</strong> the Turbo button makes every animation faster. Press it again to return to normal speed.</li>
-              <li><strong>Quick stop:</strong> press Spin while the symbols are falling to land the board at once.</li>
-              <li><strong>Full screen / Vibration:</strong> shown when your device supports them. Vibration gives a short buzz on a spin, a Scatter landing, Free Spins and big wins; your choice is remembered on this device.</li>
-              <li><strong>Space bar:</strong> press to spin. Hold it to switch on Turbo and start Autoplay.</li>
-            </ul>
-            <p>Turbo and quick stop only change how fast a spin is shown. They never change its result.</p>
-            <p>Some settings may not be available in every market.</p>
-          </section>
           <section class="ps-modal__section" data-ps-section-id="bet" hidden>
             <h3>Bet Menu</h3>
             <ul>
@@ -546,31 +413,19 @@
           <section class="ps-modal__section" data-ps-section-id="interface" hidden>
             <h3>Main Interface Guide</h3>
             <ul>
-              <li><strong>Spin:</strong> starts a spin. While a spin is in play, press it to quick stop. Hold it to switch on Turbo and start Autoplay.</li>
-              <li><strong>− / +:</strong> change the bet.</li>
-              <li><strong>Autoplay:</strong> plays a chosen number of spins automatically.</li>
-              <li><strong>Turbo:</strong> faster animations.</li>
-              <li><strong>Buy Feature:</strong> buys Free Spins.</li>
-              <li><strong>Ante Bet:</strong> switches the special bet on or off.</li>
-              <li><strong>Menu:</strong> opens the Settings page.</li>
-              <li><strong>Info:</strong> opens the Game Rules and Paytable.</li>
-              <li><strong>Speaker:</strong> sound on or off.</li>
-              <li><strong>Credit:</strong> your balance. <strong>Bet:</strong> your current bet.</li>
+              <li><strong>Spin:</strong> starts a spin. While a spin is in play, press it to quick stop (where the market allows it). Hold it, or the space bar, to switch on Turbo and start Autoplay.</li>
+              <li><strong>− / +:</strong> change the bet. Tap <strong>Bet</strong> to pick from every bet.</li>
+              <li><strong>Autoplay:</strong> plays a chosen number of spins automatically, with stop conditions.</li>
+              <li><strong>Speed:</strong> normal, quick or turbo. Speed only changes how fast a spin is shown, never its result.</li>
+              <li><strong>Buy Feature</strong> and <strong>Ante Bet:</strong> beside the board.</li>
+              <li><strong>Menu:</strong> sound, music, effects, speed, left-hand mode, reduced motion, battery saver, vibration and full screen, where your device supports them.</li>
+              <li><strong>Info:</strong> these rules and the paytable.</li>
+              <li><strong>Balance, Bet, Win:</strong> your balance, the current bet and this round's win.</li>
               <li>The message line shows tips, the current win and game notices.</li>
             </ul>
             <p>A malfunction voids all pays and plays.</p>
           </section>
         </div>
-        <footer class="ps-modal__dots" aria-hidden="true">
-          <span class="ps-dot is-active" data-ps-dot="rules"></span>
-          <span class="ps-dot" data-ps-dot="tumble"></span>
-          <span class="ps-dot" data-ps-dot="free-spins"></span>
-          <span class="ps-dot" data-ps-dot="special-bets"></span>
-          <span class="ps-dot" data-ps-dot="settings"></span>
-          <span class="ps-dot" data-ps-dot="bet"></span>
-          <span class="ps-dot" data-ps-dot="autoplay"></span>
-          <span class="ps-dot" data-ps-dot="interface"></span>
-        </footer>
       </div>
     </div>
 
@@ -623,6 +478,7 @@
     <script src="audio/audio.js?v=20261009-1"></script>
     <script src="audio/ambiance.js?v=20261009-1"></script>
     <script src="notify.js?v=20261008-1"></script>
+    <script src="vault-shell.js?v=20261018-1"></script>
     <script src="big-win.js?v=20261001-1"></script>
     <script src="embed-bridge.js?v=20261005-1"></script>
     <script src="main.js?v=20261018-1"></script>

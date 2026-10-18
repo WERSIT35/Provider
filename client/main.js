@@ -23,6 +23,7 @@ const el = {
   activeMultiplierNode: $("activeMultiplierNode"),
   bonusMultiBadge: $("bonusMultiBadge"),
   bonusMultiBadgeValue: $("bonusMultiBadgeValue"),
+  bonusMultiBadgeSum: $("bonusMultiBadgeSum"),
   bonusTotal: $("bonusTotal"),
   bonusTotalNode: $("bonusTotalNode"),
   betSelect: $("betSelect"),
@@ -33,7 +34,7 @@ const el = {
   simulateBtn: $("simulateBtn"),
   simulateBonusBtn: $("simulateBonusBtn"),
   buyFreeBtn: $("buyFreeBtn"),
-  anteToggle: $("anteToggle"),
+  anteToggle: $("anteState"), // the ante state; the shell's Ante chip drives it (VaultShell.on.ante)
   reels: $("reels"),
   resultDump: $("resultDump"),
   simulateDump: $("simulateDump"),
@@ -1235,7 +1236,19 @@ class ReelCanvasRenderer {
       cleared: new Set(),
       hidden: false
     };
-    this.fx = {
+    // Idle zero (docs/lumina-overhaul A8): a resting board draws NO frames. The loop
+    // sleeps once nothing animates (loop()), and anything that starts an effect wakes
+    // it: an fx assignment, a push onto an fx list or the particle list, a shard, a new
+    // board, a focus change, a resize, a decoded image.
+    const watchArray = (a) => {
+      if (Array.isArray(a) && !Object.prototype.hasOwnProperty.call(a, "push")) {
+        const push = Array.prototype.push;
+        Object.defineProperty(a, "push", { value: (...items) => { this.wake(); return push.apply(a, items); } });
+      }
+      return a;
+    };
+    this._watchArray = watchArray;
+    this.fx = new Proxy({
       drop: null,
       pulse: null,
       blast: null,
@@ -1260,9 +1273,19 @@ class ReelCanvasRenderer {
       sweeps: [],
       reticles: [],   // 5a: scatter landing reticles
       lockOn: null    // 5c/5d: trigger lock-on
-    };
-    this.particles = [];
+    }, {
+      set: (target, key, value) => {
+        target[key] = watchArray(value);
+        if (value !== null && value !== undefined) this.wake();
+        return true;
+      }
+    });
+    for (const v of Object.values(this.fx)) watchArray(v);
+    let particles = watchArray([]);
+    Object.defineProperty(this, "particles", { get: () => particles, set: (v) => { particles = watchArray(v); } });
     this.shards = new ShardEmitter(480);
+    const shardAdd = this.shards.add.bind(this.shards);
+    this.shards.add = (...a) => { this.wake(); return shardAdd(...a); };
     // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
     this.focus = { ...makeEnvelope(), set: null };
     // Per-frame perf caches (built lazily, invalidated on resize):
@@ -1343,6 +1366,7 @@ class ReelCanvasRenderer {
         //    splash for.
         // resolve() is idempotent, so a late decode after either is harmless.
         image.onload = () => {
+          this.wake(); // the board repaints with the decoded art
           if (typeof image.decode !== "function" || document.hidden) return settle();
           const cap = setTimeout(settle, 2000);
           const done = () => { clearTimeout(cap); settle(); };
@@ -1415,6 +1439,7 @@ class ReelCanvasRenderer {
    *  unchanged — used by a quality-tier change, where fxCeil moves but the
    *  pixel dimensions may not. */
   resize(force) {
+    this.wake?.();
     const box = this.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
     this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
@@ -1654,6 +1679,7 @@ class ReelCanvasRenderer {
   }
 
   setBoard(matrix, { winning = [], multipliers = [] } = {}) {
+    this.wake?.(); // a new board is painted
     // Strong commit: always deep-copy when we have a real matrix so future
     // mutations of the source array can't leak back into the rendered board.
     let safeMatrix;
@@ -2362,6 +2388,7 @@ class ReelCanvasRenderer {
 
   /** Win focus (FOCUS) on `keys`: the rest of the board fades back. */
   focusOn(keys) {
+    this.wake();
     const now = performance.now();
     this.focus.set = new Set(keys);
     envelopeTo(this.focus, 1, Math.round(FOCUS.inMs * turboScale()), now);
@@ -2369,6 +2396,7 @@ class ReelCanvasRenderer {
 
   /** Release the win focus: the whole board fades back up together. */
   focusOff() {
+    this.wake();
     const f = this.focus;
     if (f.to === 0) return;
     f.set = null; // the old winners are gone: brighten everything as one
@@ -2543,7 +2571,20 @@ class ReelCanvasRenderer {
       // canvas on the last successful frame even though state updates.
       console.error("[reelRenderer.draw] exception (continuing loop):", err);
     }
-    // Schedule the next frame UNCONDITIONALLY, even if draw threw.
+    // Idle zero: once nothing animates (and the focus fade has finished), paint two
+    // more frames so the final state is on screen, then stop asking for frames until
+    // something wakes the loop. Otherwise schedule the next frame, even if draw threw.
+    const settled = !busy && !(this.focus.ms > 0 && now - this.focus.t0 < this.focus.ms + 20);
+    this._restFrames = settled ? (this._restFrames || 0) + 1 : 0;
+    if (this._restFrames >= 2) { this._asleep = true; return; }
+    this._scheduleFrame();
+  }
+
+  /** Start drawing again after an idle sleep (no-op while awake or paused). */
+  wake() {
+    if (!this._asleep) return;
+    this._asleep = false;
+    this._restFrames = 0;
     this._scheduleFrame();
   }
 
@@ -2573,6 +2614,8 @@ class ReelCanvasRenderer {
   resumeRendering() {
     if (!this._paused) return;
     this._paused = false;
+    this._asleep = false;
+    this._restFrames = 0;
     this.lastTick = performance.now();
     this._lastDrawAt = 0;
     this._frameSamples = [];
@@ -4600,18 +4643,9 @@ function applyRegulatory(rules) {
   regulatory.rules = rules ? { ...fb, ...Object.fromEntries(Object.entries(rules).filter(([, v]) => v !== undefined && v !== null)) } : null;
   if (!rules) return;
   rules = regulatory.rules;
-  const autoplayOff = !regRule("autoplay_enabled", true);
-  hideForRegulation(el.autoplayBtn, autoplayOff);
-  const cap = regRule("max_autoplay_spins", null);
-  el.autoplayPopover?.querySelectorAll("button[data-autoplay]").forEach((btn) => {
-    const n = btn.dataset.autoplay === "inf" ? Infinity : Number(btn.dataset.autoplay);
-    btn.hidden = cap !== null && n > cap;
-  });
-  if (!regRule("turbo_enabled", true)) {
-    if (state.turbo) setTurbo(false);
-    hideForRegulation(el.turboBtn, true);
-  }
-  hideForRegulation(el.buyFreeBtn, !regRule("buy_feature_enabled", true));
+  // The shell hides autoplay, speed and buy in place and caps the autoplay presets.
+  window.VaultShell?.api.applyMarket(rules);
+  if (!regRule("turbo_enabled", true) && state.turbo) setTurbo(false);
   applyStakeCap();
   scheduleRealityCheck(rules.reality_check_due_in_ms);
 }
@@ -4951,6 +4985,14 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
   if (el.bonusTotalNode) el.bonusTotalNode.classList.toggle("hidden", !inBonus);
   if (el.freeSpinsNode) el.freeSpinsNode.classList.toggle("hidden", spins <= 0);
   if (el.activeMultiplierNode) el.activeMultiplierNode.classList.toggle("hidden", !inBonus && mult <= 1);
+  // The shell's free-spins HUD: spins left replaces the bet stepper, the feature win
+  // shows in the Win readout (bet frozen; nothing moves).
+  const shell = window.VaultShell?.api;
+  if (shell) {
+    state.shellFeatureHud = spins > 0;
+    shell.featureHud(spins > 0 ? { left: spins, win: total, label: "Free spins", winLabel: "Bonus win" } : null);
+    if (spins <= 0 && el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
+  }
   // Bonus total-multiplier badge over the top of the reels — the signature
   // bonus element (and the multiplier display on mobile, where the HUD column
   // is hidden). Its glow tier scales with the multiplier, and it pops on
@@ -4973,6 +5015,7 @@ function setBadgeMultiplier(mult) {
   if (m <= 0) {
     badge.dataset.value = "0";
     if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = "";
+    if (el.bonusMultiBadgeSum) el.bonusMultiBadgeSum.textContent = "";
     return;
   }
   if (el.bonusMultiBadgeValue) el.bonusMultiBadgeValue.textContent = mfmt(m);
@@ -5006,6 +5049,13 @@ function setControls(disabled) {
   el.buyFreeBtn.disabled = disabled || Boolean(el.anteToggle.checked) || frLock;
   el.anteToggle.disabled = disabled || frLock;
   // The bet is fixed for the round from the instant it starts.
+  const shell = window.VaultShell?.api;
+  if (shell) {
+    shell.setBetLocked(frLock);
+    shell.setPhase(disabled || state.roundAnimating ? (state.autoplayActive ? "autoplay" : "flight") : "ready");
+    shell.setAnte(Boolean(el.anteToggle.checked), "Bet ×1.25");
+    if (el.anteToggle.checked) shell.el.buy.disabled = true; // Ante disables the buy (game rules)
+  }
   if (el.betDownBtn) el.betDownBtn.disabled = disabled || frLock;
   if (el.betUpBtn) el.betUpBtn.disabled = disabled || frLock;
   setTestButtonsDisabled(disabled || state.bonusAutoplay || state.testBusy);
@@ -5390,9 +5440,22 @@ function flyMultiplierSouls(multipliers = []) {
       layer,
       meterNode,
       target
-    });
+    }).then(() => addBadgeAddend(Number(m.value)));
   });
   return Promise.all(promises);
+}
+
+/** The badge's sum line (A6): each multiplier that lands in the total is added to it,
+ *  "5x + 10x", shown once two or more add up (the total above it is their sum; in free
+ *  spins the first term is the total carried in). Presentation only. */
+function resetBadgeSum(carry = 0) {
+  state.badgeAddends = carry > 0 ? [carry] : [];
+  if (el.bonusMultiBadgeSum) el.bonusMultiBadgeSum.textContent = "";
+}
+function addBadgeAddend(value) {
+  if (!(value > 0)) return;
+  (state.badgeAddends ||= []).push(value);
+  if (el.bonusMultiBadgeSum) el.bonusMultiBadgeSum.textContent = state.badgeAddends.length > 1 ? state.badgeAddends.map(mfmt).join(" + ") : "";
 }
 
 // ── Multiplier magnetism (#52) ─────────────────────────────────────────────
@@ -6389,6 +6452,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
 
   state.spinFlownSouls = new Set();
   state.spinCelebratedMultis = new Set();
+  resetBadgeSum(payload.is_free_spin ? Number(state.bonusMultiplierCarry || 0) : 0);
   if (payload.is_free_spin) {
     state.spinMultDisplay = parseFloat(el.activeMultiplier.textContent) || 1;
   } else {
@@ -6781,7 +6845,7 @@ async function spin(options = {}) {
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
-    if (_platform.enabled && regulatory.rules) {
+    if (regulatory.rules) { // the demo applies a review market too (pacing only: no RGS)
       if (!(await realityCheckGate())) return undefined; // the player left
       if (Number(el.freeSpins.textContent || 0) === 0) await paceRound();
     }
@@ -6925,41 +6989,30 @@ async function autoplayBonus() {
 function setTurbo(on) {
   // A jurisdiction without turbo: it stays off however it is asked for (button, hold).
   state.turbo = Boolean(on) && regRule("turbo_enabled", true);
-  window.Sound?.play("turbo_toggle", { on: state.turbo });
-  if (el.turboBtn) {
-    el.turboBtn.classList.toggle("is-active", state.turbo);
-    el.turboBtn.setAttribute("aria-pressed", String(state.turbo));
-  }
+  // The shell's speed control shows it (quick and turbo both play at Vault's turbo pace).
+  const shell = window.VaultShell?.api;
+  if (shell && (shell.speed() !== "normal") !== state.turbo) shell.setSpeed(state.turbo ? "turbo" : "normal");
 }
 
 function updateAutoplayUi() {
-  if (!el.autoplayBtn) return;
   const active = state.autoplayActive;
-  el.autoplayBtn.classList.toggle("is-active", active);
   // The spin button becomes the autoplay stop control while a run is active.
   el.spinBtn?.classList.toggle("is-autoplay", active);
-  el.autoplayBtn.setAttribute("aria-label", active ? "Stop autoplay" : "Autoplay");
-  const count = el.autoplayBtn.querySelector(".tool-count");
-  if (count) {
-    count.textContent = active
-      ? (state.autoplayLeft === Infinity ? "∞" : String(state.autoplayLeft))
-      : "";
-  }
+  const shell = window.VaultShell?.api;
+  shell?.setAutoplay(active ? state.autoplayLeft || Infinity : 0);
+  shell?.setSpinMode(active ? "stop" : "spin");
 }
 
 // Regular (base-game) autoplay: spin a chosen count automatically, stopping on
 // request, on a spin error (e.g. insufficient funds -> spin() returns falsy),
 // or when the count runs out. A bonus award mid-run is handled inside spin()
 // (it runs the bonus autoplay, then returns and we continue).
-async function startAutoplay(count) {
+async function startAutoplay(count, chosenLimits = null) {
   if (state.autoplayActive || state.bonusAutoplay || !state.sessionId || state.embedPaused) return;
   if (!regRule("autoplay_enabled", true)) return;
   const cap = regRule("max_autoplay_spins", null);
   if (cap !== null) count = Math.min(count, cap);
   if (!(count > 0)) return;
-  // Dismiss the picker on any outcome, including the refusal below — leaving it
-  // open after a choice was made reads as a dead control.
-  el.autoplayPopover?.classList.add("hidden");
   // Hold the lock for the WHOLE run, not per spin: the run is a single
   // lifecycle as far as "may another round start?" is concerned, and holding it
   // is also what lets animateRound() promote to the ANIMATING phase (and so
@@ -6970,7 +7023,7 @@ async function startAutoplay(count) {
   state.autoplayLeft = count;
   state.autoplayInitial = count;
   updateAutoplayUi();
-  const limits = autoplayLimits();
+  const limits = autoplayLimits(chosenLimits);
   const startBalance = state.lastBalance;
   try {
     while (state.autoplayActive && state.autoplayLeft > 0 && state.sessionId) {
@@ -6995,11 +7048,11 @@ async function startAutoplay(count) {
   }
 }
 
-/** The run's stop conditions, read once when it starts (bet multiples → amounts). */
-function autoplayLimits() {
+/** The run's stop conditions, chosen in the shell's autoplay sheet when it starts
+ *  ({ lossX, winX, feature }, bet multiples → amounts). */
+function autoplayLimits(chosen) {
   const bet = Number(el.betSelect?.value || 1);
-  const x = (id) => Number(document.getElementById(id)?.value || 0);
-  return { loss: x("apLossLimit") * bet, win: x("apWinLimit") * bet, feature: Boolean(document.getElementById("apStopFeature")?.checked) };
+  return { loss: Number(chosen?.lossX || 0) * bet, win: Number(chosen?.winX || 0) * bet, feature: Boolean(chosen?.feature) };
 }
 
 /** Why the run stops after this round, or null. Loss = the balance drop since the
@@ -7022,14 +7075,25 @@ function stopAutoplay() {
 // (Pragmatic-style CREDIT/BET strip) without touching every update site.
 function bindFooterMirror() {
   if (!el.footerBalance && !el.footerBet) return;
+  const footerWin = document.getElementById("footerWin"); // the shell's Win readout
   const sync = () => {
     if (el.footerBalance && el.balance) el.footerBalance.textContent = el.balance.textContent;
-    if (el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
+    if (el.footerBet && el.betView && !state.shellFeatureHud) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
+    if (footerWin && el.lastWin && !state.shellFeatureHud) footerWin.textContent = el.lastWin.textContent; // the feature shows its total
   };
   sync();
   const obs = new MutationObserver(sync);
   if (el.balance) obs.observe(el.balance, { childList: true, characterData: true, subtree: true });
   if (el.betView) obs.observe(el.betView, { childList: true, characterData: true, subtree: true });
+  if (el.lastWin) obs.observe(el.lastWin, { childList: true, characterData: true, subtree: true });
+}
+
+/** The shell's bet ladder and ± states follow the bet list (call after it changes). */
+function syncShellBets() {
+  const shell = window.VaultShell?.api;
+  if (!shell || !el.betSelect) return;
+  const opts = [...el.betSelect.options];
+  shell.setBets(opts.map((o) => Number(o.value)), Math.max(0, opts.findIndex((o) => o.value === el.betSelect.value)));
 }
 
 async function buyFreeSpins() {
@@ -7050,7 +7114,7 @@ async function buyFreeSpins() {
   setControls(true);
   try {
     pulseBanner("Buying Free Spins...", "bonus", 900);
-    if (_platform.enabled && regulatory.rules) {
+    if (regulatory.rules) {
       if (!(await realityCheckGate())) return;
       await paceRound();
     }
@@ -7265,6 +7329,7 @@ async function initSession() {
   const payload = await api("/api/v1/session/init", { player_id: `player_${Date.now()}`, currency: "GEL", locale: "en", game_id: state.gameId });
   state.sessionId = payload.session_id;
   state.currency = payload.currency || "GEL";
+  window.VaultShell?.api.setCurrency(state.currency);
   state.gameId = payload.game_id || state.gameId;
   el.balance.textContent = fmt(payload.balance);
   // Claim the Round ID row NOW, while the board is still idle. In platform mode
@@ -7286,6 +7351,7 @@ async function initSession() {
   const restored = restoredBetAndAnte(payload, allowedBets, pendingFreeSpins > 0);
   const startBet = restored.bet ?? (allowedBets.includes(1) || !allowedBets.length ? 1 : allowedBets[0]);
   el.betSelect.value = String(startBet);
+  syncShellBets();
   el.betView.textContent = fmt(startBet);
   if (el.betDisplay) el.betDisplay.textContent = fmt(startBet);
   renderPaytable(startBet);
@@ -7366,6 +7432,7 @@ function setCrazyMode(on, opts = {}) {
 
 el.betSelect.addEventListener("change", () => {
   if (regulatory.rules) applyStakeCap(); // the buy price follows the bet
+  syncShellBets();
   el.betView.textContent = fmt(el.betSelect.value);
   if (el.betDisplay) el.betDisplay.textContent = fmt(el.betSelect.value);
   renderPaytable(Number(el.betSelect.value || 1));
@@ -7394,6 +7461,7 @@ if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
     window.Sound?.play("toggle", { on: el.anteToggle.checked });
     if (regulatory.rules) applyStakeCap(); // the ante raises the cycle stake
+    window.VaultShell?.api.setAnte(el.anteToggle.checked, "Bet ×1.25");
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
     if (isPlayerBetChoice()) saveBetPref({ ante: el.anteToggle.checked });
     // The standalone engine keeps its own ante flag (it refuses a buy while it is on)
@@ -7404,74 +7472,46 @@ if (el.anteToggle) {
 }
 // The buy dialog clicks as it opens, so no click on top of it here.
 el.buyFreeBtn.addEventListener("click", () => buyFreeSpins());
-if (el.turboBtn) el.turboBtn.addEventListener("click", () => setTurbo(!state.turbo));
-
-// Sound on/off toggle — reflects + persists via the engine, syncs the glyph.
-if (el.soundToggle) {
-  const syncSoundToggle = () => {
-    const muted = window.Sound ? window.Sound.isMuted() : false;
-    el.soundToggle.classList.toggle("is-muted", muted);
-    el.soundToggle.setAttribute("aria-pressed", String(!muted));
+// The Lumina Shell's controls (client/vault-shell.js): its sheets and switches call these.
+// Spin, bet ± and Buy keep their own listeners above (the shell's buttons carry the ids).
+if (window.VaultShell) {
+  const shell = window.VaultShell.api;
+  Object.assign(window.VaultShell.on, {
+    // Autoplay sheet: a count and the run's stop conditions; the button stops a run.
+    autoplay(count, limits) { window.Sound?.play("toggle", { on: true }); startAutoplay(count, limits); },
+    autoplayStop() { window.Sound?.play("toggle", { on: false }); stopAutoplay(); },
+    // Bet ladder sheet: a bet by index (bets over a market's stake cap are greyed there).
+    betIndex(i) {
+      const opt = el.betSelect?.options[i];
+      if (!opt || opt.disabled || el.betSelect.disabled || opt.value === el.betSelect.value) return;
+      el.betSelect.value = opt.value;
+      el.betSelect.dispatchEvent(new Event("change"));
+      window.Sound?.play("bet_change", { up: true });
+    },
+    // The Ante chip: the same change main.js has always handled.
+    ante(onOff) {
+      if (el.anteToggle.disabled) return;
+      el.anteToggle.checked = Boolean(onOff);
+      el.anteToggle.dispatchEvent(new Event("change"));
+    },
+    // Speed (normal / quick / turbo): Vault plays quick and turbo at its turbo pace.
+    pref(key, value) { if (key === "speed") setTurbo(value !== "normal"); },
+    // Info: the rules and the generated paytable (displayed pays = paid pays).
+    info() {
+      renderInfoRules();
+      renderPlayerPaytable();
+      const body = el.psInfoModal?.querySelector(".ps-modal__body");
+      return body ? `<div class="vx-info">${body.innerHTML.replace(/ hidden(?=[ >])/g, "")}</div>` : "";
+    }
+  });
+  // The shell's notices (speed changes, waiting) join main.js's message line.
+  window.VaultShell.flash = (text, tone, ms) => ticker.flash(text, tone, ms);
+  window.VaultShell.haptics = {
+    get supported() { return Haptics.supported; },
+    get on() { return Haptics.on; },
+    set(v) { Haptics.set(v); if (v) Haptics.onEvent("spin_start"); }
   };
-  el.soundToggle.addEventListener("click", () => {
-    if (!window.Sound) return;
-    window.Sound.unlock();
-    window.Sound.toggleMuted();
-    if (!window.Sound.isMuted()) window.Sound.play("toggle", { on: true });
-    syncSoundToggle();
-  });
-  window.Sound?.onChange(syncSoundToggle);
-  syncSoundToggle();
-}
-// Settings: full screen (only where the page may go full screen: not on iPhone, not in a
-// casino frame without allow="fullscreen") and vibration (only where Haptics works).
-{
-  const fsBtn = document.getElementById("fullscreenBtn");
-  const root = document.documentElement;
-  if (fsBtn && document.fullscreenEnabled && root.requestFullscreen) {
-    fsBtn.hidden = false;
-    const sync = () => {
-      const on = Boolean(document.fullscreenElement);
-      fsBtn.setAttribute("aria-pressed", String(on));
-      fsBtn.textContent = on ? "Exit full screen" : "Full screen";
-    };
-    fsBtn.addEventListener("click", () => {
-      const req = document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen({ navigationUI: "hide" });
-      req?.catch?.(() => {});
-    });
-    document.addEventListener("fullscreenchange", sync);
-    sync();
-  }
-  const hapticsRow = document.getElementById("hapticsRow");
-  const hapticsToggle = document.getElementById("hapticsToggle");
-  if (hapticsRow && hapticsToggle && Haptics.supported) {
-    hapticsRow.hidden = false;
-    hapticsToggle.checked = Haptics.on;
-    hapticsToggle.addEventListener("change", () => { Haptics.set(hapticsToggle.checked); if (hapticsToggle.checked) Haptics.onEvent("spin_start"); });
-  }
-}
-if (el.autoplayBtn) {
-  el.autoplayBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (state.autoplayActive) { window.Sound?.play("toggle", { on: false }); stopAutoplay(); return; }
-    el.autoplayPopover?.classList.toggle("hidden");
-    window.Sound?.play("click");
-  });
-}
-if (el.autoplayPopover) {
-  el.autoplayPopover.querySelectorAll("button[data-autoplay]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      window.Sound?.play("toggle", { on: true });
-      const raw = btn.dataset.autoplay;
-      const count = raw === "inf" ? Infinity : Number(raw);
-      startAutoplay(count);
-    });
-  });
-  document.addEventListener("click", (e) => {
-    if (el.autoplayPopover.classList.contains("hidden")) return;
-    if (el.autoplayPopover.contains(e.target) || e.target === el.autoplayBtn) return;
-    el.autoplayPopover.classList.add("hidden");
-  });
+  if (shell.speed() !== "normal") setTurbo(true);
 }
 el.simulateBtn.addEventListener("click", () => runSimulation({ bonusOnly: false }));
 if (el.simulateBonusBtn) el.simulateBonusBtn.addEventListener("click", () => runSimulation({ bonusOnly: true }));
@@ -7557,77 +7597,9 @@ VxNotify.register("freeRounds", el.frModal, {
 VxNotify.register("bigwin", document.getElementById("bigWinOverlay"), { kind: "bigwin", external: true });
 VxNotify.setBanner((text, tone, ms) => ticker.flash(text, tone, ms));
 
-const psModal = (() => {
-  const root = el.psInfoModal;
-  if (!root) return { open() {}, close() {}, isOpen: () => false };
-  const tabs = [...root.querySelectorAll(".ps-modal__tab")];
-  const sections = [...root.querySelectorAll(".ps-modal__section")];
-  const dots = [...root.querySelectorAll(".ps-dot")];
-  const body = root.querySelector(".ps-modal__body");
-  const ids = tabs.map((t) => t.dataset.psSection);
-  let current = ids[0];
+// The rules and paytable (#psInfoModal) are a template: the shell's Info sheet shows
+// them (VaultShell.on.info). Never opened itself.
 
-  function show(id) {
-    current = ids.includes(id) ? id : ids[0];
-    tabs.forEach((t) => {
-      if (t.dataset.psSection === current) t.setAttribute("aria-current", "page");
-      else t.removeAttribute("aria-current");
-    });
-    sections.forEach((s) => { s.hidden = s.dataset.psSectionId !== current; });
-    dots.forEach((d) => d.classList.toggle("is-active", d.dataset.psDot === current));
-    if (body) body.scrollTop = 0;
-    if (current === "rules") renderInfoRules();
-    revealTab();
-  }
-  // On phones the tab bar is a horizontal strip wider than the screen: keep the
-  // active tab in view. "nearest" moves nothing when it is already visible.
-  function revealTab() {
-    root.querySelector(".ps-modal__tab[aria-current='page']")
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
-  function step(delta) {
-    show(ids[(ids.indexOf(current) + delta + ids.length) % ids.length]);
-  }
-  // The skeleton owns Esc, Tab (trapped) and the focus; paging is ours.
-  const shell = VxNotify.register("info", root, {
-    kind: "modal",
-    visibility: "attr",
-    dismiss: { backdrop: "closed", escape: "closed" },
-    audio: { open: "click", close: "click" },
-    onKey(e) {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return false;
-      e.preventDefault();
-      step(e.key === "ArrowRight" ? 1 : -1);
-      root.querySelector(".ps-modal__tab[aria-current='page']")?.focus();
-      return true;
-    }
-  });
-  function open(id, trigger) {
-    show(id);
-    trigger?.focus?.(); // the skeleton returns the focus to what had it on open
-    shell.open();
-    revealTab(); // show() ran while the modal was hidden, so nothing scrolled then
-    // Keyboard users land on the section they asked for.
-    setTimeout(() => root.querySelector(".ps-modal__tab[aria-current='page']")?.focus(), 0);
-  }
-  function close() {
-    shell.close("closed");
-  }
-  root.addEventListener("click", (e) => {
-    if (e.target === root || e.target.closest("[data-ps-close]")) return; // the skeleton closes it
-    const tab = e.target.closest("[data-ps-section]");
-    if (tab) {
-      show(tab.dataset.psSection);
-      return;
-    }
-    const dot = e.target.closest("[data-ps-dot]");
-    if (dot) show(dot.dataset.psDot);
-  });
-  return { open, close, isOpen: () => shell.isOpen };
-})();
-
-el.psMenuBtn?.addEventListener("click", () => psModal.open("settings", el.psMenuBtn));
-el.psInfoBtn?.addEventListener("click", () => psModal.open("rules", el.psInfoBtn));
 
 // ── HUD ticker: the game's single message line ──
 // A small state machine on #psTicker. The box is fixed and its one line is

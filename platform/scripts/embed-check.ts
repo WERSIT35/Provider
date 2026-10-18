@@ -279,7 +279,8 @@ async function main(): Promise<void> {
     await openCasino(registeredHost, launch("player-3"));
     check("game ready under the profile", Boolean(await waitMsg("ready", (m) => m.data?.balance === 100_000, 20000)));
     check("autoplay, turbo and buy feature are switched off (hidden in place)",
-      await inGame(`[el.autoplayBtn, el.turboBtn, el.buyFreeBtn].every((b) => b.classList.contains("is-reg-off"))`));
+      // The Lumina Shell hides them in place (.is-off); the stake cap may also mark the buy (.is-reg-off).
+      await inGame(`[el.autoplayBtn, el.turboBtn, el.buyFreeBtn].every((b) => b.classList.contains("is-off") || b.classList.contains("is-reg-off"))`));
     await inGame(`(setTurbo(true), true)`);
     check("turbo cannot be switched on", (await inGame(`state.turbo`)) === false);
     const roundsOf3 = () => rounds("player-3").filter((r) => !r.is_free_spin);

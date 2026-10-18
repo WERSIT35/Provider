@@ -53,6 +53,16 @@ async function spinOnce(page) {
   return page.evaluate(() => window.__buzz.slice());
 }
 
+// The Vibration and Full screen rows live in the Lumina Shell's menu sheet: open it, read, close.
+const menu = (page, fn) => page.evaluate((src) => {
+  document.getElementById("psMenuBtn").click();
+  const sheet = [...document.querySelectorAll(".lsh-sheet")].find((s) => s.querySelector("[data-pref]"));
+  const out = new Function("sheet", src)(sheet);
+  VxNotify.get("lsh-menu")?.close("close");
+  return out;
+}, fn);
+const VIB = 'return sheet.querySelector(\'[data-pref="haptics"]\')';
+
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
   const chrome = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "C:/Program Files/Google/Chrome/Application/chrome.exe",
@@ -62,17 +72,17 @@ async function spinOnce(page) {
   try {
     let page = await open(browser, { touch: true });
     check("touch phone: haptics supported", await page.evaluate(() => Haptics.supported));
-    check("touch phone: the Vibration switch is shown", await page.evaluate(() => !document.getElementById("hapticsRow").hidden));
+    check("touch phone: the Vibration switch is shown", await menu(page, `${VIB} !== null;`));
     const buzz = await spinOnce(page);
     check("touch phone: a spin buzzes (8 ms at spin start)", buzz.includes(8), JSON.stringify(buzz));
-    await page.evaluate(() => { const t = document.getElementById("hapticsToggle"); t.checked = false; t.dispatchEvent(new Event("change")); });
+    await menu(page, `const t = (() => { ${VIB}; })(); t.checked = false; t.dispatchEvent(new Event("change", { bubbles: true }));`);
     check("switched off: remembered on this device", await page.evaluate(() => localStorage.getItem("vx.haptics") === "0"));
     check("switched off: a spin never buzzes", (await spinOnce(page)).length === 0);
     await page.close();
 
     page = await open(browser, { touch: true, hapticsOff: true });
     check("reload after switching off: still off (switch unchecked, no buzz)",
-      (await page.evaluate(() => !document.getElementById("hapticsToggle").checked)) && (await spinOnce(page)).length === 0);
+      (await menu(page, `return !(() => { ${VIB}; })().checked;`)) && (await spinOnce(page)).length === 0);
     await page.close();
 
     page = await open(browser, { touch: true, reducedMotion: true });
@@ -81,8 +91,8 @@ async function spinOnce(page) {
 
     page = await open(browser, { touch: false });
     check("desktop (fine pointer): no haptics, switch hidden",
-      (await page.evaluate(() => !Haptics.supported && document.getElementById("hapticsRow").hidden)) && (await spinOnce(page)).length === 0);
-    const fs = await page.evaluate(() => ({ enabled: document.fullscreenEnabled, shown: !document.getElementById("fullscreenBtn").hidden }));
+      (await page.evaluate(() => !Haptics.supported)) && (await menu(page, `${VIB} === null;`)) && (await spinOnce(page)).length === 0);
+    const fs = { enabled: await page.evaluate(() => document.fullscreenEnabled), shown: await menu(page, `return sheet.querySelector('[data-act="fullscreen"]') !== null;`) };
     check("Full screen: shown exactly when the page may go full screen", fs.enabled === fs.shown, JSON.stringify(fs));
     await page.close();
   } finally {
