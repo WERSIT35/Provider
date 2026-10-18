@@ -72,7 +72,7 @@ writeFileSync(ghi, readFileSync(ghi, "utf8").replaceAll('"/play/', '"/vault/'));
 const ghTags = ghManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
 inject(ghi, '<script src="game.js">', ghTags + '\n  <script src="/demo/demo.js" data-game="glasshouse"></script>\n  ');
 
-for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp", "glasshouse/index.html", "glasshouse/game.js", "glasshouse/rules.json", "glasshouse/engine/engine.js"]) {
+for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp", "glasshouse/index.html", "glasshouse/game.js", "glasshouse/rules.json", "glasshouse/engine/engine.js", "demo/img/glasshouse.webp"]) {
   if (!existsSync(path.join(out, f))) throw new Error(`missing in the build: ${f}`);
 }
 console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/, glasshouse/)`);

@@ -78,6 +78,7 @@ order**, so their spin results are provably identical ("parity").
 | `client/math/` | Served copy of the rules JSON (preferred by the backends when present). |
 | `backend/server.js` | **MVP server** — dependency-free Node `http`, in-memory sessions, `/api/v1/*`. |
 | `math/` | Canonical rules JSON (`game-rules-v2.json`, `paytable-v1.json`, `reel-strips-v1.json`) + `simulate.js`. |
+| `games/` | One folder per game, each with its manifest `game.json` (engine files, rules, client): `bananax` (Vault 20K), `classic-5x3` (Moth & Lantern), `relicforge` (Relic Forge), `glasshouse` (Glasshouse: 6×4, 4,096 ways, a sunbeam that turns the panes it crosses wild; design `games/glasshouse/DESIGN.md`, math report `games/glasshouse/qa/rtp-report.md`, tests `npm run test:glasshouse`). |
 | `platform/` | **The provider platform** — Fastify + TypeScript RGS + control plane (see below). |
 | `tools/` | `rtp-parity.js` (engine RTP validation) and `api-test.js` (hits the MVP API). |
 | `docs/` | Phased program playbook (01–15 + specs, GDD, ADR, compliance…). Indexed by `ROADMAP.md`. |
@@ -347,7 +348,8 @@ Run a single platform test: `npx vitest run test/engine.service.test.ts` (add `-
 
 The production target is **`platform/`**, not the root MVP server. `netlify.toml` and
 `vercel.json` publish the **static demo site** built by `node tools/build-demo.mjs` (`dist-demo/`):
-a lobby at `/` (`demo/lobby.html`), Vault 20K at `/vault/` and Classic 5x3 at `/classic/`, with one
+a lobby at `/` (`demo/lobby.html`), Vault 20K at `/vault/`, Moth & Lantern at `/classic/`, Relic Forge at
+`/relicforge/` and Glasshouse at `/glasshouse/`, with one
 play-money balance (100,000) that the lobby resets (`demo/demo.js`). Rounds there are made in the
 browser by each game's own engine; it is a visual/demo page, not the real provider/RGS.
 

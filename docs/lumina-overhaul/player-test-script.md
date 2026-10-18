@@ -9,7 +9,7 @@ player's permission).
 
 - **Links.** The demo lobby (play money, nothing to sign up for). For the sub-stake test you
   need two links per game: the normal one, and the same one with `?market=UKGC` added
-  (for example `…/classic/?market=UKGC`). The UK version shows a win at or below the bet as a
+  (for example `…/classic/?market=UKGC`, `…/glasshouse/?market=UKGC`). The UK version shows a win at or below the bet as a
   plain credit, with no win sounds or effects.
 - **Who.** Adults (18+) who have played a slot at least once in the last year. Mix ages and
   phone sizes. Nobody who works on the games. Pay a fixed thank-you (a coffee voucher, say),
@@ -39,9 +39,17 @@ For each game (rotate the order between players):
    - **Relic Forge:** "What is the bar at the top, and what fills it?" After a draft: "What
      did the relic you picked do?" (Correct: embers from wins fill the forge; when it is full
      the Forge starts; the relic changes the next boards.)
+   - **Glasshouse:** after the first round with a beam: **"What did the light do?"** Do not
+     say "beam", "wild" or "mirror" first. (Correct: the light starts at the lens on the left,
+     the mirrors turn it, and the panes it crosses help make wins / stand in for symbols.
+     "Partly" if they only say "it lit some panes".) **Pass mark for Glasshouse: 8 of 10
+     explain the beam unprompted.** The beam is rare in the base game (about 1 spin in 33):
+     if none has come by round 15, use the buy (100× the bet) and ask in the free spins,
+     where it comes about 1 spin in 5.
 4. When a feature starts (or use the buy in Vault 20K), after its intro panel ask: **"What is
    different in this feature?"** (Correct: Vault, multipliers add up for the whole bonus;
-   Moth & Lantern, every win ×3; Relic Forge, you pick a relic before each spin.) After the
+   Moth & Lantern, every win ×3; Relic Forge, you pick a relic before each spin; Glasshouse,
+   lit panes stay lit for the next two spins.) After the
    outro: **"How much did the feature pay?"** (Correct: the outro's total.)
 5. Score each answer **correct**, **partly**, or **wrong**. Write down their words.
 
@@ -96,25 +104,26 @@ check of our design, not a claim about anyone's play.
 
 ## Score sheet (one per player)
 
-| | Vault 20K | Moth & Lantern | Relic Forge |
-|---|---|---|---|
-| 1. Explained a win by round 3 (correct / partly / wrong) | | | |
-| 1. Game question (correct / partly / wrong) | | | |
-| 2. Picked the tile in 5 s (yes / no) | | | |
-| 3. Missed taps, portrait | | | |
-| 3. Missed taps, landscape | | | |
-| 4. Speed they ended on | | | |
-| 5. Guess / real (normal build) | | | |
-| 5. Guess / real (UK build) | | | |
-| 6. Balance / bet / time found in < 2 s | | | |
-| 6. Symbols mixed up | | | |
+| | Vault 20K | Moth & Lantern | Relic Forge | Glasshouse |
+|---|---|---|---|---|
+| 1. Explained a win by round 3 (correct / partly / wrong) | | | | |
+| 1. Game question (correct / partly / wrong) | | | | |
+| 1. Glasshouse: explained the beam unprompted (yes / partly / no) | — | — | — | |
+| 2. Picked the tile in 5 s (yes / no) | | | | |
+| 3. Missed taps, portrait | | | | |
+| 3. Missed taps, landscape | | | | |
+| 4. Speed they ended on | | | | |
+| 5. Guess / real (normal build) | | | | |
+| 5. Guess / real (UK build) | | | | |
+| 6. Balance / bet / time found in < 2 s | | | | |
+| 6. Symbols mixed up | | | | |
 
 Also note: phone model, portrait or landscape by choice, left-hand mode used, sound on or off,
 anything they said that surprised you.
 
 ## After the sessions
 
-- **Pass marks:** cause and effect 8 of 10 per game; tile recall 7 of 10; fewer than one missed
+- **Pass marks:** cause and effect 8 of 10 per game (Glasshouse: 8 of 10 explain the beam unprompted); tile recall 7 of 10; fewer than one missed
   tap per player per orientation; balance and bet found in under 2 seconds by 9 of 10.
 - Anything below a pass mark is a change to make before the next round of tests. Bring the
   sheets and notes back and we turn them into fixes.
