@@ -1,8 +1,10 @@
 /*
  * Lumina Shell: the shared player interface (client/shell/shell.js). One frame, one set of
  * controls, the same positions in every game. Spec: reports/Slot provider UI and motion.md,
- * Part 3. A game themes it ONLY through the --lsh-* custom properties below (set them on
- * :root or on .lsh[data-game="<code>"]); it never restyles positions or sizes.
+ * Part 3. The system chrome looks the same in every game (docs/lumina-overhaul/layers.md,
+ * Layer 1): the --lsh-* values below are the shell's own and no game may set them or style a
+ * .lsh element (tools/probes/theme-lint.mjs). A game dresses only the themed slots (Layer 2)
+ * through its skin: --skin-* properties passed to LuminaShell.mount({ skin }).
  *
  * Zero layout thrash: every track is sized from tokens, never from content; the only
  * flexible track is the stage. State changes swap looks (opacity, colour, icons), never
@@ -17,7 +19,7 @@
  */
 
 :root {
-  /* Theme tokens (each game overrides these). */
+  /* System values (Layer 1: identical in every game; games may not set them). */
   --lsh-bg: #0b0f14;                       /* page background behind the stage */
   --lsh-deck: rgba(10, 14, 20, 0.86);      /* deck / rail surface */
   --lsh-deck-line: rgba(255, 255, 255, 0.10);
@@ -31,7 +33,7 @@
   --lsh-win: #ffe7a3;                      /* celebrated win text */
   --lsh-sheet: #10161d;                    /* sheet panel */
   --lsh-radius: 14px;
-  --lsh-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --lsh-font-ui: "Lumina UI", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lsh-font-num: var(--lsh-font-ui);
   --lsh-texture: none;                     /* optional deck texture (url or gradient) */
   --lsh-spin-glyph: var(--lsh-accent-ink);
@@ -51,10 +53,20 @@
   --lsh-strip: 18px;                       /* session strip: reserved in EVERY market (empty when unused) */
 }
 
+/* One face for words and numbers in every game (Inter, SIL OFL, shipped with the client:
+   /play/assets/fonts, the demo's /vault/assets/fonts). */
+@font-face { font-family: "Lumina UI"; src: url("../assets/fonts/inter-sub-wght-400-900.woff2") format("woff2"); font-weight: 400 900; font-style: normal; font-display: swap; }
+
+/* The host page's own button styles never reach the shell (the shell's classes win). */
+:where(.lsh, .lsh-sheet, .lsh-panel) button { min-height: 0; padding: 0; margin: 0; border-radius: 0; font-weight: inherit; text-shadow: none; box-shadow: none; transition: none; text-transform: none; letter-spacing: normal; }
+:where(.lsh, .lsh-sheet, .lsh-panel) button:hover:not(:disabled) { transform: none; filter: none; }
+:where(.lsh, .lsh-sheet, .lsh-panel) button:disabled { opacity: 1; }
+
 /* ── frame ─────────────────────────────────────────────────────────────── */
 .lsh {
   position: fixed;
   inset: 0;
+  z-index: 2; /* above the game's page, below every overlay and sheet */
   display: grid;
   gap: var(--lsh-gap);
   padding:
@@ -69,6 +81,7 @@
   overflow: hidden;
 }
 .lsh [hidden] { display: none !important; }
+body:not(.app-ready) .lsh { visibility: hidden; } /* never half-drawn before the game is playable */
 /* Every control sits in its NAMED area (never auto-placed: order and hiding can never move it). */
 .lsh > [data-area="menu"] { grid-area: menu; } .lsh > [data-area="info"] { grid-area: info; }
 .lsh > [data-area="bal"] { grid-area: bal; } .lsh > [data-area="bet"] { grid-area: bet; } .lsh > [data-area="win"] { grid-area: win; }
@@ -299,6 +312,9 @@
 .lsh-sheet__body th, .lsh-sheet__body td { padding: 6px 4px; border-bottom: 1px solid var(--lsh-deck-line); text-align: right; }
 .lsh-sheet__body th:first-child, .lsh-sheet__body td:first-child { text-align: left; }
 .lsh-sheet__body h3 { margin: 16px 0 6px; font-size: 15px; letter-spacing: 0.04em; }
+.lsh-sheet__body td svg, .lsh-sheet__body td img { width: 26px; height: 26px; vertical-align: middle; margin-right: 6px; }
+.lsh-sheet__body { overflow-x: auto; }
+.lsh-sheet--wide .lsh-sheet__panel { width: min(760px, 100%); } /* an ask with choice cards (Relic Forge's draft) */
 .lsh-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--lsh-deck-line); }
 .lsh-row__t { display: grid; gap: 2px; }
 .lsh-row__t small { color: var(--lsh-muted); font-size: 12px; }
@@ -361,4 +377,26 @@
 @media (orientation: portrait) {
   .lsh.has-rtp-slot .lsh-rtp { grid-area: autop; justify-self: center; align-self: center; margin: 0; text-align: center; color: var(--lsh-muted); }
   .lsh.has-rtp-slot .lsh-rtp span { display: block; }
+}
+/* System navigation in the strip (Layer 1): "Games" (when the host gives a lobby URL) on the
+   left, full screen on the right. 40 px hit areas hanging over the top of the stage, like the
+   panic button; the visible pills stay strip-sized. */
+.lsh-nav { grid-area: strip; align-self: start; position: relative; z-index: 6; height: 40px; min-width: 40px; padding: 0; border: 0; background: none; color: var(--lsh-ink); cursor: pointer; text-decoration: none; display: flex; align-items: flex-start; }
+.lsh-nav[hidden] { display: none; }
+.lsh-nav--back { justify-self: start; }
+.lsh-nav--full { justify-self: end; margin-right: calc(var(--lsh-strip) + 6px); }
+.lsh[data-session="panic"] .lsh-nav--full { margin-right: calc(var(--lsh-strip) + 136px); }
+.lsh-nav > span { display: inline-flex; align-items: center; gap: 6px; height: 18px; padding: 0 10px; border-radius: 999px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.04em; background: var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line); }
+.lsh-nav svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.lsh-nav:focus-visible > span { outline: 2px solid var(--lsh-accent); outline-offset: 2px; }
+/* the session strip's items start after the back link */
+.lsh.has-back .lsh-strip { padding-left: 84px; }
+/* Landscape phones: the rails start right under the strip, so the strip's hanging controls
+   (Games, full screen, the DE panic button) sit over the stage column instead. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .lsh-nav, .lsh-panic { grid-area: auto; grid-row: 1; grid-column: 3; }
+  .lsh[data-hand="left"] .lsh-nav, .lsh[data-hand="left"] .lsh-panic { grid-column: 2; }
+  .lsh-nav--full { margin-right: 0; }
+  .lsh-panic { margin-right: 48px; }
+  .lsh[data-session="panic"] .lsh-nav--full { margin-right: 0; }
 }

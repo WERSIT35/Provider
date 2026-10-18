@@ -35,7 +35,9 @@
     plus: '<path d="M6 12h12M12 6v12"/>',
     auto: '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4v4h-4"/>',
     turbo: '<path d="M13 3 6 13h5l-1 8 7-10h-5l1-8z"/>',
-    close: '<path d="M6 6l12 12M18 6 6 18"/>'
+    close: '<path d="M6 6l12 12M18 6 6 18"/>',
+    back: '<path d="M14 6l-6 6 6 6"/>',
+    full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${SVG[name]}</svg>`;
   // The spin face: two chasing arrows (spin), a square (stop), a double chevron (skip).
@@ -86,6 +88,8 @@
       </div>
       <button type="button" class="lsh-panic" data-area="strip" data-ctl="panic" hidden><span>Pause play 24 h</span></button>
       <p class="lsh-rtp" data-rtp hidden></p>
+      <a class="lsh-nav lsh-nav--back" data-ctl="back" hidden><span>${icon("back")}Games</span></a>
+      <button type="button" class="lsh-nav lsh-nav--full" data-ctl="full" aria-label="Full screen" hidden><span>${icon("full")}</span></button>
       <div class="lsh-stage" data-area="stage"></div>
       <div class="lsh-rail" data-area="rail"${features.buy || features.ante ? "" : " hidden"}>
         <button type="button" id="buyFreeBtn" class="lsh-chip lsh-chip--buy" data-ctl="buy"${features.buy ? "" : " hidden"}><span class="lsh-chip__k">Buy</span><span class="lsh-chip__v">Feature</span></button>
@@ -105,7 +109,7 @@
     const q = (sel) => frame.querySelector(sel);
     const ctl = (name) => q(`[data-ctl="${name}"]`);
     const el = {
-      strip: q(".lsh-strip"), panic: q("[data-ctl=panic]"), rtp: q("[data-rtp]"), host: q("[data-host]"), stage: q(".lsh-stage"), rail: q(".lsh-rail"),
+      strip: q(".lsh-strip"), panic: q("[data-ctl=panic]"), back: q("[data-ctl=back]"), full: q("[data-ctl=full]"), rtp: q("[data-rtp]"), host: q("[data-host]"), stage: q(".lsh-stage"), rail: q(".lsh-rail"),
       ticker: q(".lsh-ticker"), tickerText: q(".lsh-ticker__text"),
       balance: q('[data-v="balance"]'), bet: q('[data-v="bet"]'), win: q('[data-v="win"]'), betK: q('[data-k="bet"]'), winK: q('[data-k="win"]'),
       menu: ctl("menu"), info: ctl("info"), auto: ctl("auto"), autoCount: q("[data-auto-count]"), minus: ctl("minus"), plus: ctl("plus"),
@@ -487,7 +491,8 @@
 
     /** A blocking question (reality check): no close button, no backdrop or Escape.
      *  `choices`: [{ reason, label, primary }]. Resolves with the chosen reason. */
-    function ask(title, html, choices) {
+    function ask(title, html, choices, opts = {}) {
+      sheets.ask.root.classList.toggle("lsh-sheet--wide", Boolean(opts.wide));
       setText(sheets.ask.title, title);
       sheets.ask.body.innerHTML = `${html}<div class="lsh-actions">${choices.map((c, i) => `<button type="button" class="lsh-pill${c.primary ? " lsh-pill--primary" : ""}" data-vx-close="${esc(c.reason)}"${c.primary || i === 0 ? " data-vx-autofocus" : ""}>${esc(c.label)}</button>`).join("")}</div>`;
       return openSheet("ask");
@@ -520,6 +525,15 @@
       const r = await ask("Pause play for 24 hours?", "<p>Your casino will lock play for 24 hours. The game stops now; a round already on screen finishes first.</p>", [{ label: "Pause 24 h", reason: "panic", primary: true }, { label: "Cancel", reason: "cancel" }]);
       if (r === "panic") on.panic?.();
     });
+    // System navigation: "Games" when the host gives a lobby URL (o.lobbyUrl, or the demo's
+    // window.LUMINA_LOBBY_URL); full screen where the page may go full screen.
+    const lobbyUrl = o.lobbyUrl || root.LUMINA_LOBBY_URL || "";
+    if (lobbyUrl) { el.back.href = lobbyUrl; el.back.hidden = false; el.back.setAttribute("aria-label", "Back to games"); frame.classList.add("has-back"); }
+    if (doc.fullscreenEnabled) {
+      el.full.hidden = false;
+      el.full.addEventListener("click", () => { (doc.fullscreenElement ? doc.exitFullscreen() : doc.documentElement.requestFullscreen({ navigationUI: "hide" })).catch(() => {}); });
+      doc.addEventListener("fullscreenchange", () => el.full.setAttribute("aria-label", doc.fullscreenElement ? "Exit full screen" : "Full screen"));
+    }
     el.minus.addEventListener("click", () => on.betStep?.(-1));
     el.plus.addEventListener("click", () => on.betStep?.(1));
     el.betSheet.addEventListener("click", () => { renderBetSheet(); openSheet("bet"); });
@@ -554,6 +568,8 @@
       /** The motion speed key for LuminaMotion: "reduced" wins, then the player's speed. */
       motionSpeed() { return reducedMotion() ? "reduced" : speed(); },
       setCurrency(c) { currency = c || ""; labels(); },
+      /** The readouts' number format (one format in every game). */
+      money,
       /** The active profile's theoretical RTP in % (shown at the stake where the market says so). */
       setRtp(pct) { rtpPct = Number.isFinite(Number(pct)) ? Number(pct) : null; labels(); },
       /** The game changed the speed itself (Vault 20K: hold Spin for turbo autoplay). */
