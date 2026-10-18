@@ -520,7 +520,7 @@
     S.drafting = true; setControls();
     shell.ask("Choose your relic", `<p>Forge spin ${spinNo} of ${f.spins_total}</p>
       <p>All three choices are worth the same on average; they differ in how much the result can swing.${f.spins_left === 1 ? " <b>Next is Meltdown:</b> every relic fires." : ""}</p>
-      <div class="cards">${cards}</div>`, []).then((reason) => {
+      <div class="cards">${cards}</div>`, [], { wide: true }).then((reason) => {
       S.drafting = false;
       const choice = Number(String(reason).replace("pick-", ""));
       if (!Number.isInteger(choice)) { setControls(); return; }

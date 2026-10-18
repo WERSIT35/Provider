@@ -38,39 +38,11 @@
        (Forge meter) or the Forge status, the relic plates, and the manuscript page. Every
        control, readout and dialog is the shell's; this page only themes it. */
     .rf-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); }
-    body:not(.app-ready) .lsh { visibility: hidden; }
-    /* Shell theme: ink and brass on the desk, parchment controls, a molten-gold seal for Spin. */
-    :root {
-      --lsh-deck: linear-gradient(180deg, #2a1f17, #17110c); --lsh-deck-line: rgba(233, 220, 192, 0.14);
-      --lsh-face: var(--grain), #e9dcc0; --lsh-face-hover: var(--grain), #f3e8cf; --lsh-face-ink: #1c1611;
-      --lsh-ink: #e9dcc0; --lsh-muted: #b5a283; --lsh-win: #ffb000;
-      --lsh-read-bg: var(--grain), #e9dcc0; --lsh-read-ink: #1c1611; --lsh-read-k: #3a332c; --lsh-feature-ink: #8a3a00;
-      --lsh-accent: #ffb000; --lsh-accent-2: #ff5e1a; --lsh-accent-ink: #1c1611;
-      --lsh-spin-face: radial-gradient(circle at 45% 35%, #fff2c4, #ffd25a 30%, #ffb000 60%, #ff5e1a);
-      --lsh-spin-ring: 0 0 0 2px #1c1611, 0 0 0 5px #5a4f45, 0 0 0 6px #000, 0 0 24px rgba(255, 176, 0, 0.5), 0 5px 0 #000;
-      --lsh-sheet: #e9dcc0; --lsh-radius: 4px;
-      --lsh-font-ui: "RF Text", Garamond, Georgia, serif; --lsh-font-num: "RF Num", "Arial Narrow", system-ui, sans-serif;
-    }
-    .lsh::before { background: var(--lsh-deck); box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(233, 220, 192, 0.12); }
-    .lsh-btn { box-shadow: 0 0 0 1.5px #1c1611, 0 3px 0 #000; }
-    .lsh-btn[aria-pressed="true"] { background: linear-gradient(180deg, #ffe08a, #ffb000); color: #1c1611; box-shadow: 0 0 0 1.5px #1c1611, 0 3px 0 #000; }
-    .lsh-read { box-shadow: 0 0 0 1px #000; border-radius: 2px; }
-    .lsh-read__k { letter-spacing: 0.08em; font-weight: 600; }
-    .lsh-ticker { font: italic 600 1.08rem var(--text-face); color: var(--muted); }
-    .lsh-ticker[data-state="win"] { font-style: normal; }
-    .lsh-spin__label { font: 600 0.95rem var(--text-face); letter-spacing: 0.1em; }
-    .lsh-sheet__panel { color: #1c1611; background: var(--grain), #e9dcc0; box-shadow: 0 0 0 2px #1c1611, 0 20px 50px rgba(0, 0, 0, 0.7); --lsh-ink: #1c1611; --lsh-muted: #5c4e3c; --lsh-deck-line: rgba(28, 22, 17, 0.16); --lsh-face: rgba(28, 22, 17, 0.08); --lsh-face-hover: rgba(28, 22, 17, 0.12); --lsh-face-ink: #1c1611; user-select: text; }
-    .lsh-sheet__title { font: 700 1.3rem var(--display); }
-    .lsh-sheet__panel h3 { font: 700 1.02rem var(--display); color: #3a332c; }
-    .lsh-sheet__panel p, .lsh-sheet__panel li { font-size: 1.05rem; line-height: 1.4; color: #3a2f24; }
-    .lsh-sheet__panel table { display: block; overflow-x: auto; }
-    .lsh-sheet__panel td svg { width: 26px; height: 26px; vertical-align: middle; margin-right: 6px; }
-    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked { background: #1c1611; }
-    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked::after { background: #ffb000; }
+    /* Every control, readout and dialog is the shell's and looks the same in every Lumina game
+       (docs/lumina-overhaul/layers.md); this page styles only its own board and the relic plates. */
 
     /* ── Top: the engraved title, the crucible (Forge meter) or the Forge status, the relic plates. ── */
     .top { position: relative; display: grid; gap: 6px; justify-items: center; min-width: 0; }
-    .lobby-slot { position: absolute; left: 0; top: 0; z-index: 2; }
     .title { margin: 0; line-height: 0; }
     .title svg { width: clamp(220px, 68vw, 380px); height: auto; overflow: visible; }
     .title text { font-family: var(--display); font-weight: 700; }
@@ -167,7 +139,7 @@
 
 
     @media (orientation: portrait) and (max-height: 700px) { .title svg { width: clamp(190px, 58vw, 300px); } }
-    /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the title. */
+    /* Room under the strip's Games link (top-left): it never covers the title. */
     @media (max-width: 560px) { .top { padding-top: 30px; } }
     @media (orientation: landscape) and (max-height: 520px) {
       .rf-stage { gap: 4px; }
@@ -179,7 +151,6 @@
     }
     /* Draft, evolution, info, settings, reality check: one modal layer, a parchment leaf. */
     /* The relic draft (a shell sheet) is wider than the others: three plates side by side. */
-    .lsh-sheet__panel:has(.cards) { width: min(760px, 100%); }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
     @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
     .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 2px; background: #f3e8cf; color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 rgba(0, 0, 0, 0.35); transition: box-shadow 0.15s, transform 0.15s; }
@@ -211,7 +182,6 @@
 <body>
   <div class="rf-stage" id="rfStage">
     <header class="top">
-      <div class="lobby-slot"></div>
       <h1 class="title" aria-label="Relic Forge">
         <svg viewBox="0 0 380 86" aria-hidden="true">
           <defs><linearGradient id="rfSeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff5e1a"/><stop offset=".5" stop-color="#ffe08a"/><stop offset="1" stop-color="#ff5e1a"/></linearGradient>

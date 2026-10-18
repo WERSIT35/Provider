@@ -261,7 +261,8 @@ select {
   font: inherit;
 }
 
-button {
+/* The page's button look stops at the shell (its controls are the same in every game). */
+button:not(:where(.lsh *, .lsh-sheet *, .lsh-panel *)) {
   min-height: 58px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
@@ -272,12 +273,12 @@ button {
   transition: transform 0.16s ease, filter 0.16s ease;
 }
 
-button:hover:not(:disabled) {
+button:not(:where(.lsh *, .lsh-sheet *, .lsh-panel *)):hover:not(:disabled) {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
 
-button:disabled {
+button:not(:where(.lsh *, .lsh-sheet *, .lsh-panel *)):disabled {
   opacity: 0.58;
   cursor: not-allowed;
 }
@@ -2504,7 +2505,7 @@ body::after {
     linear-gradient(180deg, rgba(16, 26, 48, 0.82), rgba(8, 14, 30, 0.9));
 }
 
-button {
+button:not(:where(.lsh *, .lsh-sheet *, .lsh-panel *)) {
   border-radius: 12px;
   color: #f4f8ff;
   border-color: rgba(165, 205, 255, 0.46);
@@ -3347,25 +3348,10 @@ body.perf-low .crazy-toggle {
 
 /* ── Vault 20K on the Lumina Shell (client/vault-shell.js) ──
    The board column (.ps-center) lives in the shell's stage and fills it; the shell
-   owns every control. Theme: the vault's teal steel and gold, through --lsh-* only. */
+   owns every control, which look the same in every Lumina game (layers.md, Layer 1). */
 body.public-mode .vault-shell.is-mounted, body .vault-shell.is-mounted { display: none; } /* its board column moved into the shell */
 .lsh[data-game="vault"] .lsh-stage > .ps-center { flex: 1 1 auto; min-width: 0; min-height: 0; }
 .lsh[data-game="vault"] .vault-window { align-items: center; } /* the board sits in the middle of its stage */
-.lsh[data-game="vault"] {
-  z-index: 2; /* above the page (.sanctum is 1), below every overlay and modal */
-  --lsh-deck: color-mix(in srgb, var(--bg-gunmetal, #0d1b22) 90%, transparent);
-  --lsh-deck-line: color-mix(in srgb, var(--steel-sheen, #8fd3d1) 22%, transparent);
-  --lsh-accent: var(--win-gold, #f2c14e);
-  --lsh-accent-2: var(--win-gold-deep, #c8902b);
-  --lsh-win: var(--win-gold-bright, #ffe7a3);
-  --lsh-sheet: #0c1a20;
-  --lsh-font-ui: var(--font-ui, system-ui, sans-serif);
-}
-/* Vault's page-wide button look (min-height, padding, lift on hover) must not reach the
-   shell's controls: reset it at the element's own specificity, so the shell's classes win. */
-:where(.lsh, .lsh-sheet) button { min-height: 0; padding: 0; border-radius: 0; font-weight: inherit; text-shadow: none; box-shadow: none; transition: none; }
-:where(.lsh, .lsh-sheet) button:hover:not(:disabled) { transform: none; filter: none; }
-:where(.lsh, .lsh-sheet) button:disabled { opacity: 1; }
 /* The info sheet carries the rules template's sections, all open, one after another. */
 .lsh-sheet .vx-info .ps-modal__section + .ps-modal__section { margin-top: 18px; }
 

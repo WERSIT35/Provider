@@ -81,25 +81,9 @@
     }
   };
 
-  /** "Lobby" link: in the game's .lobby-slot when it has one, else fixed in a corner (outside the layout, so nothing moves). */
-  function backLink() {
-    var a = document.createElement("a");
-    a.href = "/";
-    a.textContent = "← Lobby";
-    a.setAttribute("aria-label", "Back to the demo lobby");
-    a.className = "lumina-demo-back";
-    var css = document.createElement("style");
-    css.textContent =
-      ".lumina-demo-back{position:fixed;z-index:2147483000;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top));" +
-      "padding:6px 12px;border-radius:999px;background:rgba(5,12,14,.72);color:#f2c14e;font:600 12px/1.2 system-ui,-apple-system,'Segoe UI',sans-serif;" +
-      "letter-spacing:.04em;text-decoration:none;border:1px solid rgba(242,193,78,.35);-webkit-tap-highlight-color:transparent}" +
-      ".lumina-demo-back:hover{color:#ffe7a3}.lumina-demo-back:focus-visible{outline:2px solid #f2c14e;outline-offset:2px}" +
-      // A game that reserves a place for it (.lobby-slot) gets it there, in its own layout.
-      ".lobby-slot .lumina-demo-back{position:static;display:inline-block}";
-    document.head.appendChild(css);
-    var add = function () { var slot = document.querySelector(".lobby-slot"); (slot || document.body).appendChild(a); };
-    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
-  }
+  /** "Games" (back to the demo lobby): the shell's own system link in the strip, the same
+   *  in every game (docs/lumina-overhaul/layers.md, Layer 1). */
+  function backLink() { window.LUMINA_LOBBY_URL = "/"; }
 
   if (game === "vault") {
     vaultIn();

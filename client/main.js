@@ -7150,13 +7150,15 @@ function stopAutoplay() {
 function bindFooterMirror() {
   if (!el.footerBalance && !el.footerBet) return;
   const footerWin = document.getElementById("footerWin"); // the shell's Win readout
+  // The shell's readouts use the shell's one number format (grouped, two decimals).
+  const shellMoney = (text) => { const m = window.VaultShell?.api?.money; const n = Number(String(text).replace(/[^0-9.-]/g, "")); return m && /^\s*-?[\d.,]+\s*$/.test(String(text)) && Number.isFinite(n) ? m(n) : text; };
   const sync = () => {
     if (el.footerBalance && el.balance) {
-      el.footerBalance.textContent = el.balance.textContent;
+      el.footerBalance.textContent = shellMoney(el.balance.textContent);
       if (/\d/.test(el.balance.textContent)) window.VaultShell?.api.trackBalance(Number(el.balance.textContent.replace(/[^0-9.-]/g, ""))); // session strip
     }
-    if (el.footerBet && el.betView && !state.shellFeatureHud) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
-    if (footerWin && el.lastWin && !state.shellFeatureHud) footerWin.textContent = el.lastWin.textContent; // the feature shows its total
+    if (el.footerBet && el.betView && !state.shellFeatureHud) el.footerBet.textContent = freeRoundsReadoutText() ?? shellMoney(el.betView.textContent);
+    if (footerWin && el.lastWin && !state.shellFeatureHud) footerWin.textContent = shellMoney(el.lastWin.textContent); // the feature shows its total
   };
   sync();
   const obs = new MutationObserver(sync);

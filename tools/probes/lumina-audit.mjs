@@ -43,11 +43,11 @@ const MAIN = new Set(["spinBtn", "betDownBtn", "betUpBtn"]);
 const measure = (main) => {
   const W = innerWidth, H = innerHeight, out = [], over = [], small = [], tiny = [], texts = [];
   const vis = (e) => { const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && cs.display !== "none" && cs.visibility !== "hidden" && !e.closest("[hidden]") ? r : null; };
-  const items = [...document.querySelectorAll(".lsh > button, .lsh > .lsh-read, .lsh > .lsh-ticker, .lsh > .lsh-rail > button")].map((e) => [e.id || e.className, e, vis(e)]).filter((x) => x[2]);
+  const items = [...document.querySelectorAll(".lsh > button, .lsh > a, .lsh > .lsh-read, .lsh > .lsh-ticker, .lsh > .lsh-rail > button")].map((e) => [e.id || e.className, e, vis(e)]).filter((x) => x[2]);
   for (const [n, e, r] of items) {
     if (r.left < -0.5 || r.top < -0.5 || r.right > W + 0.5 || r.bottom > H + 0.5) out.push(n);
     const floor = main.includes(e.id) ? 44 : 40;
-    if (e.matches("button") && (r.width < floor - 0.5 || r.height < floor - 0.5)) small.push(`${n} ${Math.round(r.width)}x${Math.round(r.height)}`);
+    if (e.matches("button, a") && (r.width < floor - 0.5 || r.height < floor - 0.5)) small.push(`${n} ${Math.round(r.width)}x${Math.round(r.height)}`);
   }
   for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
     const a = items[i][2], b = items[j][2];

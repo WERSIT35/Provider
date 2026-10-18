@@ -58,35 +58,12 @@
     :focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
 
     /* The game's stage inside the Lumina Shell (client/shell): the sky (logo, lanterns) and
-       the garden. Every control, readout and dialog is the shell's; this page only themes it. */
+       the garden. Every control, readout and dialog is the shell's and looks the same in every
+       Lumina game (docs/lumina-overhaul/layers.md); this page styles only its own board. */
     .ml-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); position: relative; z-index: 1; }
-    .lsh { z-index: 1; }
-    /* Shell theme: cut paper on ink. Paper buttons with ink icons, a lantern-disc Spin. */
-    :root {
-      --lsh-deck: rgba(11, 16, 38, 0.84); --lsh-deck-line: rgba(243, 230, 200, 0.12);
-      --lsh-face: var(--grain) , #f3e6c8; --lsh-face-hover: var(--grain) , #fff3d6; --lsh-face-ink: #0b1026;
-      --lsh-ink: #f3e6c8; --lsh-muted: #b9b6c9; --lsh-win: #ffb547;
-      --lsh-read-bg: var(--grain) , #f3e6c8; --lsh-read-ink: #0b1026; --lsh-read-k: #54473a; --lsh-feature-ink: #a2380f;
-      --lsh-accent: #ffb547; --lsh-accent-2: #ff7a3d; --lsh-accent-ink: #3a1b05;
-      --lsh-spin-face: var(--grain), radial-gradient(circle at 50% 45%, #fff1c8 0%, #ffb547 42%, #ff7a3d 100%);
-      --lsh-spin-ring: 0 0 0 3px #0b1026, 0 0 0 5px rgba(243, 230, 200, 0.5), 0 0 26px 6px rgba(255, 181, 71, 0.45), 0 4px 0 rgba(0, 0, 0, 0.5);
-      --lsh-sheet: #f3e6c8; --lsh-radius: 10px;
-      --lsh-font-ui: "ML UI", "Trebuchet MS", system-ui, sans-serif; --lsh-font-num: "ML Display", Georgia, serif;
-    }
-    .lsh-sheet__panel { color: #0b1026; background: var(--grain), #f3e6c8; --lsh-ink: #0b1026; --lsh-muted: #5a5266; --lsh-deck-line: rgba(11, 16, 38, 0.14); --lsh-face: rgba(11, 16, 38, 0.08); --lsh-face-hover: rgba(11, 16, 38, 0.12); --lsh-face-ink: #0b1026; }
-    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked { background: #0b1026; }
-    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked::after { background: #ffb547; }
-    .lsh-sheet__title { font-family: var(--display); font-weight: 600; }
-    .lsh-read { box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); border-radius: 3px; }
-    .lsh-read__v { font-weight: 600; }
-    .lsh-btn { box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
-    .lsh-btn[aria-pressed="true"] { background: var(--grain), #ffb547; color: #0b1026; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
-    .lsh-ticker { font: 600 0.98rem var(--display); }
-    body:not(.app-ready) .lsh { visibility: hidden; }
 
     /* ── Sky: the logo, and five paper lanterns that light one by one when night falls. ── */
     .sky { position: relative; display: grid; justify-items: center; gap: 2px; padding-top: 6px; }
-    .lobby-slot { position: absolute; left: 0; top: 0; z-index: 2; }
     .lanterns { display: flex; gap: clamp(14px, 6vw, 46px); height: 30px; }
     .lantern { position: relative; width: 16px; height: 22px; margin-top: 8px; border-radius: 45% 45% 40% 40%; background: #3a3355; box-shadow: inset 0 0 0 1px rgba(243, 230, 200, 0.18); transition: background 0.5s ease, box-shadow 0.5s ease; }
     .lantern::before { content: ""; position: absolute; left: 50%; top: -9px; height: 9px; width: 1px; background: rgba(243, 230, 200, 0.35); }
@@ -133,7 +110,7 @@
       .garden { width: min(100cqw, calc((100cqh - var(--hang) - 130px) * 5 / 3)); }
     }
 
-    /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the lanterns or the logo. */
+    /* Room under the strip's Games link (top-left): it never covers the lanterns or the logo. */
     @media (max-width: 560px) { .sky { padding-top: 30px; } }
     @media (orientation: portrait) and (max-height: 700px) { .lanterns { height: 22px; } .lantern { width: 13px; height: 18px; } .logo svg { width: clamp(200px, 62vw, 300px); } }
     @media (orientation: landscape) and (max-height: 520px) {
@@ -152,7 +129,6 @@
 <body>
   <div class="ml-stage" id="mlStage">
     <header class="sky">
-      <div class="lobby-slot"></div>
       <div class="lanterns" aria-hidden="true"><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i><i class="lantern"></i></div>
       <h1 class="logo" aria-label="Moth and Lantern">
         <svg viewBox="28 0 400 74" aria-hidden="true">

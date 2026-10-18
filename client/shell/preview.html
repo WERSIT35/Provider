@@ -4,15 +4,69 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
   <title>Lumina Shell · preview</title>
-  <!-- Development page: the shared shell with a placeholder board, for review and probes
-       (tools/probes/shell-parity.mjs). Not linked from any game. ?feature=1 shows the
-       feature rail; ?market=UKGC applies a market profile; ?hand=left left-hand mode. -->
+  <!-- Development page, not linked from any game: the shared shell with a placeholder board,
+       for design review and probes. Views (?view=):
+         deck (default)  the system chrome, Layer 1; ?sheet=menu|info|auto|bet opens a sheet
+         loader          the provider loader (Layer 1, the same in every game)
+         splash          the game intro splash (Layer 2: fixed structure, game skin); ?skin=vault|classic|relicforge
+         rail            the Buy / Ante cards (Layer 2) in the three skins
+       Other params: ?feature=1 shows the feature rail; ?market=UKGC|DE applies a market;
+       ?hand=left left-hand mode. docs/lumina-overhaul/layers.md is the contract. -->
   <link rel="stylesheet" href="shell.css">
   <style>
-    html, body { margin: 0; height: 100%; background: #0b0f14; }
+    /* Layer 1 face, proposed (step 1 moves it into shell.css): one OFL face for words and
+       numbers, already shipped with the client. */
+    @font-face { font-family: "Lumina UI"; src: url("../assets/fonts/inter-sub-wght-400-900.woff2") format("woff2"); font-weight: 400 900; font-display: swap; }
+    :root { --lsh-font-ui: "Lumina UI", system-ui, sans-serif; --lsh-font-num: "Lumina UI", system-ui, sans-serif; }
+    /* Skin title faces (Layer 2 only, each game's own; preview loads them from the repo). */
+    @font-face { font-family: "Skin Vault"; src: url("../assets/fonts/oswald-sub-wght-400-700.woff2") format("woff2"); font-weight: 400 700; }
+    @font-face { font-family: "Skin Moth"; src: url("../../games/classic-5x3/client/assets/fonts/fraunces-600.woff2") format("woff2"); font-weight: 600; }
+    @font-face { font-family: "Skin Relic"; src: url("../../games/relicforge/client/assets/fonts/cinzel-decorative-700.woff2") format("woff2"); font-weight: 700; }
+
+    html, body { margin: 0; height: 100%; background: #0b0f14; font-family: var(--lsh-font-ui); }
     .pv-stage { flex: 1; min-height: 0; display: grid; place-items: center; container-type: size; }
     .pv-board { width: min(100cqw, 120cqh); aspect-ratio: 6 / 5; display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
     .pv-board i { border-radius: 8px; background: linear-gradient(160deg, #24303c, #141b22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+
+    /* ── skins: the only per-game values (Layer 2) ─────────────────────────── */
+    [data-skin="vault"] { --skin-title-font: "Skin Vault", sans-serif; --skin-title-case: uppercase; --skin-slot-bg: linear-gradient(180deg, #17333b, #0b1a1f); --skin-slot-border: #8fd3d1; --skin-slot-ink: #e9f6f5; --skin-accent: #f2c14e; --skin-scene: radial-gradient(120% 80% at 50% 0%, #1d5560 0%, #0b1d22 60%, #061013 100%); --skin-frame: 0 0 0 2px #8fd3d1, 0 0 0 5px #0b1a1f, 0 0 0 7px #c8902b; }
+    [data-skin="classic"] { --skin-title-font: "Skin Moth", serif; --skin-title-case: none; --skin-slot-bg: linear-gradient(180deg, #f6ead0, #e7d6b2); --skin-slot-border: #0b1026; --skin-slot-ink: #0b1026; --skin-accent: #ff9a3d; --skin-scene: radial-gradient(120% 80% at 50% 0%, #2c3a7a 0%, #141b44 55%, #0b1026 100%); --skin-frame: 0 0 0 2px #0b1026, 0 6px 0 rgba(0,0,0,.35); }
+    [data-skin="relicforge"] { --skin-title-font: "Skin Relic", serif; --skin-title-case: none; --skin-slot-bg: linear-gradient(180deg, #efe2c4, #dcc9a2); --skin-slot-border: #1c1611; --skin-slot-ink: #1c1611; --skin-accent: #ffb000; --skin-scene: radial-gradient(120% 80% at 50% 0%, #4a3523 0%, #241a12 55%, #120d09 100%); --skin-frame: 0 0 0 1.5px #1c1611, 0 0 0 4px #efe2c4, 0 0 0 5.5px #1c1611; }
+
+    /* ── provider loader (Layer 1) ──────────────────────────────────────────── */
+    .pv-loader { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0f14; color: #eef1f4; }
+    .pv-loader__mark { display: grid; justify-items: center; gap: 18px; }
+    .pv-loader__word { font: 800 22px/1 var(--lsh-font-ui); letter-spacing: 0.32em; padding-left: 0.32em; }
+    .pv-loader__word small { display: block; margin-top: 8px; font: 600 11px/1 var(--lsh-font-ui); letter-spacing: 0.5em; color: #9aa7ad; text-align: center; }
+    .pv-loader__bar { width: 168px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+    .pv-loader__bar i { display: block; width: 62%; height: 100%; background: #f2c14e; }
+
+    /* ── intro splash (Layer 2: fixed structure; the skin dresses it) ───────── */
+    .pv-splash { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 14px; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); background: var(--skin-scene); color: #fff; box-sizing: border-box; }
+    .pv-splash__logo { justify-self: center; margin-top: 18px; font: 700 34px/1 var(--skin-title-font); text-transform: var(--skin-title-case); letter-spacing: 0.04em; color: var(--skin-accent); text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+    .pv-splash__cards { align-self: center; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 760px; width: 100%; justify-self: center; }
+    .pv-card { display: grid; gap: 10px; align-content: start; padding: 14px; border-radius: 12px; background: var(--skin-slot-bg); color: var(--skin-slot-ink); box-shadow: var(--skin-frame); }
+    .pv-card__art { height: 120px; border-radius: 8px; display: grid; place-items: center; background: rgba(0,0,0,.12); }
+    .pv-card__art img { max-height: 100px; }
+    .pv-card__art b { font: 700 40px/1 var(--skin-title-font); color: var(--skin-accent); }
+    .pv-card__line { margin: 0; font: 600 15px/1.35 var(--lsh-font-ui); }
+    .pv-splash__facts { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; max-width: 760px; width: 100%; justify-self: center; }
+    /* the facts row and the controls are Layer 1 (same face, same places in every game) */
+    .pv-facts { display: grid; gap: 8px; font: 700 13px/1 var(--lsh-font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: #eef1f4; }
+    .pv-facts strong { font: 800 22px/1 var(--lsh-font-num); letter-spacing: 0; text-transform: none; }
+    .pv-vol { display: inline-flex; align-items: end; gap: 3px; margin-left: 8px; vertical-align: middle; }
+    .pv-vol i { width: 5px; border-radius: 1px; background: rgba(255,255,255,.25); } .pv-vol i.on { background: #f2c14e; }
+    .pv-continue { width: 72px; height: 72px; border-radius: 50%; border: 0; background: radial-gradient(circle at 50% 32%, #f7d78a 0%, #f2c14e 46%, #d9a334 100%); box-shadow: 0 6px 18px rgba(0,0,0,.45); color: #1d1300; font: 800 13px/1 var(--lsh-font-ui); letter-spacing: .06em; }
+    .pv-dont { display: flex; align-items: center; gap: 10px; min-height: 44px; font: 600 14px/1 var(--lsh-font-ui); color: #eef1f4; }
+    .pv-dont i { width: 22px; height: 22px; border-radius: 5px; box-shadow: inset 0 0 0 2px #eef1f4; }
+    @media (min-width: 1000px) and (orientation: landscape) { .pv-card__art { height: 200px; } .pv-card__art img { max-height: 170px; } .pv-splash__logo { font-size: 56px; } }
+
+    /* ── rail cards (Layer 2) ───────────────────────────────────────────────── */
+    .pv-rails { position: fixed; inset: 0; display: grid; align-content: center; justify-items: center; gap: 22px; background: #0b0f14; font-family: var(--lsh-font-ui); color: #9aa7ad; }
+    .pv-rail { display: flex; gap: 8px; } .pv-rail__label { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: .1em; text-transform: uppercase; }
+    .pv-chip { width: 132px; height: 48px; border-radius: 12px; display: grid; place-content: center; text-align: center; background: var(--skin-slot-bg); color: var(--skin-slot-ink); box-shadow: var(--skin-frame); }
+    .pv-chip b { font: 700 16px/1 var(--skin-title-font); text-transform: uppercase; letter-spacing: .04em; }
+    .pv-chip span { font: 700 11px/1.2 var(--lsh-font-ui); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
   </style>
 </head>
 <body>
@@ -23,6 +77,30 @@
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
+      var view = p.get("view") || "deck", skin = p.get("skin") || "vault";
+      var SKIN = {
+        vault: { logo: "Vault 20K", x: "20,000", vol: 5, cards: [["<img src='../assets/symbols/sm/Scatter.webp' alt=''>", "4 or more Scatters award 15 free spins."], ["<b>×1000</b>", "Multipliers add up for the whole bonus."]] },
+        classic: { logo: "Moth & Lantern", x: "5,000", vol: 3, cards: [["<b>3+</b>", "3 or more Full Moons award free spins."], ["<b>×3</b>", "Every free-spin win is tripled."]] },
+        relicforge: { logo: "Relic Forge", x: "10,000", vol: 4, cards: [["<b>40</b>", "Embers fill the Forge meter; a full meter starts the Forge."], ["<b>1 of 3</b>", "Before each Forge spin, choose a relic."]] }
+      };
+      if (view === "loader") {
+        document.body.innerHTML = '<div class="pv-loader"><div class="pv-loader__mark"><svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="25" fill="none" stroke="#f2c14e" stroke-width="3"/><path d="M28 12 L38 28 L28 44 L18 28 Z" fill="#f2c14e"/><path d="M28 19 L33 28 L28 37 L23 28 Z" fill="#0b0f14"/></svg><div class="pv-loader__word">LUMINA<small>GAMES</small></div><div class="pv-loader__bar"><i></i></div></div></div>';
+        document.body.classList.add("app-ready"); return;
+      }
+      if (view === "splash") {
+        var s = SKIN[skin] || SKIN.vault, bars = "";
+        for (var b = 1; b <= 5; b++) bars += '<i class="' + (b <= s.vol ? "on" : "") + '" style="height:' + (6 + b * 3) + 'px"></i>';
+        document.body.innerHTML = '<div class="pv-splash" data-skin="' + skin + '"><div class="pv-splash__logo">' + s.logo + '</div><div class="pv-splash__cards">' +
+          s.cards.map(function (c) { return '<div class="pv-card"><div class="pv-card__art">' + c[0] + '</div><p class="pv-card__line">' + c[1] + '</p></div>'; }).join("") +
+          '</div><div class="pv-splash__facts"><div class="pv-facts"><span>Win up to <strong>' + s.x + '× bet</strong></span><span>Volatility<span class="pv-vol">' + bars + '</span></span><label class="pv-dont"><i></i>Don\'t show next time</label></div><button class="pv-continue" type="button">PLAY</button></div></div>';
+        document.body.classList.add("app-ready"); return;
+      }
+      if (view === "rail") {
+        document.body.innerHTML = '<div class="pv-rails">' + ["vault", "classic", "relicforge"].map(function (k) {
+          return '<div class="pv-rail__label">' + k + '</div><div class="pv-rail" data-skin="' + k + '"><div class="pv-chip"><span>Buy</span><b>Feature</b></div><div class="pv-chip"><span>Ante</span><b>Bet ×1.25</b></div></div>';
+        }).join("") + '</div>';
+        document.body.classList.add("app-ready"); return;
+      }
       var board = document.getElementById("pvBoard");
       for (var i = 0; i < 30; i++) board.appendChild(document.createElement("i"));
       var bets = [0.2, 0.4, 1, 2, 5, 10, 20, 50, 100], idx = 2;
@@ -35,13 +113,18 @@
           spin: function () { shell.setPhase("flight"); shell.setSpinMode("skip"); shell.ticker.spin("Good luck…"); setTimeout(function () { shell.setPhase("ready"); shell.setSpinMode("spin"); shell.setWin(1.25); shell.ticker.win("WIN 1.25", shell.celebrates(1.25, bets[idx])); }, 900); },
           betStep: function (d) { idx = Math.max(0, Math.min(bets.length - 1, idx + d)); shell.setBets(bets, idx); shell.setBet(bets[idx]); },
           betIndex: function (i) { idx = i; shell.setBets(bets, idx); shell.setBet(bets[idx]); },
-          info: function () { return "<p>Placeholder rules.</p>"; }
+          info: function () { return "<h3>Paytable</h3><p>The game's own pages (symbols, rules) go here, inside the shared sheet.</p>"; }
         }
       });
       shell.applyMarket({ jurisdiction: p.get("market") || "DEFAULT" });
       shell.setBets(bets, idx); shell.setBet(bets[idx]); shell.setBalance(100000); shell.setWin(0);
-      shell.ticker.idle(["Shell preview", "Tap Spin"]);
+      shell.ticker.idle(["The game's own words, in the shared face"]);
       window.__shell = shell;
+      var sheet = p.get("sheet");
+      if (sheet === "menu") shell.openMenu();
+      else if (sheet === "info") shell.openInfo();
+      else if (sheet === "auto") document.getElementById("autoplayBtn").click();
+      else if (sheet === "bet") document.getElementById("betSheetBtn").click();
       document.body.classList.add("app-ready");
     })();
   </script>
