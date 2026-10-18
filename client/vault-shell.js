@@ -36,7 +36,23 @@
       get on() { return Boolean(root.VaultShell?.haptics?.on); },
       set(v) { root.VaultShell?.haptics?.set(v); }
     },
-    build: { title: "Vault 20K" }
+    build: { title: "Vault 20K" },
+    // Vault's skin for the themed slots (docs/lumina-overhaul/layers.md, Layer 2): teal steel
+    // and gold. The controls themselves are the shared Lumina chrome.
+    skin: {
+      "--skin-title-font": "var(--font-display)", "--skin-title-case": "uppercase", "--skin-title-weight": "700",
+      "--skin-accent": "var(--win-gold)",
+      "--skin-slot-bg": "linear-gradient(180deg, #17333b, #0b1a1f)", "--skin-slot-ink": "#e9f6f5",
+      "--skin-slot-edge": "inset 0 0 0 1px color-mix(in srgb, var(--steel-sheen) 45%, transparent)",
+      "--skin-buy-bg": "linear-gradient(180deg, var(--win-gold), var(--win-gold-deep))", "--skin-buy-ink": "#1d1300",
+      "--skin-panel-bg": "linear-gradient(180deg, #123039, #0a171c)", "--skin-panel-ink": "#eef6f6", "--skin-panel-muted": "#a9c4c3",
+      "--skin-panel-title": "var(--win-gold-bright)", "--skin-panel-total": "var(--win-gold-bright)",
+      "--skin-panel-frame": "0 0 0 2px var(--steel-sheen), 0 0 0 5px #0b1a1f, 0 0 0 7px var(--win-gold-deep), 0 18px 48px rgba(0, 0, 0, 0.6)",
+      "--skin-tier-big": "var(--tier-big)", "--skin-tier-mega": "var(--tier-mega)", "--skin-tier-epic": "var(--tier-epic)", "--skin-tier-legendary": "var(--tier-legendary, #7ff6e6)", "--skin-tier-max": "var(--tier-max)",
+      "--skin-win-hi": "#ffffff", "--skin-win": "var(--win-gold-bright)", "--skin-win-deep": "var(--win-gold-deep)",
+      "--skin-bigwin-scrim": "color-mix(in srgb, var(--bg-vault-door) 80%, transparent)", "--skin-bigwin-core": "var(--bg-vault-door)",
+      "--skin-laser": "var(--accent-laser)", "--skin-laser-hot": "var(--accent-laser-hot)"
+    }
   });
   doc.querySelector(".vault-shell")?.classList.add("is-mounted");
   root.VaultShell = { api, on };

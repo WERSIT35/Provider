@@ -89,14 +89,8 @@
     .badge { position: absolute; z-index: 3; top: -2px; left: 50%; transform: translate(-50%, -100%); padding: 4px 14px 5px; border-radius: 4px; white-space: nowrap;
       background: var(--paper) var(--grain); color: var(--ink); font: 600 0.9rem var(--display); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
     .badge[hidden] { display: none; }
-    .celebration { position: absolute; inset: -4% -2%; z-index: 4; display: grid; place-content: center; text-align: center; cursor: pointer; overflow: hidden; border-radius: 14px;
       background: radial-gradient(circle at 50% 55%, rgba(255, 181, 71, 0.28), rgba(11, 16, 38, 0.86) 62%); }
-    .celebration[hidden] { display: none; }
-    .celebration > div { position: relative; z-index: 2; }
-    .celebration b { display: block; font: 600 clamp(1.8rem, 8vmin, 4.2rem)/1 var(--display); color: #fff3d6; text-shadow: 0 0 28px rgba(255, 181, 71, 0.85); }
-    .celebration span { display: block; margin-top: 8px; font: 600 clamp(1.5rem, 6.5vmin, 3.2rem)/1.1 var(--display); color: #fff1c8; text-shadow: 0 0 18px rgba(255, 122, 61, 0.9); font-variant-numeric: tabular-nums lining-nums; }
-    .celebration small { display: block; margin-top: 10px; color: var(--muted); font-size: 0.8rem; }
-    .moth { position: absolute; left: 50%; top: 60%; width: 26px; height: 18px; z-index: 1; pointer-events: none; }
+    .big-win-overlay .moth { position: absolute; left: 50%; top: 60%; width: 26px; height: 18px; z-index: 1; pointer-events: none; } /* the game's particles inside the shared overlay */
 
     /* Pay glass: symbols and their pays at this bet, nothing else (rules live in Info). */
     .pays { display: none; width: min(100cqw, 520px); padding: 8px; border-radius: 6px; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -164,7 +158,6 @@
         <div class="board" id="board">
           <canvas id="reels" aria-label="Reels"></canvas>
           <div class="badge" id="fsBadge" hidden></div>
-          <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
         </div>
         <svg class="fern l" viewBox="0 0 60 90" aria-hidden="true"><path d="M30 90 C30 60 26 30 34 0" fill="none" stroke="#24345a" stroke-width="2.4"/><g fill="#1d2a4c"><path d="M30 80 C18 76 8 70 2 60 C14 62 24 68 30 74Z"/><path d="M30 66 C20 62 12 56 6 46 C16 48 25 54 30 60Z"/><path d="M31 52 C22 48 15 42 11 33 C20 35 27 41 31 46Z"/><path d="M32 38 C25 35 20 29 17 21 C25 24 30 29 32 33Z"/><path d="M30 80 C42 76 52 70 58 60 C46 62 36 68 30 74Z"/><path d="M30 66 C40 62 48 56 54 46 C44 48 35 54 30 60Z"/><path d="M31 52 C40 48 47 42 51 33 C42 35 35 41 31 46Z"/></g></svg>
         <svg class="fern r" viewBox="0 0 60 90" aria-hidden="true"><path d="M30 90 C30 60 26 30 34 0" fill="none" stroke="#24345a" stroke-width="2.4"/><g fill="#1d2a4c"><path d="M30 80 C18 76 8 70 2 60 C14 62 24 68 30 74Z"/><path d="M30 66 C20 62 12 56 6 46 C16 48 25 54 30 60Z"/><path d="M31 52 C22 48 15 42 11 33 C20 35 27 41 31 46Z"/><path d="M32 38 C25 35 20 29 17 21 C25 24 30 29 32 33Z"/><path d="M30 80 C42 76 52 70 58 60 C46 62 36 68 30 74Z"/><path d="M30 66 C40 62 48 56 54 46 C44 48 35 54 30 60Z"/><path d="M31 52 C40 48 47 42 51 33 C42 35 35 41 31 46Z"/></g></svg>
@@ -181,6 +174,7 @@
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
   <script src="/play/shell/board-view.js"></script>
+  <script src="/play/shell/big-win.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

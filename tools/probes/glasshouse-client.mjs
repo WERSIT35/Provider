@@ -60,7 +60,7 @@ async function open([w, h], query = "") {
     const raf = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (cb) => raf((t) => { window.__raf++; cb(t); });
   });
-  await page.goto(`${base}/glasshouse/${query}`, { waitUntil: "networkidle0" });
+  await page.goto(`${base}/glasshouse/${query}${query ? "&" : "?"}intro=0`, { waitUntil: "networkidle0" }); // the intro splash has its own probe (chrome-identity)
   await page.waitForFunction(() => document.body.classList.contains("app-ready") && window.__spinLifecycle && window.__ghBoard, { timeout: 30000 });
   await new Promise((r) => setTimeout(r, 800));
   page.on("close", () => missing.forEach((m) => missingSounds.add(m.replace(/^\d+ https?:\/\/[^/]+/, ""))));
@@ -128,12 +128,12 @@ for (const size of [[390, 844], [1440, 900]]) {
   check(`${tag}: idle after a round draws nothing`, (await idle(page)) === 0);
   await force(page, BOARDS.bigWin.stops);
   await press(page);
-  await page.waitForFunction(() => !document.getElementById("celebration").hidden, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector("#bigWinOverlay.is-open"), { timeout: 30000 }); // the shared Lumina big win
   await new Promise((r) => setTimeout(r, 900));
   await shot(page, `state-bigwin-${tag}`);
-  const title = await page.$eval("#celTitle", (n) => n.textContent);
+  const title = await page.$eval("#bigWinOverlay [data-bw-label]", (n) => n.textContent.trim());
   check(`${tag}: big win titled "Sunlit"`, title === "Sunlit", title);
-  await page.click("#celebration");
+  await page.click("#bigWinOverlay"); await new Promise((r) => setTimeout(r, 800)); await page.click("#bigWinOverlay").catch(() => {});
   await settled(page);
   await force(page, BOARDS.trigger.stops);
   await press(page);
@@ -157,7 +157,7 @@ for (const size of [[390, 844], [1440, 900]]) {
   await shot(page, "state-uk-substake-390x844");
   const t = await page.$eval("#psTickerText", (n) => n.textContent);
   check(`UKGC: the line is neutral (${t})`, /^Credit/.test(t));
-  check("UKGC: no celebration overlay", await page.$eval("#celebration", (n) => n.hidden));
+  check("UKGC: no celebration overlay", await page.evaluate(() => !document.querySelector("#bigWinOverlay.is-open")));
   const hidden = await page.evaluate(() => ["#autoplayBtn", "#turboBtn", "#buyFreeBtn"].map((s) => { const n = document.querySelector(s); return !n || n.offsetParent === null || n.classList.contains("is-off") || getComputedStyle(n).visibility === "hidden"; }));
   check("UKGC: autoplay, turbo and buy are off", hidden.every(Boolean), JSON.stringify(hidden));
   check("UKGC: no console or page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
@@ -181,7 +181,11 @@ for (const size of [[390, 844], [1440, 900]]) {
       const tick = (t) => { if (last) out.push(t - last); last = t; if (window.__ghBoard.beaming) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick);
     })));
-    await page.evaluate(() => document.getElementById("celebration").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+    // Tap through the shared big win (a first tap lands the count, the next closes it).
+    for (let i = 0; i < 60 && await page.evaluate(() => window.__spinLifecycle.inFlight); i++) {
+      if (await page.$("#bigWinOverlay.is-open")) await page.click("#bigWinOverlay").catch(() => {});
+      await new Promise((r) => setTimeout(r, 500));
+    }
     await settled(page);
   }
   intervals.sort((a, b) => a - b);
