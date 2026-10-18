@@ -323,3 +323,42 @@
 /* Reduced motion (OS or menu) and battery saver: the shell's own motion stops. */
 .lsh-reduced .lsh *, .lsh-reduced .lsh-sheet * { transition: none !important; }
 .lsh-reduced .lsh-spin.is-waiting .lsh-spin__ring { animation: none; stroke-dasharray: none; }
+
+/* Feature panels (intro / outro): over the stage, outside the layout. */
+.lsh-panel { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 12px; background: rgba(0, 0, 0, 0.45); cursor: pointer; }
+.lsh-panel.hidden { display: none; }
+.lsh-panel .lsh-panel__card { width: min(100%, 420px); max-height: none; overflow: visible; padding: 22px 22px 18px; border-radius: var(--lsh-radius); text-align: center; }
+/* The card is a sheet panel, so each game's sheet skin (paper, ink) applies to it too. */
+.lsh-panel .lsh-panel__kicker { margin: 0 0 6px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-panel .lsh-panel__title { margin: 0; font: 800 26px/1.15 var(--lsh-font-ui); }
+.lsh-panel .lsh-panel__line { margin: 10px 0 0; font: 500 15px/1.4 var(--lsh-font-ui); color: inherit; }
+.lsh-panel .lsh-panel__line:empty { display: none; }
+.lsh-panel .lsh-panel__stats { display: flex; justify-content: center; gap: 18px; margin: 14px 0 0; }
+.lsh-panel .lsh-panel__stats:empty { display: none; }
+.lsh-panel .lsh-panel__stats dt { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-panel .lsh-panel__stats dd { margin: 4px 0 0; font: 800 18px/1 var(--lsh-font-num); font-variant-numeric: tabular-nums; }
+.lsh-panel .lsh-panel__total { margin: 16px 0 0; display: grid; gap: 4px; }
+.lsh-panel .lsh-panel__tk { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-panel .lsh-panel__tv { font: 800 34px/1 var(--lsh-font-num); font-variant-numeric: tabular-nums; color: inherit; }
+.lsh-panel .lsh-panel__cta { margin: 14px 0 0; font: 600 13px/1 var(--lsh-font-ui); color: var(--lsh-muted); }
+.lsh-panel .lsh-panel__cta:empty { display: none; }
+.lsh-plus { position: fixed; z-index: 70; transform: translate(-50%, -50%); pointer-events: none; font: 900 34px/1 var(--lsh-font-num); color: var(--lsh-win); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+/* A sheet panel too (each game's sheet skin applies). */
+.lsh-stage .lsh-callout { position: absolute; z-index: 25; bottom: 12px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); max-height: none; overflow: visible; margin: 0; padding: 10px 14px; border-radius: var(--lsh-radius);
+  font: 600 14px/1.35 var(--lsh-font-ui); text-align: center; pointer-events: none; }
+.lsh-stage .lsh-callout[hidden] { display: none; }
+/* DE panic button (market session_hud "panic"): in the strip, a 40 px hit area that hangs
+   over the top of the stage (never the controls); the visible pill stays strip-sized. */
+.lsh-panic { grid-area: strip; justify-self: end; align-self: start; position: relative; z-index: 6; height: 40px; min-width: 40px; margin: 0 calc(var(--lsh-strip) + 6px) 0 0; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+.lsh-panic[hidden] { display: none; }
+.lsh-panic span { display: block; padding: 3px 10px; border-radius: 999px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.04em; color: #fff; background: #b3261e; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.lsh-panic:focus-visible span { outline: 2px solid #fff; outline-offset: 2px; }
+/* DE return to player at the stake (market rtp_display "stake_area"). Portrait: beside the bet
+   buttons, in the autoplay slot the market leaves empty; landscape: on the Bet readout. */
+.lsh-rtp { grid-area: bet; justify-self: end; align-self: start; z-index: 2; margin: 8px 10px 0 0; pointer-events: none;
+  font: 700 12px/1.2 var(--lsh-font-num); letter-spacing: 0.04em; color: var(--lsh-read-k, var(--lsh-muted)); text-align: right; font-variant-numeric: tabular-nums; }
+.lsh-rtp[hidden] { display: none; }
+@media (orientation: portrait) {
+  .lsh.has-rtp-slot .lsh-rtp { grid-area: autop; justify-self: center; align-self: center; margin: 0; text-align: center; color: var(--lsh-muted); }
+  .lsh.has-rtp-slot .lsh-rtp span { display: block; }
+}

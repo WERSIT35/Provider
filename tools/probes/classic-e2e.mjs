@@ -44,7 +44,8 @@ try {
   if (feature) {
     const before = await page.evaluate(() => ({ ...window.__spinLifecycle.stats }));
     let presses = 0;
-    while (await page.evaluate(() => window.__spinLifecycle.inFlight)) { await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); }); presses++; await sleep(120); }
+    // Through the whole feature: its intro and outro panels too (a press there only continues).
+    while (await page.evaluate(() => window.__spinLifecycle.inFlight || document.querySelector(".lsh.is-feature") !== null)) { await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); }); presses++; await sleep(120); }
     const after = await page.evaluate(() => ({ ...window.__spinLifecycle.stats }));
     check(`${presses} presses during the feature started 0 rounds of their own`, after.startedManual === before.startedManual, `manual ${before.startedManual} -> ${after.startedManual}`);
     check("the feature's spins all came from the feature run", after.startedAuto > before.startedAuto, `auto ${before.startedAuto} -> ${after.startedAuto}`);

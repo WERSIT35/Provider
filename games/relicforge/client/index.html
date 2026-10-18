@@ -142,6 +142,7 @@
     .lsh-sheet .card { animation: rf-engrave 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 120ms); }
     @keyframes rf-engrave { from { opacity: 0; transform: translateY(6px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
     @media (prefers-reduced-motion: reduce) { .cell.tease, .lsh-sheet .card { animation: none; } }
+    html.lsh-reduced .cell.tease, html.lsh-reduced .lsh-sheet .card { animation: none; } /* the Menu switch */
     .burst-row { position: absolute; left: 0; right: 0; height: var(--cell); background: linear-gradient(90deg, transparent, rgba(255, 176, 0, 0.55), transparent); pointer-events: none; }
     /* Meltdown: the page tints gold and the margins glow. */
     body.meltdown .board-wrap { box-shadow: 0 0 0 3px var(--iron), 0 0 0 5px var(--ink), 0 0 0 6px #5a4f45, 0 0 40px 8px rgba(255, 176, 0, 0.55); }
@@ -182,6 +183,9 @@
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
     @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
     .card { display: grid; gap: 8px; align-content: start; text-align: left; padding: 14px; border-radius: 2px; background: #f3e8cf; color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink), 0 3px 0 rgba(0, 0, 0, 0.35); transition: box-shadow 0.15s, transform 0.15s; }
+    .lsh-sheet .cards.is-picked .card { pointer-events: none; animation: none; transition: opacity 0.3s, box-shadow 0.15s; } /* the engrave animation would hold opacity */
+    .cards.is-picked .card:not(.is-chosen) { opacity: 0.25; }
+    .cards.is-picked .card.is-chosen { box-shadow: 0 0 0 2.5px var(--gold), 0 0 22px rgba(255, 176, 0, 0.6); }
     .card:hover, .card:focus-visible { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(255, 176, 0, 0.5); }
     .card h4 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 700 1.05rem var(--display); }
     .card h4 small { color: #8a3a00; font: 600 0.85rem var(--num); }
@@ -201,6 +205,7 @@
     .evo-moment b { display: block; font: 700 clamp(2rem, 9vmin, 4.2rem)/1 var(--display); color: var(--ink); text-shadow: 0 0 24px rgba(255, 176, 0, 0.9); }
 
     @media (prefers-reduced-motion: reduce) { .meter-fill, .card, .relic-chip, .mult { transition: none; } }
+    html.lsh-reduced :is(.meter-fill, .card, .relic-chip, .mult) { transition: none; }
   </style>
 </head>
 <body>
@@ -252,6 +257,7 @@
   <script src="/play/notify.js"></script>
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
+  <script src="/play/shell/board-view.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

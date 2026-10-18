@@ -4,7 +4,8 @@
 // illustrative, not legal advice):
 //   UKGC  autoplay and speed hidden in place, no slam stop, rounds at least 2.5 s apart, no
 //         feature buy over the 5.00 stake cap;
-//   DE    the same, rounds at least 5 s apart, and the feature buy hidden;
+//   DE    the same, rounds at least 5 s apart, the feature buy hidden, the panic button
+//         shown and the RTP at the stake;
 //   none  everything the game has is shown.
 // Run for Vault 20K, Moth & Lantern and Relic Forge (Relic Forge has no speed control or
 // slam stop in any market: its own design).
@@ -71,7 +72,8 @@ async function run(game, market) {
   await new Promise((r) => setTimeout(r, 800));
   const shown = await page.evaluate(() => {
     const vis = (id) => { const n = document.getElementById(id); return Boolean(n) && !n.hidden && !n.closest("[hidden]") && getComputedStyle(n).visibility !== "hidden" && !n.classList.contains("is-off") && !n.classList.contains("is-reg-off"); };
-    return { autoplay: vis("autoplayBtn"), turbo: vis("turboBtn"), buy: vis("buyFreeBtn") };
+    const panic = document.querySelector(".lsh-panic");
+    return { autoplay: vis("autoplayBtn"), turbo: vis("turboBtn"), buy: vis("buyFreeBtn"), panic: Boolean(panic) && !panic.hidden && panic.getBoundingClientRect().height >= 40, betLabel: document.querySelector('.lsh [data-k="bet"]')?.textContent || "", rtp: (() => { const n = document.querySelector(".lsh-rtp"); return n && !n.hidden && n.getBoundingClientRect().width > 0 ? n.textContent.replace(/\s+/g, " ").trim() : ""; })() };
   });
   // Three rounds, each pressed the moment the game is idle again: the gaps between the
   // rounds' answers must keep the market's minimum (the client paces; it never queues).
@@ -100,6 +102,9 @@ for (const game of GAMES) {
     const r = await run(game, market);
     check(`${label}: autoplay ${want.autoplay ? "shown" : "hidden"}`, r.shown.autoplay === want.autoplay);
     check(`${label}: speed ${want.turbo && HAS[game].turbo ? "shown" : "hidden"}`, r.shown.turbo === (want.turbo && HAS[game].turbo));
+    // DE: the panic button (GlüStV §6i) and the RTP at the stake (§22a(3)); nowhere else.
+    check(`${label}: panic button ${market === "DE" ? "shown (40 px hit)" : "hidden"}`, r.shown.panic === (market === "DE"));
+    check(`${label}: RTP at the stake ${market === "DE" ? "shown" : "not shown"}`, market === "DE" ? /^RTP \d+\.\d\d%$/.test(r.shown.rtp) : r.shown.rtp === "", r.shown.rtp);
     if (HAS[game].buy) check(`${label}: feature buy ${want.buy ? "shown" : "hidden"}`, r.shown.buy === want.buy);
     if (want.minMs) check(`${label}: rounds at least ${want.minMs} ms apart`, r.gaps.length >= 2 && r.gaps.every((g) => g >= want.minMs - 60), r.gaps.join(", ") + " ms");
     if (game === "vault" && HAS[game].slam) check(`${label}: slam stop ${market ? "ignored" : "honoured"}`, market ? r.slams.every((s) => !s) : r.slams.some(Boolean), r.slams.join(","));

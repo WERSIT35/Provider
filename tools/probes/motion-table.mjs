@@ -45,6 +45,9 @@ check("rows are well-formed (speeds ordered, reduced keeps cause steps, measured
 
 const xs = M.BIG_WIN.map((t) => t.minX);
 check("big-win ladder is 10 / 25 / 50 / 100 × stake", xs.join(",") === "10,25,50,100", xs.join(","));
+const cu = [0.5, 5, 50, 100, 1000].map((x) => M.countUpMs(x));
+check("countUpMs is log-scaled between countUpMin and countUpMax, rising with × bet", cu.every((v, i) => i === 0 || v >= cu[i - 1]) && cu[0] >= M.ms("countUpMin") && cu[3] === M.ms("countUpMax") && cu[4] === M.ms("countUpMax") && M.countUpMs(5, "turbo") < M.countUpMs(5), cu.join(", "));
+check("every big-win tier holds its title 400-700 ms after a skip", [...M.BIG_WIN, M.MAX_WIN].every((t) => t.hold >= 400 && t.hold <= 700));
 check("tierFor picks the highest reached tier", M.tierFor(9.99) === null && M.tierFor(10)?.key === "big" && M.tierFor(120)?.key === "legendary");
 
 for (const [code, file] of [["vault", "client/main.js"], ["classic", "games/classic-5x3/client/game.js"], ["relicforge", "games/relicforge/client/game.js"]]) {
