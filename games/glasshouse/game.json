@@ -1,0 +1,8 @@
+{
+  "code": "glasshouse",
+  "title": "Glasshouse",
+  "engine": { "dir": "engine", "namespace": "Glasshouse", "files": ["engine.js"] },
+  "rules": "math/rules.json",
+  "client": "client",
+  "presentation": { "turbo": true, "slam_stop": true }
+}

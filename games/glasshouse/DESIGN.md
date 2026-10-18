@@ -1,16 +1,16 @@
 # Glasshouse (code `glasshouse`): design document
 
-Status: **Stage 0 draft for approval** (2026-10-18). Lumina Games, game #4.
-Nothing here is built yet. Numbers marked *(tune)* are starting points: Stage 1 (simulation) sets the final values and reports them; this document is then updated to match.
+Status: **Stage 1 (math) done, for review** (2026-10-18). Lumina Games, game #4. Stage 0 approved by the owner (D1–D6), plus D7–D10 decided during Stage 1.
+The math in this document is the shipped math: `math/rules.json` (built by `tools/build-rules.js`), measured in `qa/rtp-report.md`. The client is not built yet.
 This document contains no claim of certification or approval by any lab or regulator, and the market table is not legal advice.
 
 Players never see the code `glasshouse`. The player-facing name is **Glasshouse**.
 
 ---
 
-## 0. Decisions I need from you
+## 0. Decisions
 
-These are the places where I changed or narrowed the brief. Each has a recommendation; reply "approved" to take all of them, or name the ones you want differently.
+D1–D6 were approved with Stage 0. D7–D10 came out of the Stage 1 simulation; D9 was chosen by the owner from three options.
 
 | # | Brief said | Recommendation | Why |
 |---|---|---|---|
@@ -19,13 +19,17 @@ These are the places where I changed or narrowed the brief. Each has a recommend
 | D3 | Buy "clamped to the stake cap in the UK" | Follow the platform preset: **buy is off in UKGC** (`regulatory.ts` already sets `buy_feature_enabled: false`). If an operator turns it on, the clamp applies, and at 100× bet against a £5 cap, the buy only exists for bets ≤ £0.05, which is below our smallest bet of £0.20. So in practice: off in the UK. | It's the same outcome as the brief, stated honestly. |
 | D4 | "Glass chimes, soft bells" | Glasshouse needs **new CC0 recordings** (glass-rub tones, wind chimes, glass harmonica, birdsong). The glass and bell files already in `art-src/audio/` (Kenney `impactGlass_*`, `impactBell_*`, OGA `bell_02`, `item_gem_*`) are used by Moth & Lantern, so Glasshouse may not use them. | "Nothing shared with any other game." Fetching new recordings needs network access to freesound / OpenGameArt from this environment. If that's blocked in Stage 4, I'll stop and tell you rather than reuse files. |
 | D5 | (not in brief) | Glasshouse is the **first game to use a `BoardView` interface**. It doesn't exist in the repo yet (it's only in `reports/Slot provider UI and motion.md`). I define it inside Glasshouse (§11) and don't touch the other games. | The brief says "Do not change the other games". Porting them to BoardView is a separate job. |
-| D6 | "Prism symbol (reel 1 only)" | Up to **2 Sun Lenses** can be visible on reel 1 at once (strip spacing guarantees it); never more. | Keeps the board readable: at most two beams, and the rules for two are fully defined (§4.4). |
+| D6 | "Prism symbol (reel 1 only)" | Up to **2 Sun Lenses** can be visible on reel 1 at once (strip spacing guarantees it); never more. | Keeps the board readable: at most two beams, and the rules for two are fully defined (§4.4). In the shipped strips the lenses are far apart, so two never show together; the rules stay defined and tested. |
+| D7 | 8 regular symbols | **10**: two more cut gems, Heart and Baguette | With 8 symbols on a 6×4 ways board, 85% of spins won and RTP was ~2,500%. The brief allowed 8–10. |
+| D8 | the lens cell lights like any pane | **The Sun Lens is the light source, never a wild pane** | A lit lens made reel 1 wild for every symbol: a beam spin paid ~130 normal spins. As a light source, every symbol still needs a real symbol on reel 1, and a beam spin pays ~34 normal spins. |
+| D9 | "lit cells stay wild for the whole feature" | **Lit panes stay lit (and wild) for 2 more free spins, then fade** (owner's choice) | Each extra lit pane makes a free spin ~1.5× richer on 4,096 ways. For the 100× buy, a whole-feature rule would leave more than half of features with no beam at all. With fading panes, about 83% of features show at least one beam. |
+| D10 | (not in brief) | **Clear Pane** (id `CLEAR`): plain uncoloured glass, pays nothing, wild when lit; only on reel 1 of the free-spin reels | It lets beams fire often in the feature (the sun coming in through clear glass) while keeping the feature near 96× for the buy. |
 
 ---
 
 ## 1. Concept
 
-A Victorian glasshouse at sunrise, built of stained glass. Ruby, emerald and sapphire panes are set in charcoal lead came inside a brass frame. When a Sun Lens lands, a beam of white-gold sunlight crosses the board. Mirrors bend it, and every pane it passes through lights up and turns wild. In the free spins the sun climbs to midday and every lit pane stays lit, so the house fills with light.
+A Victorian glasshouse at sunrise, built of stained glass. Ruby, emerald and sapphire panes are set in charcoal lead came inside a brass frame. When a Sun Lens lands, a beam of white-gold sunlight crosses the board. Mirrors bend it, and every pane it passes through lights up and turns wild. In the free spins the sun climbs to midday, beams come often, and lit panes stay lit for the next two spins, so the house fills with light on a good run.
 
 **Pillars**
 1. **The light shows you your wild.** Every wild is explained by a visible beam path. Nothing turns wild without a cause on screen.
@@ -62,7 +66,7 @@ A Victorian glasshouse at sunrise, built of stained glass. Ruby, emerald and sap
 | At most 1 mirror visible per reel | Keeps paths short enough to read in about a second. |
 | Strips are built from symbol counts; the order is generated, never hand-edited | Same rule as Moth & Lantern (`rules.json` is built, not written). |
 
-Strip lengths and counts are set in Stage 1 *(tune)*. The starting point: 60–70 cells per reel.
+Strip lengths (96% variant): base reels 131, 60, 60, 60, 60, 60; free-spin reels 107, 60, 60, 60, 60, 60. Reel 1 is long so the Sun Lens (1 on the base reel 1) shows on about 1 in 33 base spins; reels 2–6 carry 14 mirrors each (one in every 4–5 cells), so most beams bend. Counts per symbol are in `tools/build-rules.js` (`BASE`, `FREE`, `VARIANTS`).
 
 ---
 
@@ -76,8 +80,10 @@ Every symbol must be recognisable in a **48 px grayscale render by its silhouett
 |---|---|---|---|
 | `TRILLION` | Trillion | triangular cut gem, point up | low |
 | `CUSHION` | Cushion | square cut gem with rounded corners | low |
+| `BAGUETTE` | Baguette | long thin rectangular step-cut gem, upright | low |
 | `MARQUISE` | Marquise | tall pointed oval (leaf-shaped) cut gem | low |
 | `PEAR` | Pear | teardrop cut gem, point up | low |
+| `HEART` | Heart | heart cut gem | low |
 | `SUNDIAL` | Sundial | brass dial plate with a raised triangular gnomon | high |
 | `WATERING_CAN` | Watering Can | brass can, long spout to the right | high |
 | `ORCHID` | Glass Orchid | orchid bloom in leaded glass on a stem | high |
@@ -87,26 +93,31 @@ Every symbol must be recognisable in a **48 px grayscale render by its silhouett
 | `MIRROR_RISE` | Mirror | a pane of silvered glass at 45°, rising left to right ( ╱ ) | beam bender |
 | `MIRROR_FALL` | Mirror | the same pane, falling left to right ( ╲ ) | beam bender |
 | `ROSE` | Glass Rose | rose flower in leaded glass inside a round brass frame | scatter |
+| `CLEAR` | Clear Pane | plain uncoloured glass in its lead, a faint dawn reflection | pays nothing; wild when lit (free-spin reel 1 only, D10) |
 
-- The low gems share one ink and differ by cut. Each is also tinted ruby, emerald, sapphire or amber glass, but the **shape** carries the meaning.
+- The six low gems share one ink and differ by cut. Each is also tinted ruby, emerald, sapphire or amber glass, but the **shape** carries the meaning.
 - `WILD` is **never on the strips**. A cell is wild only because a beam crossed it (or, in free spins, because it stayed lit, §5).
 - The two mirrors are one symbol design in two orientations. The direction of the glass is the whole meaning, so it's drawn bold.
-- Lens, mirrors and rose do not pay as line symbols (§3.3).
+- Lens, mirrors, rose and clear pane do not pay as way symbols (§3.3).
 
-### 3.2 Pays per way, in × total bet *(tune)*
+### 3.2 Pays per way, in × total bet
 
 | Symbol | 3 reels | 4 reels | 5 reels | 6 reels |
 |---|---|---|---|---|
-| HUMMINGBIRD | 0.50 | 1.50 | 4.00 | 10.00 |
-| ORCHID | 0.40 | 1.00 | 2.50 | 6.00 |
-| WATERING_CAN | 0.30 | 0.75 | 1.75 | 4.00 |
-| SUNDIAL | 0.25 | 0.60 | 1.25 | 3.00 |
-| PEAR | 0.10 | 0.25 | 0.50 | 1.00 |
-| MARQUISE | 0.10 | 0.25 | 0.50 | 1.00 |
-| CUSHION | 0.05 | 0.15 | 0.40 | 0.80 |
-| TRILLION | 0.05 | 0.15 | 0.40 | 0.80 |
+| HUMMINGBIRD | 2.25 | 2.75 | 4.50 | 5.50 |
+| ORCHID | 1.75 | 2.25 | 3.50 | 4.50 |
+| WATERING_CAN | 1.40 | 1.70 | 2.50 | 3.50 |
+| SUNDIAL | 1.10 | 1.40 | 2.25 | 2.80 |
+| HEART | 0.65 | 0.85 | 1.10 | 1.40 |
+| PEAR | 0.65 | 0.85 | 1.10 | 1.40 |
+| MARQUISE | 0.55 | 0.65 | 0.85 | 1.10 |
+| BAGUETTE | 0.55 | 0.65 | 0.85 | 1.10 |
+| CUSHION | 0.50 | 0.55 | 0.65 | 0.85 |
+| TRILLION | 0.50 | 0.55 | 0.65 | 0.85 |
 
-**Glass Rose (scatter) pays anywhere, × total bet:** 3 → 2×, 4 → 5×, 5 → 20×, 6 → 100× *(tune)*.
+The curve is flat on purpose: ways already multiply on long runs, and a beam mostly creates long runs, so 6-reel pays are only about 2½× the 3-reel pays. The smallest pay, 0.50× at the smallest bet (0.20), is 0.10 per way.
+
+**Glass Rose (scatter) pays anywhere, × total bet:** 3 → 2×, 4 → 5×, 5 → 20×, 6 → 100×.
 
 ### 3.3 How ways are counted (exact)
 
@@ -116,7 +127,7 @@ For each paying symbol S, with `c(S, r)` = number of cells on reel r showing S a
 2. Ways for S = ∏ over reels 1..run(S) of `(c(S, r) + w(r))`.
 3. **A way needs at least one real S**, except for HUMMINGBIRD: subtract the all-wild ways, ∏ `w(r)` over reels 1..run(S), from every symbol except HUMMINGBIRD. **A way made only of wild panes pays as Hummingbird.** That way a fully lit board pays the top symbol, once, instead of paying every symbol at once.
 4. Win for S = ways × pay(S, run(S)) × total bet. Each symbol's win is computed separately and they add up. The scatter pay is added on top.
-5. Lens, mirrors and rose are not S and are not wild unless lit. Once lit, a lens or mirror cell is wild for pays (§4.5). A rose is never turned wild (§4.5).
+5. Lens, mirrors, rose and clear pane are not S. Lit, a mirror or clear pane is wild for pays (§4.5). The lens and the rose are never wild (§4.5).
 
 The engine rounds the same way as the other engines (to cents, per symbol win); the Info dialog shows pays generated from `rules.json` with the same rounding (displayed pays = paid pays).
 
@@ -156,7 +167,7 @@ Any other cell (paying symbol, lens, rose) lets the beam continue straight.
 - **Each beam is computed on the board as it landed.** Beams never change the board for each other: mirrors are not used up, and lit cells don't block or bend anything.
 - **Crossing:** two beams (or one beam crossing its own path at a right angle) pass straight through each other. A cell lit twice is just lit.
 - **Same mirror:** if both beams hit the same mirror, each bends by §4.1 according to its own direction.
-- **A beam that reaches the other lens** passes through it (the lens is transparent; it is already lit by its own beam).
+- **A beam that reaches the other lens** passes through it (the lens is transparent).
 - **Lit cells** = the union of every beam's cells. The win is evaluated once, after every beam.
 
 ### 4.5 What lit means
@@ -164,15 +175,16 @@ Any other cell (paying symbol, lens, rose) lets the beam continue straight.
 | Cell holds | When lit, this spin |
 |---|---|
 | a paying symbol | becomes **WILD** for pays |
-| a Sun Lens | becomes **WILD** for pays |
+| a Clear Pane | becomes **WILD** for pays |
 | a mirror | still bends the beam (it already did), and becomes **WILD** for pays |
-| a Glass Rose | **stays a scatter** and still counts. It is never turned wild. The beam passes through. |
+| a Sun Lens | **never wild** (D8): it is the light source. The beam starts there; the cell is on the path but pays nothing, and it never stays lit in free spins |
+| a Glass Rose | **stays a scatter** and still counts. It is never turned wild. The beam passes through (in free spins the pane stays lit afterwards, §5). |
 
 ### 4.6 Diagrams
 
 `L` lens, `╱` `╲` mirrors, `*` lit cell, `·` unlit.
 
-**A. Straight beam** (lens on row 1, no mirror in its row): the whole row is lit, so 6 wild cells, one per reel.
+**A. Straight beam** (lens on row 1, no mirror in its row): the whole row is lit, so 5 wild cells, one on each of reels 2–6 (the lens itself is not wild).
 ```
 reel:  0 1 2 3 4 5
 row 0  · · · · · ·
@@ -187,7 +199,7 @@ row 0  · · · * · ·   ↑ exits top
 row 1  L * * ╱ · ·
 row 2  · · · · · ·
 row 3  · · · · · ·
-lit: (1,0) (1,1) (1,2) (1,3) (0,3) = 5 cells
+on the path: (1,0) (1,1) (1,2) (1,3) (0,3); wild: the 4 after the lens
 ```
 
 **C. Three bends and a crossing:** a beam can turn back toward the left and cross its own path.
@@ -213,10 +225,12 @@ row 3  · · · * · ·      beam 1 exits the bottom
 "beams": [
   { "lens": [1, 0], "path": [[1,0,"R"],[1,1,"R"],[1,2,"R"],[1,3,"U"],[0,3,"U"]], "bends": [[1,3,"R","U"]], "exit": "top" }
 ],
-"lit": [[1,0],[1,1],[1,2],[1,3],[0,3]],
-"wild_matrix": [["…the matrix after lighting…"]]
+"lit": [[0,3],[1,1],[1,2],[1,3]],
+"wilds": [[0,3],[1,1],[1,2],[1,3]],
+"sticky_in": [],
+"feature_state": null
 ```
-`path` entries are `[row, reel, direction leaving the cell]` in beam order. The client draws exactly this and never computes a path. The payload also carries the usual fields (`stops`, `matrix`, `way_wins`, `scatter`, `total_win`, `free_spins_left`, `bonus_round_win`, `events`, `engine_version`) in the same shape as Moth & Lantern.
+`path` entries are `[row, reel, direction leaving the cell]` in beam order; `lit` = cells on any path except the lens; `wilds` = lit cells that are wild this spin plus the panes still lit from earlier free spins (`sticky_in`). The client draws exactly this and never computes a path. The payload also carries the usual fields (`stops`, `matrix`, `way_wins`, `scatter`, `total_win`, `free_spins_left`, `bonus_round_win`, `events`, `engine_version`) in the same shape as Moth & Lantern.
 
 ---
 
@@ -228,24 +242,23 @@ row 3  · · · * · ·      beam 1 exits the bottom
 | Award | **10 free spins** (same for 3, 4, 5 or 6 roses; the extra roses pay more via the scatter pay) |
 | Retrigger | 3+ roses during free spins: **+5 spins**, no limit |
 | Bet | locked at the triggering bet (the platform's feature lock) |
-| Lit panes | **Every pane lit during the feature stays wild until the feature ends** |
+| Lit panes | **A pane lit during the feature stays lit (and wild) for the next 2 free spins, then fades** (D9) |
+| Free-spin reels | their own strips: reel 1 has 4 Sun Lenses and 10 Clear Panes in 107 cells (a beam on about 1 in 6 free spins); reels 2–6 as the base game |
 
-**Sticky lit panes (exact):**
-- The feature carries a set of lit cells `sticky` (empty at the start). It is part of `feature_state` (`USES_FEATURE_STATE`), so it is server-held and comes back after a reload or a server crash (§9).
-- Each free spin: the reels land on all 24 cells as usual. **A sticky cell ignores whatever lands under it**: it is wild for pays, it is not a lens, not a mirror and not a rose, and **a beam passes straight through it** (it doesn't bend there).
-- New beams are computed per §4 on the board **with sticky cells treated as plain glass**. Every newly lit cell joins `sticky` after the spin.
-- So the house fills up over the feature, and a lens can only fire from a reel-1 cell that isn't sticky yet.
-- When all 24 cells are sticky, every way is wild, which pays as Hummingbird at 6 reels (4,096 × 10× = 40,960× the bet), so the cap ends the feature (§7).
-- When the feature ends, `sticky` is cleared.
-
-Free spins use the same strips and pays as the base game *(tune: the feature may need its own strips with more lenses; Stage 1 decides and reports it)*.
+**Lit panes (exact):**
+- The feature carries the lit cells and how many more spins each stays lit: `feature_state = { sticky: [[row, reel], …], ttl: [n, …] }` (`USES_FEATURE_STATE`), so it is server-held and comes back after a reload or a server crash (§9). Both lists are in the same row-then-reel order.
+- Each free spin: the reels land on all 24 cells as usual. **A lit cell ignores whatever lands under it**: it is wild for pays, it is not a lens, not a mirror and not a rose, and **a beam passes straight through it** (it doesn't bend there).
+- New beams are computed per §4 with lit cells treated as plain glass. After the spin, every cell on a beam's path (the lens excepted) gets `ttl = 2`, including a lit cell the beam crossed again (the light renews it); every other lit cell's `ttl` drops by 1 and it fades at 0.
+- So a pane lit on free spin 3 is wild on free spins 4 and 5 and is gone for spin 6, unless a beam crosses it again.
+- The trigger spin's lit panes do not carry into the feature. When the feature ends, everything fades.
+- If every cell were lit, every way would be wild and pay as Hummingbird at 6 reels (4,096 × 5.5× = 22,528× the bet), so the cap ends the feature (§7). In the Stage 1 simulation no feature came close to a fully lit board (`qa/rtp-report.md`, lit panes at the end).
 
 ---
 
 ## 6. Buy feature
 
-- Price: **100× total bet** *(tune: set so the buy's RTP is within ±0.5% of the variant's RTP; Stage 1 reports the exact figure)*.
-- Buying plays a guaranteed trigger: the engine draws a board with exactly 3 roses (its own trigger strips, recorded on the round), pays its scatter and starts the 10 free spins.
+- Price: **100× total bet**. The free-spin reels are shared by the three variants, so the buy's RTP is the same for all (measured in `qa/rtp-report.md`).
+- Buying plays a guaranteed trigger: the engine redraws the base reels until the board shows exactly 3 roses (rejection sampling: unbiased, and the whole draw is in the round's seeded stream, so it replays exactly; about 220 draws on average, `buy_draws` in the payload), pays that board as a normal spin and starts the 10 free spins.
 - Confirm sheet shows the price in × bet and in currency; on confirm, the debit shows on the balance, then the feature transition plays (no fake anticipation).
 - Hidden in place where `buy_feature_enabled` is false, and clamped under `max_stake` (buy price ≤ cap), per §10.
 - `SUPPORTS_BUY = true`, `SUPPORTS_ANTE = false` (an ante request is refused with `ANTE_NOT_AVAILABLE` before money moves).
@@ -260,26 +273,29 @@ Free spins use the same strips and pays as the base game *(tune: the feature may
 
 ---
 
-## 8. RTP variants and math targets *(all tune)*
+## 8. RTP variants and measured math
 
-| Variant game code | RTP | How it differs |
+| Variant game code | Measured RTP (100M paid spins, 99% CI) | How it differs |
 |---|---|---|
-| `glasshouse` | 96.0% | reference strips |
-| `glasshouse_95` | 95.0% | more low gems on reels 4–6 |
-| `glasshouse_94` | 94.0% | more low gems on reels 3–6 |
+| `glasshouse` | **96.30%** (95.94–96.65) | reference strips |
+| `glasshouse_95` | **94.78%** (94.43–95.13) | +1 Cushion and +1 Trillion on base reels 5–6 |
+| `glasshouse_94` | **93.95%** (93.61–94.30) | +1 Cushion and +1 Trillion on base reels 3–6 |
+| buy, every variant | **96.30%** (96.15–96.44, 10M buys) | the free-spin reels are shared |
 
-Displayed pays are identical in every variant; only strip counts change. Info shows the active RTP and the buy RTP.
+Displayed pays are identical in every variant; only base-reel counts change, never reel 1 (§15 risks). `rules.json` carries these measured figures as `theoretical_percent` / `buy_free_spins_percent`; Info shows the active RTP and the buy RTP from there. The RTP comes from simulation, not an exact sum: the beam makes an exact enumeration impractical.
 
-| Target | Value |
-|---|---|
-| Volatility | medium-high |
-| Hit frequency | about 25–30% |
-| Lens on reel 1 | about 1 in 6 spins |
-| Feature frequency | about 1 in 180–220 paid spins |
-| Free spins share of RTP | about 35–45% |
-| Max win | 5,000× bet (cap) |
+| Figure (96% variant) | Target in Stage 0 | Measured |
+|---|---|---|
+| Volatility | medium-high | SD 13.8× per paid spin; features average 96× |
+| Hit frequency | 25–30% | **34.5%** (higher than planned: many small 3-reel wins) |
+| Sun Lens in the base game | about 1 in 6 (tune) | **1 in 33** (D8: a beam spin is worth ~34 normal spins, so it has to be rarer) |
+| Sun Lens in free spins | — | about 1 in 5.5 free spins; 87% of features show at least one beam |
+| Feature frequency | 1 in 180–220 | **1 in 205** |
+| Free spins share of RTP | 35–45% | **47%** (45.55 of 96.30 points) |
+| Average feature | — | 96.2× bet incl. trigger, 10.18 free spins, 0.037 retriggers |
+| Max win | 5,000× (cap) | cap reached 2× in 300M paid spins, 34× in 10M buys |
 
-**Stage 1 deliverable (then stop for you):** `games/glasshouse/qa/rtp-report.md` from ≥ 100M seeded paid spins per variant plus ≥ 10M buys, with: RTP and 99% confidence interval, hit rate, base/feature split, feature frequency, average feature win, retrigger rate, lens rate, average lit cells per beam, the win distribution by × bet band, max win observed, and cap hits. The run goes through `tools/rtp-parity.js` (`GAME_CODE=glasshouse`) like the other games.
+The full report, with the win distribution per variant, is `qa/rtp-report.md` (raw figures in `qa/sim-*.json`), made by `tools/sim-report.js` and `tools/report-md.js`. `tools/rtp-parity.js` is Vault 20K's tool and is not used for this engine; the Glasshouse simulator follows Moth & Lantern's (`games/classic-5x3/tools/sim-report.js`).
 
 Randomness: all through `crypto.getRandomValues` (in the RGS, the seeded HMAC stream), one uniform draw per reel, rejection sampling, no modulo bias. Same seed + `feature_state` + variant reproduce the round exactly.
 
@@ -291,10 +307,10 @@ Randomness: all through `crypto.getRandomValues` (in the RGS, the seeded HMAC st
 |---|---|
 | Manifest | `games/glasshouse/game.json`: `code`, `title: "Glasshouse"`, engine files, `rules`, `client`, `presentation: { turbo: true, slam_stop: true }` (the market still switches them off) |
 | Engine | `games/glasshouse/engine/*.js`, IIFE on its own namespace `Glasshouse`, same `SpinEngine` shape as the others (`initSession / spin / buyFreeSpins / getRtpProfile / getAllowedBets / MAX_WIN_CAP_X`), `ENGINE_VERSION` recorded on every round |
-| Feature state | `USES_FEATURE_STATE = true`: `{ sticky: [[row, reel], …] }`. Not player state: nothing outlives the session's feature |
-| Recovery | after reload or a server kill, the feature resumes with the same sticky panes and spins left. Proven by `npm run bench:chaos` with `BENCH_GAME=glasshouse` (0 lost rounds, 0 unrefunded debits) and a platform test `platform/test/glasshouse.test.ts` |
+| Feature state | `USES_FEATURE_STATE = true`: `{ sticky: [[row, reel], …], ttl: [n, …] }` (§5). Not player state: nothing outlives the session's feature |
+| Recovery | after reload or a server kill, the feature resumes with the same lit panes, their remaining spins and the spins left. Proven by `npm run bench:chaos` with `BENCH_GAME=glasshouse` (0 lost rounds, 0 unrefunded debits) and a platform test `platform/test/glasshouse.test.ts` |
 | Rules route | `/play/g/glasshouse/rules.json`, launch via `/play?lt=` → `/play/g/glasshouse/` |
-| Tests | engine unit tests (`npm run test:glasshouse`, `node:test`, part of `verify:release`): beam table per §4.1, every diagram in §4.6, the loop guard, ways counting incl. the all-wild rule, sticky rules, cap, buy, replay |
+| Tests | engine unit tests (`npm run test:glasshouse`, `node:test`, part of `verify:release`): beam table per §4.1, every diagram in §4.6, the loop guard, ways counting incl. the all-wild rule, the lens and rose rules, lit panes fading, cap, triggers, buy, replay, strip spacing, and that `rules.json` is exactly what the builder makes |
 | Demo | `/glasshouse/` in `dist-demo/` via `tools/build-demo.mjs`, answered in the page by its own engine like Relic Forge; shared 100,000 play-money balance; lobby tile; "← Lobby" link |
 
 ---
@@ -334,7 +350,7 @@ All durations come from `client/shell/motion.js`. Glasshouse adds these rows to 
 | `beamBend` | 120 | 90 | 60 | 0 | shorten | "The mirror turned it" |
 | `paneLight` | 180 | 140 | 100 | 180 (no glow, the colour change stays) | shorten | "This pane is now wild" |
 | `beamHold` | 300 | 220 | 150 | 400 | shorten | "These are your wilds" (the path stays readable before wins) |
-| `stickyCarry` | 250 | 200 | 150 | 250 | no | "Lit panes stay lit" (start of each free spin) |
+| `stickyCarry` | 250 | 200 | 150 | 250 | no | "Lit panes stay lit" (start of each free spin; a pane on its last lit spin shows dimmer, then fades at the next spin) |
 
 **Reduced motion** removes the glow, the dust motes and the bloom, never a cause step: the full beam path is drawn at once as a thin white-gold line, held at least 400 ms, and then the panes change to wild.
 
@@ -353,8 +369,8 @@ The beam is drawn only after the whole board has landed, so it never reveals a r
 ### 11.3 Free spins
 
 - **Transition** (`featureTransition`): the sky behind the glass goes from dawn rose to full midday, the panes brighten one step.
-- **Intro panel** (VxNotify, tap to start; auto-continue in autoplay after `featureAutoContinue`): one line of rules plus the count, e.g. "10 spins. Every lit pane stays lit."
-- Each free spin: `stickyCarry` (lit panes glow once to show they kept their light), then the normal order.
+- **Intro panel** (VxNotify, tap to start; auto-continue in autoplay after `featureAutoContinue`): one line of rules plus the count, e.g. "10 spins. Lit panes stay lit for two more spins."
+- Each free spin: `stickyCarry` (lit panes glow once to show they kept their light; panes on their last spin are drawn dimmer, and faded panes lose their light first), then the normal order.
 - **Retrigger:** the roses flash; "+5" flies into the free-spins counter (`retrigger`).
 - **Outro panel** (`featureOutro`, tap to collect): the feature total counts up by tier; it closes the round.
 
@@ -495,4 +511,4 @@ One PR per stage, tested locally first, merged only when CI is green. Every PR e
 **Known risks**
 - **CI time:** the `browser-checks` job was already near its 30-minute limit. Glasshouse's browser checks go in their own job, so they can't push the others over.
 - **Sound sourcing (D4)** depends on network access to CC0 libraries.
-- **Math:** sticky panes plus a 6×4 board can concentrate RTP in rare full-house features. Stage 1 reports it; if the feature is too swingy, the fix is the feature's lens rate, not the cap.
+- **Math:** a beam's value depends strongly on which symbols sit next to the Sun Lens on reel 1 (moving 3 symbols on base reel 1 once moved RTP from 96% to 109%). Reel 1 is therefore never changed between variants, and any future change to it needs a full re-run.
