@@ -87,7 +87,8 @@ fields only, no server enforcement in this run).
 |---|---|---|
 | `npm run test:motion` | every renderer reads its timings from the motion table | test:client |
 | `npm run test:shell` | the shell at 9 sizes: nothing off screen, no overlap, hit areas ≥44 px | test:client |
-| `tools/probes/lumina-parity.mjs` | controls identical in all three games; no animation frames for 3 s at rest | test:lumina (verify:browser) |
+| `tools/probes/lumina-parity.mjs` | controls identical in all three games (place, size, focus order, name, state); no animation frames for 3 s at rest | test:lumina (CI job lumina-checks) |
+| `tools/probes/lumina-audit.mjs` | every game at the 9 sizes: in view, no overlap, hit areas ≥44 px (main) / ≥40 px, labels ≥12 px, text contrast ≥4.5:1 from the real pixels | test:lumina |
 | `tools/probes/market-switches.mjs` | UK / DE / default: autoplay, speed, buy and slam as the market says; pacing | test:lumina |
 | `tools/probes/no-celebrate.mjs` | under UK, no round at or below the stake gets a win sound, gold line or overlay; above it still celebrates | test:lumina |
 | `tools/probes/symbol-sheet.mjs` | every symbol of every game at 48 px in grayscale (sheet below) | test:lumina |

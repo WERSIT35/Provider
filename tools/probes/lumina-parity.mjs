@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One shell, three games (docs/lumina-overhaul, prompt A1 + A8), proven in Chrome on the demo
 // build (games answered in the page by their own engines; no platform needed):
-//   1. Shell parity: every shared control (Spin, bet −/+, autoplay, speed, menu, info, the
+//   1. Shell parity: every shared control (place, size, focus order, name, state at rest) (Spin, bet −/+, autoplay, speed, menu, info, the
 //      Balance / Bet / Win readouts, the message line) sits at the SAME place and size in
 //      Vault 20K, Moth & Lantern and Relic Forge, at a portrait phone, a landscape phone
 //      and a desktop size.
@@ -39,6 +39,7 @@ const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--n
 const GAMES = ["vault", "classic", "relicforge"];
 const CONTROLS = ["#spinBtn", "#betDownBtn", "#betUpBtn", "#autoplayBtn", "#turboBtn", "#psMenuBtn", "#psInfoBtn", "#footerBalance", "#betSheetBtn", "#footerWin", "#psTicker"];
 const SIZES = [[390, 844, true], [844, 390, true], [1440, 900, false]];
+const SIZES_FIRST = new Set(["390x844"]); // order, names and states do not depend on the size
 
 async function open(game, [w, h, touch]) {
   const page = await browser.newPage();
@@ -69,11 +70,21 @@ for (const size of SIZES) {
   const key = `${size[0]}x${size[1]}`;
   for (const game of GAMES) {
     const page = await open(game, size);
-    geometry[`${game}@${key}`] = await page.evaluate((sels) => Object.fromEntries(sels.map((s) => {
-      // A readout's value is text (its width follows the number): measure its readout box.
-      const v = document.querySelector(s); const n = v?.closest("[data-area]") || v; if (!n) return [s, null];
-      const r = n.getBoundingClientRect(); return [s, [r.x, r.y, r.width, r.height].map((v) => Math.round(v))];
-    })), CONTROLS);
+    geometry[`${game}@${key}`] = await page.evaluate((sels) => {
+      const frame = document.querySelector(".lsh");
+      const kids = [...frame.children];
+      return Object.fromEntries(sels.map((s) => {
+        // A readout's value is text (its width follows the number): measure its readout box.
+        const v = document.querySelector(s); const n = v?.closest("[data-area]") || v; if (!n) return [s, null];
+        const r = n.getBoundingClientRect();
+        const box = [r.x, r.y, r.width, r.height].map((x) => Math.round(x));
+        // Same order (DOM = focus order), same accessible name, same state at rest. The speed
+        // button's name carries the current speed; a game without speed has it hidden in place.
+        const label = (n.getAttribute("aria-label") || n.querySelector("[data-k], .lsh-read__k")?.textContent || "").replace(/^Speed: .*/, "Speed").replace(/ · .*/, "");
+        const off = n.classList.contains("is-off");
+        return [s, { box, order: kids.indexOf(n), label, disabled: Boolean(n.disabled), off }];
+      }));
+    }, CONTROLS);
     if (size === SIZES[0]) {
       const boot = await idle(page);
       check(`${game}: idle after boot draws nothing (${boot.frames} frames in 3 s)`, boot.frames === 0 && boot.forever.length === 0, boot.forever.join(", "));
@@ -87,9 +98,15 @@ for (const size of SIZES) {
     await page.close();
   }
   const [ref, ...rest] = GAMES.map((g) => geometry[`${g}@${key}`]);
+  const show = (sel, f) => GAMES.map((g) => `${g} ${JSON.stringify(f(geometry[`${g}@${key}`][sel]))}`).join(" · ");
   for (const sel of CONTROLS) {
-    const same = rest.every((g) => JSON.stringify(g[sel]) === JSON.stringify(ref[sel]));
-    check(`${key}: ${sel} identical in all three games`, ref[sel] && same, GAMES.map((g) => `${g} ${JSON.stringify(geometry[`${g}@${key}`][sel])}`).join(" · "));
+    const pos = rest.every((g) => JSON.stringify(g[sel]?.box) === JSON.stringify(ref[sel]?.box));
+    check(`${key}: ${sel} at the same place and size in all three games`, Boolean(ref[sel]) && pos, show(sel, (x) => x?.box));
+    if (!SIZES_FIRST.has(key)) continue;
+    // Relic Forge ships without a speed control (its design): hidden in place, never moved.
+    const present = GAMES.map((g) => geometry[`${g}@${key}`][sel]).filter((x) => x && !x.off);
+    const same = present.every((x) => x.order === present[0].order && x.label === present[0].label && x.disabled === present[0].disabled);
+    check(`${key}: ${sel} same order, name and state at rest`, same, show(sel, (x) => x && [x.order, x.label, x.disabled ? "disabled" : "enabled", x.off ? "off" : "on"]));
   }
 }
 await browser.close();

@@ -7,7 +7,7 @@
 //
 // Checks per viewport: no control outside the viewport (safe areas included), no two
 // controls overlapping, every button's hit area ≥ 44 px (secondary floor 40 px), labels
-// ≥ 11 px, the stage keeps a usable size, and switching a market or a state never moves
+// ≥ 12 px (A7), the stage keeps a usable size, and switching a market or a state never moves
 // the stage (zero layout thrash). Pages: client/shell/preview.html by default; --game
 // checks a game page served elsewhere (same rules).
 import http from "node:http";
@@ -49,7 +49,7 @@ const measure = () => {
     const a = items[i][2], b = items[j][2];
     if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) over.push(`${items[i][0]} / ${items[j][0]}`);
   }
-  for (const t of document.querySelectorAll(".lsh-read__k, .lsh-ticker__text, .lsh-chip__k")) { const f = parseFloat(getComputedStyle(t).fontSize); if (vis(t) && f < 11) tinyText.push(`${t.className} ${f}px`); }
+  for (const t of document.querySelectorAll(".lsh-read__k, .lsh-ticker__text, .lsh-chip__k")) { const f = parseFloat(getComputedStyle(t).fontSize); if (vis(t) && f < 12) tinyText.push(`${t.className} ${f}px`); }
   const spin = document.getElementById("spinBtn").getBoundingClientRect();
   const st = document.querySelector(".lsh-stage").getBoundingClientRect();
   return { out, over, small, tinyText, spin: Math.round(spin.width), stage: [Math.round(st.left), Math.round(st.top), Math.round(st.width), Math.round(st.height)] };
