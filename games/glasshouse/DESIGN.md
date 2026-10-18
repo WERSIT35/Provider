@@ -1,6 +1,6 @@
 # Glasshouse (code `glasshouse`): design document
 
-Status: **Stage 1 (math) done, for review** (2026-10-18). Lumina Games, game #4. Stage 0 approved by the owner (D1–D6), plus D7–D10 decided during Stage 1.
+Status: **Stage 2 (RGS + recovery) done** (2026-10-18; `qa/recovery.md`). Lumina Games, game #4. Stage 0 approved by the owner (D1–D6), plus D7–D10 decided during Stage 1.
 The math in this document is the shipped math: `math/rules.json` (built by `tools/build-rules.js`), measured in `qa/rtp-report.md`. The client is not built yet.
 This document contains no claim of certification or approval by any lab or regulator, and the market table is not legal advice.
 
@@ -308,7 +308,7 @@ Randomness: all through `crypto.getRandomValues` (in the RGS, the seeded HMAC st
 | Manifest | `games/glasshouse/game.json`: `code`, `title: "Glasshouse"`, engine files, `rules`, `client`, `presentation: { turbo: true, slam_stop: true }` (the market still switches them off) |
 | Engine | `games/glasshouse/engine/*.js`, IIFE on its own namespace `Glasshouse`, same `SpinEngine` shape as the others (`initSession / spin / buyFreeSpins / getRtpProfile / getAllowedBets / MAX_WIN_CAP_X`), `ENGINE_VERSION` recorded on every round |
 | Feature state | `USES_FEATURE_STATE = true`: `{ sticky: [[row, reel], …], ttl: [n, …] }` (§5). Not player state: nothing outlives the session's feature |
-| Recovery | after reload or a server kill, the feature resumes with the same lit panes, their remaining spins and the spins left. Proven by `npm run bench:chaos` with `BENCH_GAME=glasshouse` (0 lost rounds, 0 unrefunded debits) and a platform test `platform/test/glasshouse.test.ts` |
+| Recovery | after reload or a server kill, the feature resumes with the same lit panes, their remaining spins and the spins left. Proven: `bench:chaos` with `BENCH_GAME=glasshouse` (500 players, 3× kill -9: 0 lost rounds, 0 unrefunded debits), `tools/feature-continuity.mjs` (2,852 free spins, 0 state mismatches) and `platform/test/glasshouse.test.ts`; results in `qa/recovery.md` |
 | Rules route | `/play/g/glasshouse/rules.json`, launch via `/play?lt=` → `/play/g/glasshouse/` |
 | Tests | engine unit tests (`npm run test:glasshouse`, `node:test`, part of `verify:release`): beam table per §4.1, every diagram in §4.6, the loop guard, ways counting incl. the all-wild rule, the lens and rose rules, lit panes fading, cap, triggers, buy, replay, strip spacing, and that `rules.json` is exactly what the builder makes |
 | Demo | `/glasshouse/` in `dist-demo/` via `tools/build-demo.mjs`, answered in the page by its own engine like Relic Forge; shared 100,000 play-money balance; lobby tile; "← Lobby" link |
