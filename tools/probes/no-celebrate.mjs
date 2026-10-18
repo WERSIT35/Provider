@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { untilIdle } from "./lib/until-idle.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const argv = process.argv.slice(2);
@@ -96,13 +97,13 @@ async function run(game, market) {
       }
       return out;
     });
-    await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+    await untilIdle(page, 240000);
     const r = await page.evaluate((m) => {
       const round = window.__probe.rounds[window.__probe.rounds.length - 1]?.j;
       return { round, sounds: window.__probe.sounds.filter((s) => s.at >= m.t).map((s) => s.n), dbg: window.__probe.sounds.filter((s) => s.at >= m.t).map((s) => `${s.n}@${Math.round(s.at - m.t)}`).join(" "), vib: window.__probe.vib - m.vib };
     }, mark);
     if (!r.round) continue;
-    if (r.round.free_spins_awarded > 0 || r.round.is_free_spin) { await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 120000 }); continue; }
+    if (r.round.free_spins_awarded > 0 || r.round.is_free_spin) { await untilIdle(page, 240000); continue; }
     const win = Number(r.round.total_win || 0), bet = Number(r.round.bet_amount ?? r.round.bet ?? 0) || 1;
     if (win > 0 && win <= bet + 1e-9) {
       results.sub++;

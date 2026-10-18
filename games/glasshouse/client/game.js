@@ -665,7 +665,7 @@
   async function runFreeSpins() {
     if (S.freeSpinsLeft <= 0 || S.featureRun) return 0;
     S.featureRun = true;
-    try { return await playFeature(); } finally { S.featureRun = false; shell.featureHud(null); R.sticky.clear(); kick(); setControls(); }
+    try { return await playFeature(); } finally { S.featureRun = false; shell.featureHud(null); showBet(); R.sticky.clear(); kick(); setControls(); }
   }
   async function playFeature() {
     shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" });

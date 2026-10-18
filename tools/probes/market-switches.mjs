@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { untilIdle } from "./lib/until-idle.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const argv = process.argv.slice(2);
@@ -79,7 +80,7 @@ async function run(game, market) {
   // rounds' answers must keep the market's minimum (the client paces; it never queues).
   const slams = [];
   for (let i = 0; i < 3; i++) {
-    await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+    await untilIdle(page, 240000);
     const press = () => page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
     await press();
     // Slam: a second press during the round (Vault keeps its flag on the state).
@@ -88,7 +89,7 @@ async function run(game, market) {
     await press();
     if (game === "vault") slams.push(await page.evaluate(() => typeof state !== "undefined" && Boolean(state.fastStopRequested)));
   }
-  await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+  await untilIdle(page, 240000);
   // Answer times: the page's fetch (Moth & Lantern, Relic Forge), or Vault's rounds in view.
   const arrivals = await page.evaluate(() => (window.__luminaRounds || window.__rounds).slice(0, 3));
   await page.close();

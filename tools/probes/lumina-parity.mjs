@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { untilIdle } from "./lib/until-idle.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 let failed = 0;
@@ -90,7 +91,7 @@ for (const size of SIZES) {
       check(`${game}: idle after boot draws nothing (${boot.frames} frames in 3 s)`, boot.frames === 0 && boot.forever.length === 0, boot.forever.join(", "));
       await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
       await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 10000 }).catch(() => {});
-      await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+      await untilIdle(page, 240000);
       await new Promise((r) => setTimeout(r, 1500));
       const after = await idle(page);
       check(`${game}: idle after a round draws nothing (${after.frames} frames in 3 s)`, after.frames === 0 && after.forever.length === 0, after.forever.join(", "));
