@@ -5089,6 +5089,19 @@ const lifecycleStats = { startedManual: 0, startedAuto: 0, blockedPresses: 0 };
 // Read-only lifecycle view for tooling (tools/spin-e2e.js waits on `inFlight` to
 // know when a round has genuinely settled — the button's `is-spinning` cue is
 // dropped as soon as the result arrives, well before the reels finish).
+// Probes (tools/probes/symbol-sheet.mjs): every symbol, drawn as the board draws it.
+window.__luminaSymbols = {
+  ids: [...Object.keys(symbolAssets), "MULTI_5", "MULTI_50", "MULTI_1000"],
+  render(id, px) {
+    const c = document.createElement("canvas");
+    c.width = c.height = px;
+    const g = c.getContext("2d");
+    if (id.startsWith("MULTI_")) { const v = Number(id.slice(6)); drawHexPlate(g, px, px, getMultiplierTier(v).key, v); }
+    else { const img = reelRenderer.images.get(id); if (img) g.drawImage(img, 0, 0, px, px); }
+    return c;
+  }
+};
+
 window.__spinLifecycle = {
   get phase() { return spinLock.phase; },
   get inFlight() { return isRoundInFlight(); },
@@ -6479,7 +6492,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   // below the stake keeps every explanation but none of the win effects.
   const celebrate = roundCelebrates(payload, bet, wagerOverride);
   state.roundCelebrates = celebrate;
-  state.lastRoundSeen = { n: (state.lastRoundSeen?.n || 0) + 1, total_win: Number(payload.total_win || 0), bet_amount: bet, bet_charged: payload.bet_charged, is_free_spin: Boolean(payload.is_free_spin), free_spins_awarded: Number(payload.free_spins_awarded || 0), celebrate };
+  state.lastRoundSeen = { n: (state.lastRoundSeen?.n || 0) + 1, at: performance.now(), total_win: Number(payload.total_win || 0), bet_amount: bet, bet_charged: payload.bet_charged, is_free_spin: Boolean(payload.is_free_spin), free_spins_awarded: Number(payload.free_spins_awarded || 0), celebrate };
   // Derive the engine's effective payout scaler so chip amounts AND meter
   // updates reflect post-scaler values. Without this, a raw 1.6 cluster
   // would render the chip "+1.60" yet the meter would settle at 2.38
@@ -7077,7 +7090,10 @@ function bindFooterMirror() {
   if (!el.footerBalance && !el.footerBet) return;
   const footerWin = document.getElementById("footerWin"); // the shell's Win readout
   const sync = () => {
-    if (el.footerBalance && el.balance) el.footerBalance.textContent = el.balance.textContent;
+    if (el.footerBalance && el.balance) {
+      el.footerBalance.textContent = el.balance.textContent;
+      if (/\d/.test(el.balance.textContent)) window.VaultShell?.api.trackBalance(Number(el.balance.textContent.replace(/[^0-9.-]/g, ""))); // session strip
+    }
     if (el.footerBet && el.betView && !state.shellFeatureHud) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
     if (footerWin && el.lastWin && !state.shellFeatureHud) footerWin.textContent = el.lastWin.textContent; // the feature shows its total
   };

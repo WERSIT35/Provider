@@ -73,7 +73,9 @@ async function run(game, market) {
   await page.waitForFunction(() => document.body.classList.contains("app-ready") && window.__spinLifecycle, { timeout: 30000 });
   await page.evaluate(() => { const s = window.Sound; if (s && !s.__probed) { const play = s.play.bind(s); s.play = (n, o) => { window.__probe.sounds.push({ n, at: performance.now() }); return play(n, o); }; s.__probed = true; } });
   const results = { sub: 0, subBad: [], above: 0, aboveOk: 0 };
-  for (let i = 0; i < ROUNDS; i++) {
+  // At least ROUNDS rounds, and on until three sub-stake rounds were seen (up to 3x ROUNDS):
+  // a game with a low hit rate (Vault 20K) still gets judged on real sub-stake rounds.
+  for (let i = 0; i < ROUNDS * 3 && !(i >= ROUNDS && results.sub >= 3); i++) {
     const mark = await page.evaluate(() => ({ t: performance.now(), vib: window.__probe.vib, n: window.__probe.rounds.length }));
     await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
     await page.waitForFunction((n) => {

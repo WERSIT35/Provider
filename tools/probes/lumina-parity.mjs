@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+// One shell, three games (docs/lumina-overhaul, prompt A1 + A8), proven in Chrome on the demo
+// build (games answered in the page by their own engines; no platform needed):
+//   1. Shell parity: every shared control (Spin, bet −/+, autoplay, speed, menu, info, the
+//      Balance / Bet / Win readouts, the message line) sits at the SAME place and size in
+//      Vault 20K, Moth & Lantern and Relic Forge, at a portrait phone, a landscape phone
+//      and a desktop size.
+//   2. Idle zero: a resting game draws nothing. After boot and after a played round settles,
+//      no requestAnimationFrame callback runs for 3 s and no CSS animation runs forever.
+//
+//   CHROME_PATH=… node tools/probes/lumina-parity.mjs
+//
+// Exits 1 on any failure.
+import { execFileSync } from "node:child_process";
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import puppeteer from "puppeteer-core";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+let failed = 0;
+const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${detail ? ` (${detail})` : ""}`); if (!ok) failed++; };
+
+execFileSync(process.execPath, [path.join(ROOT, "tools/build-demo.mjs")], { stdio: "ignore" });
+const DIST = path.join(ROOT, "dist-demo");
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".webp": "image/webp", ".ogg": "audio/ogg", ".m4a": "audio/mp4", ".svg": "image/svg+xml", ".png": "image/png" };
+const server = http.createServer((req, res) => {
+  let p = path.join(DIST, decodeURIComponent(new URL(req.url, "http://x").pathname));
+  if (!p.startsWith(DIST)) { res.writeHead(403).end(); return; }
+  if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, "index.html");
+  fs.readFile(p, (err, body) => { if (err) { res.writeHead(404).end(); return; } res.writeHead(200, { "content-type": MIME[path.extname(p)] || "application/octet-stream" }).end(body); });
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const base = `http://127.0.0.1:${server.address().port}`;
+const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/chromium"].filter(Boolean).find((p) => fs.existsSync(p));
+const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
+
+const GAMES = ["vault", "classic", "relicforge"];
+const CONTROLS = ["#spinBtn", "#betDownBtn", "#betUpBtn", "#autoplayBtn", "#turboBtn", "#psMenuBtn", "#psInfoBtn", "#footerBalance", "#betSheetBtn", "#footerWin", "#psTicker"];
+const SIZES = [[390, 844, true], [844, 390, true], [1440, 900, false]];
+
+async function open(game, [w, h, touch]) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: w, height: h, isMobile: touch, hasTouch: touch });
+  // Count animation frames from the start: the probe reads the counter over a window.
+  await page.evaluateOnNewDocument(() => {
+    window.__raf = 0;
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => raf((t) => { window.__raf++; cb(t); });
+  });
+  await page.goto(`${base}/${game}/`, { waitUntil: "networkidle0" });
+  await page.waitForFunction(() => document.body.classList.contains("app-ready") && window.__spinLifecycle, { timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 1500)); // boot reveal and first paint settle
+  return page;
+}
+
+/** Frames drawn and forever-running CSS animations over `ms` of rest. */
+const idle = (page, ms = 3000) => page.evaluate(async (ms) => {
+  const before = window.__raf;
+  await new Promise((r) => setTimeout(r, ms));
+  const forever = document.getAnimations().filter((a) => a.playState === "running" && a.effect?.getComputedTiming?.().iterations === Infinity)
+    .map((a) => a.effect?.target?.className || a.effect?.target?.id || "?");
+  return { frames: window.__raf - before, forever };
+}, ms);
+
+const geometry = {};
+for (const size of SIZES) {
+  const key = `${size[0]}x${size[1]}`;
+  for (const game of GAMES) {
+    const page = await open(game, size);
+    geometry[`${game}@${key}`] = await page.evaluate((sels) => Object.fromEntries(sels.map((s) => {
+      // A readout's value is text (its width follows the number): measure its readout box.
+      const v = document.querySelector(s); const n = v?.closest("[data-area]") || v; if (!n) return [s, null];
+      const r = n.getBoundingClientRect(); return [s, [r.x, r.y, r.width, r.height].map((v) => Math.round(v))];
+    })), CONTROLS);
+    if (size === SIZES[0]) {
+      const boot = await idle(page);
+      check(`${game}: idle after boot draws nothing (${boot.frames} frames in 3 s)`, boot.frames === 0 && boot.forever.length === 0, boot.forever.join(", "));
+      await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
+      await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+      await new Promise((r) => setTimeout(r, 1500));
+      const after = await idle(page);
+      check(`${game}: idle after a round draws nothing (${after.frames} frames in 3 s)`, after.frames === 0 && after.forever.length === 0, after.forever.join(", "));
+    }
+    await page.close();
+  }
+  const [ref, ...rest] = GAMES.map((g) => geometry[`${g}@${key}`]);
+  for (const sel of CONTROLS) {
+    const same = rest.every((g) => JSON.stringify(g[sel]) === JSON.stringify(ref[sel]));
+    check(`${key}: ${sel} identical in all three games`, ref[sel] && same, GAMES.map((g) => `${g} ${JSON.stringify(geometry[`${g}@${key}`][sel])}`).join(" · "));
+  }
+}
+await browser.close();
+server.close();
+console.log(`\nlumina-parity: ${failed ? "FAIL" : "PASS"}`);
+process.exit(failed ? 1 : 0);
