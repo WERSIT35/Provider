@@ -1,4 +1,7 @@
-// Vault 20K — full-screen big-win celebration.
+// Lumina big win: the shared full-screen big-win / max-win overlay (docs/lumina-overhaul/
+// layers.md, Layer 2: one structure and one behaviour in every game, each game's skin and
+// tier names). Vault 20K builds its controller in main.js; the other games go through
+// LuminaShell's bigWin().
 //
 // A self-contained presentation controller. Given the settled win amount, the
 // bet and the celebratable tiers, it counts up THROUGH each tier on its own DOM

@@ -55,7 +55,7 @@
 
     /* The game's stage inside the Lumina Shell (client/shell): the logo and the glasshouse.
        Every control, readout and dialog is the shell's and looks the same in every game
-       (docs/lumina-overhaul/layers.md, Layer 1). */
+       (docs/lumina-overhaul/layers.md, Layer 1); the themed slots take the skin from game.js. */
     .gh-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); position: relative; z-index: 1; }
     /* ── Logo: glass letters in lead came, the sunbeam passing through them (SVG, no image). ── */
     .sky { position: relative; display: grid; justify-items: center; padding-top: 6px; }
@@ -77,12 +77,6 @@
     .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     .ferns { position: absolute; left: -4%; right: -4%; bottom: calc(-1 * clamp(10px, 3cqh, 26px)); height: clamp(16px, 6cqh, 44px); pointer-events: none; z-index: 2; }
     .ferns svg { width: 100%; height: 100%; display: block; }
-    .celebration { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; text-align: center; cursor: pointer; overflow: hidden; border-radius: 2px;
-      background: radial-gradient(circle at 50% 50%, rgba(255, 243, 207, 0.55), rgba(30, 33, 36, 0.88) 64%); }
-    .celebration[hidden] { display: none; }
-    .celebration b { display: block; font: 400 clamp(1.8rem, 8vmin, 4.2rem)/1 var(--display); letter-spacing: 0.08em; color: #fffaf0; text-shadow: 0 0 26px rgba(255, 227, 138, 0.9), 0 2px 0 #1e2124; }
-    .celebration span { display: block; margin-top: 10px; font: 600 clamp(1.6rem, 6.5vmin, 3.2rem)/1.1 var(--num); color: #ffe38a; text-shadow: 0 0 18px rgba(201, 138, 43, 0.9), 0 2px 0 #1e2124; font-variant-numeric: tabular-nums lining-nums; }
-    .celebration small { display: block; margin-top: 12px; color: #e9e0d2; font-size: 0.8rem; }
 
     /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the logo. */
     @media (max-width: 560px) { .sky { padding-top: 30px; } }
@@ -144,7 +138,6 @@
         </div>
         <div class="board" id="board">
           <canvas id="panes" aria-label="Glasshouse panes"></canvas>
-          <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
         </div>
         <div class="ferns" aria-hidden="true">
           <svg viewBox="0 0 400 40" preserveAspectRatio="none">
@@ -168,6 +161,7 @@
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
   <script src="/play/shell/board-view.js"></script>
+  <script src="/play/shell/big-win.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

@@ -173,11 +173,12 @@
                 <div class="reels-stage" aria-live="polite">
                   <canvas class="reels-canvas" id="reels" aria-label="Game reels canvas"></canvas>
                 </div>
-                <section class="feature-screen hidden" id="featureScreen" aria-hidden="true">
-                  <div class="feature-screen-panel">
-                    <p class="feature-screen-kicker" id="featureScreenKicker" data-vx-slot="kicker">Feature</p>
-                    <h2 id="featureScreenTitle" data-vx-slot="title">You won 15 Free Spins</h2>
-                    <p class="feature-screen-copy" id="featureScreenCopy" data-vx-slot="body">Press anywhere to continue.</p>
+                <!-- The feature panel: the shared Lumina themed slot (layers.md, Layer 2), Vault's skin. -->
+                <section class="feature-screen lsh-panel hidden" id="featureScreen" aria-hidden="true">
+                  <div class="lsh-panel__card">
+                    <p class="lsh-panel__kicker" id="featureScreenKicker" data-vx-slot="kicker">Feature</p>
+                    <h2 class="lsh-panel__title" id="featureScreenTitle" data-vx-slot="title">You won 15 Free Spins</h2>
+                    <p class="lsh-panel__line" id="featureScreenCopy" data-vx-slot="body">Press anywhere to continue.</p>
                   </div>
                 </section>
               </div>
@@ -298,7 +299,7 @@
 
     <!-- Big-win celebration (big-win.js). Outside .sanctum and fixed-position,
          so nothing it does can reflow the game. Shown via .is-open only. -->
-    <div class="big-win-overlay" id="bigWinOverlay" role="dialog" aria-modal="true"
+    <div class="big-win-overlay has-lasers" id="bigWinOverlay" role="dialog" aria-modal="true"
          aria-label="Big win" aria-hidden="true" tabindex="-1">
       <canvas class="bw-canvas" data-bw-canvas aria-hidden="true"></canvas>
       <div class="bw-lasers" aria-hidden="true"></div>
@@ -480,7 +481,7 @@
     <script src="audio/ambiance.js?v=20261009-1"></script>
     <script src="notify.js?v=20261008-1"></script>
     <script src="vault-shell.js?v=20261018-1"></script>
-    <script src="big-win.js?v=20261018-1"></script>
+    <script src="shell/big-win.js?v=20261018-2"></script>
     <script src="embed-bridge.js?v=20261018-1"></script>
     <script src="main.js?v=20261018-2"></script>
     <!-- bundle:end -->

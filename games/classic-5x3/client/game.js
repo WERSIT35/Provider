@@ -17,7 +17,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const el = { canvas: $("reels"), board: $("board"), cel: $("celebration"), celTitle: $("celTitle"), celAmount: $("celAmount") };
+  const el = { canvas: $("reels"), board: $("board") };
   const Sound = window.Sound;
   // Classic 5x3's own events on top of the shared engine's (its sounds: audio/manifest.json).
   if (Sound?.defineEvents) {
@@ -597,7 +597,10 @@
     const counted = countUp(total, !celebrate ? window.LuminaMotion.ms("neutralCredit") : tier ? T.countUpTier : window.LuminaMotion.countUpMs(total / bet, shell.motionSpeed()), celebrate);
     if (total > 0) say(celebrate ? `Moonlight win: ${fmt(total)}` : `Credit ${fmt(total)}`, true, celebrate);
     sfx(!celebrate ? "click" : total / bet >= 5 ? "win_land" : "win_small");
-    if (tier) await celebrate_(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key], tier.key);
+    // Big win: the shared Lumina overlay (layers.md, Layer 2) in the garden's words and skin,
+    // with the paper moths spiralling up inside it.
+    if (tier) await shell.bigWin({ amount: total, bet, tiers: shell.ladder(TIER_NAMES), autoDismissMs: S.autoplay || S.freeSpinsLeft > 0 ? 1800 : 4000,
+      hooks: { onTier: (t) => sfx(TIER_SOUND[t.key]), onTick: (v, of) => sfx("win_tick", { progress: of > 0 ? v / of : 1 }) }, decor: releaseMoths });
     await counted;
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
@@ -619,12 +622,12 @@
     });
   }
   function stopCount() { cancelAnimationFrame(countTimer); countDone?.(); }
-  /** Big win: paper moths spiral up out of the board toward the lanterns (not with reduced motion). */
+  /** Big win: paper moths spiral up inside the shared overlay (not with reduced motion). */
   const MOTH_SVG = '<svg viewBox="-26 -14 52 32" aria-hidden="true"><path d="M0 0 C-10 -12 -26 -10 -24 2 C-22 10 -10 8 0 2Z M0 0 C10 -12 26 -10 24 2 C22 10 10 8 0 2Z" fill="#ffd27a" stroke="#0b1026" stroke-width="1.5"/><path d="M0 2 C-6 6 -14 12 -10 16 C-6 18 -2 10 0 4Z M0 2 C6 6 14 12 10 16 C6 18 2 10 0 4Z" fill="#f3e6c8" stroke="#0b1026" stroke-width="1.2"/><ellipse cx="0" cy="4" rx="2" ry="7" fill="#0b1026"/></svg>';
-  function releaseMoths() {
-    if (calm() || !el.cel.animate) return;
+  function releaseMoths(layer) {
+    if (calm() || !layer?.animate) return;
     for (let i = 0; i < 14; i++) {
-      const m = document.createElement("div"); m.className = "moth"; m.innerHTML = MOTH_SVG; el.cel.appendChild(m);
+      const m = document.createElement("div"); m.className = "moth"; m.innerHTML = MOTH_SVG; layer.appendChild(m);
       const turns = 1.2 + Math.random() * 0.8, r0 = 20 + Math.random() * 60, dir = Math.random() < 0.5 ? -1 : 1, frames = [];
       for (let k = 0; k <= 10; k++) {
         const t = k / 10, a = dir * (t * turns * Math.PI * 2 + i), r = r0 * (1 - t * 0.4);
@@ -633,24 +636,6 @@
       m.animate(frames, { duration: 2200 + Math.random() * 900, delay: i * 70, easing: "ease-in-out", fill: "forwards" }).finished.then(() => m.remove(), () => m.remove());
     }
   }
-  function celebrate_(title, amount, sound, tierKey) {
-    return new Promise((resolve) => {
-      el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
-      releaseMoths();
-      const M = window.LuminaMotion, t0 = performance.now(), ms = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
-      // A tap while counting lands the amount; the title then holds 400-700 ms by tier
-      // (LuminaMotion.BIG_WIN `hold`) before a tap may close it.
-      const hold = M?.BIG_WIN.find((t) => t.key === tierKey)?.hold ?? 450;
-      let done = false, skipped = false, landedAt = 0, closeT = 0;
-      const finish = () => { if (done) return; done = true; clearTimeout(closeT); el.cel.hidden = true; el.cel.removeEventListener("pointerdown", tap); resolve(); };
-      const land = () => { el.celAmount.textContent = fmt(amount); landedAt = performance.now(); closeT = setTimeout(finish, Math.max(skipped ? hold : 0, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold)); };
-      const tap = () => { if (!landedAt) { skipped = true; return; } if (performance.now() - landedAt >= (skipped ? hold : 150)) finish(); };
-      const tick = (now) => { if (done || landedAt) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop && !skipped) requestAnimationFrame(tick); else land(); };
-      requestAnimationFrame(tick);
-      el.cel.addEventListener("pointerdown", tap);
-    });
-  }
-
   // ── free spins and autoplay ──────────────────────────────────────────────
   async function runFreeSpins() {
     if (S.freeSpinsLeft <= 0 || S.featureRun) return 0;
@@ -807,6 +792,19 @@
     features: { buy: false, ante: false, autoplay: true, turbo: true, stop: true },
     fmt,
     build: { title: "Moth & Lantern" },
+    particles: { gold: "#ffb547", goldBright: "#fff1c8", goldDeep: "#c4501d", diamond: "#f3e6c8", diamondEdge: "#0b1026", sparks: ["#fff1c8", "#ffb547", "#ff7a3d"] },
+    // The game's skin for the themed slots (layers.md, Layer 2): cut paper on ink. The
+    // controls themselves are the shared Lumina chrome.
+    skin: {
+      "--skin-title-font": "var(--display)", "--skin-title-weight": "600", "--skin-accent": "#ffb547",
+      "--skin-slot-bg": "var(--grain), #f3e6c8", "--skin-slot-ink": "#0b1026", "--skin-slot-edge": "0 2px 0 rgba(0, 0, 0, 0.35)",
+      "--skin-panel-bg": "var(--grain), #f3e6c8", "--skin-panel-ink": "#0b1026", "--skin-panel-muted": "#5a5266",
+      "--skin-panel-title": "#0b1026", "--skin-panel-total": "#a2380f", "--skin-panel-radius": "10px",
+      "--skin-panel-frame": "0 0 0 2px #0b1026, 0 6px 0 rgba(0, 0, 0, 0.35), 0 18px 48px rgba(0, 0, 0, 0.55)",
+      "--skin-tier-big": "#ffb547", "--skin-tier-mega": "#ff7a3d", "--skin-tier-epic": "#ffe3a1", "--skin-tier-legendary": "#f3e6c8", "--skin-tier-max": "#ffffff",
+      "--skin-win-hi": "#fff6dc", "--skin-win": "#ffb547", "--skin-win-deep": "#c4501d",
+      "--skin-bigwin-scrim": "rgba(11, 16, 38, 0.82)"
+    },
     on: {
       spin: () => onSpinPress(),
       betStep: (d) => setBetIndex(S.betIndex + d),

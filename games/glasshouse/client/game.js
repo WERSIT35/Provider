@@ -20,7 +20,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const el = { canvas: $("panes"), board: $("board"), cel: $("celebration"), celTitle: $("celTitle"), celAmount: $("celAmount") };
+  const el = { canvas: $("panes"), board: $("board") };
   const Sound = window.Sound;
   const M = window.LuminaMotion;
   const T = window.LuminaMotion.game("glasshouse");
@@ -593,7 +593,7 @@
 
   // The shared ladder (LuminaMotion.BIG_WIN, × the stake), named in the glasshouse's voice (§11.4).
   const TIER_NAMES = { big: "Sunlit", mega: "Radiant", epic: "Solstice", legendary: "Zenith" };
-  const TIER_SOUND = { big: "win_big", mega: "win_mega", epic: "win_epic", legendary: "win_epic" };
+  const TIER_SOUND = { big: "win_big", mega: "win_mega", epic: "win_epic", legendary: "win_epic", max: "max_win" };
 
   /** Ways and roses (DESIGN §11.2 steps 4-6): what paid, how much, then the count. */
   async function presentWin(r, stake, bet) {
@@ -623,8 +623,12 @@
     const counted = countUp(total, !celebrate ? M.ms("neutralCredit") : tier ? T.countUpTier : M.countUpMs(total / bet, shell.motionSpeed()), celebrate);
     if (total > 0) say(celebrate ? `Sunlit: ${fmt(total)}` : `Credit: ${fmt(total)}`, true, celebrate);
     sfx(!celebrate ? "click" : total / bet >= 5 ? "win_land" : "win_small");
-    if (capped && celebrate) await bigWin("Full Bloom", total, "max_win", "max");
-    else if (tier) await bigWin(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key], tier.key);
+    // Big win and Full Bloom (the max win): the shared Lumina overlay (layers.md, Layer 2) in
+    // the glasshouse's words and skin.
+    if (celebrate && (tier || capped)) await shell.bigWin({ amount: total, bet: r.is_free_spin ? bet : stake, tiers: shell.ladder(TIER_NAMES),
+      autoDismissMs: S.autoplay || S.freeSpinsLeft > 0 ? 1800 : 4000,
+      finalTier: capped ? { key: "max", minX: Infinity, label: "Full Bloom", countMs: 0, fx: "motherlode", overlay: true } : null,
+      hooks: { onTier: (t) => sfx(TIER_SOUND[t.key] || "win_big"), onTick: (v, of) => sfx("win_tick", { progress: of > 0 ? v / of : 1 }) } });
     await counted;
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
@@ -644,23 +648,6 @@
     });
   }
   function stopCount() { cancelAnimationFrame(countTimer); countDone?.(); }
-  function bigWin(title, amount, sound, tierKey) {
-    return new Promise((resolve) => {
-      el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
-      const t0 = performance.now(), dur = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
-      // A tap while counting lands the amount; the title then holds 400-700 ms by tier
-      // (LuminaMotion.BIG_WIN `hold`, MAX_WIN for Full Bloom) before a tap may close it.
-      const hold = (tierKey === "max" ? M.MAX_WIN.hold : M.BIG_WIN.find((t) => t.key === tierKey)?.hold) ?? 450;
-      let done = false, skipped = false, landedAt = 0, closeT = 0;
-      const finish = () => { if (done) return; done = true; clearTimeout(closeT); el.cel.hidden = true; el.cel.removeEventListener("pointerdown", tap); resolve(); };
-      const land = () => { el.celAmount.textContent = fmt(amount); landedAt = performance.now(); closeT = setTimeout(finish, Math.max(skipped ? hold : 0, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold)); };
-      const tap = () => { if (!landedAt) { skipped = true; return; } if (performance.now() - landedAt >= (skipped ? hold : 150)) finish(); };
-      const tick = (now) => { if (done || landedAt) return; const t = Math.min(1, (now - t0) / dur); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop && !skipped) requestAnimationFrame(tick); else land(); };
-      requestAnimationFrame(tick);
-      el.cel.addEventListener("pointerdown", tap);
-    });
-  }
-
   // ── free spins: "Midday" (DESIGN §5, §11.3) ──────────────────────────────
   async function runFreeSpins() {
     if (S.freeSpinsLeft <= 0 || S.featureRun) return 0;
@@ -819,6 +806,19 @@
     features: { buy: true, ante: false, autoplay: true, turbo: true, stop: true },
     fmt,
     build: { title: "Glasshouse" },
+    particles: { gold: "#ffe38a", goldBright: "#fffaf0", goldDeep: "#c98a2b", diamond: "#fff3cf", diamondEdge: "#1e2124", sparks: ["#fffaf0", "#ffe38a", "#f3c9bc"] },
+    // The game's skin for the themed slots (layers.md, Layer 2): brass fittings, cream glass,
+    // charcoal lead. The system chrome itself is the shell's and is never restyled here.
+    skin: {
+      "--skin-title-font": "var(--display)", "--skin-title-weight": "400", "--skin-amount-font": "var(--num)", "--skin-accent": "#ffe38a",
+      "--skin-slot-bg": "linear-gradient(180deg, #fffaf0, #f4e8d2)", "--skin-slot-ink": "#1e2124", "--skin-slot-edge": "inset 0 0 0 2px #1e2124, 0 2px 0 rgba(0, 0, 0, 0.45)",
+      "--skin-panel-bg": "linear-gradient(180deg, #fffaf0, #f4e8d2)", "--skin-panel-ink": "#1e2124", "--skin-panel-muted": "#5b5146",
+      "--skin-panel-title": "#1e2124", "--skin-panel-total": "#8a1f30", "--skin-panel-radius": "6px",
+      "--skin-panel-frame": "0 0 0 2px #1e2124, 0 0 0 6px #b08d57, 0 0 0 8px #1e2124, 0 18px 48px rgba(0, 0, 0, 0.55)",
+      "--skin-tier-big": "#ffe38a", "--skin-tier-mega": "#f0b856", "--skin-tier-epic": "#fff3cf", "--skin-tier-legendary": "#f3c9bc", "--skin-tier-max": "#ffffff",
+      "--skin-win-hi": "#fffaf0", "--skin-win": "#ffe38a", "--skin-win-deep": "#c98a2b",
+      "--skin-bigwin-scrim": "rgba(30, 33, 36, 0.84)"
+    },
     on: {
       spin: () => onSpinPress(),
       buy: () => onBuy(),

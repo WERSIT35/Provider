@@ -130,12 +130,7 @@
     .mult[data-tier="2"] { transform: scale(1.22); box-shadow: 0 0 0 2px #6b2000, 0 0 12px rgba(255, 176, 0, 0.7); }
     .mult[data-tier="3"] { transform: scale(1.35); box-shadow: 0 0 0 2px #6b2000, 0 0 20px rgba(255, 176, 0, 0.95); }
 
-    .banner { position: absolute; inset: 14px; display: grid; place-content: center; text-align: center; cursor: pointer; z-index: 5; padding: 12px;
       background: radial-gradient(circle at 50% 55%, rgba(255, 224, 138, 0.94), rgba(233, 220, 192, 0.96) 60%); color: var(--ink); }
-    .banner[hidden] { display: none; }
-    .banner b { display: block; font: 700 clamp(1.4rem, 6.5vmin, 3.2rem)/1.05 var(--display); color: var(--ink); text-shadow: 0 0 18px rgba(255, 176, 0, 0.9); }
-    .banner span { display: block; margin-top: 6px; font: 600 clamp(1.3rem, 5.5vmin, 2.8rem)/1.1 var(--num); color: #8a3a00; font-variant-numeric: tabular-nums; }
-    .banner small { display: block; margin-top: 8px; color: var(--iron); font-size: 1rem; }
 
 
     @media (orientation: portrait) and (max-height: 700px) { .title svg { width: clamp(190px, 58vw, 300px); } }
@@ -214,7 +209,6 @@
         <span class="marg tr" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
         <span class="marg bl" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
         <span class="marg br" aria-hidden="true"><svg viewBox="0 0 22 22"><g fill="none" stroke="#1c1611" stroke-width="1.1" stroke-linecap="round"><path d="M3 19 L11 11"/><path d="M9 9 L13 5 L16 8 L12 12 Z" fill="#1c1611"/><circle cx="5" cy="5" r="2.3"/><path d="M5 2.7 V1 M5 9 V7.3"/></g></svg></span>
-        <div class="banner" id="banner" hidden></div>
         <div class="evo-moment" id="evoMoment" hidden role="status" aria-live="polite"></div>
       </div>
     </main>
@@ -228,6 +222,7 @@
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
   <script src="/play/shell/board-view.js"></script>
+  <script src="/play/shell/big-win.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

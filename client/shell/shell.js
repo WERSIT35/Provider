@@ -73,9 +73,13 @@
   function mount(opts) {
     const o = Object.assign({ features: {}, on: {}, fmt: (v) => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), currency: "" }, opts);
     const on = o.on;
+    // The game's skin (layers.md, Layer 2): only --skin-* properties, set on the page root so
+    // the themed slots inside and outside the frame (panel, rail, big win, splash) read them.
+    // The system chrome (Layer 1) never reads a --skin-* value.
+    const doc = root.document;
+    for (const [k, v] of Object.entries(o.skin || {})) if (k.startsWith("--skin-")) doc.documentElement.style.setProperty(k, String(v));
     const features = Object.assign({ buy: false, ante: false, autoplay: true, turbo: true, stop: true }, o.features);
     const prefs = store.load();
-    const doc = root.document;
 
     // ── frame ───────────────────────────────────────────────────────────────
     const frame = doc.createElement("div");
@@ -422,7 +426,7 @@
     const panelEl = doc.createElement("section");
     panelEl.className = "lsh-panel hidden";
     panelEl.setAttribute("role", "dialog"); panelEl.setAttribute("aria-modal", "true");
-    panelEl.innerHTML = '<div class="lsh-sheet__panel lsh-panel__card"><p class="lsh-panel__kicker"></p><h2 class="lsh-panel__title"></h2><p class="lsh-panel__line"></p><dl class="lsh-panel__stats"></dl><p class="lsh-panel__total" hidden><span class="lsh-panel__tk"></span><strong class="lsh-panel__tv"></strong></p><p class="lsh-panel__cta"></p></div>';
+    panelEl.innerHTML = '<div class="lsh-panel__card"><p class="lsh-panel__kicker"></p><h2 class="lsh-panel__title"></h2><p class="lsh-panel__line"></p><dl class="lsh-panel__stats"></dl><p class="lsh-panel__total" hidden><span class="lsh-panel__tk"></span><strong class="lsh-panel__tv"></strong></p><p class="lsh-panel__cta"></p></div>';
     el.stage.appendChild(panelEl);
     N?.register("lsh-panel", panelEl, { kind: "modal", visibility: "class", dismiss: { backdrop: "continue", escape: "continue", enter: "continue", space: true } });
     const pq = (c) => panelEl.querySelector(c);
@@ -468,6 +472,48 @@
         ? n.animate([{ opacity: 0, transform: `translate(${dx}px, ${dy}px)` }, { opacity: 1, transform: `translate(${dx}px, ${dy}px)` }, { opacity: 0, transform: `translate(${dx}px, ${dy}px)` }], { duration: ms })
         : n.animate([{ transform: "translate(-50%, -50%) scale(1.5)", opacity: 0 }, { transform: "translate(-50%, -50%) scale(1.3)", opacity: 1, offset: 0.25 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.7)`, opacity: 1 }], { duration: ms, easing: "cubic-bezier(0.45, 0, 0.25, 1)" });
       return anim.finished.catch(() => {}).then(() => { n.remove(); if (sp !== "reduced") target.animate([{ transform: "scale(1.14)" }, { transform: "none" }], { duration: 220 }); });
+    }
+
+    // ── big win (Layer 2: one structure and behaviour, the game's skin and tier names) ──
+    // The shared controller (client/shell/big-win.js). Vault 20K owns its own instance on its
+    // #bigWinOverlay; any other game gets one built here on the same markup.
+    let bwCtl = null;
+    function bigWinController() {
+      if (bwCtl || !root.BigWinController) return bwCtl;
+      let r = doc.getElementById("bigWinOverlay");
+      if (!r) {
+        r = doc.createElement("div");
+        r.className = "big-win-overlay" + (o.bigWinLasers ? " has-lasers" : "");
+        r.id = "bigWinOverlay";
+        r.setAttribute("role", "dialog"); r.setAttribute("aria-modal", "true"); r.setAttribute("aria-label", "Big win"); r.setAttribute("aria-hidden", "true"); r.tabIndex = -1;
+        r.innerHTML = '<canvas class="bw-canvas" data-bw-canvas aria-hidden="true"></canvas><div class="bw-lasers" aria-hidden="true"></div><div class="bw-stage" data-bw-stage aria-hidden="true"><div class="bw-label" data-bw-label></div><div class="bw-amount" data-bw-amount>0.00</div><div class="bw-hint">Tap to continue</div></div><p class="lsh-vh" data-bw-announce aria-live="assertive"></p>';
+        doc.body.appendChild(r);
+      }
+      N?.register?.("bigwin", r, { kind: "bigwin", external: true });
+      bwCtl = new root.BigWinController({
+        root: r, format: money,
+        palette: Object.assign({ gold: "#f2c14e", goldBright: "#ffe7a3", goldDeep: "#c8902b", diamond: "#eef1f4", diamondEdge: "#9aa7ad", sparks: ["#fff4cf", "#f2c14e"] }, o.particles || {}),
+        maxDpr: Math.min(2, root.devicePixelRatio || 1)
+      });
+      return bwCtl;
+    }
+    /** The shared ladder (LuminaMotion.BIG_WIN) in the game's own words: names = { big, mega, epic, legendary }. */
+    function ladder(names) {
+      const COUNT = { big: 1800, mega: 1500, epic: 2200, legendary: 2600 }, FX = { big: "coins", mega: "sparks", epic: "motherlode", legendary: "motherlode" };
+      return (root.LuminaMotion?.BIG_WIN || []).map((t) => ({ key: t.key, minX: t.minX, label: names[t.key] || t.key, countMs: COUNT[t.key], fx: FX[t.key], overlay: true }));
+    }
+    /** Celebrate a settled win: { amount, bet, tiers, finalTier, autoDismissMs, hooks, decor(root) }.
+     *  Counts up through each tier reached; a tap lands it, the title then holds by tier
+     *  (BIG_WIN.hold), a second tap closes. Resolves { skipped, shown }. */
+    function bigWin(opts = {}) {
+      const c = bigWinController();
+      if (!c) return Promise.resolve({ skipped: false, shown: false });
+      c.hooks = opts.hooks || {};
+      const tracked = N?.get?.("bigwin");
+      tracked?.open?.();
+      const done = c.play({ amount: opts.amount, bet: opts.bet, tiers: opts.tiers, finalTier: opts.finalTier || null, speed: speed() === "turbo" ? 0.35 : 1, reducedMotion: reducedMotion(), autoDismissMs: opts.autoDismissMs || 0 });
+      if (opts.decor && c.active) { try { opts.decor(c.root); } catch { /* decoration only */ } }
+      return done.finally(() => tracked?.close?.("done"));
     }
 
     /** A short explanation over the top of the board (the first time something happens):
@@ -562,7 +608,8 @@
     const api = {
       frame, el, ticker, prefs,
       get phase() { return S.phase; },
-      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask, panel, flyPlus, callout,
+      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask, panel, flyPlus, callout, bigWin, ladder,
+      get bigWinActive() { return Boolean(bwCtl?.active); },
       applyMarket, celebrates, slamAllowed, anticipationSkippable, turboAllowed, autoplayCap, rule,
       speed, reducedMotion,
       /** The motion speed key for LuminaMotion: "reduced" wins, then the player's speed. */
@@ -597,6 +644,7 @@
       openInfo() { renderInfo(); return openSheet("info"); },
       closeSheets() { for (const n of Object.keys(sheets)) closeSheet(n); }
     };
+    root.__luminaShell = api; // probes (tools/probes/chrome-identity.mjs): the mounted shell
     return api;
   }
 

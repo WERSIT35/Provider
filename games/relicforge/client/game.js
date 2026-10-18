@@ -20,7 +20,7 @@
 
   const $ = (id) => document.getElementById(id);
   const el = {
-    board: $("board"), boardWrap: $("boardWrap"), stage: $("stage"), banner: $("banner"), evo: $("evoMoment"),
+    board: $("board"), boardWrap: $("boardWrap"), stage: $("stage"), evo: $("evoMoment"),
     hud: $("hud"), combo: $("combo"), calc: $("calc"), mult: $("mult"),
     meter: $("meter"), meterText: $("meterText"), meterFill: $("meterFill"),
     forgeBonus: $("forgeBonus"), meltdownPill: $("meltdownPill"), relics: $("relics")
@@ -537,30 +537,7 @@
     });
   }
 
-  // ── banners ──────────────────────────────────────────────────────────────
-  // A win banner (`count`: { amount, x, tierKey }) counts its amount up, log-scaled by × bet
-  // (LuminaMotion.countUpMs); a tap lands it, and the title then holds 400-700 ms by tier
-  // (BIG_WIN / MAX_WIN `hold`) before a tap may close it.
-  function banner(html, ms, count) {
-    return new Promise((res) => {
-      el.banner.innerHTML = html;
-      el.banner.hidden = false;
-      const M = window.LuminaMotion;
-      const hold = count ? (count.tierKey === "max" ? M.MAX_WIN.hold : M.BIG_WIN.find((t) => t.key === count.tierKey)?.hold ?? 450) : 0;
-      const span = count && !reduced.matches ? el.banner.querySelector("span") : null;
-      let t = 0, raf = 0, landedAt = span ? 0 : performance.now(), skipped = false;
-      const done = () => { clearTimeout(t); cancelAnimationFrame(raf); el.banner.hidden = true; el.banner.removeEventListener("click", tap); res(); };
-      const land = () => { cancelAnimationFrame(raf); if (span) span.textContent = money(count.amount); landedAt = performance.now(); };
-      const tap = () => { if (!landedAt) { skipped = true; land(); return; } if (performance.now() - landedAt >= (skipped ? hold : 0)) done(); };
-      if (span) {
-        const cms = M.countUpMs(count.x, shell.motionSpeed()), t0 = performance.now();
-        const step = (now) => { const k = Math.min(1, (now - t0) / cms); span.textContent = money(count.amount * (1 - (1 - k) ** 3)); if (k < 1) raf = requestAnimationFrame(step); else land(); };
-        span.textContent = money(0); raf = requestAnimationFrame(step);
-      }
-      el.banner.addEventListener("click", tap);
-      t = setTimeout(done, reduced.matches ? Math.min(ms, T.bannerReducedCap) : ms);
-    });
-  }
+  // ── big-win tiers ────────────────────────────────────────────────────────
   // The shared big-win ladder (LuminaMotion.BIG_WIN, × the bet), named in the forge's voice.
   const TIER_NAMES = { big: "Well forged", mega: "Master's work", epic: "The Great Work", legendary: "Philosopher's gold" };
   function winTier(totalX) { const t = window.LuminaMotion.tierFor(totalX); return t ? TIER_NAMES[t.key] : null; }
@@ -669,10 +646,12 @@
 
     if (r.cap_reached) {
       hook("max_win");
-      await banner(`<b>Max win</b><span>${money(r.total_win)}</span><small>${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}× the bet: the round ends here</small>`, T.bannerMaxWin, { amount: r.total_win, x: r.total_win / bet, tierKey: "max" });
+      // Big win and max win: the shared Lumina overlay (layers.md, Layer 2) in the forge's words.
+      await shell.bigWin({ amount: r.total_win, bet, tiers: shell.ladder(TIER_NAMES), autoDismissMs: S.autoplay ? 1800 : 4000,
+        finalTier: { key: "max", minX: Infinity, label: `Max win ${Number(S.rules.max_win_cap_multiplier).toLocaleString("en-US")}×`, countMs: 0, fx: "motherlode", overlay: true } });
     } else if (celebrate && winTier(r.total_win / bet)) {
       hook("win_tier", { tier: winTierKey(r.total_win / bet) });
-      await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, T.bannerTier, { amount: r.total_win, x: r.total_win / bet, tierKey: winTierKey(r.total_win / bet) });
+      await shell.bigWin({ amount: r.total_win, bet, tiers: shell.ladder(TIER_NAMES), autoDismissMs: S.autoplay ? 1800 : 4000 });
     }
     // A win at or below the stake is a quiet credit: no win sound (RTS 14F / AGCO 2.20).
     if (celebrate && r.total_win > 0 && !winTier(r.total_win / bet) && !r.cap_reached) sfx("rf_win");
@@ -840,6 +819,19 @@
     features: { buy: false, ante: false, autoplay: true, turbo: true, stop: false },
     fmt: money,
     build: { title: "Relic Forge" },
+    particles: { gold: "#ffb000", goldBright: "#fff2c4", goldDeep: "#8a3a00", diamond: "#e9dcc0", diamondEdge: "#1c1611", sparks: ["#fff2c4", "#ffd25a", "#ff5e1a"] },
+    // The game's skin for the themed slots (layers.md, Layer 2): an engraved manuscript. The
+    // controls themselves are the shared Lumina chrome.
+    skin: {
+      "--skin-title-font": "var(--display)", "--skin-title-weight": "700", "--skin-accent": "#ffb000",
+      "--skin-slot-bg": "var(--grain), #e9dcc0", "--skin-slot-ink": "#1c1611", "--skin-slot-edge": "0 0 0 1.5px #1c1611, 0 3px 0 #000",
+      "--skin-panel-bg": "var(--grain), #e9dcc0", "--skin-panel-ink": "#1c1611", "--skin-panel-muted": "#5c4e3c",
+      "--skin-panel-title": "#1c1611", "--skin-panel-total": "#8a3a00", "--skin-panel-radius": "4px",
+      "--skin-panel-frame": "0 0 0 1.5px #1c1611, 0 0 0 4px #e9dcc0, 0 0 0 5.5px #1c1611, 0 20px 50px rgba(0, 0, 0, 0.7)",
+      "--skin-tier-big": "#ffb000", "--skin-tier-mega": "#ff5e1a", "--skin-tier-epic": "#ffd25a", "--skin-tier-legendary": "#fff2c4", "--skin-tier-max": "#ffffff",
+      "--skin-win-hi": "#fff2c4", "--skin-win": "#ffb000", "--skin-win-deep": "#8a3a00",
+      "--skin-bigwin-scrim": "rgba(18, 13, 9, 0.84)"
+    },
     on: {
       spin: () => onSpin(),
       betStep: (d) => setBetIndex(S.betIndex + d),
