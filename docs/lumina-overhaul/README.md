@@ -54,6 +54,10 @@ Frame bursts from the demo build (Vault from `tools/probes/motion-record.js`):
 [Relic Forge cluster outline, ember into the crucible, meter +1](img/seq-cluster-meter.webp) ·
 [relic draft: plates engrave in, the choice struck in gold, the others fade, the callout](img/seq-relic-draft.webp).
 
+## One chrome, themed slots
+
+Every Lumina game has the same system interface, pixel for pixel: the deck, readouts, buttons, Spin, message line, strip (Games, full screen, DE panic), every sheet and the provider loader (one face: Inter). Each game dresses only the themed slots through its skin (`LuminaShell.mount({ skin })`, `--skin-*` only): the Buy / Ante cards, the feature panel, the big-win overlay (`client/shell/big-win.js`, shared) and the intro splash. Contract and audit: [`layers.md`](layers.md). Enforced by `theme-lint` and `chrome-identity` in `test:lumina`.
+
 ## The shell
 
 `client/shell/shell.js` (served at `/play/shell/`, copied into the demo by `tools/build-demo.mjs`).
@@ -136,7 +140,9 @@ fields only, no server enforcement in this run).
 |---|---|---|
 | `npm run test:motion` | every renderer reads its timings from the motion table | test:client |
 | `npm run test:shell` | the shell at 9 sizes: nothing off screen, no overlap, hit areas ≥44 px | test:client |
-| `tools/probes/lumina-parity.mjs` | controls identical in all three games (place, size, focus order, name, state); no animation frames for 3 s at rest | test:lumina (CI job lumina-checks) |
+| `tools/probes/theme-lint.mjs` | no game file sets a `--lsh-*` property or styles a shell element | test:lumina (CI job lumina-checks) |
+| `tools/probes/chrome-identity.mjs` | the chrome's computed styles and pixels identical in every game at 9 sizes; sheets share their styles; one loader | test:lumina |
+| `tools/probes/lumina-parity.mjs` | controls identical in every game (place, size, focus order, name, state); no animation frames for 3 s at rest | test:lumina (CI job lumina-checks) |
 | `tools/probes/lumina-audit.mjs` | every game at the 9 sizes: in view, no overlap, hit areas ≥44 px (main) / ≥40 px, labels ≥12 px, text contrast ≥4.5:1 from the real pixels | test:lumina |
 | `tools/probes/market-switches.mjs` | UK / DE / default: autoplay, speed, buy and slam as the market says; pacing; DE's panic button (40 px hit) and RTP at the stake, nowhere else | test:lumina |
 | `tools/probes/no-celebrate.mjs` | under UK, no round at or below the stake gets a win sound, gold line or overlay; above it still celebrates | test:lumina |

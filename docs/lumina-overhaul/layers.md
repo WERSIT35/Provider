@@ -4,7 +4,7 @@ Every Lumina game has the **same system interface, pixel for pixel**. Only the g
 
 ## Today (audit, main at #128, demo build, 390x844 and 1440x900)
 
-Positions and sizes already match in all three games (`lumina-parity`). Looks do not. An audit of the computed styles of 17 chrome elements: **180 differences**, in every element.
+Positions and sizes already matched in all three games of the time (`lumina-parity`). Looks do not. An audit of the computed styles of 17 chrome elements: **180 differences**, in every element.
 
 | Element | Vault 20K | Moth & Lantern | Relic Forge |
 |---|---|---|---|
@@ -50,17 +50,18 @@ Values: one face for words and numbers (Inter, `client/assets/fonts/inter-sub-wg
 | Feature rail cards: Buy, Ante, one spare | fixed geometry per layout; label, price in × bet and currency, states from the shell; an absent feature leaves its cell empty | surface, border, ink, title face |
 | Feature panel (intro / retrigger / outro, `shell.panel`) | kicker, title, one rule line, stats, total, continue | frame, title face, accent |
 | Big win / max win (`shell.bigWin`, new) | shared ladder, count-up, skip, 400-700 ms hold; replaces Vault's `big-win.js` chrome, Moth & Lantern's `#celebration`, Relic Forge's `#banner` tiers | tier names, frame, title face, the game's particles behind it |
-| Intro splash (new; `prefs.intro`) | logo zone, one or two feature cards (art + one line), the Layer 1 facts row | scene, card surface, art, title face |
-| Logo zone | one box per layout | the game's logo |
+| Intro splash (new; `prefs.intro`) | over the stage only (the deck stays usable; Spin closes it and spins; a round starting closes it): the game's name, one or two feature cards (art + one line), the Layer 1 facts row and Play | scene, card surface, art, title face |
 | Paytable pages | inside the Layer 1 info sheet | symbol art, rules text |
 
-The skin is one object passed to `LuminaShell.mount({ skin })`: only `--skin-*` custom properties (`--skin-slot-bg`, `--skin-slot-border`, `--skin-slot-ink`, `--skin-title-font`, `--skin-accent`, `--skin-scene`, `--skin-frame`) and asset URLs. The shell reads them only inside Layer 2 slots. `--lsh-*` become private to `shell.css`.
+The logo stays the game's (Layer 3). The proposal had a fixed logo zone; the reference games themselves put their logo in different places (top right, top centre), Vault 20K has none, and moving the other two logos would move their boards. The splash carries each game's name in its title face instead.
 
-Facts on the splash come from data, never literals: max win from rules (`max_win_cap_multiplier` / `max_win_x`); volatility from the game's manifest `games/<code>/game.json` (a new presentation field, `volatility: 1..5`; Vault's rules already say "high"), never from the math.
+The skin is one object passed to `LuminaShell.mount({ skin, particles })`: only `--skin-*` custom properties and asset URLs. As built: type and accent (`--skin-title-font` / `-case` / `-weight`, `--skin-amount-font` for the big-win figures when the title face is too thin, `--skin-accent`), rail cards (`--skin-slot-bg` / `-ink` / `-edge`, `--skin-buy-*`), the panel (`--skin-panel-bg` / `-ink` / `-muted` / `-title` / `-total` / `-frame` / `-radius`), the big win (`--skin-tier-big` … `-max`, `--skin-win-hi` / `--skin-win` / `--skin-win-deep`, `--skin-bigwin-scrim` / `-core`, `--skin-laser*`), the splash (`--skin-scene`); `particles` recolours the big win's coins and sparks. The shell reads them only inside Layer 2 slots. `--lsh-*` become private to `shell.css`.
+
+Facts on the splash come from data, never literals: max win from rules (`max_win_cap_multiplier` / `max_win_x`), feature counts and multipliers from rules; volatility (Low / Medium / High) from where it is declared: Vault 20K's rules (`volatility: "high"`), Moth & Lantern's `math-spec.md` ("medium"), Relic Forge's GDD ("High"), Glasshouse's `DESIGN.md` ("medium-high", shown as Medium-high with a half third bar).
 
 ### Layer 3: the game (free)
 
-Board, symbols, background, mascot, in-board HUDs (Vault's multiplier badge and doors, Moth & Lantern's lanterns and pay glass, Relic Forge's crucible meter and relic tray), effects, sounds, the message line's words.
+Board, symbols, background, mascot, in-board HUDs (Vault's multiplier badge and doors, Moth & Lantern's lanterns and pay glass, Relic Forge's crucible meter and relic tray, Glasshouse's brass house and beam), effects, sounds, the message line's words.
 
 ## Proposal (for review)
 
@@ -69,6 +70,20 @@ The Lumina chrome, and the Layer 2 slots in three skins (`client/shell/preview.h
 ![Proposal at 390x844: deck, menu, info, autoplay, loader, splash in three skins, rail cards in three skins](img/chrome-proposal-390.webp)
 
 ![Proposal at 1440x900: deck, menu, splash, loader](img/chrome-proposal-1440.webp)
+
+## Built (every game, 9 sizes; rows: Vault 20K, Moth & Lantern, Relic Forge, Glasshouse)
+
+Glasshouse (game #4) arrived while the contract was being built and was brought into it the same way: its brass `--lsh-*` theme and `.lsh*` rules became a skin, its own in-board big win became the shared one ("Sunlit" … "Zenith", Full Bloom as the max-win tier), and it got the loader and the splash.
+
+[Deck](img/chrome-deck-9.webp) · [intro splash](img/chrome-splash-9.webp) · [menu](img/chrome-menu-9.webp) · [info](img/chrome-info-9.webp) · [autoplay](img/chrome-autoplay-9.webp) · [feature panel](img/chrome-panel-9.webp) · [big win](img/chrome-bigwin-9.webp)
+
+![The deck in every game at the 9 sizes](img/chrome-deck-9.webp)
+
+## How it is enforced
+
+- `tools/probes/theme-lint.mjs`: no game file sets a `--lsh-*` property or styles a `.lsh*` element (a game's own elements inside shell containers, the `html.lsh-reduced` prefix and `:not(...)` exclusions are allowed).
+- `tools/probes/chrome-identity.mjs`: at the 9 sizes, the computed styles of every chrome element are identical in every game, and with the game layers hidden the frame renders to the same pixels (0 differing pixels at seven sizes; 3 px of the Spin ring's edge anti-alias differently in Vault 20K at 375x667 and 430x932, so up to 8 px are allowed; one game tab at a time); the menu, info, autoplay and bet sheets share their styles; the loader is the same markup.
+- Both run in `test:lumina` (CI job `lumina-checks`).
 
 ## Steps
 

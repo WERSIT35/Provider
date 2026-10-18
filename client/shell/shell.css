@@ -81,7 +81,7 @@
   overflow: hidden;
 }
 .lsh [hidden] { display: none !important; }
-body:not(.app-ready) .lsh { visibility: hidden; } /* never half-drawn before the game is playable */
+body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never half-drawn before the game is playable (Vault 20K pre-renders it under the loader) */
 /* Every control sits in its NAMED area (never auto-placed: order and hiding can never move it). */
 .lsh > [data-area="menu"] { grid-area: menu; } .lsh > [data-area="info"] { grid-area: info; }
 .lsh > [data-area="bal"] { grid-area: bal; } .lsh > [data-area="bet"] { grid-area: bet; } .lsh > [data-area="win"] { grid-area: win; }
@@ -569,6 +569,54 @@ body:not(.app-ready) .lsh { visibility: hidden; } /* never half-drawn before the
 .big-win-overlay.is-reduced .bw-canvas,
 .big-win-overlay.is-reduced .bw-lasers { display: none; }
 .lsh-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Intro splash (layers.md, Layer 2): over the stage only (the deck stays usable). The scene,
+   logo face and cards are the game's skin; the facts row and Play are system. */
+.lsh-splash { position: absolute; inset: 0; z-index: 35; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 10px 4px 6px; container-type: size;
+  background: var(--skin-scene, radial-gradient(120% 80% at 50% 0%, #1b2430 0%, #0b0f14 70%)); border-radius: var(--lsh-radius); color: var(--lsh-ink); }
+.lsh-splash.hidden { display: none; }
+.lsh-splash__logo { justify-self: center; text-align: center; font: var(--skin-title-weight, 700) clamp(22px, 9cqi, 52px)/1 var(--skin-title-font, var(--lsh-font-ui)); text-transform: var(--skin-title-case, none); letter-spacing: 0.03em; color: var(--skin-accent, var(--lsh-accent)); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
+.lsh-splash__cards { min-height: 0; align-self: stretch; max-height: 360px; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; width: min(100%, 720px); justify-self: center; }
+.lsh-splash__card { min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-radius: var(--skin-panel-radius, 12px);
+  background: var(--skin-panel-bg, var(--lsh-sheet)); color: var(--skin-panel-ink, var(--lsh-ink)); box-shadow: var(--skin-panel-frame, inset 0 0 0 1px var(--lsh-deck-line)); }
+.lsh-splash__art { min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.lsh-splash__art > * { max-width: 100%; max-height: min(38cqh, 180px); width: auto; height: auto; }
+.lsh-splash__art svg { width: min(38cqh, 150px); height: min(38cqh, 150px); }
+.lsh-splash__art b { font: 700 clamp(26px, 9cqi, 56px)/1 var(--skin-title-font, var(--lsh-font-ui)); color: var(--skin-panel-total, var(--skin-accent, var(--lsh-accent))); }
+.lsh-splash__card p { margin: 0; font: 600 clamp(12px, 3.6cqi, 15px)/1.35 var(--lsh-font-ui); text-align: center; }
+.lsh-splash__facts { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; width: min(100%, 720px); justify-self: center; padding: 8px 10px; border-radius: var(--lsh-radius); background: var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line); }
+.lsh-splash__list { display: grid; gap: 4px; }
+.lsh-splash__list p { margin: 0; font: 700 12px/1.3 var(--lsh-font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-splash__list strong, .lsh-splash__list b { font: 800 16px/1 var(--lsh-font-num); letter-spacing: 0; text-transform: none; color: var(--lsh-ink); }
+.lsh-splash__vol { display: inline-flex; align-items: end; gap: 2px; margin: 0 4px; vertical-align: -1px; }
+.lsh-splash__vol i { width: 5px; border-radius: 1px; background: rgba(255, 255, 255, 0.22); }
+.lsh-splash__vol i:nth-child(1) { height: 6px; } .lsh-splash__vol i:nth-child(2) { height: 9px; } .lsh-splash__vol i:nth-child(3) { height: 12px; }
+.lsh-splash__vol i.on { background: var(--lsh-accent); }
+.lsh-splash__vol i.half { background: linear-gradient(90deg, var(--lsh-accent) 50%, rgba(255, 255, 255, 0.22) 50%); }
+.lsh-splash__dont { display: flex; align-items: center; gap: 8px; min-height: 40px; font: 600 13px/1 var(--lsh-font-ui); color: var(--lsh-ink); cursor: pointer; }
+.lsh-splash__dont input { width: 20px; height: 20px; margin: 0; accent-color: var(--lsh-accent); }
+.lsh-splash__play { width: 64px; height: 64px; border-radius: 50%; border: 0; cursor: pointer; background: var(--lsh-spin-face); box-shadow: var(--lsh-spin-ring); color: var(--lsh-accent-ink); font: 800 13px/1 var(--lsh-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.lsh-splash__play:focus-visible { outline: 3px solid var(--lsh-ink); outline-offset: 3px; }
+@container (max-height: 460px) { .lsh-splash { gap: 6px; padding-top: 6px; } .lsh-splash__logo { font-size: 26px; } .lsh-splash__card { padding: 8px; gap: 4px; } .lsh-splash__card p { font-size: 12px; } .lsh-splash__facts { padding: 4px 10px; } .lsh-splash__dont { min-height: 32px; } .lsh-splash__play { width: 56px; height: 56px; } }
+@container (max-height: 340px) { .lsh-splash__cards { align-self: center; } .lsh-splash__art > * { max-height: 22cqh; } .lsh-splash__art svg { width: 22cqh; height: 22cqh; } .lsh-splash__logo { font-size: 22px; } }
+@container (max-height: 240px) { .lsh-splash__art { display: none; } }
+
+/* The Lumina provider loader (layers.md, Layer 1): the same in every game, in each page's
+   markup before any script. Fades out on body.app-ready; Vault 20K drives the bar, the
+   others show an indeterminate sweep. */
+.lsh-loader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0b0f14; color: #eef1f4; transition: opacity 0.45s ease, visibility 0s linear 0.45s; }
+body.app-ready .lsh-loader { opacity: 0; visibility: hidden; pointer-events: none; }
+.lsh-loader__inner { display: grid; justify-items: center; gap: 16px; }
+.lsh-loader__mark { width: 56px; height: 56px; }
+.lsh-loader__word { font: 800 22px/1 "Lumina UI", system-ui, sans-serif; letter-spacing: 0.32em; padding-left: 0.32em; text-align: center; }
+.lsh-loader__word small { display: block; margin-top: 8px; font: 600 11px/1 "Lumina UI", system-ui, sans-serif; letter-spacing: 0.5em; padding-left: 0.5em; color: #9aa7ad; }
+.lsh-loader__track { width: 168px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.lsh-loader__bar { width: 0%; height: 100%; background: #f2c14e; transition: width 0.25s ease; }
+.lsh-loader.is-indeterminate .lsh-loader__bar { width: 40%; animation: lshLoad 1.1s ease-in-out infinite; }
+body.app-ready .lsh-loader.is-indeterminate .lsh-loader__bar { animation: none; } /* idle zero once the game is up */
+@keyframes lshLoad { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.lsh-loader__pct { min-height: 12px; font: 600 12px/1 "Lumina UI", system-ui, sans-serif; letter-spacing: 0.08em; color: #9aa7ad; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .lsh-loader.is-indeterminate .lsh-loader__bar { animation: none; width: 100%; opacity: 0.6; } }
 /* Landscape phones: the rails start right under the strip, so the strip's hanging controls
    (Games, full screen, the DE panic button) sit over the stage column instead. */
 @media (orientation: landscape) and (max-height: 520px) {

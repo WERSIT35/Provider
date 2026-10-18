@@ -7395,6 +7395,7 @@ async function loadRules() {
     const allowed = rules.features?.multipliers?.allowed_values || [];
     renderMultiplierInfo(allowed);
     ticker.refresh();
+    showIntroSplash();
   } catch (err) {
     pushGameMessage(`Rules load failed: ${err.message}`, "error");
   }
@@ -8161,6 +8162,7 @@ function runBootLoader() {
     setProgress(100);
     document.body.classList.add("app-ready");
     loadDeferredAssets();
+    showIntroSplash();
   };
 
   // Advance the bar as each existing load settles.
@@ -8174,6 +8176,27 @@ function runBootLoader() {
   Promise.all(waits).then(() => {
     clearTimeout(safety);
     reveal();
+  });
+}
+
+// The intro splash (the shared Lumina slot, layers.md): what the game is, in two cards, with
+// the facts read from the rules (max win, volatility) and nothing that implies a win is likely.
+let introSplashShown = false;
+function showIntroSplash() {
+  const shell = window.VaultShell?.api, r = state.rules;
+  // Once the game is playable and its rules are in (whichever comes last).
+  if (introSplashShown || !shell?.splash || !r || !document.body.classList.contains("app-ready")) return;
+  introSplashShown = true;
+  const fs = r.features?.free_spins || {}, m = r.features?.multipliers || {};
+  const art = (id) => { try { return window.__luminaSymbols.render(id, 160); } catch { return ""; } };
+  shell.splash({
+    logo: "Vault 20K",
+    cards: [
+      { art: art("SCATTER"), line: `${fs.base_trigger_scatter_count || 4} or more Scatters award ${fs.base_award_spins || 15} free spins.` },
+      { art: art("MULTI_1000"), line: `Multipliers up to ${Number(m.range_max || 1000).toLocaleString("en-US")}× add up for the whole bonus.` }
+    ],
+    maxX: r.max_win_cap_multiplier,
+    volatility: r.volatility
   });
 }
 

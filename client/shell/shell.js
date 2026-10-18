@@ -256,6 +256,7 @@
       // ready | flight | result | tumble | feature | autoplay | wait | broke | blocked
       S.phase = phase;
       frame.dataset.phase = phase;
+      if (phase === "flight" || phase === "autoplay") S.splashClose?.(); // a round started (Spin, buy, autoplay): the intro is done
       const busy = phase !== "ready" && phase !== "broke";
       el.minus.disabled = busy || S.betLocked || S.betIndex <= 0;
       el.plus.disabled = busy || S.betLocked || S.betIndex >= S.bets.length - 1;
@@ -474,6 +475,45 @@
       return anim.finished.catch(() => {}).then(() => { n.remove(); if (sp !== "reduced") target.animate([{ transform: "scale(1.14)" }, { transform: "none" }], { duration: 220 }); });
     }
 
+    // ── intro splash (Layer 2: fixed structure; the facts row and Play are Layer 1) ──
+    // Over the stage only, never the deck: the controls stay usable, and Spin both closes it
+    // and spins. "Don't show next time" is the Menu's Intro screen switch (prefs.intro).
+    const splashEl = doc.createElement("section");
+    splashEl.className = "lsh-splash hidden";
+    splashEl.setAttribute("role", "dialog"); splashEl.setAttribute("aria-label", "Game intro");
+    el.stage.appendChild(splashEl);
+    N?.register("lsh-splash", splashEl, { kind: "feature", visibility: "class", dismiss: {} });
+    const VOL = { low: 1, medium: 2, "medium-high": 2.5, high: 3 };
+    const VOL_NAME = { 1: "Low", 2: "Medium", 2.5: "Medium-high", 3: "High" };
+    /** { logo, cards: [{ art: Node|html, line }], maxX, volatility: "low"|"medium"|"high" }.
+     *  Resolves "play" / "spin", or "skipped" when the player turned it off (or ?intro=0). */
+    function splash(s = {}) {
+      if (!prefs.intro || /[?&]intro=0\b/.test(root.location?.search || "")) return Promise.resolve("skipped");
+      const vol = VOL[String(s.volatility || "").toLowerCase()] || 0;
+      splashEl.innerHTML = `<div class="lsh-splash__logo">${esc(s.logo || "")}</div>
+        <div class="lsh-splash__cards">${(s.cards || []).slice(0, 2).map((c, i) => `<div class="lsh-splash__card"><div class="lsh-splash__art" data-art="${i}"></div><p>${esc(c.line || "")}</p></div>`).join("")}</div>
+        <div class="lsh-splash__facts">
+          <div class="lsh-splash__list">
+            ${s.maxX ? `<p>Win up to <strong>${esc(Number(s.maxX).toLocaleString("en-US"))}× bet</strong></p>` : ""}
+            ${vol ? `<p>Volatility <span class="lsh-splash__vol" aria-hidden="true">${[1, 2, 3].map((n) => `<i class="${n <= vol ? "on" : n - 0.5 === vol ? "half" : ""}"></i>`).join("")}</span> <b>${VOL_NAME[vol]}</b></p>` : ""}
+            <label class="lsh-splash__dont"><input type="checkbox" data-dont> Don't show next time</label>
+          </div>
+          <button type="button" class="lsh-splash__play" data-vx-close="play" data-vx-autofocus>Play</button>
+        </div>`;
+      (s.cards || []).slice(0, 2).forEach((c, i) => {
+        const slot = splashEl.querySelector(`[data-art="${i}"]`);
+        if (c.art instanceof root.Node) slot.appendChild(c.art); else if (c.art) slot.innerHTML = String(c.art);
+      });
+      const done = N ? N.open("lsh-splash") : Promise.resolve("play");
+      return done.then((r) => { if (splashEl.querySelector("[data-dont]")?.checked) setPref("intro", false); return r; });
+    }
+    // A Spin press while the splash is up starts playing: it closes the splash and spins.
+    const closeSplash = () => { if (!splashEl.classList.contains("hidden")) N?.get?.("lsh-splash")?.close?.("spin"); };
+    S.splashClose = closeSplash;
+    el.spin.addEventListener("pointerdown", closeSplash, true);
+    el.spin.addEventListener("keydown", closeSplash, true);
+    doc.addEventListener("keydown", (e) => { if (e.code === "Space" && !e.target.closest?.(".lsh-splash")) closeSplash(); }, true);
+
     // ── big win (Layer 2: one structure and behaviour, the game's skin and tier names) ──
     // The shared controller (client/shell/big-win.js). Vault 20K owns its own instance on its
     // #bigWinOverlay; any other game gets one built here on the same markup.
@@ -608,7 +648,7 @@
     const api = {
       frame, el, ticker, prefs,
       get phase() { return S.phase; },
-      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask, panel, flyPlus, callout, bigWin, ladder,
+      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask, panel, flyPlus, callout, bigWin, ladder, splash,
       get bigWinActive() { return Boolean(bwCtl?.active); },
       applyMarket, celebrates, slamAllowed, anticipationSkippable, turboAllowed, autoplayCap, rule,
       speed, reducedMotion,

@@ -102,6 +102,10 @@ check of our design, not a claim about anyone's play.
    on the phone. Point at four symbols in each row and ask them to name or describe each
    one. Note any two symbols they mix up.
 
+### 7. One interface (about 2 min)
+
+Show three screenshots of the control bar alone (the board cropped away), one per game, in a random order. Ask: **"Which game is each one from?"** The answer should be "I can't tell": the bar is the same in every Lumina game. Then ask them to change the bet and open the menu in the game they played least; note any hesitation.
+
 ## Score sheet (one per player)
 
 | | Vault 20K | Moth & Lantern | Relic Forge | Glasshouse |
