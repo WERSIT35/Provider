@@ -896,6 +896,18 @@
     if (Bridge?.connect?.(session.embed?.allowed_hosts)) Bridge.ready({ game: "glasshouse", currency: S.currency, balance: S.balance });
     document.body.classList.add("app-ready");
     performance.mark("app-ready");
+    // The intro splash (shared Lumina slot): facts from rules.json; volatility from DESIGN.md
+    // ("medium-high").
+    const fs = S.rules.free_spins;
+    shell.splash({
+      logo: "Glasshouse",
+      cards: [
+        { art: window.__luminaSymbols.render("LENS", 160), line: "The Sun Lens throws a beam; mirrors bend it, and every pane it crosses turns wild." },
+        { art: window.__luminaSymbols.render("ROSE", 160), line: `${fs.scatters} or more Glass Roses award ${fs.award} free spins. Lit panes stay lit for ${fs.sticky_spins} more spins.` }
+      ],
+      maxX: S.rules.max_win_x,
+      volatility: "medium-high"
+    });
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);

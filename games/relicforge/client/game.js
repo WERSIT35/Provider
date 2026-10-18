@@ -891,6 +891,17 @@
     shell.setWin(0);
     document.body.classList.add("app-ready");
     performance.mark("app-ready");
+    // The intro splash (shared Lumina slot): facts from rules.json; volatility from the GDD
+    // (docs/relic-forge/01-GDD.md: "High").
+    shell.splash({
+      logo: "Relic Forge",
+      cards: [
+        { art: svgFor("EMBER"), line: `${S.rules.forge_meter.embers_to_fill} Embers fill the Forge meter and start the Forge.` },
+        { art: svgFor("SCATTER"), line: `${S.rules.forge.scatters_to_trigger} or more Anvils also start it: ${S.rules.forge.free_spins} free spins, a relic before each.` }
+      ],
+      maxX: S.rules.max_win_cap_multiplier,
+      volatility: "high"
+    });
     setControls();
     // Sounds load on the first touch or key (VX_AUDIO_PRELOAD = "manual"), never during load.
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };

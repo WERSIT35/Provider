@@ -90,7 +90,7 @@ async function run(game, market) {
       const out = { overlay: false, gold: false };
       const t0 = performance.now();
       while (performance.now() - t0 < 15000) {
-        if (document.querySelector("#celebration:not([hidden]), #banner:not([hidden]), #bigWinOverlay.is-open")) out.overlay = true;
+        if (document.querySelector("#bigWinOverlay.is-open")) out.overlay = true; // the shared big-win overlay (every game)
         if (document.getElementById("psTicker")?.dataset.state === "win") out.gold = true;
         if (!window.__spinLifecycle.inFlight) break;
         await new Promise((r) => setTimeout(r, 30));

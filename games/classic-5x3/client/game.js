@@ -882,6 +882,18 @@
     if (Bridge?.connect?.(session.embed?.allowed_hosts)) Bridge.ready({ game: "classic-5x3", currency: S.currency, balance: S.balance });
     document.body.classList.add("app-ready");
     performance.mark("app-ready");
+    // The intro splash (shared Lumina slot): facts from rules.json; volatility from
+    // math-spec.md ("medium").
+    const fs = S.rules.free_spins;
+    shell.splash({
+      logo: "Moth & Lantern",
+      cards: [
+        { art: window.__luminaSymbols.render("SCATTER", 160), line: `3, 4 or 5 Full Moons award ${fs.awards.join(", ")} free spins.` },
+        { art: window.__luminaSymbols.render("WILD", 160), line: `In free spins every win is ×${fs.multiplier}.` }
+      ],
+      maxX: S.rules.max_win_x,
+      volatility: "medium"
+    });
     // Sounds load on the player's first touch or key (VX_AUDIO_PRELOAD = "manual"): the audio
     // context may only start on a gesture anyway, and creating it and decoding right after
     // the reveal held a slow phone's main thread for ~3 s (bench: Slow 4G + 4x CPU), so the
