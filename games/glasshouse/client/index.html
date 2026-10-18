@@ -110,6 +110,12 @@
     /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the logo. */
     @media (max-width: 560px) { .sky { padding-top: 30px; } }
     @media (orientation: portrait) and (max-height: 700px) { .logo svg { width: clamp(200px, 64vw, 320px); } }
+    /* Tall phones: the spare height goes to the logo and the glasshouse roof, not empty space. */
+    @media (orientation: portrait) and (min-height: 760px) {
+      .logo svg { width: min(88vw, 440px); }
+      .house { --arch: clamp(30px, 11cqh, 96px); }
+      .ferns { height: clamp(24px, 8cqh, 60px); bottom: calc(-1 * clamp(14px, 4cqh, 34px)); }
+    }
     @media (orientation: landscape) and (max-height: 520px) {
       .gh-stage { gap: 4px; }
       .sky { padding: 0 0 0 84px; }

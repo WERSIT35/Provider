@@ -110,7 +110,7 @@
 
     // The pane behind the motif: frosted dawn glass, a few mottles, a soft streak of reflection.
     const bg = sym === "ROSE" ? ["#3c5f9e", "#1d3a6e", "#10244a"] : sym === "LENS" ? ["#fff1d0", "#e9c690", "#b88d55"] : sym === "CLEAR" ? ["#fbf6ee", "#efe4d6", "#dccbb8"]
-      : sym.startsWith("MIRROR") ? ["#eef0f2", "#cfd5da", "#a9b2ba"] : ["SUNDIAL", "WATERING_CAN", "ORCHID", "HUMMINGBIRD"].includes(sym) ? ["#f6e4c8", "#e3c9a3", "#c4a47a"] : ["#f1e3d8", "#dcc5b6", "#bfa392"];
+      : sym.startsWith("MIRROR") ? ["#fbefe9", "#ecd6cd", "#d2b6aa"] : ["SUNDIAL", "WATERING_CAN", "ORCHID", "HUMMINGBIRD"].includes(sym) ? ["#f6e4c8", "#e3c9a3", "#c4a47a"] : ["#f1e3d8", "#dcc5b6", "#bfa392"];
     g.fillStyle = grad(0, 0, 1, 1, bg); g.fillRect(0, 0, s, s);
     g.save(); g.globalAlpha = 0.22; g.fillStyle = "#ffffff";
     g.beginPath(); g.moveTo(X(0.08), X(0.02)); g.lineTo(X(0.3), X(0.02)); g.lineTo(X(0.02), X(0.3)); g.lineTo(X(0.02), X(0.12)); g.closePath(); g.fill();
@@ -201,11 +201,15 @@
         g.save();
         if (sym === "MIRROR_FALL") { g.translate(s, 0); g.scale(-1, 1); }
         g.translate(X(0.5), X(0.5)); g.rotate(-Math.PI / 4);
-        const L = 0.66, W = 0.2;
-        g.beginPath(); g.rect(X(-L), X(-W / 2), X(2 * L), X(W));
-        const sv = g.createLinearGradient(0, X(-W / 2), 0, X(W / 2)); sv.addColorStop(0, "#ffffff"); sv.addColorStop(0.45, "#c9d1d8"); sv.addColorStop(1, "#6f7b86");
-        g.fillStyle = sv; g.fill(); g.lineWidth = lw * 1.2; g.strokeStyle = LEAD; g.stroke();
-        g.beginPath(); g.moveTo(X(-L * 0.8), X(-W * 0.18)); g.lineTo(X(L * 0.8), X(-W * 0.18)); g.lineWidth = lw * 0.4; g.strokeStyle = "rgba(255,255,255,0.95)"; g.stroke();
+        const L = 0.6, W = 0.17;
+        // The silver: bright along its top edge, the dawn caught in its lower half.
+        const sv = g.createLinearGradient(0, X(-W / 2), 0, X(W / 2));
+        sv.addColorStop(0, "#ffffff"); sv.addColorStop(0.35, "#e6ebf0"); sv.addColorStop(0.62, "#f2cfc4"); sv.addColorStop(1, "#9aa6b1");
+        g.beginPath(); g.rect(X(-L), X(-W / 2), X(2 * L), X(W)); g.fillStyle = sv; g.fill();
+        g.lineWidth = lw * 0.9; g.strokeStyle = LEAD; g.stroke();
+        g.beginPath(); g.moveTo(X(-L * 0.86), X(-W * 0.22)); g.lineTo(X(L * 0.86), X(-W * 0.22)); g.lineWidth = lw * 0.35; g.strokeStyle = "rgba(255,255,255,0.95)"; g.stroke();
+        // Brass caps hold the glass at both ends.
+        for (const x of [-L, L - 0.08]) { g.beginPath(); g.rect(X(x), X(-W / 2 - 0.02), X(0.08), X(W + 0.04)); g.fillStyle = grad(0, -0.1, 0, 0.1, GLASS.brass); g.fill(); g.lineWidth = lw * 0.7; g.strokeStyle = LEAD; g.stroke(); }
         g.restore();
         break;
       }
