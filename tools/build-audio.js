@@ -6,6 +6,7 @@
 //
 //   node tools/build-audio.js           build client/assets/audio/{sfx,music,ir}/* + manifest.json
 //   node tools/build-audio.js --check   verify the built set (licence rows, sources, peaks, onsets, sizes)
+//   node tools/build-audio.js --only strike,bang   rebuild just those keys (the rest stays byte-identical)
 //
 // Every pick is copied from art-src/audio/candidates/ (or incoming/) into
 // art-src/audio/freesound/ (or user/), and its Freesound licence row is written
@@ -80,7 +81,8 @@ const SOUNDS = {
   win_small: { tier: "win", variations: [{ layers: [[P("win_land"), 0, 0, 40], [P("win_light"), -8, 0]], max: 1.0, fadeOut: 400, hp: 150 }] },
   combine_total: { tier: "win", variations: [{ layers: [[P("combine_total"), 0, 0]], max: 1.0, fadeOut: 300, hp: 150 }] },
   // Multipliers.
-  strike: { tier: "win", variations: [{ layers: [[P("strike"), 0, 0], [P("thunder"), -6, 80]], max: 1.4, fadeOut: 600, hp: 40, comp: true }] },
+  // The multiplier reveal (vault-multiplier.md): the laser's zap, then the plate's metal clunk. No thunder.
+  strike: { tier: "win", variations: [{ layers: [[P("strike"), 0, 0], [P("bang"), -5, 90]], max: 1.1, fadeOut: 450, hp: 60, comp: true }] },
   bang: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0]], max: 0.9, fadeOut: 350, hp: 100 }) },
   bang_big: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0], [P("sub_impact"), -5, 0]], max: 1.6, fadeOut: 550, hp: 30, comp: true }) },
   soul_launch: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.3, fadeOut: 80, hp: 150 }] },
@@ -258,6 +260,19 @@ function buildMusic(mood, m) {
 
 function build() {
   importPicks();
+  const only = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1].split(",") : null;
+  if (only) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "manifest.json"), "utf8"));
+    for (const key of only) {
+      const def = SOUNDS[key];
+      if (!def) throw new Error(`no sound key ${key}`);
+      manifest.sounds[key] = def.variations.map((v, i) => buildVariation(key, def, v, i));
+      manifest.sends[key] = SEND[def.tier];
+    }
+    fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    console.log("rebuilt", only.join(", "));
+    return;
+  }
   for (const d of ["sfx", "music", "ir"]) {
     fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
     fs.mkdirSync(path.join(OUT, d), { recursive: true });

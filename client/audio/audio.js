@@ -250,7 +250,7 @@
     win_land: { minGap: 120, voice: () => ({ key: "win_land", bus: "sfx", duck: true }) },
     // The big-win overlay opens: a firework over a cannon, and the music dips.
     bigwin_open: { minGap: 200, voice: () => ({ key: "bigwin_open", bus: "sfx", duck: true }) },
-    // The lightning strike, on the flash frame: crack + short thunder.
+    // The multiplier reveal, as the laser cut closes: zap + metal clunk.
     multiplier_strike: { minGap: 40, voice: () => ({ key: "strike", bus: "sfx", duck: true }) },
     // The multiplier is revealed: its bell's pitch and weight follow the value,
     // 2x small and bright … 1000x huge and deep (a low blast joins from 50x).

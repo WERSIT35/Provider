@@ -9,7 +9,7 @@
 // offset (sound − picture, ms; negative = the sound is early).
 //
 // Beats: spin start, every symbol landing (renderer probe hook _traceDraw),
-// each reel's stack landing, burst, tumble refill, step win, lightning bolt and
+// each reel's stack landing, burst, tumble refill, step win, laser reveal and
 // flash peak, multiplier reveal, multiplier soul landing on the total, win
 // combine (enter / slam / collision / total), scatter landing n of need, lock-on,
 // scatter celebration, feature screens, FS intro / outro, retrigger, win count-up,
@@ -234,7 +234,7 @@ function RECORDER() {
     if (fx.lockOn && fx.lockOn !== prev.lockOn) beat("lock-on drawn");
     if (fx.pulse && fx.pulse !== prev.pulse) beat(R.inScatterCelebration ? "scatter celebration glow" : "winning cluster lights (step win)");
     for (const st of fx.drop?.strikes || []) {
-      if (st.bolted && !st.__seenBolt) { st.__seenBolt = true; beat("lightning bolt drawn", { cell: st.key, value: st.value }); }
+      if (st.bolted && !st.__seenBolt) { st.__seenBolt = true; beat("laser reveal started", { cell: st.key, value: st.value }); }
       if (st.swapped && !st.__seenSwap) { st.__seenSwap = true; beat("strike flash peak = multiplier revealed", { cell: st.key, value: st.value }); }
     }
     // Landings, from what was drawn: IMPACT = the first frame a falling symbol

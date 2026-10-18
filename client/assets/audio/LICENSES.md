@@ -89,7 +89,7 @@ Pack licence texts: `art-src/audio/kenney/<pack>/License.txt`.
 | item_coins_02.ogg | 80 CC0 RPG SFX (rubberduck) | https://opengameart.org/content/80-cc0-rpg-sfx | `win_land`, `combine_total`, `feature_award`, `feature_more`, `buy` |
 | item_gem_04.ogg | 80 CC0 RPG SFX (rubberduck) | https://opengameart.org/content/80-cc0-rpg-sfx | not used since 2026-10-11 |
 | bell_02.ogg, gong_01.ogg, gong_02.ogg | 100 CC0 SFX (rubberduck) | https://opengameart.org/content/100-cc0-sfx | `scatter`, `scatter_catch`, `max_win` |
-| sfx100v2_air_01.ogg, sfx100v2_air_02.ogg, sfx100v2_air_03.ogg, sfx100v2_thunder_01.ogg, sfx100v2_glass_04.ogg | 100 CC0 SFX #2 (rubberduck) | https://opengameart.org/content/100-cc0-sfx-2 | `riser`, `spin_start`, `soul_launch`, `strike`, `fs_intro`, `win_light` |
+| sfx100v2_air_01.ogg, sfx100v2_air_02.ogg, sfx100v2_air_03.ogg, sfx100v2_thunder_01.ogg, sfx100v2_glass_04.ogg | 100 CC0 SFX #2 (rubberduck) | https://opengameart.org/content/100-cc0-sfx-2 | `riser`, `spin_start`, `soul_launch`, `fs_intro`, `win_light` |
 | fw_03.ogg, cannon_01.ogg | 25 CC0 bang / firework SFX (rubberduck) | https://opengameart.org/content/25-cc0-bang-firework-sfx | `bigwin_open`, `max_win` |
 | groundhit.wav | Electricity Game Sound Pack (faxcorp) | https://opengameart.org/content/electricity-game-sound-pack | `strike` |
 | spark.wav, continuousspark.wav | Electricity Sound Effects (BMacZero; recorded from a Tesla generator) | https://opengameart.org/content/electricity-sound-effects-0 | `strike` |

@@ -471,16 +471,17 @@ const MOTION = {
 // (sin arc: never below 1, never transparent). Its art is visible the whole
 // fall: no decoy, no hide-and-pop (user: symbols must never vanish).
 const MULTI_PUNCH = MOTION_TABLE.MULTI_PUNCH;
-// Multiplier strike (user, 2026-10-08: the player must not know a multiplier
-// is coming, and it should arrive like a lightning strike). Every board lands
-// FULL: a new multiplier falls in its reel's stack as a stand-in symbol (one
-// that can never form or suggest a win, see pickStandIn). Once the whole drop
-// has landed, after beatMs, lightning strikes the cell: a short crackle at
-// the top of its lane (flickerMs), the bolt, and a white-gold flash; at the
-// flash's peak (flashPeakMs) the art turns into the multiplier (always at
-// full opacity), which then punches and BANGs. Several strike left to right,
-// gapMs apart. Turbo-scaled; a Stop strikes at once (stopMs per strike).
-const STRIKE = { ...MOTION_TABLE.STRIKE, flash: "#fff4c8" };
+// Multiplier reveal (STRIKE; user, 2026-10-08: the player must not know a
+// multiplier is coming). Every board lands FULL: a new multiplier falls in its
+// reel's stack as a stand-in symbol (one that can never form or suggest a win,
+// see pickStandIn). Once the whole drop has landed, after beatMs, the vault's
+// laser cuts it free (docs/lumina-overhaul/vault-multiplier.md): an emitter
+// flickers on the left frame rail (flickerMs), the beam fires sideways and
+// traces the plate's hexagon, and as the cut closes (flashPeakMs) the art turns
+// into the hex plate (always at full opacity), which then punches and BANGs.
+// Nothing comes from above. Several reveal left to right, gapMs apart.
+// Turbo-scaled; a Stop reveals at once (stopMs per reveal).
+const STRIKE = { ...MOTION_TABLE.STRIKE, beam: "#43f0e0", cut: "#ffb347" };
 const MOTION_REDUCED = Object.freeze({ ...MOTION, squash: 0, breathDepth: 0, breathRipple: 0 });
 
 // Win focus (#55). From the moment a cluster is caught until the board moves
@@ -683,6 +684,7 @@ const THEME = (() => {
       big:  tok("--tier-big",  "#f2c14e"),
       mega: tok("--tier-mega", "#ff2a3a"),
       epic: tok("--tier-epic", "#ffe7a3"),
+      legendary: tok("--tier-legendary", "#7ff6e6"),
       max:  tok("--tier-max",  "#ffffff")
     },
 
@@ -716,170 +718,125 @@ function getMultiplierTier(value) {
   return MULTIPLIER_TIER_BY_VALUE.get(Number(value)) || MULTIPLIER_TIER_DEFS[0];
 }
 
-// The multiplier emblem (user, 2026-10-09): a WINGED SUN DISC, drawn as
-// vectors in code, not a coin. A silhouette no other symbol has (two spread
-// wings), sized to its cell (boxW × boxH of the lane/row; no per-value
-// scale), and the number is the hero: as large as fits over the disc (the
-// text box may cover the rim), with a smaller "x". Tiers share the shape
-// and differ in metal, feathers, rays and extras. One table, so a second
-// game re-skins it by values; baked per value + size (multiplierSprite), so
-// drawing one is a single drawImage. Static: the board is still at rest.
+// The multiplier (docs/lumina-overhaul/vault-multiplier.md): a MACHINED HEX PLATE,
+// drawn as vectors in code. A flat-topped hexagon with a bevelled rim, a rivet at each
+// vertex and a bolt tab on the left and right edges: a silhouette no other Vault symbol
+// has, also at 48 px in grayscale. The number is the hero (engraved across the face, a
+// smaller "x"). Tiers share the shape and differ in the face metal; no glow at rest
+// (rare and above bake a static inner edge light). One table, so a second game re-skins
+// it by values; baked per value + size (multiplierSprite): one drawImage per cell.
 const MULTI_EMBLEM = {
   boxW: 0.98, boxH: 0.92,     // the emblem's box, fractions of the cell
-  discR: 0.31,                // disc radius, fraction of min(box w, h)
-  rays: { inner: 0.96, long: 1.26, short: 1.12 },
-  text: { w: 1.02, cap: 0.66, x: 0.6 }, // text box (× disc diameter), "x" size (× number)
-  outline: "#120a04",
+  hexR: 0.4,                  // hexagon circumradius, fraction of min(box w, h)
+  tab: { w: 0.2, h: 0.42 },   // bolt tabs (× hexR): how far they stand out, how tall
+  text: { w: 1.56, cap: 0.86, x: 0.6 }, // text box (× hexR; it may cover the rim), "x" size (× number)
+  outline: "#0b0f14",
   tiers: {
-    common:    { metal: ["#ffd9b0", "#c07a43", "#5a2f12"], face: ["#fff0dc", "#d79a62", "#7a4219"], text: "#ffe3c4", feathers: 5, rays: 16 },
-    rare:      { metal: ["#f2fbff", "#8fb9d4", "#24435a"], face: ["#f6fcff", "#86cdf2", "#1b5a85"], text: "#d8f3ff", feathers: 6, rays: 18, glow: "#4fc3f7" },
-    epic:      { metal: ["#ffe6cc", "#ff8a3d", "#6e2405"], face: ["#fff2e2", "#ffa45e", "#8a3104"], text: "#ffe0c0", feathers: 7, rays: 20, glow: "#ff7a2b" },
-    legendary: { metal: ["#fff7cf", "#f2c14e", "#6f4a0b"], face: ["#fffbe8", "#f7d77a", "#8a6212"], text: "#fff2b8", feathers: 8, rays: 22, glow: "#f2c14e", flames: true },
-    mythic:    { metal: ["#ffe3f1", "#ff4d6d", "#4f0819"], face: ["#fff2f8", "#ff7aa8", "#6e0d33"], text: "#ffd6e6", feathers: 9, rays: 24, glow: "#ff2a3a", flames: true, prism: true }
+    common:    { rim: ["#e7c3a0", "#9a5d33", "#3d200c"], face: ["#f6dcc0", "#c58350", "#6e3a15"], text: "#ffe6cc" },
+    rare:      { rim: ["#e3eef6", "#6f8fa8", "#1d2f3e"], face: ["#e8f6ff", "#5f9cc6", "#173e5c"], text: "#dff4ff", edge: "#7fd6ff" },
+    epic:      { rim: ["#ffe2c4", "#c8662a", "#4c1a04"], face: ["#ffecd6", "#ef8c45", "#7a2b06"], text: "#ffe4c8", edge: "#ffae6b" },
+    legendary: { rim: ["#fff4c9", "#c99a2e", "#4f3506"], face: ["#fffbe6", "#f1cf6a", "#86600f"], text: "#fff4c0", edge: "#ffe08a" },
+    mythic:    { rim: ["#ffd9e7", "#b02a4d", "#3c0614"], face: ["#ffeef5", "#e8507f", "#640d2e"], text: "#ffe0ec", edge: "#ff8fb3", prism: true }
   }
 };
 
-/** Draw the winged sun disc for multiplier `value` into a W×H box on `ctx`
- *  (CSS px, origin top-left). Pure: no renderer state. */
-function drawWingedSun(ctx, W, H, tierKey, value) {
+/** Draw the hex plate for multiplier `value` into a W×H box on `ctx` (CSS px, origin
+ *  top-left). Pure: no renderer state. */
+function drawHexPlate(ctx, W, H, tierKey, value) {
   const E = MULTI_EMBLEM;
   const T = E.tiers[tierKey] || E.tiers.common;
   const cx = W / 2;
-  const cy = H * 0.5;
-  const R = Math.min(W, H) * E.discR;
-  const edge = Math.max(0.8, R * 0.035);
-  const metal = (y0, y1) => {
+  const cy = H / 2;
+  const R = Math.min(W, H) * E.hexR;
+  const edge = Math.max(0.8, R * 0.04);
+  const hex = (r) => { // flat-topped: vertices at 0°, 60°, … (left/right points)
+    ctx.beginPath();
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i * Math.PI) / 3;
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.92;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  };
+  const grad = (stops, y0, y1) => {
     const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0, T.metal[0]);
-    g.addColorStop(0.55, T.metal[1]);
-    g.addColorStop(1, T.metal[2]);
+    g.addColorStop(0, stops[0]); g.addColorStop(0.55, stops[1]); g.addColorStop(1, stops[2]);
     return g;
   };
   ctx.save();
   ctx.lineJoin = "round";
 
-  // Wings: layered feathers each side, behind everything. The top feather
-  // reaches furthest and curls up; lower ones are shorter and droop.
-  const n = T.feathers;
-  const reach = W * 0.49 - R * 0.5; // horizontal room from the root to the box edge
+  // Bolt tabs on the left and right points, behind the plate, each with a bolt head.
+  const tw = R * E.tab.w, th = R * E.tab.h;
   for (const side of [-1, 1]) {
-    for (let i = n - 1; i >= 0; i -= 1) {
-      const k = n > 1 ? i / (n - 1) : 0; // 0 = top feather, 1 = bottom
-      const ang = (-18 + 52 * k) * Math.PI / 180;
-      const rootX = cx + side * R * 0.5;
-      const rootY = cy - R * 0.42 + R * 0.84 * k;
-      const len = reach * (1 - 0.45 * k);
-      const tipX = rootX + side * len;
-      const tipY = clamp(rootY + Math.tan(ang) * len - (1 - k) * R * 0.28, H * 0.05, H * 0.95);
-      const wRoot = R * (0.36 - 0.12 * k);
-      const mx = (rootX + tipX) / 2;
-      const my = (rootY + tipY) / 2;
-      ctx.beginPath();
-      ctx.moveTo(rootX, rootY - wRoot / 2);
-      ctx.quadraticCurveTo(mx, my - wRoot * 0.95, tipX, tipY);
-      ctx.quadraticCurveTo(mx + side * len * 0.05, my + wRoot * 0.55, rootX, rootY + wRoot / 2);
-      ctx.closePath();
-      ctx.fillStyle = metal(rootY - R * 0.6, rootY + R * 0.6);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(18, 10, 4, 0.6)";
-      ctx.lineWidth = edge;
-      ctx.stroke();
-      // The feather's vein: a thin highlight from the root toward the tip.
-      ctx.beginPath();
-      ctx.moveTo(rootX, rootY);
-      ctx.quadraticCurveTo(mx, my - wRoot * 0.25, rootX + (tipX - rootX) * 0.85, rootY + (tipY - rootY) * 0.85);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-      ctx.lineWidth = Math.max(0.6, R * 0.02);
-      ctx.stroke();
-    }
-  }
-
-  // Sun rays around the disc: alternating long and short points. Top tiers
-  // turn the long rays into (static) flames.
-  for (let j = 0; j < T.rays; j += 1) {
-    const a = (j / T.rays) * Math.PI * 2 - Math.PI / 2;
-    const long = j % 2 === 0;
-    const out = R * (long ? E.rays.long : E.rays.short);
-    const half = (Math.PI / T.rays) * 0.85;
-    const bx1 = cx + Math.cos(a - half) * R * E.rays.inner;
-    const by1 = cy + Math.sin(a - half) * R * E.rays.inner;
-    const bx2 = cx + Math.cos(a + half) * R * E.rays.inner;
-    const by2 = cy + Math.sin(a + half) * R * E.rays.inner;
-    const tx = cx + Math.cos(a) * out;
-    const ty = cy + Math.sin(a) * out;
+    const x0 = cx + side * R * 0.86, x1 = cx + side * (R + tw);
     ctx.beginPath();
-    ctx.moveTo(bx1, by1);
-    if (T.flames && long) {
-      // A flame: the tip leans a little and the sides bow out.
-      const lean = Math.cos(a) * R * 0.06;
-      ctx.quadraticCurveTo(cx + Math.cos(a - half * 0.6) * out * 0.9 - lean, cy + Math.sin(a - half * 0.6) * out * 0.9, tx + lean, ty);
-      ctx.quadraticCurveTo(cx + Math.cos(a + half * 0.6) * out * 0.9 - lean, cy + Math.sin(a + half * 0.6) * out * 0.9, bx2, by2);
-      const g = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, out);
-      g.addColorStop(0, "#ff7a1a");
-      g.addColorStop(0.6, "#ffc23a");
-      g.addColorStop(1, "#fff4b0");
-      ctx.fillStyle = g;
-    } else {
-      ctx.lineTo(tx, ty);
-      ctx.lineTo(bx2, by2);
-      ctx.fillStyle = metal(cy - out, cy + out);
-    }
+    ctx.moveTo(x0, cy - th / 2);
+    ctx.lineTo(x1, cy - th * 0.36);
+    ctx.lineTo(x1, cy + th * 0.36);
+    ctx.lineTo(x0, cy + th / 2);
     ctx.closePath();
+    ctx.fillStyle = grad(T.rim, cy - th / 2, cy + th / 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(18, 10, 4, 0.45)";
-    ctx.lineWidth = edge * 0.8;
+    ctx.strokeStyle = "rgba(11, 15, 20, 0.8)";
+    ctx.lineWidth = edge;
     ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + side * (R + tw * 0.45), cy, th * 0.17, 0, Math.PI * 2);
+    ctx.fillStyle = T.rim[2];
+    ctx.fill();
   }
 
-  // The disc: a metal rim (a prism ring on mythic), then the bevelled face.
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  // The rim (a prism band on mythic), then the bevelled face, inset.
+  hex(R);
   if (T.prism && typeof ctx.createConicGradient === "function") {
     const g = ctx.createConicGradient(0, cx, cy);
     ["#ff5b8a", "#ffb84a", "#fff07a", "#7dffb0", "#6ad5ff", "#b98bff", "#ff5b8a"].forEach((col, i, arr) => g.addColorStop(i / (arr.length - 1), col));
     ctx.fillStyle = g;
-  } else {
-    const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
-    g.addColorStop(0, T.metal[0]);
-    g.addColorStop(0.6, T.metal[1]);
-    g.addColorStop(1, T.metal[2]);
-    ctx.fillStyle = g;
-  }
+  } else ctx.fillStyle = grad(T.rim, cy - R, cy + R);
   ctx.fill();
-  ctx.strokeStyle = "rgba(18, 10, 4, 0.75)";
+  ctx.strokeStyle = "rgba(11, 15, 20, 0.85)";
   ctx.lineWidth = edge * 1.4;
   ctx.stroke();
-  const faceR = R * 0.84;
-  ctx.beginPath();
-  ctx.arc(cx, cy, faceR, 0, Math.PI * 2);
-  const face = ctx.createRadialGradient(cx - faceR * 0.35, cy - faceR * 0.45, faceR * 0.05, cx, cy, faceR);
-  face.addColorStop(0, T.face[0]);
-  face.addColorStop(0.55, T.face[1]);
-  face.addColorStop(1, T.face[2]);
+  const faceR = R * 0.8;
+  hex(faceR);
+  const face = ctx.createLinearGradient(cx - faceR, cy - faceR, cx + faceR, cy + faceR);
+  face.addColorStop(0, T.face[0]); face.addColorStop(0.5, T.face[1]); face.addColorStop(1, T.face[2]);
   ctx.fillStyle = face;
   ctx.fill();
-  ctx.strokeStyle = "rgba(18, 10, 4, 0.5)";
+  ctx.strokeStyle = "rgba(11, 15, 20, 0.55)";
   ctx.lineWidth = edge;
   ctx.stroke();
-  if (T.glow) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, faceR * 0.97, 0, Math.PI * 2);
-    ctx.strokeStyle = T.glow;
-    ctx.globalAlpha = 0.7;
-    ctx.lineWidth = Math.max(1, R * 0.06);
+  // Machined grain: fine horizontal lines across the face (static).
+  ctx.save();
+  hex(faceR);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.lineWidth = Math.max(0.5, R * 0.012);
+  for (let y = cy - faceR; y < cy + faceR; y += Math.max(1.5, R * 0.07)) {
+    ctx.beginPath(); ctx.moveTo(cx - faceR, y); ctx.lineTo(cx + faceR, y); ctx.stroke();
+  }
+  ctx.restore();
+  if (T.edge) { // a static inner edge light (no glow at rest)
+    hex(faceR * 0.95);
+    ctx.strokeStyle = T.edge;
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = Math.max(1, R * 0.045);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
-  // Bevel highlight across the top-left of the face.
-  ctx.beginPath();
-  ctx.arc(cx, cy, faceR * 0.86, Math.PI * 1.05, Math.PI * 1.55);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-  ctx.lineWidth = Math.max(1, R * 0.05);
-  ctx.lineCap = "round";
-  ctx.stroke();
+  // Rivets at the rim's six vertices.
+  for (let i = 0; i < 6; i += 1) {
+    const a = (i * Math.PI) / 3;
+    const x = cx + Math.cos(a) * R * 0.9, y = cy + Math.sin(a) * R * 0.9 * 0.92;
+    const rr = Math.max(1, R * 0.06);
+    const g = ctx.createRadialGradient(x - rr * 0.3, y - rr * 0.3, rr * 0.1, x, y, rr);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, T.rim[1]); g.addColorStop(1, T.rim[2]);
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+  }
 
-  // The number: as large as the text box allows (it may cover the rim),
-  // a smaller "x", a light gradient fill, a heavy dark outline.
+  // The number: as large as the text box allows, a smaller "x", engraved (light fill,
+  // heavy dark outline).
   const num = String(value);
   const fit = (size) => {
     ctx.font = THEME.canvasFont(700, size);
@@ -889,8 +846,8 @@ function drawWingedSun(ctx, W, H, tierKey, value) {
     const cap = (m.actualBoundingBoxAscent || size * 0.72);
     return { w: m.width + mx.width * 0.92, cap, numW: m.width };
   };
-  const boxW = 2 * R * E.text.w;
-  const boxCap = 2 * R * E.text.cap;
+  const boxW = R * E.text.w;
+  const boxCap = R * E.text.cap;
   let size = R * 2;
   let mt = fit(size);
   size *= Math.min(boxW / mt.w, boxCap / mt.cap);
@@ -900,11 +857,10 @@ function drawWingedSun(ctx, W, H, tierKey, value) {
   const fill = ctx.createLinearGradient(0, base - mt.cap, 0, base);
   fill.addColorStop(0, "#ffffff");
   fill.addColorStop(1, T.text);
-  ctx.lineJoin = "round";
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
-  ctx.shadowBlur = size * 0.12;
+  ctx.shadowBlur = size * 0.1;
   ctx.shadowOffsetY = size * 0.04;
   ctx.strokeStyle = E.outline;
   ctx.lineWidth = Math.max(2, size * 0.16);
@@ -1299,7 +1255,6 @@ class ReelCanvasRenderer {
       bangs: [],
       bangedKeys: new Set(),
       struckKeys: new Set(),
-      lightning: [],
       landDust: [],
       cluster: null,
       sweeps: [],
@@ -1545,14 +1500,14 @@ class ReelCanvasRenderer {
 
   /** A blank offscreen canvas of `w`×`h` CSS px backed at device resolution.
    *  The returned 2D context is pre-scaled by dpr so callers draw in CSS px. */
-  /** The baked winged-sun emblem for multiplier `value` at a w×h box (CSS
+  /** The baked hex plate for multiplier `value` at a w×h box (CSS
    *  px), number included: one drawImage per multiplier cell. */
   multiplierSprite(value, w, h) {
     const key = `${value}|${Math.round(w)}x${Math.round(h)}`;
     let cvs = this.emblemSprites.get(key);
     if (!cvs) {
       const off = this.makeOffscreen(w, h);
-      drawWingedSun(off.ctx, w, h, getMultiplierTier(value).key, value);
+      drawHexPlate(off.ctx, w, h, getMultiplierTier(value).key, value);
       cvs = off.cvs;
       this.emblemSprites.set(key, cvs);
     }
@@ -2071,7 +2026,7 @@ class ReelCanvasRenderer {
         if (!symbol) continue;
         const x = padX + laneW * (c + 0.5);
         if (symbol === "MULTI") {
-          // A multiplier: its winged-sun emblem, sized to the cell.
+          // A multiplier: its hex plate, sized to the cell.
           const ew = laneW * MULTI_EMBLEM.boxW;
           const eh = rowStep * MULTI_EMBLEM.boxH;
           const value = Number(exit.multi.get(`${r}-${c}`) || 1);
@@ -2108,72 +2063,6 @@ class ReelCanvasRenderer {
     this.fx.struckKeys = new Set();
   }
 
-  // Spawns a tier-scaled lightning strike at the given cell. Used both
-  // standalone (for common/rare without the BANG) and inside spawnHeavyImpact.
-  spawnLightningStrike(row, col, tier) {
-    const center = this.cellCenter(row, col);
-    const layout = this.getLayout();
-    const now = performance.now();
-
-    // Tier-scaled lightning parameters: small for common, escalating up.
-    const params = {
-      common:    { heaviness: 0.55, life: 360, forks: 0, jitter: 0.30, thick: 0.045 },
-      rare:      { heaviness: 0.85, life: 520, forks: 1, jitter: 0.42, thick: 0.065 },
-      epic:      { heaviness: 1.15, life: 640, forks: 2, jitter: 0.50, thick: 0.080 },
-      legendary: { heaviness: 1.35, life: 720, forks: 2, jitter: 0.55, thick: 0.090 },
-      mythic:    { heaviness: 1.60, life: 800, forks: 3, jitter: 0.62, thick: 0.105 }
-    };
-    const p = params[tier.key] || params.common;
-
-    const buildBolt = (sx, sy, ex, ey, jitter) => {
-      const segs = 7 + Math.floor(Math.random() * 4);
-      const points = [{ x: sx, y: sy }];
-      for (let i = 1; i < segs; i += 1) {
-        const t = i / segs;
-        const baseX = sx + (ex - sx) * t;
-        const baseY = sy + (ey - sy) * t;
-        const off = (Math.random() - 0.5) * jitter * (1 - Math.abs(t - 0.5) * 0.6);
-        points.push({ x: baseX + off, y: baseY });
-      }
-      points.push({ x: ex, y: ey });
-      return points;
-    };
-
-    const skyY = -8;
-    const mainPoints = buildBolt(
-      center.x + (Math.random() - 0.5) * 24,
-      skyY,
-      center.x,
-      center.y,
-      layout.laneW * p.jitter
-    );
-    this.fx.lightning.push({
-      points: mainPoints,
-      born: now - 20,
-      life: p.life,
-      thickness: Math.max(1.2, layout.radius * p.thick) * p.heaviness,
-      color: tier.accent,
-      glow: tier.glow
-    });
-
-    for (let f = 0; f < p.forks; f += 1) {
-      const branchIdx = 2 + Math.floor(Math.random() * (mainPoints.length - 4));
-      const branch = mainPoints[branchIdx];
-      if (!branch) continue;
-      const ex = branch.x + (Math.random() - 0.5) * layout.laneW * 1.4;
-      const ey = branch.y + 30 + Math.random() * 60;
-      this.fx.lightning.push({
-        points: buildBolt(branch.x, branch.y, ex, ey, layout.laneW * 0.35),
-        born: now - 20 + Math.random() * 30,
-        life: Math.round(p.life * 0.8),
-        thickness: Math.max(1, layout.radius * (p.thick * 0.55)) * p.heaviness,
-        color: tier.accent,
-        glow: tier.glow
-      });
-    }
-    return p; // used by spawnHeavyImpact for shockwave scaling
-  }
-
   async drop(matrix, multipliers = [], dropMap = {}, duration = 960, options = {}) {
     // Cascade momentum (options.tempo, see tumbleTempo) scales the fall and,
     // through dropDelay, the waterfall stagger. Turbo speeds the whole spin.
@@ -2186,7 +2075,7 @@ class ReelCanvasRenderer {
     // Two flows for incoming multipliers:
     //  • heavyCells: get the full BANG / conceal / reveal-pop treatment.
     //    Only ONE per spin (first non-common); subsequent tumbles skip the BANG.
-    //  • lightOnlyCells: get just a tier-scaled lightning strike on landing.
+    //  • lightOnlyCells: get just the laser reveal on landing.
     //    Used for common tier and for any non-common multipliers after the
     //    first BANG has already fired this spin.
     const animateMultipliers = Boolean(options.animateMultipliers);
@@ -2201,7 +2090,7 @@ class ReelCanvasRenderer {
       // during tumbles stays the same logical object (no re-conceal/re-reveal).
       const k = m?.id ? `id:${m.id}` : `${m.row}-${m.col}-${v}`;
       if (this.fx.struckKeys.has(k)) return; // already struck this spin
-      // User rule: every multiplier plays the full BANG reveal (lightning +
+      // User rule: every multiplier plays the full BANG reveal (laser cut +
       // flash + shockwave) the FIRST time it appears — deduped by struckKeys
       // above — regardless of tier or whether another already banged this spin.
       const isHeavyEligible = true;
@@ -2304,8 +2193,8 @@ class ReelCanvasRenderer {
     }
   }
 
-  spawnHeavyImpact(row, col, tier, value, { bolt = true } = {}) {
-    // Fire the multiplier drop sound + lightning reaction at the EXACT moment
+  spawnHeavyImpact(row, col, tier, value) {
+    // Fire the multiplier drop sound + impact reaction at the EXACT moment
     // the multiplier bangs into place (this is the visual reveal), so the audio
     // is perfectly in sync with each multiplier's landing and scales with its
     // value. Deduped upstream via struckKeys, so it plays once per multiplier.
@@ -2345,9 +2234,6 @@ class ReelCanvasRenderer {
       born: now, life: 520 * heaviness,
       tier, value, heaviness
     });
-    // Lightning strike — delegated to the shared tier-scaled method (a
-    // STRIKE reveal has already struck: bolt: false, so it never hits twice).
-    if (bolt) this.spawnLightningStrike(row, col, tier);
 
     // BANG: full-screen tier-colored radial flash centered on the impact.
     // Short and punchy — long flashes feel laggy.
@@ -2605,7 +2491,6 @@ class ReelCanvasRenderer {
       this.fx.shockwaves.length ||
       this.fx.waves.length ||
       Boolean(this.fx.exit) ||
-      this.fx.lightning.length ||
       this.fx.impacts.length ||
       this.fx.bangs.length ||
       this.fx.rays.length ||
@@ -3193,7 +3078,7 @@ class ReelCanvasRenderer {
     return this.dropEndMs(drop.map);
   }
 
-  /** When strike `st` hits (its bolt), ms from the drop's start. */
+  /** When strike `st`'s beam reaches the cell (the cut starts), ms from the drop's start. */
   _strikeAt(drop, st) {
     const t = turboScale();
     if (drop.strikeQuick) return this._landedMs(drop) + st.i * Math.round(STRIKE.stopMs * 0.5);
@@ -3219,7 +3104,7 @@ class ReelCanvasRenderer {
     drop.endAt = Math.max(drop.endAt || 0, drop.start + Math.max(this._landedMs(drop), this._strikesEndMs(drop)) + 30);
   }
 
-  /** Fire each strike's bolt and swap on the frame they are due. `now` =
+  /** Start each reveal's cut and swap on the frame they are due. `now` =
    *  Infinity fires everything still pending. */
   _fireStrikes(now = performance.now()) {
     const d = this.fx.drop;
@@ -3227,58 +3112,107 @@ class ReelCanvasRenderer {
     const e = now - d.start;
     for (const st of d.strikes) {
       if (!st.bolted && e >= this._strikeAt(d, st)) {
-        st.bolted = true;
+        st.bolted = true; // the beam reaches the cell: the cut starts
         st.boltAt = Number.isFinite(now) ? now : performance.now();
-        if (!this._reducedMotion) this.spawnLightningStrike(st.r, st.c, st.tier);
       }
       if (!st.swapped && e >= this._strikeSwapAt(d, st)) {
         st.swapped = true;
         const at = Number.isFinite(now) ? now : performance.now();
         if (!st.boltAt) st.boltAt = at;
         this.fx.heavyReveals.set(st.key, { revealAt: at, revealDuration: MULTI_PUNCH.ms, tier: st.tier, value: st.value });
-        // The crack + thunder lands on the flash's peak, the frame the art turns.
+        // The zap + clunk lands as the cut closes, the frame the art turns.
         window.Sound?.play("multiplier_strike", { value: st.value });
-        if (st.heavy) this.spawnHeavyImpact(st.r, st.c, st.tier, st.value, { bolt: false });
+        if (st.heavy) this.spawnHeavyImpact(st.r, st.c, st.tier, st.value);
         else window.Sound?.play("multiplier_drop", { value: st.value });
       }
     }
   }
 
-  /** The strikes' light: a crackle at the top of the lane just before the
-   *  bolt, then a white-gold flash over the cell that peaks as the art turns
-   *  (drawn ON TOP of the cells, additive; the art itself never fades). */
+  /** The reveal's light (vault-multiplier.md, storyboard A): an emitter flickers on the
+   *  LEFT frame rail at the cell's row, the beam fires sideways to the cell, its hot point
+   *  traces the plate's hexagon (the traced edge glows amber, sparks fall), and as the cut
+   *  closes the art turns into the plate under a short amber edge flash. Drawn ON TOP of
+   *  the cells, additive; the art itself never fades. Nothing comes from above. */
   drawStrikes(ctx, { padX, top, laneW, rowStep }) {
     const d = this.fx.drop;
     if (!d?.strikes?.length) return;
     const now = performance.now();
     const e = now - d.start;
-    const cs = Math.min(laneW, rowStep);
     const t = turboScale();
     const calm = this._reducedMotion;
     const flashMs = Math.max(60, Math.round(STRIKE.flashMs * (d.strikeQuick ? 0.5 : t)));
-    const flash = this.getGlowSprite(STRIKE.flash);
+    const R = Math.min(laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH) * MULTI_EMBLEM.hexR;
+    const railX = Math.max(2, padX - Math.max(4, laneW * 0.06));
+    const vx = (cx, i) => cx + Math.cos(Math.PI + (i * Math.PI) / 3) * R; // from the left vertex, clockwise
+    const vy = (cy, i) => cy + Math.sin(Math.PI + (i * Math.PI) / 3) * R * 0.92;
+    const trace = (cx, cy, k) => { // the outline up to fraction k; returns the hot point
+      ctx.beginPath();
+      ctx.moveTo(vx(cx, 0), vy(cy, 0));
+      const segs = 6 * clamp(k, 0, 1);
+      let hx = vx(cx, 0), hy = vy(cy, 0);
+      for (let i = 0; i < Math.ceil(segs); i += 1) {
+        const f = Math.min(1, segs - i);
+        hx = lerp(vx(cx, i), vx(cx, i + 1), f);
+        hy = lerp(vy(cy, i), vy(cy, i + 1), f);
+        ctx.lineTo(hx, hy);
+      }
+      return { hx, hy };
+    };
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     for (const st of d.strikes) {
       const at = this._strikeAt(d, st);
-      const x = padX + laneW * (st.c + 0.5);
-      const y = top + rowStep * (st.r + 0.5);
-      // Crackle at the top of the lane, flickering in just before the bolt.
+      const peak = Math.max(1, this._strikeSwapAt(d, st) - at);
+      const cx = padX + laneW * (st.c + 0.5);
+      const cy = top + rowStep * (st.r + 0.5);
+      // The emitter on the frame rail, flickering in just before the beam.
       const flick = Math.round(STRIKE.flickerMs * t);
       if (!calm && !d.strikeQuick && e >= at - flick && e < at) {
         const k = (e - (at - flick)) / Math.max(1, flick);
-        ctx.globalAlpha = (0.35 + 0.5 * k) * (0.6 + 0.4 * Math.random());
-        const fr = cs * (0.18 + 0.12 * k);
-        ctx.drawImage(flash.cvs, x - fr, top - fr * 0.5, fr * 2, fr * 2);
+        ctx.globalAlpha = (0.4 + 0.5 * k) * (0.7 + 0.3 * Math.random());
+        ctx.fillStyle = STRIKE.beam;
+        ctx.beginPath(); ctx.arc(railX, cy, Math.max(1.5, R * 0.08), 0, Math.PI * 2); ctx.fill();
       }
-      // The impact flash, peaking as the art turns into the multiplier.
-      if (e >= at && e < at + flashMs) {
-        const peak = Math.max(1, this._strikeSwapAt(d, st) - at);
-        const u = e - at;
-        const a = u < peak ? u / peak : 1 - (u - peak) / Math.max(1, flashMs - peak);
-        ctx.globalAlpha = clamp(a, 0, 1) * (calm ? 0.5 : 0.95);
-        const fr = cs * (0.7 + 0.35 * (u / flashMs));
-        ctx.drawImage(flash.cvs, x - fr, y - fr, fr * 2, fr * 2);
+      if (e < at || e >= at + peak + flashMs) continue;
+      const u = e - at;
+      const dim = calm ? 0.5 : 1;
+      if (u < peak) {
+        // Cutting: the traced edge (amber), then the beam from the rail to the hot point.
+        ctx.globalAlpha = 0.9 * dim;
+        ctx.strokeStyle = STRIKE.cut;
+        ctx.lineWidth = Math.max(1.5, R * 0.07);
+        const { hx, hy } = trace(cx, cy, u / peak);
+        ctx.stroke();
+        ctx.globalAlpha = 0.35 * dim;
+        ctx.strokeStyle = STRIKE.beam;
+        ctx.lineWidth = Math.max(3, R * 0.16);
+        ctx.beginPath(); ctx.moveTo(railX, cy); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.globalAlpha = dim;
+        ctx.strokeStyle = "#e9fffd";
+        ctx.lineWidth = Math.max(1, R * 0.035);
+        ctx.stroke();
+        if (!calm && this.particles.length < 260) {
+          this.particles.push({
+            x: hx, y: hy, vx: (Math.random() - 0.5) * 1.6, vy: -0.4 - Math.random() * 0.8,
+            life: 220 + Math.random() * 160, born: now, size: 0.8 + Math.random() * 1.1,
+            colorA: STRIKE.cut, colorB: "#fff3d6", mode: "shard", rot: Math.random() * Math.PI, spin: 0.1
+          });
+        }
+      } else {
+        // Closed: the cut edge's afterglow and a short local flash on the cell, fading.
+        const a = 1 - (u - peak) / flashMs;
+        ctx.globalAlpha = clamp(a, 0, 1) * 0.85 * dim;
+        ctx.strokeStyle = STRIKE.cut;
+        ctx.lineWidth = Math.max(1.5, R * 0.07);
+        trace(cx, cy, 1);
+        ctx.closePath();
+        ctx.stroke();
+        const flash = this.getGlowSprite(STRIKE.cut);
+        ctx.globalAlpha = clamp(a, 0, 1) * 0.45 * dim;
+        const fr = R * 1.25;
+        ctx.drawImage(flash.cvs, cx - fr, cy - fr, fr * 2, fr * 2);
       }
     }
     ctx.restore();
@@ -3737,55 +3671,6 @@ class ReelCanvasRenderer {
       ctx.globalAlpha = 1;
     }
 
-    // Lightning bolts — jagged tier-colored strikes from the top of the
-    // playfield arriving at impact cells right before the BANG.
-    if (this.fx.lightning.length) {
-      const now = performance.now();
-      this.fx.lightning = this.fx.lightning.filter((b) => now - b.born < b.life);
-      this.fx.lightning.forEach((b) => {
-        const age = now - b.born;
-        if (age < 0) return;
-        const t = clamp(age / b.life, 0, 1);
-        // Brightness envelope: stays hot for most of the life, then fades.
-        // A subtle flicker keeps it feeling electric rather than static.
-        const flicker = 0.85 + 0.15 * Math.sin(age * 0.06 + b.points[0].x);
-        const a = (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3) * flicker;
-        // Outer glow halo.
-        ctx.globalAlpha = a * 0.55;
-        ctx.strokeStyle = b.glow;
-        ctx.lineWidth = b.thickness * 4;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        b.points.forEach((p, i) => {
-          if (i === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-        // Mid layer — tier-accent.
-        ctx.globalAlpha = a * 0.85;
-        ctx.strokeStyle = b.color;
-        ctx.lineWidth = b.thickness * 2;
-        ctx.beginPath();
-        b.points.forEach((p, i) => {
-          if (i === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-        // White-hot core.
-        ctx.globalAlpha = a;
-        ctx.strokeStyle = "rgba(255, 255, 255, 1)";
-        ctx.lineWidth = b.thickness;
-        ctx.beginPath();
-        b.points.forEach((p, i) => {
-          if (i === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-      });
-      ctx.globalAlpha = 1;
-    }
-
     // BANG flashes — short, intense, tier-colored radial bursts on impact.
     if (this.fx.bangs.length) {
       const now = performance.now();
@@ -3825,7 +3710,7 @@ class ReelCanvasRenderer {
 
     // 5b: anticipation lanes, behind the symbols.
     if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
-    // Multiplier strikes due this frame (bolt, then the swap at the flash).
+    // Multiplier reveals due this frame (the cut, then the swap as it closes).
     this._fireStrikes();
 
     // Win focus (FOCUS, #55): one backdrop darkening behind the symbols; the
@@ -4030,7 +3915,7 @@ class ReelCanvasRenderer {
         }
 
         const multiValueNum = isMulti ? Number(this.board.multiMap.get(key) || 1) : null;
-        // A multiplier is its winged-sun emblem, number baked in (one sprite
+        // A multiplier is its hex plate, number baked in (one sprite
         // per value and size); every other symbol is its art.
         const emblem = isMulti ? this.multiplierSprite(multiValueNum, laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH) : null;
         const img = emblem ? null : this.images.get(symbol);
@@ -4360,6 +4245,8 @@ async function resyncAfterContextLoss() {
 //   countMs  — overlay only: time for the count to cross this tier's span
 //   fx       — overlay only: celebration effect set ("coins" | "sparks" | "motherlode")
 const WIN_TIERS = Object.freeze([
+  // The shared ladder's 100x tier (LuminaMotion.BIG_WIN "legendary"), in Vault's voice.
+  Object.freeze({ key: "legendary", minX: 100, label: "CROWN JEWELS", color: THEME.winTier.legendary, overlay: true, sfx: "win_epic", blast: "blast-great", flash: true, countMs: 2600, fx: "motherlode" }),
   Object.freeze({ key: "epic",  minX: 50, label: "MOTHERLODE",    color: THEME.winTier.epic, overlay: true,  sfx: "win_epic",  blast: "blast-great",  flash: true,  countMs: 2200, fx: "motherlode" }),
   Object.freeze({ key: "mega",  minX: 25, label: "LASER BREACH",  color: THEME.winTier.mega, overlay: true,  sfx: "win_mega",  blast: "blast-great",  flash: false, countMs: 1500, fx: "sparks" }),
   Object.freeze({ key: "big",   minX: 10, label: "VAULT CRACKED", color: THEME.winTier.big,  overlay: true,  sfx: "win_big",   blast: "blast-medium", flash: false, countMs: 1800, fx: "coins" }),
@@ -6577,7 +6464,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   } catch {}
   pushGameMessage(payload.is_free_spin ? "Free spin started." : `Spin started (bet ${fmt(bet)}).`, "info");
   // A multiplier landing on the first board ALWAYS plays its full reveal
-  // (lightning + BANG), even when the opening board isn't itself a win — so the
+  // (laser cut + BANG), even when the opening board isn't itself a win — so the
   // player never sees a multiplier appear silently.
   // Landing thuds are per column now, scheduled by the renderer's drop in
   // sync with the waterfall (ReelCanvasRenderer.scheduleColumnStops).
@@ -6692,7 +6579,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       }
     }
     // Multiplier symbols always keep the normal reel drop. The multiplier
-    // lightning/catch/fly-to-total sequence only runs on wins or tumbles.
+    // reveal/catch/fly-to-total sequence only runs on wins or tumbles.
     const isWinningStep = (step.winning_positions || []).length > 0 && stepWin > 0;
     const isTumbleStep = i > 0;
     if ((isWinningStep || isTumbleStep) && Array.isArray(step.multipliers) && step.multipliers.length) {
