@@ -106,6 +106,30 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The Lumina games as one family (see package.json test:lumina): the shared controls at the
+  # same places in all three games and every game at the 9 sizes, nothing drawn at rest, the
+  # market switches, no celebration of a sub-stake return, the 48 px symbol sheet. Its own job
+  # so browser-checks keeps its time budget.
+  lumina-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: |
+          set -o pipefail
+          npm run test:lumina 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+      - name: Failure lines as annotations
+        if: failure()
+        run: |
+          grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=test:lumina::/'
+          tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=test:lumina (end)::/'
+
   # Reduced seeded RTP parity of the shared engine (the full 30M run stays a local /
   # certification step). Seeded, so a given engine always gives the same verdict: it
   # cannot flake, it only fails when the math really moved. Wider MAX_SE than the
@@ -173,7 +197,7 @@ jobs:
   # host key means a spoofed server never receives the deploy).
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
-    needs: [release-check, browser-checks, rtp-parity, chaos]
+    needs: [release-check, browser-checks, lumina-checks, rtp-parity, chaos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:

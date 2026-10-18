@@ -76,7 +76,7 @@
 .lsh > [data-area="plus"] { grid-area: plus; } .lsh > [data-area="turbo"] { grid-area: turbo; }
 .lsh .is-off { visibility: hidden; pointer-events: none; }
 
-.lsh-strip { grid-area: strip; height: var(--lsh-strip); display: flex; align-items: center; gap: 14px; overflow: hidden; font: 600 11px/1 var(--lsh-font-num); letter-spacing: 0.04em; color: var(--lsh-muted); font-variant-numeric: tabular-nums; }
+.lsh-strip { grid-area: strip; height: var(--lsh-strip); display: flex; align-items: center; gap: 14px; overflow: hidden; font: 600 12px/1 var(--lsh-font-num); letter-spacing: 0.04em; color: var(--lsh-muted); font-variant-numeric: tabular-nums; }
 .lsh-host { margin-left: auto; width: var(--lsh-strip); height: var(--lsh-strip); }
 .lsh-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .lsh-rail { grid-area: rail; display: flex; gap: var(--lsh-gap); align-items: stretch; justify-content: center; min-height: 0; }
@@ -110,7 +110,7 @@
 .lsh-btn:disabled { opacity: 0.38; cursor: default; }
 .lsh-btn[aria-pressed="true"] { color: var(--lsh-accent); box-shadow: inset 0 0 0 2px var(--lsh-accent); }
 .lsh-btn[data-speed="turbo"] svg { fill: currentColor; }
-.lsh-btn__count { position: absolute; right: -2px; bottom: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--lsh-accent); color: var(--lsh-accent-ink); font: 800 11px/18px var(--lsh-font-num); text-align: center; }
+.lsh-btn__count { position: absolute; right: -2px; bottom: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--lsh-accent); color: var(--lsh-accent-ink); font: 800 12px/18px var(--lsh-font-num); text-align: center; }
 .lsh-btn__count:empty { display: none; }
 .lsh :focus-visible { outline: 2px solid var(--lsh-accent); outline-offset: 3px; }
 
@@ -145,9 +145,10 @@
   display: grid; align-content: center; justify-items: center; gap: 2px;
   min-width: 120px; min-height: 48px; padding: 6px 16px;
   border-radius: var(--lsh-radius);
-  background: var(--lsh-face); box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
+  /* On the deck surface, so its label reads over any game art (A7: contrast ≥ 4.5:1). */
+  background: linear-gradient(var(--lsh-face), var(--lsh-face)), var(--lsh-texture), var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
 }
-.lsh-chip__k { font: 700 11px/1 var(--lsh-font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--lsh-muted); }
+.lsh-chip__k { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--lsh-muted); }
 .lsh-chip__v { font: 800 15px/1 var(--lsh-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
 .lsh-chip--buy { background: linear-gradient(180deg, var(--lsh-accent), var(--lsh-accent-2)); color: var(--lsh-accent-ink); }
 .lsh-chip--buy .lsh-chip__k { color: inherit; opacity: 0.75; }
@@ -156,7 +157,7 @@
 
 /* Readouts: one line each, tabular, clipped: a value can never resize the deck. */
 .lsh-read { min-width: 0; display: grid; align-content: center; justify-items: center; gap: 3px; text-align: center; padding: 2px 6px; border-radius: 8px; background: var(--lsh-read-bg); }
-.lsh-read__k { font: 700 11px/1 var(--lsh-font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--lsh-read-k); white-space: nowrap; }
+.lsh-read__k { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--lsh-read-k); white-space: nowrap; }
 .lsh-read__v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--lsh-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--lsh-read-ink); }
 .lsh-read--bet { border-radius: 10px; min-height: var(--lsh-hit); }
 .lsh-read--bet:hover:not(:disabled) { filter: brightness(1.08); }
@@ -246,7 +247,7 @@
   .lsh-rail:not([hidden]) { height: 44px; align-self: end; flex-direction: row; }
   .lsh-chip { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 4px 6px; }
   .lsh-chip__v { font-size: 12px; }
-  .lsh-chip__k { font-size: 11px; letter-spacing: 0.1em; }
+  .lsh-chip__k { font-size: 12px; letter-spacing: 0.08em; }
   .lsh-read--bet { min-height: 40px; }
   .lsh-read { justify-items: start; text-align: left; }
   .lsh-read__v { font-size: 15px; }
@@ -317,7 +318,7 @@
 .lsh-presets, .lsh-ladder { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
 .lsh-market { color: var(--lsh-muted); font-size: 13px; }
 .lsh-controls { color: var(--lsh-muted); font-size: 13px; }
-.lsh-build { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--lsh-deck-line); color: var(--lsh-muted); font: 600 11px/1.4 var(--lsh-font-num); letter-spacing: 0.04em; }
+.lsh-build { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--lsh-deck-line); color: var(--lsh-muted); font: 600 12px/1.4 var(--lsh-font-num); letter-spacing: 0.04em; }
 
 /* Reduced motion (OS or menu) and battery saver: the shell's own motion stops. */
 .lsh-reduced .lsh *, .lsh-reduced .lsh-sheet * { transition: none !important; }
