@@ -71,6 +71,15 @@
     meterFill:          row(300, 225, 150, 300, "shorten", "The meter fills"),
     waitRing:           row(1000, 1000, 1000, 1000, "no", "Still working (spin ring)"),
     waitMessage:        row(3000, 3000, 3000, 3000, "no", "Still working (ticker line)"),
+    // Glasshouse (games/glasshouse/DESIGN.md §11.1): the Sunbeam. Reduced motion draws the
+    // whole path at once (0 per cell) but keeps it on screen (beamHold) and keeps the pane
+    // turning wild (paneLight): the cause stays, only the travel goes.
+    beamIgnite:         row(220, 170, 120, 0, "shorten", "The lens catches the sun", { decorative: true }),
+    beamCell:           row(60, 45, 30, 0, "shorten", "The light travels this way (per cell)", { decorative: true }),
+    beamBend:           row(120, 90, 60, 0, "shorten", "The mirror turned it", { decorative: true }),
+    paneLight:          row(180, 140, 100, 180, "shorten", "This pane is now wild"),
+    beamHold:           row(300, 220, 150, 400, "shorten", "These are your wilds"),
+    stickyCarry:        row(250, 200, 150, 250, "no", "Lit panes stay lit (start of each free spin)"),
     idle:               row(0, 0, 0, 0, "no", "Nothing to explain, so nothing moves")
   });
 
@@ -123,6 +132,28 @@
       linePerLine: 420,
       countUpTier: 300,
       countUpPlain: 500,
+      featureAward: 900,
+      betweenFreeSpins: 260,
+      celebrate: 2200,
+      celebrateTurbo: 900,
+      celebrateHold: 2500,
+      celebrateHoldAuto: 900,
+      autoplayGap: 400,
+      autoplayGapTurbo: 150
+    },
+    // Glasshouse (games/glasshouse/client/game.js). The beam itself reads GRAMMAR.
+    glasshouse: {
+      turbo: 0.5,              // speed() factor in turbo
+      quick: 0.75,             // speed() factor in quick spin
+      minSpin: 280,            // reels spin at least this long before landing
+      reelLand: 340,           // one reel's landing
+      reelLandAnticipate: 950,
+      reelLandQuick: 120,      // a quick-stopped reel
+      reelLandColExtra: 20,    // + col × this per reel
+      reelGap: 100,            // between reel landings
+      reelGapAnticipate: 400,
+      errorLand: 120,
+      countUpTier: 300,
       featureAward: 900,
       betweenFreeSpins: 260,
       celebrate: 2200,

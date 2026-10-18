@@ -8,7 +8,7 @@
 //     translucent decks over game art are judged as the player sees them);
 //   - the board (the stage) keeps a usable size.
 //
-//   CHROME_PATH=… node tools/probes/lumina-audit.mjs [--games vault,classic,relicforge]
+//   CHROME_PATH=… node tools/probes/lumina-audit.mjs [--games vault,classic,relicforge,glasshouse]
 //
 // Exits 1 on any failure.
 import { execFileSync } from "node:child_process";
@@ -20,7 +20,7 @@ import puppeteer from "puppeteer-core";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const argv = process.argv.slice(2);
-const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge"];
+const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge", "glasshouse"];
 const SIZES = [[320, 568], [360, 740], [375, 667], [390, 844], [430, 932], [844, 390], [740, 360], [768, 1024], [1440, 900]];
 let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${detail ? ` (${detail})` : ""}`); if (!ok) failed++; };

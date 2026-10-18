@@ -50,13 +50,13 @@ check("countUpMs is log-scaled between countUpMin and countUpMax, rising with ×
 check("every big-win tier holds its title 400-700 ms after a skip", [...M.BIG_WIN, M.MAX_WIN].every((t) => t.hold >= 400 && t.hold <= 700));
 check("tierFor picks the highest reached tier", M.tierFor(9.99) === null && M.tierFor(10)?.key === "big" && M.tierFor(120)?.key === "legendary");
 
-for (const [code, file] of [["vault", "client/main.js"], ["classic", "games/classic-5x3/client/game.js"], ["relicforge", "games/relicforge/client/game.js"]]) {
+for (const [code, file] of [["vault", "client/main.js"], ["classic", "games/classic-5x3/client/game.js"], ["relicforge", "games/relicforge/client/game.js"], ["glasshouse", "games/glasshouse/client/game.js"]]) {
   check(`${file} reads LuminaMotion.game("${code}")`, read(file).includes(`LuminaMotion.game("${code}")`));
   let copy;
   try { copy = M.game(code); } catch { copy = null; }
   check(`LuminaMotion.game("${code}") returns its constants`, Boolean(copy && Object.keys(copy).length > 5));
 }
-for (const [page, src] of [["client/index.html", "shell/motion.js"], ["games/classic-5x3/client/index.html", "/play/shell/motion.js"], ["games/relicforge/client/index.html", "/play/shell/motion.js"]]) {
+for (const [page, src] of [["client/index.html", "shell/motion.js"], ["games/classic-5x3/client/index.html", "/play/shell/motion.js"], ["games/relicforge/client/index.html", "/play/shell/motion.js"], ["games/glasshouse/client/index.html", "/play/shell/motion.js"]]) {
   const html = read(page);
   const at = html.indexOf(`src="${src}`), game = Math.max(html.indexOf('src="main.js'), html.indexOf('src="game.js'));
   check(`${page} loads the motion table before the game script`, at > 0 && at < game);

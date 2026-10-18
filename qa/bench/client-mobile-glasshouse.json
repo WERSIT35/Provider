@@ -1,0 +1,119 @@
+{
+  "name": "client-mobile-glasshouse",
+  "at": "2026-10-18T11:41:25.370Z",
+  "node": "v22.22.0",
+  "mode": "mobile",
+  "throttling": "Slow 4G (562.5 ms, 1.47 Mbps) + 4x CPU",
+  "chrome": "Chrome/141.0.7390.37",
+  "tier": "",
+  "spins": 20,
+  "spinsRequested": 20,
+  "stoppedByTimeBudget": false,
+  "roundMs": {
+    "p50": 4547,
+    "max": 6433
+  },
+  "tapsThatDidNotStartASpin": 0,
+  "tapsReadAsHoldStartingAutoplay": 0,
+  "holdRacesRecovered": 0,
+  "timeToPlayableMs": 3105,
+  "playableMarkMs": 3022,
+  "fcpMs": 1996,
+  "domContentLoadedMs": 2761,
+  "loadEventMs": 0,
+  "requestsBeforePlayable": 14,
+  "kbBeforePlayable": 119,
+  "kbPerSession": 150,
+  "kbByType": {
+    "Document": 5,
+    "Other": 2,
+    "Script": 56,
+    "Font": 50,
+    "Stylesheet": 4,
+    "Fetch": 32
+  },
+  "firstTapToSpinRequestMs": 158,
+  "inputEventMs": {
+    "n": 22,
+    "p50": 56,
+    "max": 184
+  },
+  "frames": {
+    "n": 5502,
+    "avgFps": 59.8,
+    "p95Ms": 16.8,
+    "p99Ms": 16.8,
+    "over20msPct": 0.3,
+    "over50msPct": 0.04
+  },
+  "animatingFrames": {
+    "n": 5086,
+    "avgFps": 59.7,
+    "p95Ms": 16.8,
+    "over50msPct": 0.04
+  },
+  "longTasks": {
+    "n": 1,
+    "maxMs": 130,
+    "totalMs": 130
+  },
+  "heap": [],
+  "requestsBeforePlayableList": [
+    "5.3 KB /play/g/glasshouse/",
+    "2.0 KB /play/g/glasshouse/rules.json",
+    "19.4 KB /play/g/glasshouse/game.js",
+    "14.6 KB /play/g/glasshouse/assets/fonts/marcellus-400.woff2",
+    "4.5 KB /play/shell/shell.css",
+    "2.7 KB /play/embed-bridge.js",
+    "10.6 KB /play/audio/audio.js",
+    "4.3 KB /play/notify.js",
+    "4.9 KB /play/shell/motion.js",
+    "13.0 KB /play/shell/shell.js",
+    "1.5 KB /play/shell/board-view.js",
+    "1.4 KB /game/v1/session/init",
+    "12.5 KB /play/g/glasshouse/assets/fonts/josefin-sans-600.woff2",
+    "22.9 KB /play/g/glasshouse/assets/fonts/barlow-semi-condensed-600.woff2"
+  ],
+  "biggestDownloads": [
+    {
+      "kb": 23,
+      "path": "/play/g/glasshouse/assets/fonts/barlow-semi-condensed-600.woff2",
+      "beforePlayable": true
+    },
+    {
+      "kb": 19,
+      "path": "/play/g/glasshouse/game.js",
+      "beforePlayable": true
+    },
+    {
+      "kb": 15,
+      "path": "/play/g/glasshouse/assets/fonts/marcellus-400.woff2",
+      "beforePlayable": true
+    },
+    {
+      "kb": 13,
+      "path": "/play/shell/shell.js",
+      "beforePlayable": true
+    },
+    {
+      "kb": 12,
+      "path": "/play/g/glasshouse/assets/fonts/josefin-sans-600.woff2",
+      "beforePlayable": true
+    },
+    {
+      "kb": 11,
+      "path": "/play/audio/audio.js",
+      "beforePlayable": true
+    },
+    {
+      "kb": 5,
+      "path": "/play/g/glasshouse/",
+      "beforePlayable": true
+    },
+    {
+      "kb": 5,
+      "path": "/play/shell/motion.js",
+      "beforePlayable": true
+    }
+  ]
+}

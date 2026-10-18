@@ -6,6 +6,7 @@
  *   /vault/      Vault 20K, client/ as it is (its local engine mode)
  *   /classic/    Classic 5x3, games/classic-5x3/client + its engine and rules, its RGS
  *                calls answered in the page by demo/demo.js
+ *   /relicforge/ and /glasshouse/: the same, each with its own engine files
  *   /demo/       demo.js and the lobby's images
  *
  * Nothing in client/ or games/ changes: the game pages only get demo.js added (and
@@ -60,7 +61,18 @@ writeFileSync(rfi, readFileSync(rfi, "utf8").replaceAll('"/play/', '"/vault/'));
 const rfTags = rfManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
 inject(path.join(rf, "index.html"), '<script src="game.js">', rfTags + '\n  <script src="/demo/demo.js" data-game="relicforge"></script>\n  ');
 
-for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp"]) {
+// Glasshouse: its client, its engine file(s) in the manifest's order, and its rules.
+const gh = path.join(out, "glasshouse");
+const ghManifest = JSON.parse(readFileSync(p("games", "glasshouse", "game.json"), "utf8"));
+cpSync(p("games", "glasshouse", "client"), gh, { recursive: true });
+cpSync(p("games", "glasshouse", ghManifest.engine.dir), path.join(gh, "engine"), { recursive: true });
+cpSync(p("games", "glasshouse", ghManifest.rules), path.join(gh, "rules.json"));
+const ghi = path.join(gh, "index.html");
+writeFileSync(ghi, readFileSync(ghi, "utf8").replaceAll('"/play/', '"/vault/'));
+const ghTags = ghManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
+inject(ghi, '<script src="game.js">', ghTags + '\n  <script src="/demo/demo.js" data-game="glasshouse"></script>\n  ');
+
+for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp", "glasshouse/index.html", "glasshouse/game.js", "glasshouse/rules.json", "glasshouse/engine/engine.js", "demo/img/glasshouse.webp"]) {
   if (!existsSync(path.join(out, f))) throw new Error(`missing in the build: ${f}`);
 }
-console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/)`);
+console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/, glasshouse/)`);

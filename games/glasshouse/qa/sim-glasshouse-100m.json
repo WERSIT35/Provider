@@ -1,0 +1,109 @@
+{
+  "game": "glasshouse",
+  "variant": "glasshouse",
+  "mode": "base",
+  "seed": "glasshouse",
+  "shards": 20,
+  "engine_version": "gh-1.0.0",
+  "rules_version": "1.0.0",
+  "seconds": 346,
+  "samples": 100000000,
+  "rtp": 96.29603769947059,
+  "ci99": [
+    95.93945832823184,
+    96.65261707070935
+  ],
+  "se": 0.138434416972886,
+  "sd": 13.8434416972886,
+  "hitRate": 0.3448463,
+  "baseRtp": 50.74860379973652,
+  "featureRtp": 45.547433899999916,
+  "triggerRtp": null,
+  "scatterRtp": 1.064931,
+  "lensRate": 0.03054466,
+  "lensRtp": 18.45751169999955,
+  "featureOneIn": 204.59604556763128,
+  "avgFeatureWin": 96.19224959489972,
+  "avgFeatureSpins": 10.183133920387586,
+  "retriggerPerFeature": 0.03662678407751735,
+  "cellsPerBeam": 5.266202957626315,
+  "doubleLensSpins": 0,
+  "stickyAtEnd": 1.8661082558596307,
+  "fullHouse": 0,
+  "capHits": 0,
+  "max": 4786.4,
+  "buyDrawsAvg": null,
+  "dist": [
+    {
+      "from": 0,
+      "count": 65515370,
+      "rtp": 0
+    },
+    {
+      "from": 0.000001,
+      "count": 19398050,
+      "rtp": 11.582712150022408
+    },
+    {
+      "from": 1,
+      "count": 9689201,
+      "rtp": 13.100491950010761
+    },
+    {
+      "from": 2,
+      "count": 3533319,
+      "rtp": 10.120163399996947
+    },
+    {
+      "from": 5,
+      "count": 975552,
+      "rtp": 6.817300199999991
+    },
+    {
+      "from": 10,
+      "count": 450057,
+      "rtp": 6.017513550000018
+    },
+    {
+      "from": 20,
+      "count": 196293,
+      "rtp": 6.132212150000009
+    },
+    {
+      "from": 50,
+      "count": 117952,
+      "rtp": 8.349185649999999
+    },
+    {
+      "from": 100,
+      "count": 84114,
+      "rtp": 12.699793449999996
+    },
+    {
+      "from": 250,
+      "count": 24426,
+      "rtp": 8.470997100000002
+    },
+    {
+      "from": 500,
+      "count": 12486,
+      "rtp": 8.460526100000001
+    },
+    {
+      "from": 1000,
+      "count": 3049,
+      "rtp": 4.15417885
+    },
+    {
+      "from": 2500,
+      "count": 131,
+      "rtp": 0.39096315
+    },
+    {
+      "from": 5000,
+      "count": 0,
+      "rtp": 0
+    }
+  ],
+  "target": null
+}

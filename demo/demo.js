@@ -3,7 +3,7 @@
  *
  * One play-money balance for every game, kept in this browser (localStorage), that the
  * lobby can reset. Each game page loads this file first, with data-game="vault",
- * "classic" or "relicforge":
+ * "classic", "relicforge" or "glasshouse":
  *
  *  - vault:   Vault 20K's local engine keeps its session in localStorage
  *             ("bananax.session.v1"). The shared balance is written into it before the
@@ -168,6 +168,73 @@
         r.round_ref = "DEMO-" + String(r.spin_id).slice(0, 8);
         r.balance = { amount: r.balance_after, currency: engine.session.currency };
         return reply(200, r);
+      });
+    };
+    backLink();
+  }
+
+  if (game === "glasshouse") {
+    // As for Classic 5x3: the client's /game/v1/* calls answered in the page by the game's own
+    // engine. What the RGS keeps server-side is kept here in localStorage: the feature in
+    // progress (spins left, its running total, the lit panes) and its locked bet.
+    var GH_KEY = "lumina.demo.glasshouse";
+    try { sessionStorage.setItem("glasshouse.session", "demo"); } catch (e) { /* game.js shows its own message */ }
+    var ghLoad = function () { try { return JSON.parse(store.get(GH_KEY) || "null"); } catch (e) { return null; } };
+    var ghReady = fetch("rules.json").then(function (r) { return r.json(); }).then(function (rules) {
+      var engine = new window.Glasshouse.SpinEngine({ rules: rules });
+      engine.initSession({ player_id: "demo", currency: "GEL", locale: "en", game_id: "glasshouse", balance: read() });
+      return engine;
+    });
+    var ghReply = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { "content-type": "application/json" } }); };
+    var ghRestore = function (engine) {
+      var f = ghLoad();
+      var s = engine.session;
+      s.balance = read();
+      s.freeSpinsLeft = f && f.freeSpinsLeft > 0 ? f.freeSpinsLeft : 0;
+      s.bonusRoundWin = f ? f.bonusRoundWin || 0 : 0;
+      s.featureState = f ? f.featureState || null : null;
+      return f;
+    };
+    var ghSession = function (engine) {
+      var f = ghRestore(engine);
+      var inFeature = engine.session.freeSpinsLeft > 0;
+      return {
+        session_token: "demo", game: { code: "glasshouse" }, currency: "GEL",
+        allowed_bets: engine.getAllowedBets(), balance: { amount: engine.session.balance, currency: "GEL" },
+        free_spins_left: engine.session.freeSpinsLeft,
+        resume: inFeature && f ? { resumed: true, bet_amount: f.bet, feature: { free_spins_left: f.freeSpinsLeft, bonus_round_win: f.bonusRoundWin, locked_bet: f.bet, feature_state: f.featureState } } : null,
+        regulatory: demoMarket || { jurisdiction: "DEFAULT" },
+        embed: { allowed_hosts: [] }
+      };
+    };
+    var ghFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var url = new URL(typeof input === "string" ? input : input.url, location.href);
+      if (url.origin !== location.origin || url.pathname.indexOf("/game/v1/") !== 0) return ghFetch(input, init);
+      var path = url.pathname.slice("/game/v1/".length);
+      return ghReady.then(function (engine) {
+        if (path === "session/init" || path === "session") return ghReply(200, ghSession(engine));
+        if (path === "reality-check/ack") return ghReply(200, { ok: true });
+        if (path !== "spin" && path !== "buy-feature") return ghReply(404, { error: { code: "NOT_FOUND", message: "not in the demo" } });
+        var body = {};
+        try { body = JSON.parse((init && init.body) || "{}"); } catch (e) { body = {}; }
+        var f = ghRestore(engine);
+        var free = engine.session.freeSpinsLeft > 0;
+        var bet = free && f ? f.bet : Number(body.bet_amount);
+        if (path === "buy-feature") {
+          if (free) return ghReply(409, { error: { code: "FEATURE_IN_PROGRESS" } });
+          if (demoMarket && demoMarket.buy_feature_enabled === false) return ghReply(403, { error: { code: "FEATURE_BUY_DISABLED" } });
+        }
+        var cost = path === "buy-feature" ? cents(bet * engine.BUY_FREE_SPINS_COST_MULT) : bet;
+        if (!free && engine.session.balance < cost) return ghReply(402, { error: { code: "INSUFFICIENT_FUNDS", message: "Not enough demo credit: reset it in the lobby" } });
+        var r;
+        try { r = path === "buy-feature" ? engine.buyFreeSpins({ bet_amount: bet }) : engine.spin({ bet_amount: bet }); } catch (err) { return ghReply(422, { error: { code: String(err.message || "ROUND_FAILED") } }); }
+        write(r.balance_after);
+        if (r.free_spins_left > 0) store.set(GH_KEY, JSON.stringify({ freeSpinsLeft: r.free_spins_left, bonusRoundWin: r.bonus_round_win, featureState: r.feature_state, bet: bet }));
+        else store.del(GH_KEY);
+        r.round_ref = "DEMO-" + String(r.spin_id).slice(0, 8);
+        r.balance = { amount: r.balance_after, currency: "GEL" };
+        return ghReply(200, r);
       });
     };
     backLink();

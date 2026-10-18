@@ -19,10 +19,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { untilIdle } from "./lib/until-idle.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const argv = process.argv.slice(2);
-const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge"];
+const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge", "glasshouse"];
 let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${detail ? ` (${detail})` : ""}`); if (!ok) failed++; };
 
@@ -41,7 +42,7 @@ const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin
 const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
 // What each game has at all (before any market switches it off).
-const HAS = { vault: { turbo: true, slam: true, buy: true }, classic: { turbo: true, slam: true, buy: false }, relicforge: { turbo: false, slam: false, buy: false } };
+const HAS = { vault: { turbo: true, slam: true, buy: true }, classic: { turbo: true, slam: true, buy: false }, relicforge: { turbo: false, slam: false, buy: false }, glasshouse: { turbo: true, slam: true, buy: true } };
 // UKGC allows the buy, but its 5.00 stake cap hides a buy that costs more (100x a 1.00 bet).
 const MARKETS = { UKGC: { autoplay: false, turbo: false, buy: false, minMs: 2500 }, DE: { autoplay: false, turbo: false, buy: false, minMs: 5000 }, "": { autoplay: true, turbo: true, buy: true, minMs: 0 } };
 
@@ -79,7 +80,7 @@ async function run(game, market) {
   // rounds' answers must keep the market's minimum (the client paces; it never queues).
   const slams = [];
   for (let i = 0; i < 3; i++) {
-    await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+    await untilIdle(page, 240000);
     const press = () => page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
     await press();
     // Slam: a second press during the round (Vault keeps its flag on the state).
@@ -88,7 +89,7 @@ async function run(game, market) {
     await press();
     if (game === "vault") slams.push(await page.evaluate(() => typeof state !== "undefined" && Boolean(state.fastStopRequested)));
   }
-  await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 240000 });
+  await untilIdle(page, 240000);
   // Answer times: the page's fetch (Moth & Lantern, Relic Forge), or Vault's rounds in view.
   const arrivals = await page.evaluate(() => (window.__luminaRounds || window.__rounds).slice(0, 3));
   await page.close();
