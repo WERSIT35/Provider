@@ -332,7 +332,7 @@ async function animateWinMeter(from, to, duration = 260) {
     const t = clamp((performance.now() - t0) / span, 0, 1);
     const eased = 1 - (1 - t) ** 3;
     el.lastWin.textContent = fmt(lerp(start, end, eased));
-    if (counting) window.Sound?.play("win_tick", { progress: t });
+    if (counting && state.roundCelebrates !== false) window.Sound?.play("win_tick", { progress: t }); // silent for a sub-stake return
     if (t >= 1) break;
     await sleep(16);
   }
@@ -2460,12 +2460,13 @@ class ReelCanvasRenderer {
     await this._dropSettle(Math.round(duration * BLAST_GONE) + maxDelay);
   }
 
-  async highlight(matrix, { winning = [], multipliers = [] } = {}, duration = 560) {
+  async highlight(matrix, { winning = [], multipliers = [], quiet = false } = {}, duration = 560) {
     duration = Math.round(duration * turboScale()); // turbo speeds the celebration hold
     this.setBoard(matrix, { winning, multipliers });
     if (!winning.length) return;
     const start = performance.now();
-    this.fx.pulse = { start, duration, phase: this.breathPhases(winning) };
+    // A sub-stake return (market rule) keeps the focus that shows what paid, not the glow.
+    this.fx.pulse = quiet ? null : { start, duration, phase: this.breathPhases(winning) };
     // Win focus: everything that did not win steps back, and stays back
     // through the blast until the board moves again (focusOff).
     this.focusOn(this.board.winningSet);
@@ -4705,8 +4706,13 @@ function hideForRegulation(node, off) {
 }
 
 function applyRegulatory(rules) {
-  regulatory.rules = rules || null;
+  // A field the RGS leaves out falls back on the jurisdiction's preset in the shared
+  // shell table (LuminaShell.MARKET_FALLBACK), so a profile stored before the client
+  // switches existed still gets its market's celebration rule.
+  const fb = rules ? window.LuminaShell?.MARKET_FALLBACK?.[String(rules.jurisdiction || "").toUpperCase()] || {} : {};
+  regulatory.rules = rules ? { ...fb, ...Object.fromEntries(Object.entries(rules).filter(([, v]) => v !== undefined && v !== null)) } : null;
   if (!rules) return;
+  rules = regulatory.rules;
   const autoplayOff = !regRule("autoplay_enabled", true);
   hideForRegulation(el.autoplayBtn, autoplayOff);
   const cap = regRule("max_autoplay_spins", null);
@@ -4719,7 +4725,57 @@ function applyRegulatory(rules) {
     hideForRegulation(el.turboBtn, true);
   }
   hideForRegulation(el.buyFreeBtn, !regRule("buy_feature_enabled", true));
+  applyStakeCap();
   scheduleRealityCheck(rules.reality_check_due_in_ms);
+}
+
+/** Slam stop (shortening a round already on screen) allowed in this market? A missing
+ *  value follows turbo (UKGC RTS 14E, AGCO 2.21 ban both). */
+function slamStopAllowed() {
+  return Boolean(regRule("slam_stop_enabled", regRule("turbo_enabled", true)));
+}
+
+/** The stake of one game cycle: the bet, raised by the ante when it is on. */
+function cycleStake(bet) {
+  const ante = el.anteToggle?.checked ? Number(state.rules?.features?.ante_bet?.bet_multiplier || 1.25) : 1;
+  return Number((Number(bet || 0) * ante).toFixed(2));
+}
+
+/**
+ * Win effects for this round? (celebrate_threshold "gt_stake": UK RTS 14F, AGCO 2.20.)
+ * A return at or below the stake is shown as a plain credit: the board still explains it
+ * (the winning symbols, their amount, the tumble), but no win sound, burst, gold line,
+ * stinger or overlay. Judged on the whole game cycle: a free spin by the feature's total
+ * so far against what started it (the trigger's stake or the buy price).
+ */
+function roundCelebrates(payload, bet, wagerOverride) {
+  const isFree = Boolean(payload?.is_free_spin);
+  const won = isFree ? Number(state.featureWon || 0) : Number(payload?.total_win || 0);
+  if (!(Number(payload?.total_win || 0) > 0)) return false;
+  if (regRule("celebrate_threshold", "any") !== "gt_stake") return true;
+  const stake = Number.isFinite(wagerOverride) ? wagerOverride
+    : isFree ? Number(state.featureStake || cycleStake(bet))
+    : Number(payload?.bet_charged || cycleStake(bet));
+  return won > stake + 1e-9;
+}
+
+/**
+ * A market's maximum stake per game cycle (UKGC £5, DE €1; client-side only: the RGS
+ * does not cap stakes). Bets whose cycle stake (ante included) would pass it leave the
+ * ladder, the bet steps down to fit, and a buy that costs more is hidden in place.
+ */
+function applyStakeCap() {
+  const cap = Number(regRule("max_stake", 0)) || 0;
+  if (!el.betSelect) return;
+  for (const opt of el.betSelect.options) opt.disabled = cap > 0 && cycleStake(Number(opt.value)) > cap + 1e-9;
+  if (cap > 0 && el.betSelect.selectedOptions[0]?.disabled && !state.restoringBet) {
+    const fits = [...el.betSelect.options].filter((o) => !o.disabled);
+    if (fits.length) { el.betSelect.value = fits[fits.length - 1].value; el.betSelect.dispatchEvent(new Event("change")); }
+  }
+  if (cap > 0) {
+    const cost = Number(el.betSelect.value || 0) * Number(state.rules?.features?.buy_free_spins?.cost_multiplier || 100);
+    hideForRegulation(el.buyFreeBtn, !regRule("buy_feature_enabled", true) || cost > cap + 1e-9);
+  }
 }
 
 function scheduleRealityCheck(dueInMs) {
@@ -5100,7 +5156,9 @@ window.__spinLifecycle = {
   get phase() { return spinLock.phase; },
   get inFlight() { return isRoundInFlight(); },
   get autoplayActive() { return Boolean(state.autoplayActive); },
-  get stats() { return { ...lifecycleStats }; }
+  get stats() { return { ...lifecycleStats }; },
+  /** The round being shown (probes): payload fields + whether it celebrates. */
+  get lastRound() { return state.lastRoundSeen || null; }
 };
 
 function requestFastStop() {
@@ -5124,6 +5182,9 @@ function requestFastStop() {
     return true;
   }
   if (!spinLock.isLocked() && !state.roundAnimating) return false; // nothing in flight
+  // Where slam stop is banned, a press before the result is shown shortens nothing
+  // (it still ends the big-win count above, which comes after the result).
+  if (!slamStopAllowed()) return true;
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
   reelRenderer.requestFastStop?.(); // no-op if no drop exists yet (_accelerateDrop guards)
@@ -5772,8 +5833,11 @@ function combineLaunchOffset(overlay, leftFrac, node) {
  *  bonus it keeps the persistent total. Turbo-scaled (--combine-t). */
 // The Total Win chip's pop peaks 20% into its 1.5s combineTotalIn (styles.css).
 const COMBINE_TOTAL_PEAK_MS = MOTION_TABLE.COMBINE.totalPeak;
-function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false } = {}) {
+function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = false, quiet = false } = {}) {
   if (!el.reels?.parentElement) return Promise.resolve();
+  // quiet (a return at or below the stake, market rule): the sum is still shown, without
+  // its stingers or the collision flash.
+  const snd = quiet ? () => {} : (name, opts) => window.Sound?.play(name, opts);
   const stage = el.reels.parentElement;
   // Phase timings (ms), turbo-scaled; the CSS durations read --combine-t.
   const t = turboScale();
@@ -5823,7 +5887,7 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       amount.classList.add("is-entered");
       multi.classList.add("is-entered");
       // Each phase's sound goes with the class that starts it.
-      window.Sound?.play("combine_enter");
+      snd("combine_enter");
     });
     setTimeout(() => {
       // Slam together.
@@ -5835,14 +5899,14 @@ function playWinCombineSequence(rawWin, multiplier, totalWin, { emptyBadge = fal
       // chips meet at the end of their slam)…
       amount.classList.add("is-merged");
       multi.classList.add("is-merged");
-      flash.classList.add("is-live");
+      if (!quiet) flash.classList.add("is-live");
       total.classList.add("is-live");
-      window.Sound?.play("combine_slam");
+      snd("combine_slam");
     }, ENTER + HOLD + SLAM);
     setTimeout(() => {
       // …the bell and the coins land on the total's pop (combineTotalIn peaks at 20%).
-      window.Sound?.play("multiplier_combine", { value: multiplier });
-      window.Sound?.play("combine_total");
+      snd("multiplier_combine", { value: multiplier });
+      snd("combine_total");
     }, ENTER + HOLD + SLAM + Math.round(COMBINE_TOTAL_PEAK_MS * t));
     setTimeout(() => {
       overlay.classList.add("is-fading");
@@ -6452,6 +6516,19 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     }
   }
   let liveRawWin = 0;
+  // The game cycle a free spin belongs to: what started it (trigger stake or buy price)
+  // and what the feature has paid so far, for the market's celebration rule.
+  if (payload.is_free_spin) {
+    state.featureWon = Number((Number(state.featureWon || 0) + Number(payload.total_win || 0)).toFixed(2));
+  } else if (Number(payload.free_spins_awarded || 0) > 0) {
+    state.featureStake = Number.isFinite(wagerOverride) ? wagerOverride : Number(payload.bet_charged || cycleStake(bet));
+    state.featureWon = Number(payload.total_win || 0);
+  }
+  // One decision for the whole round (the payload is known up front): a return at or
+  // below the stake keeps every explanation but none of the win effects.
+  const celebrate = roundCelebrates(payload, bet, wagerOverride);
+  state.roundCelebrates = celebrate;
+  state.lastRoundSeen = { n: (state.lastRoundSeen?.n || 0) + 1, total_win: Number(payload.total_win || 0), bet_amount: bet, bet_charged: payload.bet_charged, is_free_spin: Boolean(payload.is_free_spin), free_spins_awarded: Number(payload.free_spins_awarded || 0), celebrate };
   // Derive the engine's effective payout scaler so chip amounts AND meter
   // updates reflect post-scaler values. Without this, a raw 1.6 cluster
   // would render the chip "+1.60" yet the meter would settle at 2.38
@@ -6538,13 +6615,16 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         const prevMeterStart = Number(el.lastWin.textContent || 0);
         liveRawWin = Number((liveRawWin + scaledStepWin).toFixed(2));
         const prevDominant = reelRenderer._dominantSymbolAt(prevWinning);
-        const chipPromise = flyWinChip({
-          winningPositions: prevWinning,
-          amount: scaledStepWin,
-          tier: prevTier,
-          onLand: () => animateWinMeter(prevMeterStart, liveRawWin, 280)
-        });
-        const celebratePromise = prevTier !== "blast-small"
+        // Quiet round: no gold chip or cluster celebration; the meter still counts (silently).
+        const chipPromise = celebrate
+          ? flyWinChip({
+            winningPositions: prevWinning,
+            amount: scaledStepWin,
+            tier: prevTier,
+            onLand: () => animateWinMeter(prevMeterStart, liveRawWin, 280)
+          })
+          : animateWinMeter(prevMeterStart, liveRawWin, 280);
+        const celebratePromise = celebrate && prevTier !== "blast-small"
           ? reelRenderer.celebrateCluster(prevWinning, prevDominant, prevTier)
           : Promise.resolve();
         const dropMap = buildDropMap(prev.matrix, prevWinning);
@@ -6557,11 +6637,12 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         // drop is awaited immediately after the explode resolves (no awaited
         // gap on the slower chip/celebrate promises in between) so the cleared
         // cells can never flash the old symbols back before the refill commits.
-        window.Sound?.play("explode", { tier: prevTier });
+        const burstTier = celebrate ? prevTier : "blast-small"; // the cluster still leaves the board
+        window.Sound?.play("explode", { tier: burstTier });
         await reelRenderer.explode(
           prevWinning,
           ANIMATION_TIMING.explode, // turbo scaling applied inside explode()
-          prevTier
+          burstTier
         );
         window.Sound?.play("tumble", { step: i });
         // Multiplier drop sounds fire from the renderer at each BANG (synced to
@@ -6602,7 +6683,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       // only update the running meter + play the tier's sound. Exactly ONE win
       // message is shown at the end of the spin (the finale below).
       pushGameMessage(`${stepTier.label || "Win"}: ${fmt(stepWin)} on step ${i + 1}.`, "win");
-      if (stepTier.flash) {
+      if (stepTier.flash && celebrate) {
         await reelRenderer.jackpotFlash({
           duration: 520,
           colorA: THEME.alpha(THEME.color.laser, 0.30),
@@ -6633,7 +6714,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
         ]);
         // Big catches keep the flash for impact (no shake: the board stays
         // still), and no text "CATCH" banner/callout/log message.
-        if (freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic") {
+        if (celebrate && (freshTier === "epic" || freshTier === "legendary" || freshTier === "mythic")) {
           await reelRenderer.jackpotFlash({
             duration: freshTier === "mythic" ? 900 : 700,
             colorA: freshTier === "mythic" ? "rgba(255, 165, 224, 0.46)" : "rgba(190, 214, 255, 0.34)",
@@ -6643,10 +6724,10 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
       }
     }
     // The cluster lights up now (after the multiplier souls, if any): its sound with it.
-    if (isWinStep) window.Sound?.play("win_light");
+    if (isWinStep && celebrate) window.Sound?.play("win_light");
     await reelRenderer.highlight(
       step.matrix,
-      { winning: step.winning_positions || [], multipliers: step.multipliers || [] },
+      { winning: step.winning_positions || [], multipliers: step.multipliers || [], quiet: !celebrate },
       (step.winning_positions || []).length ? pulseDuration : 0
     );
   }
@@ -6687,16 +6768,16 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     // Every multiplied win → the combine reveals Win × Total Multiplier =
     // Total Win (a fast-stop skips it). Then the meter counts to the total; if
     // that total is an overlay tier, the celebration follows.
-    if (!state.fastStopRequested) await playWinCombineSequence(rawWin, appliedMult, totalWinAmt, { emptyBadge: !payload.is_free_spin });
+    if (!state.fastStopRequested) await playWinCombineSequence(rawWin, appliedMult, totalWinAmt, { emptyBadge: !payload.is_free_spin, quiet: !celebrate });
     await animateWinMeter(rawWin, totalWinAmt, 360);
-    playWinLand(totalWinAmt, bet);
-    if (appliedMult >= 50) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
+    if (celebrate) playWinLand(totalWinAmt, bet);
+    if (celebrate && appliedMult >= 50) window.Ambiance?.react("win", { tier: "blast-great", amountX: totalWinX });
     messageShown = true;
-    if (getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
+    if (celebrate && getWinTier(totalWinAmt, bet).overlay) await celebrateBigWin(totalWinAmt, bet);
   }
 
   // A plain win's count-up has landed (its last chip counted in): its stinger.
-  if (!maxWinEvt && !isMultipliedWin && totalWinAmt > 0) playWinLand(totalWinAmt, bet);
+  if (celebrate && !maxWinEvt && !isMultipliedWin && totalWinAmt > 0) playWinLand(totalWinAmt, bet);
 
   // No-win / bonus-trigger only touch the admin log (no over-reel text — the
   // player can see the board).
@@ -6709,7 +6790,7 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
     // celebration; anything smaller already had its moment on the board.
     if (!messageShown) {
       const roundTier = getWinTier(totalWinAmt, bet);
-      if (roundTier.overlay) {
+      if (celebrate && roundTier.overlay) {
         if (roundTier.blast === "blast-great") {
           window.Ambiance?.react("win", { tier: roundTier.blast, amountX: totalWinX });
         }
@@ -7330,6 +7411,9 @@ async function initSession() {
       ? Number(payload.free_spin_multiplier_current)
       : 0;
     el.activeMultiplier.textContent = mfmt(state.bonusMultiplierCarry);
+    // A resumed feature: its total so far; its stake falls back on the locked bet.
+    state.featureWon = Number(payload.bonus_round_win || 0);
+    state.featureStake = null;
   }
   updateBonusHud({
     freeSpinsLeft: pendingFreeSpins,
@@ -7345,6 +7429,9 @@ async function initSession() {
   setCrazyMode(Boolean(payload.crazy_mode), { silent: true });
   pushGameMessage(`Session ${state.sessionId.slice(0, 8)} initialized.`, "info");
   state.lastBalance = Number(payload.balance);
+  // The static demo (demo/demo.js) passes a review market (?market=UKGC) here; in it
+  // only the client switches apply (no RGS: no pacing errors or reality check).
+  if (!_platform.enabled && window.VX_DEMO_REGULATORY) applyRegulatory(window.VX_DEMO_REGULATORY);
   if (_platform.enabled) {
     applyRegulatory(_platform.sessionMeta?.regulatory);
     embedConnect(_platform.sessionMeta);
@@ -7391,6 +7478,7 @@ function setCrazyMode(on, opts = {}) {
 }
 
 el.betSelect.addEventListener("change", () => {
+  if (regulatory.rules) applyStakeCap(); // the buy price follows the bet
   el.betView.textContent = fmt(el.betSelect.value);
   if (el.betDisplay) el.betDisplay.textContent = fmt(el.betSelect.value);
   renderPaytable(Number(el.betSelect.value || 1));
@@ -7402,8 +7490,9 @@ function stepBet(direction) {
   const opts = Array.from(el.betSelect.options);
   if (!opts.length) return;
   const idx = Math.max(0, opts.findIndex((o) => o.value === el.betSelect.value));
-  const next = Math.max(0, Math.min(opts.length - 1, idx + direction));
-  if (opts[next].value === el.betSelect.value) return;
+  let next = idx + direction;
+  while (next >= 0 && next < opts.length && opts[next].disabled) next += direction; // over the market's stake cap
+  if (next < 0 || next >= opts.length) return;
   el.betSelect.value = opts[next].value;
   el.betSelect.dispatchEvent(new Event("change"));
   window.Sound?.play("bet_change", { up: direction > 0 });
@@ -7417,6 +7506,7 @@ if (el.betUpBtn) el.betUpBtn.addEventListener("click", () => stepBet(1));
 if (el.anteToggle) {
   el.anteToggle.addEventListener("change", () => {
     window.Sound?.play("toggle", { on: el.anteToggle.checked });
+    if (regulatory.rules) applyStakeCap(); // the ante raises the cycle stake
     el.buyFreeBtn.disabled = el.anteToggle.checked || isRoundInFlight() || freeRounds.active;
     if (isPlayerBetChoice()) saveBetPref({ ante: el.anteToggle.checked });
     // The standalone engine keeps its own ante flag (it refuses a buy while it is on)
@@ -7749,15 +7839,19 @@ const ticker = (() => {
   }
   function win(amountText) {
     stopRotate();
-    const first = mode !== "win";
-    mode = "win";
-    line = `Win: ${amountText}`;
+    // Market rule (RTS 14F / AGCO 2.20): a round returning at or below its stake is a
+    // plain credit line, neutral and still (no gold, no punch-in).
+    const quiet = state.roundCelebrates === false;
+    const kind = quiet ? "neutral" : "win";
+    const first = mode !== kind;
+    mode = kind;
+    line = quiet ? `Credit: ${amountText}` : `Win: ${amountText}`;
     show();
-    if (first && !flashing) bump(true);
+    if (first && !flashing && !quiet) bump(true);
   }
   function roundEnd() {
     // A win holds until the next spin; a round without one goes back to tips.
-    if (mode !== "win") idle();
+    if (mode !== "win" && mode !== "neutral") idle();
   }
   function flash(text, tone = "info", ms = TICKER.flashMinMs) {
     clearTimeout(flashTimer);

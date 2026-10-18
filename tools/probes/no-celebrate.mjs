@@ -4,9 +4,9 @@
 // the stake gets NO win effects: no win sounds, no gold ticker, no celebration overlay, no
 // haptics, no amber win glow. A round above the stake still celebrates (positive control),
 // and in the default market every win celebrates as before (Relic Forge: quiet by design).
-// Covers Moth & Lantern and Relic Forge; Vault 20K joins when it moves onto the shell.
+// Covers Vault 20K, Moth & Lantern and Relic Forge.
 //
-//   CHROME_PATH=… node tools/probes/no-celebrate.mjs [--rounds 60]
+//   CHROME_PATH=… node tools/probes/no-celebrate.mjs [--rounds 60] [--games vault,classic,relicforge]
 //
 // Runs on the demo build (games answered in the page by their own engines), so it needs no
 // platform: it builds dist-demo/ first. Exits 1 on any failure.
@@ -40,7 +40,8 @@ const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--n
 // Win-effect sound events per game (any of these on a sub-stake round is a failure).
 const WIN_EVENTS = {
   classic: ["win_small", "win_land", "win_big", "win_mega", "win_epic", "line_show", "win_tick", "feature_award"],
-  relicforge: ["rf_win", "rf_win_tier", "rf_max_win", "rf_mult_tier"]
+  relicforge: ["rf_win", "rf_win_tier", "rf_max_win", "rf_mult_tier"],
+  vault: ["win_small", "win_land", "win_light", "win_tick", "win_big", "win_mega", "win_epic", "bigwin_open", "max_win", "combine_enter", "combine_slam", "combine_total", "multiplier_combine"]
 };
 
 const QUIET_BY_DESIGN = new Set(["relicforge"]);
@@ -75,13 +76,17 @@ async function run(game, market) {
   for (let i = 0; i < ROUNDS; i++) {
     const mark = await page.evaluate(() => ({ t: performance.now(), vib: window.__probe.vib, n: window.__probe.rounds.length }));
     await page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
-    await page.waitForFunction((n) => window.__probe.rounds.length > n, { timeout: 20000 }, mark.n).catch(() => {});
+    await page.waitForFunction((n) => {
+      const lr = window.__spinLifecycle.lastRound; // Vault 20K: resolved in the page, no fetch
+      if (lr && lr.n !== window.__probe.lastN) { window.__probe.lastN = lr.n; window.__probe.rounds.push({ j: lr, at: performance.now() }); }
+      return window.__probe.rounds.length > n;
+    }, { timeout: 20000, polling: 20 }, mark.n).catch(() => {});
     // Watch the presentation while it runs: overlay, ticker state, amber glow.
     const seen = await page.evaluate(async () => {
       const out = { overlay: false, gold: false };
       const t0 = performance.now();
       while (performance.now() - t0 < 15000) {
-        if (document.querySelector("#celebration:not([hidden]), #banner:not([hidden])")) out.overlay = true;
+        if (document.querySelector("#celebration:not([hidden]), #banner:not([hidden]), #bigWinOverlay.is-open")) out.overlay = true;
         if (document.getElementById("psTicker")?.dataset.state === "win") out.gold = true;
         if (!window.__spinLifecycle.inFlight) break;
         await new Promise((r) => setTimeout(r, 30));
@@ -110,7 +115,8 @@ async function run(game, market) {
   return results;
 }
 
-for (const game of ["classic", "relicforge"]) {
+const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge"];
+for (const game of GAMES) {
   const uk = await run(game, "UKGC");
   check(`${game} (UKGC): ${uk.sub} rounds returned ≤ the stake and none was celebrated`, uk.sub > 0 && uk.subBad.length === 0, uk.subBad.slice(0, 3).join(" | ") || (uk.sub ? "" : "no sub-stake round seen; raise --rounds"));
   check(`${game} (UKGC): rounds above the stake still celebrate (${uk.aboveOk}/${uk.above})`, uk.above === 0 || uk.aboveOk === uk.above);
