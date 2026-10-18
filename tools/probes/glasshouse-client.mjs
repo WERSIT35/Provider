@@ -164,6 +164,34 @@ for (const size of [[390, 844], [1440, 900]]) {
   await ctx.close();
 }
 
+// ── 4. frame time while the beam draws (mid-range phone: CPU slowed 4x) ──
+{
+  console.log("frames during the beam @ 390x844, CPU 4x slower");
+  const { page, ctx, errors } = await open([390, 844]);
+  const cdp = await page.createCDPSession();
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  const intervals = [];
+  for (const board of [BOARDS.beamWin, BOARDS.bigWin, BOARDS.beamWin]) {
+    await force(page, board.stops);
+    await press(page);
+    await page.waitForFunction(() => window.__ghBoard.beaming, { timeout: 30000, polling: 10 });
+    // Frame-to-frame intervals for as long as the beam draws.
+    intervals.push(...await page.evaluate(() => new Promise((resolve) => {
+      const out = []; let last = 0;
+      const tick = (t) => { if (last) out.push(t - last); last = t; if (window.__ghBoard.beaming) requestAnimationFrame(tick); else resolve(out); };
+      requestAnimationFrame(tick);
+    })));
+    await page.evaluate(() => document.getElementById("celebration").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+    await settled(page);
+  }
+  intervals.sort((a, b) => a - b);
+  const p95 = intervals[Math.floor(intervals.length * 0.95)] || 0;
+  // A 60 Hz display shows a frame every 16.67 ms; Chrome's timestamps carry ~0.1 ms of jitter.
+  check(`beam: p95 frame interval ${p95.toFixed(1)} ms over ${intervals.length} frames (≤ 16.7 ms + 0.2 ms timer jitter)`, intervals.length > 20 && p95 <= 16.9);
+  check("beam: no console or page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 if (missingSounds.size) console.log(`\nnote: ${missingSounds.size} Glasshouse sound file(s) not built yet (Stage 4): ${[...missingSounds].slice(0, 4).join(", ")}`);
