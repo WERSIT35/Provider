@@ -39,7 +39,11 @@ For each game (rotate the order between players):
    - **Relic Forge:** "What is the bar at the top, and what fills it?" After a draft: "What
      did the relic you picked do?" (Correct: embers from wins fill the forge; when it is full
      the Forge starts; the relic changes the next boards.)
-4. Score each answer **correct**, **partly**, or **wrong**. Write down their words.
+4. When a feature starts (or use the buy in Vault 20K), after its intro panel ask: **"What is
+   different in this feature?"** (Correct: Vault, multipliers add up for the whole bonus;
+   Moth & Lantern, every win ×3; Relic Forge, you pick a relic before each spin.) After the
+   outro: **"How much did the feature pay?"** (Correct: the outro's total.)
+5. Score each answer **correct**, **partly**, or **wrong**. Write down their words.
 
 A player passes a game when, by their third paying round, the answer is correct without a
 hint.

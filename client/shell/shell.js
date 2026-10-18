@@ -84,6 +84,8 @@
         <span class="lsh-strip__item" data-k="net"></span><span class="lsh-strip__item" data-k="time"></span><span class="lsh-strip__item" data-k="clock"></span>
         <span class="lsh-host" data-host aria-hidden="true"></span>
       </div>
+      <button type="button" class="lsh-panic" data-area="strip" data-ctl="panic" hidden><span>Pause play 24 h</span></button>
+      <p class="lsh-rtp" data-rtp hidden></p>
       <div class="lsh-stage" data-area="stage"></div>
       <div class="lsh-rail" data-area="rail"${features.buy || features.ante ? "" : " hidden"}>
         <button type="button" id="buyFreeBtn" class="lsh-chip lsh-chip--buy" data-ctl="buy"${features.buy ? "" : " hidden"}><span class="lsh-chip__k">Buy</span><span class="lsh-chip__v">Feature</span></button>
@@ -103,7 +105,7 @@
     const q = (sel) => frame.querySelector(sel);
     const ctl = (name) => q(`[data-ctl="${name}"]`);
     const el = {
-      strip: q(".lsh-strip"), host: q("[data-host]"), stage: q(".lsh-stage"), rail: q(".lsh-rail"),
+      strip: q(".lsh-strip"), panic: q("[data-ctl=panic]"), rtp: q("[data-rtp]"), host: q("[data-host]"), stage: q(".lsh-stage"), rail: q(".lsh-rail"),
       ticker: q(".lsh-ticker"), tickerText: q(".lsh-ticker__text"),
       balance: q('[data-v="balance"]'), bet: q('[data-v="bet"]'), win: q('[data-v="win"]'), betK: q('[data-k="bet"]'), winK: q('[data-k="win"]'),
       menu: ctl("menu"), info: ctl("info"), auto: ctl("auto"), autoCount: q("[data-auto-count]"), minus: ctl("minus"), plus: ctl("plus"),
@@ -139,6 +141,10 @@
       if (!rule("turbo_enabled", true) && prefs.speed !== "normal") { prefs.speed = "normal"; syncSpeed(); }
       hideInPlace(el.buy, !features.buy || !rule("buy_feature_enabled", true));
       frame.dataset.session = rule("session_hud", "") || "";
+      // DE (GlüStV §6i): the panic button. It asks the casino to lock play for 24 hours
+      // (the casino applies it through its OASIS link); the game stops at once.
+      el.panic.hidden = rule("session_hud", "") !== "panic";
+      labels();
       syncSpeed();
       sessionStrip();
       return market;
@@ -176,6 +182,9 @@
       return rule("celebrate_threshold", "any") === "gt_stake" ? w > (Number(stake) || 0) + 1e-9 : true;
     }
     const slamAllowed = () => features.stop && rule("slam_stop_enabled", rule("turbo_enabled", true));
+    // Anticipation (one more and the feature starts) is never cut short where the market
+    // says so (LuminaMotion.GRAMMAR.anticipation.notSkippableIn: UKGC, ON).
+    const anticipationSkippable = () => slamAllowed() && !(root.LuminaMotion?.GRAMMAR.anticipation.notSkippableIn || []).includes(String(rule("jurisdiction", "")).toUpperCase());
     const turboAllowed = () => features.turbo && rule("turbo_enabled", true);
     const autoplayCap = () => (rule("autoplay_enabled", true) ? rule("max_autoplay_spins", null) : 0);
 
@@ -195,7 +204,16 @@
     function labels() {
       const c = currency ? ` · ${currency}` : "";
       setText(q(".lsh-read__k"), `Balance${c}`);
+      // DE (GlüStV §22a(3)): the return to player shown at the stake: beside the bet
+      // buttons in portrait (in the autoplay slot, which that market leaves empty), on the
+      // Bet readout in landscape. Elsewhere nothing.
+      const show = rule("rtp_display", "") === "stake_area" && Number.isFinite(rtpPct);
+      el.rtp.hidden = !show;
+      if (show) el.rtp.innerHTML = `<span>RTP</span> ${esc(rtpPct.toFixed(2))}%`;
+      frame.classList.toggle("has-rtp-slot", show && el.auto.classList.contains("is-off"));
     }
+    let rtpPct = null;
+    const betLabel = () => "Bet";
 
     // ── ticker (generalised from Vault 20K's #psTicker) ─────────────────────
     const TICK = { rotateMs: 4500, flashMinMs: 900 };
@@ -271,7 +289,7 @@
     function featureHud(info) {
       S.featureHud = info || null;
       frame.classList.toggle("is-feature", Boolean(info));
-      if (!info) { setText(el.betK, "Bet"); setText(el.winK, "Win"); setBetLocked(false); return; }
+      if (!info) { setText(el.betK, betLabel()); setText(el.winK, "Win"); setBetLocked(false); return; }
       setBetLocked(true);
       setText(el.betK, info.label || "Free spins");
       setText(el.bet, String(info.left ?? ""));
@@ -393,6 +411,73 @@
       on.betIndex?.(Number(b.dataset.bet));
     });
 
+    // ── feature panels (A6): the intro (the rules in one line, the spins) and the outro
+    // (what the feature paid). Over the stage, never in the layout; a tap, Enter or Space
+    // continues; in autoplay it continues by itself. Every game's panel looks like the game
+    // (--lsh-* tokens) and reads the same way.
+    const panelEl = doc.createElement("section");
+    panelEl.className = "lsh-panel hidden";
+    panelEl.setAttribute("role", "dialog"); panelEl.setAttribute("aria-modal", "true");
+    panelEl.innerHTML = '<div class="lsh-sheet__panel lsh-panel__card"><p class="lsh-panel__kicker"></p><h2 class="lsh-panel__title"></h2><p class="lsh-panel__line"></p><dl class="lsh-panel__stats"></dl><p class="lsh-panel__total" hidden><span class="lsh-panel__tk"></span><strong class="lsh-panel__tv"></strong></p><p class="lsh-panel__cta"></p></div>';
+    el.stage.appendChild(panelEl);
+    N?.register("lsh-panel", panelEl, { kind: "modal", visibility: "class", dismiss: { backdrop: "continue", escape: "continue", enter: "continue", space: true } });
+    const pq = (c) => panelEl.querySelector(c);
+    /** { kicker, title, line, stats: [[label, value]], total, totalLabel, countX, auto } →
+     *  resolves with "continue" (tap) or "auto". `countX` (× bet) sizes the total's count-up. */
+    function panel(o = {}) {
+      setText(pq(".lsh-panel__kicker"), o.kicker || "");
+      setText(pq(".lsh-panel__title"), o.title || "");
+      setText(pq(".lsh-panel__line"), o.line || "");
+      pq(".lsh-panel__stats").innerHTML = (o.stats || []).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
+      const tot = pq(".lsh-panel__total"), tv = pq(".lsh-panel__tv");
+      tot.hidden = o.total === undefined;
+      setText(pq(".lsh-panel__tk"), o.totalLabel || "Total");
+      setText(pq(".lsh-panel__cta"), o.auto ? "" : (o.cta || "Tap to continue"));
+      const M = root.LuminaMotion, sp = api.motionSpeed();
+      const counts = o.count !== false && M && sp !== "reduced";
+      const done = N ? N.open("lsh-panel") : Promise.resolve("continue");
+      let raf = 0, timer = 0;
+      if (o.total !== undefined) {
+        // The count-up never passes the paid amount and lands on it exactly.
+        const end = Number(o.total) || 0, ms = counts ? M.countUpMs(o.countX || 0, sp) : 0, t0 = performance.now();
+        const step = (t) => { const k = ms ? Math.min(1, (t - t0) / ms) : 1; setText(tv, money(end * (1 - (1 - k) ** 3))); if (k < 1) raf = requestAnimationFrame(step); else setText(tv, money(end)); };
+        setText(tv, money(ms ? 0 : end));
+        if (ms) raf = requestAnimationFrame(step);
+      }
+      if (o.auto) timer = setTimeout(() => N?.get?.("lsh-panel")?.close?.("auto"), Number(o.auto) || (M ? M.ms("featureAutoContinue") : 3000));
+      return done.then((r) => { cancelAnimationFrame(raf); clearTimeout(timer); if (o.total !== undefined) setText(tv, money(o.total)); return r; });
+    }
+    /** "+N" (more free spins) flies from the board into the spins readout, which bumps. */
+    function flyPlus(text) {
+      const M = root.LuminaMotion, sp = api.motionSpeed();
+      const target = el.bet.closest("[data-area]") || el.bet;
+      const a = el.stage.getBoundingClientRect(), b = target.getBoundingClientRect();
+      const n = doc.createElement("span");
+      n.className = "lsh-plus"; n.textContent = text; n.setAttribute("aria-hidden", "true");
+      n.style.left = `${a.left + a.width / 2}px`; n.style.top = `${a.top + a.height / 2}px`;
+      const wcs = getComputedStyle(el.win); // the game's win colour and number face, outside the frame
+      n.style.color = wcs.color; n.style.fontFamily = wcs.fontFamily;
+      doc.body.appendChild(n); // fixed to the viewport (the frame may contain its fixed children)
+      const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+      const ms = M ? M.ms("retrigger", sp) : 900;
+      const anim = sp === "reduced"
+        ? n.animate([{ opacity: 0, transform: `translate(${dx}px, ${dy}px)` }, { opacity: 1, transform: `translate(${dx}px, ${dy}px)` }, { opacity: 0, transform: `translate(${dx}px, ${dy}px)` }], { duration: ms })
+        : n.animate([{ transform: "translate(-50%, -50%) scale(1.5)", opacity: 0 }, { transform: "translate(-50%, -50%) scale(1.3)", opacity: 1, offset: 0.25 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.7)`, opacity: 1 }], { duration: ms, easing: "cubic-bezier(0.45, 0, 0.25, 1)" });
+      return anim.finished.catch(() => {}).then(() => { n.remove(); if (sp !== "reduced") target.animate([{ transform: "scale(1.14)" }, { transform: "none" }], { duration: 220 }); });
+    }
+
+    /** A short explanation over the top of the board (the first time something happens):
+     *  no tap needed, read aloud, gone after `ms`. Never covers the controls. */
+    const calloutEl = doc.createElement("p");
+    calloutEl.className = "lsh-sheet__panel lsh-callout"; calloutEl.hidden = true; calloutEl.setAttribute("role", "status");
+    el.stage.appendChild(calloutEl);
+    let calloutT = 0;
+    function callout(text, ms = 3200) {
+      clearTimeout(calloutT);
+      setText(calloutEl, text); calloutEl.hidden = false;
+      calloutT = setTimeout(() => { calloutEl.hidden = true; }, ms);
+    }
+
     /** A plain notice (insufficient balance, errors). Resolves when closed. */
     function notice(title, html) {
       setText(sheets.notice.title, title);
@@ -412,22 +497,28 @@
     // Release-then-press: a spin starts on pointerdown, and only once the previous press
     // was released (no held or queued presses, RTS 14D / SIFS). Keyboard: Space/Enter.
     let pressed = false;
+    // While a feature panel is up, Spin is "continue" (never a round of its own).
+    const spinPress = (source) => { if (!panelEl.classList.contains("hidden")) { N?.get?.("lsh-panel")?.close?.("continue"); return; } on.spin?.({ source }); };
     el.spin.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 || pressed) return;
       pressed = true; e.preventDefault();
-      on.spin?.({ source: "pointer" });
+      spinPress("pointer");
     });
     const release = () => { pressed = false; };
     addEventListener("pointerup", release, true);
     addEventListener("pointercancel", release, true);
     addEventListener("blur", release);
     doc.addEventListener("visibilitychange", release);
-    el.spin.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); on.spin?.({ source: "key" }); } });
+    el.spin.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); spinPress("key"); } });
     doc.addEventListener("keydown", (e) => {
       if (e.code !== "Space" || e.repeat) return;
       if (e.target !== doc.body && !frame.contains(e.target)) return;
       if (e.target.closest?.("button, input, select, a") && e.target !== el.spin) return;
-      e.preventDefault(); on.spin?.({ source: "space" });
+      e.preventDefault(); spinPress("space");
+    });
+    el.panic.addEventListener("click", async () => {
+      const r = await ask("Pause play for 24 hours?", "<p>Your casino will lock play for 24 hours. The game stops now; a round already on screen finishes first.</p>", [{ label: "Pause 24 h", reason: "panic", primary: true }, { label: "Cancel", reason: "cancel" }]);
+      if (r === "panic") on.panic?.();
     });
     el.minus.addEventListener("click", () => on.betStep?.(-1));
     el.plus.addEventListener("click", () => on.betStep?.(1));
@@ -457,12 +548,14 @@
     const api = {
       frame, el, ticker, prefs,
       get phase() { return S.phase; },
-      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask,
-      applyMarket, celebrates, slamAllowed, turboAllowed, autoplayCap, rule,
+      setPhase, setSpinMode, setBets, setBetLocked, featureHud, waiting, notice, ask, panel, flyPlus, callout,
+      applyMarket, celebrates, slamAllowed, anticipationSkippable, turboAllowed, autoplayCap, rule,
       speed, reducedMotion,
       /** The motion speed key for LuminaMotion: "reduced" wins, then the player's speed. */
       motionSpeed() { return reducedMotion() ? "reduced" : speed(); },
       setCurrency(c) { currency = c || ""; labels(); },
+      /** The active profile's theoretical RTP in % (shown at the stake where the market says so). */
+      setRtp(pct) { rtpPct = Number.isFinite(Number(pct)) ? Number(pct) : null; labels(); },
       /** The game changed the speed itself (Vault 20K: hold Spin for turbo autoplay). */
       setSpeed(s) { if (!turboAllowed() || prefs.speed === s) return; prefs.speed = s; store.save(prefs); syncSpeed(); },
       setBalance(v) { setText(el.balance, money(v)); trackBalance(v); },

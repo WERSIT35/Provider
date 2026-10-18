@@ -22,7 +22,14 @@
 
   const INTRO_MS = 900;            // 0 → first threshold
   const BEAT_MS = 260;             // hold on each tier-up so the new label lands
-  const DISMISS_GUARD_MS = 450;    // after a skip, ignore taps so the final figure is seen
+  const DISMISS_GUARD_MS = 450;    // after a skip, ignore taps so the final figure is seen (fallback)
+  // After a skip the title holds 400-700 ms by tier (LuminaMotion.BIG_WIN / MAX_WIN `hold`).
+  const skipHoldMs = (run) => {
+    const M = window.LuminaMotion;
+    if (!M) return DISMISS_GUARD_MS;
+    if (run.finalTier && /max/i.test(run.finalTier.key || run.finalTier.id || "")) return M.MAX_WIN.hold;
+    return M.tierFor(run.amount / run.bet)?.hold ?? DISMISS_GUARD_MS;
+  };
   const FINISH_GUARD_MS = 150;     // after a natural finish, same idea, shorter
   const FADE_MS = 240;             // matches the CSS opacity transition
   const OPEN_TIER_MAX_STRETCH = 3; // cap on how long the top tier may count
@@ -568,12 +575,13 @@
       this._setAmount(run.amount);
       if (run.finalTier) this._applyTier(run.finalTier, { skipped: run.skipped });
       this.root.classList.add("is-done");
-      run.dismissAt = performance.now() + (run.skipped ? DISMISS_GUARD_MS : FINISH_GUARD_MS);
+      const guard = run.skipped ? skipHoldMs(run) : FINISH_GUARD_MS;
+      run.dismissAt = performance.now() + guard;
       if (this.announceEl) {
         this.announceEl.textContent = `${run.tier.label || "Win"}: ${this.format(run.amount)}`;
       }
       if (run.autoDismissMs > 0) {
-        this._autoTimer = setTimeout(() => this.dismiss(), run.autoDismissMs);
+        this._autoTimer = setTimeout(() => this.dismiss(), Math.max(run.autoDismissMs, guard));
       }
       if (this.hooks.onComplete) this.hooks.onComplete();
     }

@@ -496,6 +496,10 @@ const FOCUS = MOTION_TABLE.FOCUS;
 // A resting board is perfectly still: no idle float, bob or scale wobble on
 // any symbol (user rule 2026-10-08: idle motion looked bad on phones).
 
+// A multiplier on a chain that paid nothing fades to this much (and is never applied).
+const MULTI_SPENT_MS = 400;
+const MULTI_SPENT_DIM = 0.7;
+
 // A time-based 0..1 envelope ({ from, to, t0, ms }) that can be retargeted at
 // any moment and always continues from where it is (no jumps).
 const makeEnvelope = () => ({ from: 0, to: 0, t0: 0, ms: 0 });
@@ -882,8 +886,12 @@ function drawHexPlate(ctx, W, H, tierKey, value) {
 // True when the player has asked the OS to minimise motion. Re-read live so a
 // settings change mid-session is respected. Used to calm screen shake / flashes
 // and to thin out particle bursts for comfort + battery.
-const prefersReducedMotion = () =>
-  Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+// The shell's Menu switch wins when set (it falls back on the OS setting itself).
+const prefersReducedMotion = () => {
+  const shellPref = window.VaultShell?.api?.reducedMotion?.();
+  if (typeof shellPref === "boolean") return shellPref;
+  return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+};
 
 // Quality tiers. "high" is the full desktop experience; "mid"/"low" progressively
 // trade visual richness for framerate on weaker hardware. Each tier maps to the
@@ -1288,6 +1296,8 @@ class ReelCanvasRenderer {
     this.shards.add = (...a) => { this.wake(); return shardAdd(...a); };
     // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
     this.focus = { ...makeEnvelope(), set: null };
+    // Multipliers that landed on a chain with no win (A6): they fade, nothing is applied.
+    this.spent = { ...makeEnvelope(), set: null };
     // Per-frame perf caches (built lazily, invalidated on resize):
     //  • glowSprites: one pre-rendered radial-glow PNG per particle colour, so
     //    the hot particle loop blits instead of building a gradient every frame.
@@ -1680,6 +1690,7 @@ class ReelCanvasRenderer {
 
   setBoard(matrix, { winning = [], multipliers = [] } = {}) {
     this.wake?.(); // a new board is painted
+    this.clearSpent?.();
     // Strong commit: always deep-copy when we have a real matrix so future
     // mutations of the source array can't leak back into the rendered board.
     let safeMatrix;
@@ -2090,6 +2101,7 @@ class ReelCanvasRenderer {
   }
 
   async drop(matrix, multipliers = [], dropMap = {}, duration = 960, options = {}) {
+    this.clearSpent();
     // Cascade momentum (options.tempo, see tumbleTempo) scales the fall and,
     // through dropDelay, the waterfall stagger. Turbo speeds the whole spin.
     const tempo = Number(options.tempo) > 0 ? Number(options.tempo) : 1;
@@ -2394,8 +2406,24 @@ class ReelCanvasRenderer {
     envelopeTo(this.focus, 1, Math.round(FOCUS.inMs * turboScale()), now);
   }
 
+  /** Multipliers on a winless chain fade back (no sum, no apply): `keys` = "row-col". */
+  fadeSpent(keys) {
+    if (!keys?.length) return;
+    this.wake();
+    this.spent.set = new Set(keys);
+    envelopeTo(this.spent, 1, Math.round(MULTI_SPENT_MS * turboScale()), performance.now());
+  }
+
+  /** The board moves on: spent multipliers are gone with it. */
+  clearSpent() {
+    if (!this.spent.set) return;
+    this.spent.set = null;
+    Object.assign(this.spent, makeEnvelope());
+  }
+
   /** Release the win focus: the whole board fades back up together. */
   focusOff() {
+    this.clearSpent();
     this.wake();
     const f = this.focus;
     if (f.to === 0) return;
@@ -2574,7 +2602,7 @@ class ReelCanvasRenderer {
     // Idle zero: once nothing animates (and the focus fade has finished), paint two
     // more frames so the final state is on screen, then stop asking for frames until
     // something wakes the loop. Otherwise schedule the next frame, even if draw threw.
-    const settled = !busy && !(this.focus.ms > 0 && now - this.focus.t0 < this.focus.ms + 20);
+    const settled = !busy && !(this.focus.ms > 0 && now - this.focus.t0 < this.focus.ms + 20) && !(this.spent.ms > 0 && now - this.spent.t0 < this.spent.ms + 20);
     this._restFrames = settled ? (this._restFrames || 0) + 1 : 0;
     if (this._restFrames >= 2) { this._asleep = true; return; }
     this._scheduleFrame();
@@ -3761,6 +3789,7 @@ class ReelCanvasRenderer {
     const frameNow = performance.now();
     const focusLevel = envelopeLevel(this.focus, frameNow);
     const focusSet = this.focus.set;
+    const spentSet = this.spent.set, spentLevel = spentSet ? envelopeLevel(this.spent, frameNow) : 0;
     if (focusLevel > 0.001) {
       ctx.fillStyle = `rgba(2, 5, 12, ${(FOCUS.backdrop * focusLevel).toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
@@ -3902,7 +3931,8 @@ class ReelCanvasRenderer {
         const restH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale : iconBase;
         const iconCy = y + Math.max(0, restH - iconH) * 0.5;
         // Win focus (FOCUS): symbols outside the focus set step back.
-        const spotDim = focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1;
+        const spotDim = (focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1)
+          * (spentSet?.has(key) ? 1 - MULTI_SPENT_DIM * spentLevel : 1);
 
         // Spotlight halo: brighten cells on the spotlight set during big
         // events, working with the dim overlay to draw the eye in.
@@ -4221,6 +4251,16 @@ function normalizeStepMultiplierIds(steps = []) {
 }
 
 const reelRenderer = new ReelCanvasRenderer(el.reels, { rowsCount: rows, colsCount: cols });
+// The board behind the shared BoardView seam (client/shell/board-view.js): the round flow
+// talks to the board only through these five calls, so a later renderer port touches only
+// ReelCanvasRenderer + animateRound. (The renderer mounts on its canvas when constructed.)
+const boardView = window.LuminaBoardView ? window.LuminaBoardView.define("vault", {
+  mount() { reelRenderer.resize(true); },
+  resize() { reelRenderer.resize(true); },
+  presentRound: (payload, t = {}) => animateRound(payload, t.bet, t.wagerOverride, t.options || {}),
+  setTheme: (name) => bonusScene(name === "feature"),
+  destroy() { reelRenderer.resizeObserver?.disconnect(); reelRenderer.pauseRendering(); }
+}) : { presentRound: (payload, t = {}) => animateRound(payload, t.bet, t.wagerOverride, t.options || {}), setTheme: (name) => bonusScene(name === "feature") };
 // Exposed for tooling only (tools/layout-check.js instruments the sprite caches
 // to assert nothing rebuilds them mid-round). Nothing in the game reads this.
 window.__reelRenderer = reelRenderer;
@@ -4645,6 +4685,8 @@ function applyRegulatory(rules) {
   rules = regulatory.rules;
   // The shell hides autoplay, speed and buy in place and caps the autoplay presets.
   window.VaultShell?.api.applyMarket(rules);
+  // The active profile's RTP, for markets that show it at the stake (DE).
+  try { window.VaultShell?.api.setRtp?.(activeRtpProfile()?.theoretical_percent); } catch { /* rules not loaded yet */ }
   if (!regRule("turbo_enabled", true) && state.turbo) setTurbo(false);
   applyStakeCap();
   scheduleRealityCheck(rules.reality_check_due_in_ms);
@@ -4990,7 +5032,8 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
   const shell = window.VaultShell?.api;
   if (shell) {
     state.shellFeatureHud = spins > 0;
-    shell.featureHud(spins > 0 ? { left: spins, win: total, label: "Free spins", winLabel: "Bonus win" } : null);
+    // The total multiplier rides on the Win label (A6), so it is readable at every size.
+    shell.featureHud(spins > 0 ? { left: spins, win: total, label: "Spins", winLabel: mult > 0 ? `Bonus ×${Number.isInteger(mult) ? mult : mult.toFixed(1)}` : "Bonus win" } : null);
     if (spins <= 0 && el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
   }
   // Bonus total-multiplier badge over the top of the reels — the signature
@@ -5135,6 +5178,9 @@ function requestFastStop() {
   // Where slam stop is banned, a press before the result is shown shortens nothing
   // (it still ends the big-win count above, which comes after the result).
   if (!slamStopAllowed()) return true;
+  // Reels waiting on a possible feature (anticipation) are never cut short where the market
+  // says so (UKGC, ON): the press waits for the result, like a press where slam is off.
+  if (reelRenderer.fx?.drop?.antic && window.VaultShell?.api?.anticipationSkippable?.() === false) return true;
   state.fastStopRequested = true;
   el.spinBtn?.classList.add("is-fast-stopping");
   reelRenderer.requestFastStop?.(); // no-op if no drop exists yet (_accelerateDrop guards)
@@ -6001,6 +6047,7 @@ function renderPlayerPaytable() {
   // RTP is the active profile's declaration, never another profile's.
   const profile = activeRtpProfile();
   const pct = (n) => `${Number(n).toFixed(2)}%`;
+  window.VaultShell?.api.setRtp?.(profile.theoretical_percent); // DE: shown at the stake
   const meta = el.psInfoModal.querySelector(".ps-rules-meta");
   if (meta) meta.textContent = `RTP ${pct(profile.theoretical_percent)} · Volatility ${String(state.rules.volatility || "").toUpperCase()}`;
   const rtpList = el.psInfoModal.querySelector(".ps-rtp");
@@ -6798,6 +6845,10 @@ async function animateRound(payload, bet, wagerOverride, options = {}) {
   if (commitStep && commitStep.matrix) {
     reelRenderer.setBoard(commitStep.matrix, { multipliers: commitStep.multipliers || [] });
     reelRenderer.forceDrawNow();
+    // A chain that paid nothing applies no multiplier (rules: "Multipliers in a sequence
+    // without a win are not added"): the ones it landed fade back, with no sum and no apply.
+    const spent = (commitStep.multipliers || []).filter((m) => Number.isInteger(m?.row) && Number.isInteger(m?.col));
+    if (spent.length && (totalWinAmt <= 0 || appliedMult <= 1)) reelRenderer.fadeSpent(spent.map((m) => `${m.row}-${m.col}`));
   }
   } finally {
     state.roundAnimating = false;
@@ -6896,12 +6947,12 @@ async function spin(options = {}) {
     // "spin is in flight" cue that should not linger across the animation
     // or the trailing waitForIdle settle window.
     el.spinBtn?.classList.remove("is-spinning", "is-fast-stopping");
-    await animateRound(payload, bet, undefined, { preparedTransition });
+    await boardView.presentRound(payload, { bet, options: { preparedTransition } });
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0 && !payload.is_free_spin) {
       await celebrateScatterCatch(payload, "Bonus Catch");
       window.Sound?.play("feature_award");
-      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
+      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, FEATURE_RULE_LINE, { kicker: "Free Spins" });
       await autoplayBonus();
     } else if (
       state.bonusAutoplay &&
@@ -6909,15 +6960,17 @@ async function spin(options = {}) {
       Number(payload.free_spins_awarded || 0) > 0 &&
       Number(payload.free_spins_left || 0) > 0
     ) {
-      // Retrigger during the active bonus autoplay — always +5 spins.
-      // Show the feature panel briefly then auto-dismiss so the autoplay
-      // continues without requiring a click. Player can still click to
-      // skip it sooner.
+      // Retrigger during the bonus: "+N" flies from the board into the spins readout
+      // (A6), the bonus never stops for a screen. Without the shell, the old short screen.
       await celebrateScatterCatch(payload, "Retrigger Catch");
       window.Sound?.play("feature_award", { retrigger: true });
-      const sf = showFeature(`You won ${payload.free_spins_awarded} more Free Spins`, "Spins resume in a moment...");
-      const autoDismiss = setTimeout(() => dismissFeature(), 1800);
-      try { await sf; } finally { clearTimeout(autoDismiss); }
+      const sh = window.VaultShell?.api;
+      if (sh?.flyPlus) await sh.flyPlus(`+${payload.free_spins_awarded}`);
+      else {
+        const sf = showFeature(`You won ${payload.free_spins_awarded} more Free Spins`, "Spins resume in a moment...");
+        const autoDismiss = setTimeout(() => dismissFeature(), 1800);
+        try { await sf; } finally { clearTimeout(autoDismiss); }
+      }
     }
     return payload;
   } catch (err) {
@@ -6961,7 +7014,7 @@ async function autoplayBonus() {
   const ownsLock = !spinLock.isLocked() && spinLock.tryAcquire();
   state.bonusAutoplay = true;
   setControls(true);
-  let total = 0;
+  let total = 0, spinsPlayed = 0;
   // The terms this bonus plays at, for a reload mid-bonus (see restoredBetAndAnte).
   // A resumed bonus is already showing its terms, so re-saving them is harmless.
   saveBetPref({ featureBet: Number(el.betSelect.value), featureAnte: Boolean(el.anteToggle.checked) });
@@ -6969,11 +7022,13 @@ async function autoplayBonus() {
   window.Sound?.setMusic("freeSpins");
   window.Sound?.play("fs_intro");
   try {
+    await boardView.setTheme("feature");
     pushGameMessage("Bonus autoplay started.", "bonus");
     while (Number(el.freeSpins.textContent || "0") > 0) {
       // A casino pause holds the bonus between free spins (they stay owed on the server).
       await waitWhileEmbedPaused();
       const payload = await spin({ autoplay: true });
+      if (payload) spinsPlayed++;
       total += Number(payload?.total_win || 0);
       const capEvent = (payload?.events || []).find((evt) => evt?.type === "FREE_SPINS_ENDED_BY_MAX_WIN_CAP");
       if (capEvent) {
@@ -6984,9 +7039,15 @@ async function autoplayBonus() {
     }
     state.lastBonusWin = total; // a base-autoplay win limit counts the bonus with the spin that won it
     window.Sound?.play("fs_outro");
-    await showFeature(`Bonus Win ${fmt(total)}`, "Press anywhere to continue.");
+    // The outro (A6): what the bonus paid, counted (plainly where the market forbids win
+    // effects at or below the stake), with the spins played and the total multiplier.
+    const stake = Number(state.featureStake || cycleStake(Number(el.betSelect.value || 1)));
+    const counts = regRule("celebrate_threshold", "any") !== "gt_stake" || Number(state.featureWon || total) > stake + 1e-9;
+    const multLine = Number(state.bonusMultiplierCarry) > 0 ? ` · total ${mfmt(state.bonusMultiplierCarry)}` : "";
+    await showFeature(`Bonus Win ${fmt(total)}`, `${spinsPlayed} spins${multLine}. Tap to continue.`, { kicker: "Bonus complete", countTo: counts ? total : null, countX: total / (stake || 1), titleFor: (v) => `Bonus Win ${fmt(v)}` });
     pushGameMessage(`Bonus autoplay complete. Total bonus win: ${fmt(total)}.`, "bonus");
   } finally {
+    boardView.setTheme("base");
     window.Sound?.setMusic("base");
     embedEmit("featureState", { active: false, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: total });
     state.bonusAutoplay = false;
@@ -7139,12 +7200,12 @@ async function buyFreeSpins() {
     rememberFeatureTerms(payload, bet, false);
     roundAnswered();
     pushGameMessage(`Bought free spins for ${fmt(payload.buy_cost || 0)}.`, "bonus");
-    await animateRound(payload, bet, Number(payload.buy_cost || 0));
+    await boardView.presentRound(payload, { bet, wagerOverride: Number(payload.buy_cost || 0) });
     embedRoundEnded(payload, bet);
     if (Number(payload.free_spins_awarded || 0) > 0) {
       await celebrateScatterCatch(payload, "Bonus Catch");
       window.Sound?.play("feature_award");
-      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, "Autoplay starts when you continue.");
+      await showFeature(`You won ${payload.free_spins_awarded} Free Spins`, FEATURE_RULE_LINE, { kicker: "Free Spins" });
       await autoplayBonus();
     }
   } catch (err) {
@@ -7159,13 +7220,69 @@ async function buyFreeSpins() {
   }
 }
 
+/** Bonus scene shift (A6): the vault doors close over the board, the room behind turns
+ *  gold-lit, and the doors swing open on it (LuminaMotion "featureTransition"). Leaving
+ *  the bonus fades the gold back to the teal vault. Transforms and opacity only; reduced
+ *  motion keeps the light change and drops the doors. Presentation only. */
+let vaultDoorsEl = null;
+async function bonusScene(on) {
+  const stage = el.reels?.closest?.(".reels-stage");
+  if (!stage) return;
+  if (!on) { stage.classList.remove("is-bonus-lit"); return; }
+  if (stage.classList.contains("is-bonus-lit")) return; // a resumed bonus already shows it
+  const calm = prefersReducedMotion() || window.VaultShell?.api?.reducedMotion?.();
+  const total = window.LuminaMotion ? window.LuminaMotion.ms("featureTransition", state.turbo ? "turbo" : "normal") : 1400;
+  if (calm || !document.body.animate) { stage.classList.add("is-bonus-lit"); return; }
+  if (!vaultDoorsEl) {
+    vaultDoorsEl = document.createElement("div");
+    vaultDoorsEl.className = "vault-doors";
+    vaultDoorsEl.setAttribute("aria-hidden", "true");
+    vaultDoorsEl.innerHTML = "<i></i><i></i>";
+    stage.appendChild(vaultDoorsEl);
+  }
+  vaultDoorsEl.hidden = false;
+  const [l, r] = vaultDoorsEl.children, shut = total * 0.3, hold = total * 0.1, open = total * 0.6;
+  const ease = "cubic-bezier(0.6, 0, 0.3, 1)";
+  await Promise.all([
+    l.animate([{ transform: "translateX(-101%)" }, { transform: "none" }], { duration: shut, easing: ease, fill: "forwards" }).finished,
+    r.animate([{ transform: "translateX(101%)" }, { transform: "none" }], { duration: shut, easing: ease, fill: "forwards" }).finished
+  ]).catch(() => {});
+  stage.classList.add("is-bonus-lit");
+  await sleep(hold);
+  await Promise.all([
+    l.animate([{ transform: "none" }, { transform: "translateX(-101%)" }], { duration: open, easing: ease, fill: "forwards" }).finished,
+    r.animate([{ transform: "none" }, { transform: "translateX(101%)" }], { duration: open, easing: ease, fill: "forwards" }).finished
+  ]).catch(() => {});
+  for (const d of [l, r]) d.getAnimations().forEach((a) => a.cancel());
+  vaultDoorsEl.hidden = true;
+}
+
 /** The feature screen (a VxNotify "feature"): resolves when it is dismissed
  *  (a tap anywhere on it, or dismissFeature()). */
-async function showFeature(title, copy) {
+async function showFeature(title, copy, opts = {}) {
   // Its panel art is deferred (deferredUiAssets): never open it half-painted.
   await Promise.race([reelRenderer.preloadDeferred(), sleep(1500)]);
-  return VxNotify.open("feature", { kicker: "Feature", title, body: copy });
+  const done = VxNotify.open("feature", { kicker: opts.kicker || "Feature", title, body: copy });
+  // An outro total counts up (log-scaled by × bet, LuminaMotion.countUpMs), never past the
+  // paid amount, and always ends on it exactly; reduced motion shows it at once.
+  if (Number.isFinite(opts.countTo) && opts.countTo > 0 && !prefersReducedMotion() && window.LuminaMotion) {
+    const node = document.getElementById("featureScreenTitle");
+    const ms = window.LuminaMotion.countUpMs(opts.countX || 0, state.turbo ? "turbo" : "normal"), t0 = performance.now();
+    let open = true;
+    done.then(() => { open = false; node.textContent = title; });
+    const step = (t) => {
+      if (!open) return;
+      const k = Math.min(1, (t - t0) / ms);
+      node.textContent = k < 1 ? opts.titleFor(opts.countTo * (1 - (1 - k) ** 3)) : title;
+      if (k < 1) requestAnimationFrame(step);
+    };
+    node.textContent = opts.titleFor(0);
+    requestAnimationFrame(step);
+  }
+  return done;
 }
+// The feature's one-line rules on its intro (rules_pages, MULTIPLIERS / FREE SPINS).
+const FEATURE_RULE_LINE = "Multipliers add up for the whole bonus. 3 Scatters add 5 spins. Tap to start.";
 
 function dismissFeature() {
   VxNotify.close("feature", "dismissed");
@@ -7509,6 +7626,13 @@ if (window.VaultShell) {
       if (el.anteToggle.disabled) return;
       el.anteToggle.checked = Boolean(onOff);
       el.anteToggle.dispatchEvent(new Event("change"));
+    },
+    // DE panic button (the shell asked first): the game stops, the casino locks play 24 h.
+    panic() {
+      if (state.autoplayActive) stopAutoplay();
+      state.embedPaused = true;
+      pushGameMessage("Play paused for 24 hours at your request.", "info");
+      embedEmit("exitRequested", { reason: "panic" });
     },
     // Speed (normal / quick / turbo): Vault plays quick and turbo at its turbo pace.
     pref(key, value) { if (key === "speed") setTurbo(value !== "normal"); },

@@ -146,6 +146,7 @@
     @media (prefers-reduced-motion: reduce) {
       body, body::before, .lantern { transition: none !important; }
     }
+    html.lsh-reduced body, html.lsh-reduced body::before, html.lsh-reduced .lantern { transition: none !important; } /* the Menu switch */
   </style>
 </head>
 <body>
@@ -203,6 +204,7 @@
   <script src="/play/notify.js"></script>
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
+  <script src="/play/shell/board-view.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

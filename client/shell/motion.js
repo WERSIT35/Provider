@@ -180,6 +180,13 @@
       if (!r) throw new Error(`LuminaMotion: unknown event "${event}"`);
       return r[speed] ?? r.normal;
     },
+    /** A win count-up's length: log-scaled by × bet between countUpMin (a small win) and
+     *  countUpMax (100× and up), so a bigger win counts a little longer, never forever. */
+    countUpMs(x, speed = "normal") {
+      const lo = this.ms("countUpMin", speed), hi = this.ms("countUpMax", speed);
+      const k = Math.min(1, Math.max(0, Math.log10(1 + Math.max(0, Number(x) || 0)) / Math.log10(101)));
+      return Math.round(lo + (hi - lo) * k);
+    },
     /** The big-win tier for a round total in × stake (null below the first tier). */
     tierFor(x) {
       let hit = null;

@@ -504,13 +504,32 @@
       shell.waiting(false);
     }
     S.lastAnswerAt = performance.now();
+    await view.presentRound(r, { bet });
+    setBalance(Number(r.balance?.amount ?? r.balance ?? r.balance_after));
+    S.freeSpinsLeft = Number(r.free_spins_left || 0);
+    if (r.is_free_spin || r.free_spins_awarded > 0) S.featureWin = Number(r.bonus_round_win ?? S.featureWin + r.total_win);
+    if (S.featureRun || S.freeSpinsLeft > 0) shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" });
+    emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
+    S.inFlight = false; S.resultShown = false; setControls();
+    Sound?.warmMusic?.();
+    // The night bed starts once the first round has been shown (never during load).
+    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
+    return r;
+  }
+
+  /** The board's half of a round (BoardView.presentRound): land the reels on the server's
+   *  stops, then explain the win. A pure function of the payload; feeds nothing back. */
+  async function presentRound(r, bet) {
     // Land reels left to right. Anticipation: only while the board can still complete a
     // trigger and has not already (a pure function of the landed reels; LuminaMotion A5).
     const need = 3, slam = () => S.quickStop && shell.slamAllowed();
     let scattersSoFar = 0;
     for (let col = 0; col < 5; col++) {
       const reelsLeft = 5 - col; // a strip holds at most one moon, so each reel left adds ≤ 1
-      const anticipate = scattersSoFar >= need - 1 && scattersSoFar < need && scattersSoFar + reelsLeft >= need && !slam();
+      const could = scattersSoFar >= need - 1 && scattersSoFar < need && scattersSoFar + reelsLeft >= need;
+      // UKGC / ON: anticipation is shown in full even after a slam press (LuminaMotion grammar).
+      if (could && !shell.anticipationSkippable()) S.quickStop = false;
+      const anticipate = could && !slam();
       const dur = (slam() ? T.reelLandQuick : (anticipate ? T.reelLandAnticipate : T.reelLand) * speed()) + (slam() ? 0 : col * T.reelLandColExtra);
       if (!slam() && col > 0) await sleep((anticipate ? T.reelGapAnticipate : T.reelGap) * speed());
       R.anticipate = anticipate ? col : -1; kick();
@@ -524,16 +543,6 @@
     if (R.anticipate >= 0) { R.anticipate = -1; kick(); }
     S.resultShown = true; setControls();
     await presentWin(r, bet);
-    setBalance(Number(r.balance?.amount ?? r.balance ?? r.balance_after));
-    S.freeSpinsLeft = Number(r.free_spins_left || 0);
-    if (r.is_free_spin || r.free_spins_awarded > 0) S.featureWin = Number(r.bonus_round_win ?? S.featureWin + r.total_win);
-    if (S.featureRun || S.freeSpinsLeft > 0) shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" });
-    emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
-    S.inFlight = false; S.resultShown = false; setControls();
-    Sound?.warmMusic?.();
-    // The night bed starts once the first round has been shown (never during load).
-    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
-    return r;
   }
 
   // The shared ladder (LuminaMotion.BIG_WIN, × the stake), named in the garden's voice.
@@ -585,15 +594,17 @@
       R.highlight = { cells, lines: lines.map(poly), labels: labels.map((l, i) => ({ row: l.row, col: l.col, text: fmt(lines[i].amount) })) }; kick();
     }
     // A no-celebrate round shows its amount plainly: a short, silent count (≤ 300 ms).
-    const counted = countUp(total, !celebrate ? window.LuminaMotion.ms("neutralCredit") : tier ? T.countUpTier : T.countUpPlain * speed(), celebrate);
+    const counted = countUp(total, !celebrate ? window.LuminaMotion.ms("neutralCredit") : tier ? T.countUpTier : window.LuminaMotion.countUpMs(total / bet, shell.motionSpeed()), celebrate);
     if (total > 0) say(celebrate ? `Moonlight win: ${fmt(total)}` : `Credit ${fmt(total)}`, true, celebrate);
     sfx(!celebrate ? "click" : total / bet >= 5 ? "win_land" : "win_small");
-    if (tier) await celebrate_(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key]);
+    if (tier) await celebrate_(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key], tier.key);
     await counted;
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
       say(r.is_free_spin ? `More moths — +${r.free_spins_awarded} free spins` : `The moths gather — ${r.free_spins_awarded} free spins.`, true, true);
-      await sleep(T.featureAward * speed());
+      // A retrigger: "+N" flies into the spins readout, which then shows the new count.
+      if (r.is_free_spin) { await shell.flyPlus(`+${r.free_spins_awarded}`); shell.featureHud({ left: Number(r.free_spins_left || 0), win: S.featureWin, label: "Spins", winLabel: "Night win" }); }
+      else await sleep(T.featureAward * speed());
     }
   }
   let countTimer = 0, countDone = null;
@@ -622,16 +633,21 @@
       m.animate(frames, { duration: 2200 + Math.random() * 900, delay: i * 70, easing: "ease-in-out", fill: "forwards" }).finished.then(() => m.remove(), () => m.remove());
     }
   }
-  function celebrate_(title, amount, sound) {
+  function celebrate_(title, amount, sound, tierKey) {
     return new Promise((resolve) => {
       el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
       releaseMoths();
-      const t0 = performance.now(), ms = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
-      let done = false;
-      const finish = () => { if (done) return; done = true; el.cel.hidden = true; el.cel.removeEventListener("pointerdown", finish); resolve(); };
-      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop) requestAnimationFrame(tick); else { el.celAmount.textContent = fmt(amount); setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold); } };
+      const M = window.LuminaMotion, t0 = performance.now(), ms = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
+      // A tap while counting lands the amount; the title then holds 400-700 ms by tier
+      // (LuminaMotion.BIG_WIN `hold`) before a tap may close it.
+      const hold = M?.BIG_WIN.find((t) => t.key === tierKey)?.hold ?? 450;
+      let done = false, skipped = false, landedAt = 0, closeT = 0;
+      const finish = () => { if (done) return; done = true; clearTimeout(closeT); el.cel.hidden = true; el.cel.removeEventListener("pointerdown", tap); resolve(); };
+      const land = () => { el.celAmount.textContent = fmt(amount); landedAt = performance.now(); closeT = setTimeout(finish, Math.max(skipped ? hold : 0, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold)); };
+      const tap = () => { if (!landedAt) { skipped = true; return; } if (performance.now() - landedAt >= (skipped ? hold : 150)) finish(); };
+      const tick = (now) => { if (done || landedAt) return; const t = Math.min(1, (now - t0) / ms); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop && !skipped) requestAnimationFrame(tick); else land(); };
       requestAnimationFrame(tick);
-      el.cel.addEventListener("pointerdown", finish);
+      el.cel.addEventListener("pointerdown", tap);
     });
   }
 
@@ -644,20 +660,30 @@
   async function playFeature() {
     S.featureWin = S.featureWin || 0;
     shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Night win" });
-    document.body.classList.add("night"); // dusk turns to deep night; the lanterns light one by one
+    view.setTheme("feature");
     emit("featureState", { active: true, free_spins_left: S.freeSpinsLeft, bonus_win: S.featureWin });
     Sound?.setMusic?.("freeSpins");
     sfx("fs_intro");
+    // The intro says what the feature is (A6): the spins and the one special rule. A tap or
+    // Spin starts it; in autoplay it starts by itself.
+    const resumed = S.resuming; S.resuming = false;
+    const mult = S.rules.free_spins.multiplier;
+    await shell.panel({ kicker: resumed ? "Resuming" : "Free spins", title: `${S.freeSpinsLeft} free spins`, line: `Night falls: every win is ×${mult}. More Full Moons add spins.`, stats: [["Bet", fmt(S.bets[S.betIndex])], ["Wins", `×${mult}`]], auto: Boolean(S.autoplay) });
+    let played = 0;
     while (S.freeSpinsLeft > 0 && !S.paused) {
       const r = await playRound({ auto: true });
       if (!r) break;
+      played++;
       await sleep(T.betweenFreeSpins * speed());
     }
-    document.body.classList.remove("night");
+    view.setTheme("base");
     Sound?.setMusic?.("base");
     sfx("fs_outro");
     const total = S.featureWin;
     const bet = S.bets[S.betIndex];
+    // The outro says what the feature paid, counted (plainly where the market forbids win
+    // effects at or below the stake).
+    if (!S.paused) await shell.panel({ kicker: "Dawn", title: "Free spins complete", stats: [["Spins", String(played)], ["Bet", fmt(bet)]], total, totalLabel: "Night win", countX: total / bet, count: shell.celebrates(total, bet), auto: Boolean(S.autoplay) });
     say(total > 0 ? `The night gave ${fmt(total)}` : "Dawn returns.", total > 0, shell.celebrates(total, bet));
     emit("featureState", { active: false, free_spins_left: S.freeSpinsLeft, bonus_win: total });
     S.featureWin = 0;
@@ -703,13 +729,16 @@
   // ── controls (the shell calls these) ─────────────────────────────────────
   async function onSpinPress() {
     Sound?.unlock?.();
-    if (S.autoplay) { stopAutoplay("stopped"); if (S.resultShown || shell.slamAllowed()) S.quickStop = true; return; }
+    if (S.autoplay) { stopAutoplay("stopped"); if (S.resultShown || (shell.slamAllowed() && (R.anticipate < 0 || shell.anticipationSkippable()))) S.quickStop = true; return; }
     if (S.inFlight || S.featureRun) {
       // Never a new round mid-round or mid-feature. A press shows the result sooner only where
       // slam stop is allowed; elsewhere it may only skip presentation AFTER the result is shown.
-      if (S.inFlight && (S.resultShown || shell.slamAllowed())) S.quickStop = true;
+      // Reels in anticipation are never cut short where the market says so (UKGC, ON).
+      if (S.inFlight && (S.resultShown || (shell.slamAllowed() && (R.anticipate < 0 || shell.anticipationSkippable())))) S.quickStop = true;
       return;
     }
+    // A feature left unfinished (a reload mid-feature) resumes from its intro panel.
+    if (S.freeSpinsLeft > 0) { S.resuming = true; await runFreeSpins(); return; }
     const r = await playRound();
     if (r && S.freeSpinsLeft > 0) await runFreeSpins();
   }
@@ -784,14 +813,27 @@
       betIndex: (i) => setBetIndex(i),
       autoplay: (n, limits) => startAutoplay(n, limits),
       autoplayStop: () => stopAutoplay("stopped"),
+      // DE panic button (the shell asked first): stop now; the casino locks play 24 h.
+      panic: () => { stopAutoplay(); S.paused = true; emit("exitRequested", { reason: "panic" }); say("Play paused for 24 hours"); },
       info: () => rulesHtml(),
       pref: () => { R.dirty = true; kick(); }
     }
   });
 
+  // The board behind the shared BoardView seam (client/shell/board-view.js): the round flow
+  // above talks to the board only through these five calls.
+  let boardRO = null;
+  const view = window.LuminaBoardView.define("classic", {
+    mount() { resize(); boardRO = new ResizeObserver(() => view.resize()); boardRO.observe(el.board); },
+    resize() { resize(); },
+    presentRound: (payload, t = {}) => presentRound(payload, t.bet ?? S.bets[S.betIndex]),
+    // The feature scene: dusk turns to deep night; the lanterns light one by one.
+    setTheme(name) { document.body.classList.toggle("night", name === "feature"); },
+    destroy() { boardRO?.disconnect(); boardRO = null; stopCount(); cancelAnimationFrame(R.raf); R.raf = -1; }
+  });
+
   async function boot() {
-    resize();
-    new ResizeObserver(() => resize()).observe(el.board);
+    view.mount(el.board);
     const params = new URLSearchParams(location.search);
     const lt = params.get("lt");
     const KEY = "classic5x3.session";
@@ -827,6 +869,7 @@
     S.currency = session.currency;
     shell.setCurrency(S.currency);
     shell.applyMarket(session.regulatory || {});
+    shell.setRtp(S.rules.theoretical_rtp);
     S.minRoundMs = Number(shell.rule("min_round_ms", 0)) || 0;
     S.bets = session.allowed_bets.slice().sort((a, b) => a - b);
     const resumeBet = session.resume?.bet_amount;

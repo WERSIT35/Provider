@@ -19,7 +19,8 @@
 //   realityCheck    { session_started_at, elapsed_ms, rounds, wagered, won, net }  (the
 //                   jurisdiction's reality check is on screen; play waits for the player)
 //   exitRequested   { reason }       (the player chose to leave, e.g. "reality_check":
-//                   close the game; it stays paused until then)
+//                   close the game; it stays paused until then. "panic": the DE panic
+//                   button, the casino applies its 24-hour lock)
 //
 // Casino → game
 //   hello                   handshake; needed only when the game cannot see the parent's
