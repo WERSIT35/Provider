@@ -46,6 +46,8 @@
   };
   let shell = null;
   // A free-spins run is ONE lifecycle: no other round may start between its spins (probes read this).
+  // Probes (tools/probes/symbol-sheet.mjs): every symbol, as the board engraves it (SVG).
+  window.__luminaSymbols = { ids: Object.keys(SYMBOL_NAMES), render: (id) => svgFor(id) };
   window.__spinLifecycle = { get inFlight() { return S.busy; }, get autoplayActive() { return Boolean(S.autoplay); } };
 
   // ── helpers ─────────────────────────────────────────────────────────────

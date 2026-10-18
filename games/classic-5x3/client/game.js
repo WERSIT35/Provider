@@ -39,6 +39,8 @@
     freeSpinsLeft: 0, featureWin: 0, stats: { startedManual: 0, startedAuto: 0 }
   };
   // A free-spins run is ONE lifecycle (as in Vault 20K): no other round may start between its spins.
+  // Probes (tools/probes/symbol-sheet.mjs): every symbol, drawn as the reels draw it.
+  window.__luminaSymbols = { get ids() { return Object.keys(NAMES); }, render(id, px) { const c = document.createElement("canvas"); c.width = c.height = px; drawSymbol(c.getContext("2d"), id, px); return c; } };
   window.__spinLifecycle = { get inFlight() { return S.inFlight || S.featureRun; }, get autoplayActive() { return Boolean(S.autoplay); }, stats: S.stats };
 
   const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");

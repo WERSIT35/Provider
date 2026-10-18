@@ -140,8 +140,35 @@
       hideInPlace(el.buy, !features.buy || !rule("buy_feature_enabled", true));
       frame.dataset.session = rule("session_hud", "") || "";
       syncSpeed();
+      sessionStrip();
       return market;
     }
+    // Session strip (market session_hud; UK RTS 14 / AGCO: net position and time played).
+    // The shell keeps it itself: net = the balance now minus the first balance it was shown;
+    // time from the mount; a text swap once a minute (no animation frames).
+    const session = { start: null, last: null, t0: Date.now(), timer: 0 };
+    function sessionStrip() {
+      clearTimeout(session.timer);
+      const mode = rule("session_hud", "none");
+      const show = { net_time: ["net", "time"], session: ["net", "time"], clock_elapsed: ["time", "clock"], balance: [] }[mode] || [];
+      for (const k of ["net", "time", "clock"]) {
+        const n = el.strip.querySelector(`[data-k="${k}"]`);
+        if (!show.includes(k)) { setText(n, ""); continue; }
+        if (k === "net" && session.start !== null) { const net = session.last - session.start; setText(n, `Net ${net >= 0 ? "+" : "−"}${money(Math.abs(net))}${currency ? ` ${currency}` : ""}`); }
+        if (k === "time") { const m = Math.floor((Date.now() - session.t0) / 60000); setText(n, `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} played`); }
+        if (k === "clock") setText(n, new Date().toTimeString().slice(0, 5));
+      }
+      if (show.length) session.timer = setTimeout(sessionStrip, 60000 - ((Date.now() - session.t0) % 60000));
+    }
+    function trackBalance(v) {
+      if (v === null || v === undefined || v === "") return;
+      const n = Number(v);
+      if (!Number.isFinite(n)) return;
+      if (session.start === null) session.start = n;
+      session.last = n;
+      if (rule("session_hud", "none") !== "none") sessionStrip();
+    }
+
     /** Win effects allowed for this round? `roundWin` after every tumble/multiplier; `stake` = the cycle stake (bet + ante, or the buy price). */
     function celebrates(roundWin, stake) {
       const w = Number(roundWin) || 0;
@@ -438,7 +465,9 @@
       setCurrency(c) { currency = c || ""; labels(); },
       /** The game changed the speed itself (Vault 20K: hold Spin for turbo autoplay). */
       setSpeed(s) { if (!turboAllowed() || prefs.speed === s) return; prefs.speed = s; store.save(prefs); syncSpeed(); },
-      setBalance(v) { setText(el.balance, money(v)); },
+      setBalance(v) { setText(el.balance, money(v)); trackBalance(v); },
+      /** A game that writes the Balance readout itself reports the value here (session strip). */
+      trackBalance,
       setBet(v) { if (!S.featureHud) setText(el.bet, money(v)); },
       setWin(v) { setText(el.win, money(v)); },
       setFeatureWin(v) { if (S.featureHud) setText(el.win, money(v)); },
