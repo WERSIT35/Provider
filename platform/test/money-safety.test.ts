@@ -365,16 +365,23 @@ describe("a success is only answered for durable state", () => {
 
   it("database down after the stake was taken: no 200 on either path (win: before the credit; no win: at the response)", async () => {
     const tok = await token();
-    for (let i = 0; i < 12; i++) {
+    // 12 rounds that took a stake. A round can award free spins; the free spins that follow
+    // take no stake (no debit), so the database never goes down for them and 200 is right:
+    // they are not the case under test, so they are played through and not counted.
+    let staked = 0;
+    for (let i = 0; staked < 12 && i < 200; i++) {
       persistence.down = false;
       persistence.events.length = 0;
       const flush = SwitchablePersistence.prototype.flush.bind(persistence);
       persistence.flush = async () => { if (persistence.events.includes("debit")) persistence.down = true; return flush(); };
       const res = await spin(tok, randomUUID());
+      if (!persistence.events.includes("debit")) { expect(res.statusCode, res.body).toBe(200); expect(res.json().is_free_spin).toBe(true); continue; }
+      staked++;
       expect(res.statusCode, res.body).toBe(503);
       expect(res.json().error).toMatchObject({ code: "PERSISTENCE_UNAVAILABLE" });
       expect(persistence.events).not.toContain("credit"); // a win is never paid for a round that is not durable
     }
+    expect(staked).toBe(12);
   });
 });
 
