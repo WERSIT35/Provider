@@ -250,8 +250,24 @@
     }
     const offsets = new Map();
     if (fall.mode === "enter") {
-      for (const n of nodes) offsets.set(n, { rows: rows + 1, delay: Number(n.dataset.col) * T.enterColStagger });
-      for (let c = 0; c < S.cols; c += 1) setTimeout(() => sfx("rf_land", { col: c }), c * T.enterColStagger + T.landSoundAt);
+      // Anticipation (a pure function of the board, columns land left to right): once the
+      // landed columns show one Anvil short of the Forge and columns remain, the rest wait and
+      // fall slower, the landed Anvils glow and everything else steps back.
+      const need = Number(S.rules.forge.scatters_to_trigger) || 3;
+      let seen = 0, from = -1;
+      for (let c = 0; c < S.cols && from < 0; c += 1) {
+        for (let r2 = 0; r2 < rows; r2 += 1) if (board[r2][c] === "SCATTER") seen += 1;
+        if (seen >= need) break;
+        if (seen === need - 1 && c < S.cols - 1) from = c + 1;
+      }
+      const tease = from > 0 && !reduced.matches ? window.LuminaMotion.ms("anticipation") / Math.max(1, S.cols - from) : 0;
+      const colDelay = (c) => c * T.enterColStagger + (tease && c >= from ? (c - from + 1) * tease : 0);
+      for (const n of nodes) offsets.set(n, { rows: rows + 1, delay: colDelay(Number(n.dataset.col)), slow: tease && Number(n.dataset.col) >= from ? 1.5 : 1 });
+      for (let c = 0; c < S.cols; c += 1) setTimeout(() => sfx("rf_land", { col: c }), colDelay(c) + T.landSoundAt);
+      if (tease) {
+        setTimeout(() => { for (const n of nodes) if (Number(n.dataset.col) < from) n.classList.add(board[n.dataset.row][n.dataset.col] === "SCATTER" ? "tease" : "dim"); }, colDelay(from - 1) + T.landSoundAt);
+        setTimeout(() => { for (const n of nodes) n.classList.remove("tease", "dim"); }, colDelay(S.cols - 1) + T.landSoundAt + 400);
+      }
     } else {
       for (const m of fall.moves || []) { const n = cellAt(m.to.row, m.to.col); if (n) offsets.set(n, { rows: m.to.row - m.from.row, delay: 0 }); }
       const perCol = {};
@@ -261,7 +277,7 @@
     const runs = [];
     for (const [n, o] of offsets) {
       if (o.rows <= 0) continue;
-      const ms = T.fallBase + T.fallPerSqrtRow * Math.sqrt(o.rows);
+      const ms = (T.fallBase + T.fallPerSqrtRow * Math.sqrt(o.rows)) * (o.slow || 1);
       runs.push(n.animate([{ transform: `translateY(${-o.rows * S.cell}px)` }, { transform: "translateY(0)" }], { duration: ms, delay: o.delay, easing: "cubic-bezier(.5,0,.85,.55)", fill: "backwards" }).finished);
     }
     await Promise.all(runs);
@@ -275,6 +291,62 @@
     await Promise.all(nodes.map((n) => n.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${S.rows * S.cell * 0.6}px)`, opacity: 0 }], { duration: T.exit, delay: Number(n.dataset.col) * T.exitColStagger, easing: "cubic-bezier(.5,0,1,.6)", fill: "forwards" }).finished));
   }
   function mark(cells, cls) { for (const p of cells) cellAt(p.row, p.col)?.classList.add(cls); }
+
+  // ── explanations (prompt A6): each answers "why?" ─────────────────────────
+  const SVGNS = "http://www.w3.org/2000/svg";
+  /** A cluster's engraved burr line: the outer edge of its connected cells (adjacency is the
+   *  cause), drawn in like an engraver's line; gold when the round celebrates, ink when not.
+   *  Its amount (the cluster's pay before the Mult) sits at its centre. */
+  function outline(cluster, amount, celebrate) {
+    const key = new Set(cluster.cells.map((p) => `${p.row},${p.col}`));
+    const c = S.cell, segs = [];
+    for (const p of cluster.cells) {
+      const x = p.col * c, y = p.row * c;
+      if (!key.has(`${p.row - 1},${p.col}`)) segs.push(`M${x} ${y}H${x + c}`);
+      if (!key.has(`${p.row + 1},${p.col}`)) segs.push(`M${x} ${y + c}H${x + c}`);
+      if (!key.has(`${p.row},${p.col - 1}`)) segs.push(`M${x} ${y}V${y + c}`);
+      if (!key.has(`${p.row},${p.col + 1}`)) segs.push(`M${x + c} ${y}V${y + c}`);
+    }
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("class", `burr${celebrate ? "" : " quiet"}`);
+    svg.setAttribute("width", String(S.cols * c)); svg.setAttribute("height", String(S.rows * c));
+    const path = document.createElementNS(SVGNS, "path");
+    path.setAttribute("d", segs.join("")); path.setAttribute("pathLength", "100");
+    svg.appendChild(path); el.board.appendChild(svg);
+    if (!reduced.matches) path.animate([{ strokeDashoffset: 100 }, { strokeDashoffset: 0 }], { duration: window.LuminaMotion.ms("winHighlight") * 0.5, easing: "ease-out", fill: "both" });
+    const cx = cluster.cells.reduce((t, p) => t + p.col + 0.5, 0) / cluster.cells.length, cy = cluster.cells.reduce((t, p) => t + p.row + 0.5, 0) / cluster.cells.length;
+    const tag = document.createElement("div");
+    tag.className = `camt${celebrate ? "" : " quiet"}`; tag.textContent = money(amount);
+    tag.style.left = cx * c + "px"; tag.style.top = cy * c + "px";
+    el.board.appendChild(tag);
+  }
+  /** Embers collected by a step fly into the crucible BEFORE the refill falls; the meter counts
+   *  them on arrival, so every meter change is tied to the cells that caused it. */
+  function chargeMeter(cells, onArrive) {
+    const to = el.meter.querySelector(".crucible")?.getBoundingClientRect();
+    if (!to || reduced.matches || !cells.length) { onArrive(cells.length); return Promise.resolve(); }
+    const ms = window.LuminaMotion.ms("meterCharge");
+    return Promise.all(cells.map((p, i) => {
+      const from = cellAt(p.row, p.col)?.getBoundingClientRect(); if (!from) return Promise.resolve();
+      const dot = document.createElement("i"); dot.className = "charge"; document.body.appendChild(dot);
+      const x0 = from.left + from.width / 2, y0 = from.top + from.height / 2, x1 = to.left + to.width / 2, y1 = to.top + to.height / 2;
+      const mx = (x0 + x1) / 2 + (x1 > x0 ? -40 : 40), my = Math.min(y0, y1) - 60;
+      const frames = [0, 0.25, 0.5, 0.75, 1].map((t) => { const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, cc = t * t; return { transform: `translate(${a * x0 + b * mx + cc * x1 - 6}px, ${a * y0 + b * my + cc * y1 - 6}px) scale(${1 - t * 0.4})`, opacity: t > 0.92 ? 0 : 1 }; });
+      return dot.animate(frames, { duration: ms, delay: i * 40, easing: "cubic-bezier(.4,0,.6,1)", fill: "forwards" }).finished.then(() => { dot.remove(); onArrive(1); }, () => { dot.remove(); onArrive(1); });
+    }));
+  }
+  /** The meter shown during a round (counts collected Embers as they arrive). */
+  function paintMeter(n) {
+    const full = S.rules?.forge_meter?.embers_to_fill || 40, v = Math.min(full, n);
+    el.meterText.textContent = `${v} / ${full}`; el.meterFill.style.width = (100 * v) / full + "%";
+  }
+  let winAnim = 0;
+  function countWin(from, to) {
+    cancelAnimationFrame(winAnim);
+    const ms = reduced.matches ? 0 : window.LuminaMotion.ms("runningTotal"), t0 = performance.now();
+    const tick = (now) => { const t = ms ? Math.min(1, (now - t0) / ms) : 1; shell.setWin(from + (to - from) * (1 - Math.pow(1 - t, 3))); if (t < 1) winAnim = requestAnimationFrame(tick); };
+    winAnim = requestAnimationFrame(tick);
+  }
   async function pop(cells, step) {
     if (cells.length) sfx("rf_pop", { step });
     const runs = [];
@@ -412,7 +484,7 @@
           if ((f.relics[other] || 0) >= 3) evoHint = `<span class="evo-hint">★ Completes ${EVO_NAMES[name]}: ${esc(evoText(name))}</span>`;
         }
       }
-      return `<button class="card" data-pick="${i}" data-vx-close="pick-${i}" ${i === 0 ? "data-vx-autofocus" : ""}>
+      return `<button class="card" style="--i:${i}" data-pick="${i}" data-vx-close="pick-${i}" ${i === 0 ? "data-vx-autofocus" : ""}>
         <h4>${RELIC_NAMES[o.relic]} <small>LV ${lv}</small></h4>
         <p>${esc(relicLevelText(o.relic, lv))}</p>${evoHint}
         ${o.volatility ? `<span class="vol" data-v="${o.volatility}">Volatility · ${o.volatility}</span>` : ""}
@@ -480,6 +552,8 @@
       for (const e of r.evolved || []) await evolutionMoment(e);
       S.forge = Object.assign({}, S.forge, { relics: r.relics, evolutions: r.evolutions, relic_bonus: bonus, pending_offer: null });
       showForge();
+      // The chosen relic is struck in gold on its plate.
+      if (r.pick) { const chip = el.relics.querySelector(`[data-relic="${r.pick.relic}"]`); if (chip) { chip.classList.add("fire"); setTimeout(() => chip.classList.remove("fire"), window.LuminaMotion.ms("pickResolve") + 300); } }
       if (r.meltdown) {
         hook("meltdown_start");
         document.body.classList.add("meltdown"); say("Meltdown.", true);
@@ -504,6 +578,9 @@
 
     let running = 0;
     shell.setWin(0);
+    // The crucible counts this round's Embers as they arrive (base spins: the Forge's spins
+    // do not fill it). The round's own meter result repaints it at the end.
+    let meterShown = Number(r.meter?.before ?? S.playerStates[betKey(bet)]?.embers ?? 0);
     for (let i = 0; i < r.steps.length; i += 1) {
       const st = r.steps[i];
       el.hud.classList.add("on");
@@ -515,7 +592,7 @@
       el.calc.textContent = free ? `${money(baseWin)} × ${st.mult} × ${bonus.toFixed(2)}` : `${money(baseWin)} × ${st.mult}`;
       hook("cascade_step", { n: Math.min(i + 1, 8), flat: !celebrate });
 
-      for (const c of st.clusters) mark(c.cells, "win");
+      for (const c of st.clusters) { mark(c.cells, celebrate ? "win" : "win-quiet"); outline(c, c.pay_x * scaler * bet, celebrate); }
       for (const d of st.detonations) {
         mark(d.cells, "blast");
         hook(d.kind.includes("_") ? "combo" : "special_detonate", { kind: d.kind });
@@ -524,10 +601,12 @@
       if (st.embers_collected.length) { mark(st.embers_collected, "blast"); hook("ember_collect", { n: st.embers_collected.length }); }
       await pace(st.detonations.length ? T.stepHoldDetonation : T.stepHold);
 
+      const before = running;
       running += st.step_x * scaler * bonus * bet;
-      shell.setWin(running);
+      countWin(before, running);
       for (const s of st.specials_created) hook("special_create", { kind: s.kind });
-      await pop(st.removed, i);
+      const charge = !free && st.embers_collected.length ? chargeMeter(st.embers_collected, (k) => { meterShown += k; paintMeter(meterShown); }) : null;
+      await Promise.all([pop(st.removed, i), charge]);
       await render(st.board, st.specials, { moves: st.moves, drops: st.drops });
       await pace(T.afterRefill);
     }
@@ -543,7 +622,8 @@
       hook("win_tier", { tier: winTierKey(r.total_win / bet) });
       await banner(`<b>${winTier(r.total_win / bet)}</b><span>${money(r.total_win)}</span>`, T.bannerTier);
     }
-    if (r.total_win > 0 && !(celebrate && winTier(r.total_win / bet)) && !r.cap_reached) sfx("rf_win");
+    // A win at or below the stake is a quiet credit: no win sound (RTS 14F / AGCO 2.20).
+    if (celebrate && r.total_win > 0 && !winTier(r.total_win / bet) && !r.cap_reached) sfx("rf_win");
     // The end-of-round line: the win (neutral when it does not celebrate), else the quiet line.
     if (r.total_win > 0) say(celebrate ? `Forged: ${money(r.total_win)}` : `Credit ${money(r.total_win)}`, true, celebrate);
     else say(free ? "The hammer rests." : "The forge is cold.");
@@ -770,7 +850,12 @@
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
     if (S.forge) { say("The Forge still burns. Choose your relic."); openDraft(null); }
-    else shell.ticker.idle(["The forge is cold."]);
+    else {
+      shell.ticker.idle(["The forge is cold."]);
+      // The meter outlives sessions (per bet): say what it holds, so a part-full crucible is never a mystery.
+      const held = Number(S.playerStates[betKey(currentBet())]?.embers || 0);
+      if (held > 0) { shell.ticker.flash(`Your forge holds ${held} of ${S.rules.forge_meter.embers_to_fill}`, "bonus", 3200); el.meter.classList.add("pulse"); setTimeout(() => el.meter.classList.remove("pulse"), 1200); }
+    }
   }
   boot().catch((err) => { say(`Could not start the game (${err.code || err.message})`); document.body.classList.add("app-ready"); });
 })();

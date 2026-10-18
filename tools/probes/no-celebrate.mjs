@@ -3,7 +3,8 @@
 // (celebrate_threshold "gt_stake", RTS 14F / AGCO 2.20) a round whose return is at or below
 // the stake gets NO win effects: no win sounds, no gold ticker, no celebration overlay, no
 // haptics, no amber win glow. A round above the stake still celebrates (positive control),
-// and in the default market every win celebrates as before.
+// and in the default market every win celebrates as before (Relic Forge: quiet by design).
+// Covers Moth & Lantern and Relic Forge; Vault 20K joins when it moves onto the shell.
 //
 //   CHROME_PATH=… node tools/probes/no-celebrate.mjs [--rounds 60]
 //
@@ -37,7 +38,12 @@ const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin
 const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
 // Win-effect sound events per game (any of these on a sub-stake round is a failure).
-const WIN_EVENTS = { classic: ["win_small", "win_land", "win_big", "win_mega", "win_epic", "line_show", "win_tick", "feature_award"] };
+const WIN_EVENTS = {
+  classic: ["win_small", "win_land", "win_big", "win_mega", "win_epic", "line_show", "win_tick", "feature_award"],
+  relicforge: ["rf_win", "rf_win_tier", "rf_max_win", "rf_mult_tier"]
+};
+
+const QUIET_BY_DESIGN = new Set(["relicforge"]);
 
 async function run(game, market) {
   const page = await browser.newPage();
@@ -75,7 +81,7 @@ async function run(game, market) {
       const out = { overlay: false, gold: false };
       const t0 = performance.now();
       while (performance.now() - t0 < 15000) {
-        if (document.querySelector("#celebration:not([hidden]), .rf-banner:not([hidden])")) out.overlay = true;
+        if (document.querySelector("#celebration:not([hidden]), #banner:not([hidden])")) out.overlay = true;
         if (document.getElementById("psTicker")?.dataset.state === "win") out.gold = true;
         if (!window.__spinLifecycle.inFlight) break;
         await new Promise((r) => setTimeout(r, 30));
@@ -104,12 +110,15 @@ async function run(game, market) {
   return results;
 }
 
-for (const game of ["classic"]) {
+for (const game of ["classic", "relicforge"]) {
   const uk = await run(game, "UKGC");
   check(`${game} (UKGC): ${uk.sub} rounds returned ≤ the stake and none was celebrated`, uk.sub > 0 && uk.subBad.length === 0, uk.subBad.slice(0, 3).join(" | ") || (uk.sub ? "" : "no sub-stake round seen; raise --rounds"));
   check(`${game} (UKGC): rounds above the stake still celebrate (${uk.aboveOk}/${uk.above})`, uk.above === 0 || uk.aboveOk === uk.above);
   const def = await run(game, null);
-  check(`${game} (default market): sub-stake wins still celebrate as before (${def.sub - def.subBad.length} quiet of ${def.sub})`, def.sub === 0 || def.subBad.length > 0);
+  // Relic Forge's own design never celebrates a round at or below the bet (GDD §6, §8), in
+  // every market; the other games keep celebrating sub-stake wins outside the rule's markets.
+  if (QUIET_BY_DESIGN.has(game)) check(`${game} (default market): sub-stake rounds stay quiet by the game's design (${def.sub})`, def.subBad.length === 0, def.subBad.slice(0, 3).join(" | "));
+  else check(`${game} (default market): sub-stake wins still celebrate as before (${def.sub - def.subBad.length} quiet of ${def.sub})`, def.sub === 0 || def.subBad.length > 0);
 }
 await browser.close();
 server.close();
