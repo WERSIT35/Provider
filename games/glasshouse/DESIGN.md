@@ -1,6 +1,6 @@
 # Glasshouse (code `glasshouse`): design document
 
-Status: **Stage 2 (RGS + recovery) done** (2026-10-18; `qa/recovery.md`). Lumina Games, game #4. Stage 0 approved by the owner (D1–D6), plus D7–D10 decided during Stage 1.
+Status: **Stage 3 (client) done** (2026-10-18; screenshots `qa/img/`, probe `tools/probes/glasshouse-client.mjs`). Stage 2: `qa/recovery.md`. Lumina Games, game #4. Stage 0 approved by the owner (D1–D6), plus D7–D10 decided during Stage 1.
 The math in this document is the shipped math: `math/rules.json` (built by `tools/build-rules.js`), measured in `qa/rtp-report.md`. The client is not built yet.
 This document contains no claim of certification or approval by any lab or regulator, and the market table is not legal advice.
 
@@ -18,7 +18,7 @@ D1–D6 were approved with Stage 0. D7–D10 came out of the Stage 1 simulation;
 | D2 | The scatter is a "Rose Window" | Call it the **Glass Rose** (id `ROSE`): a rose flower in leaded glass, in a round brass frame | "Rose window" is a church-architecture term, and the brief bans cathedrals. Same picture, no church word. |
 | D3 | Buy "clamped to the stake cap in the UK" | Follow the platform preset: **buy is off in UKGC** (`regulatory.ts` already sets `buy_feature_enabled: false`). If an operator turns it on, the clamp applies, and at 100× bet against a £5 cap, the buy only exists for bets ≤ £0.05, which is below our smallest bet of £0.20. So in practice: off in the UK. | It's the same outcome as the brief, stated honestly. |
 | D4 | "Glass chimes, soft bells" | Glasshouse needs **new CC0 recordings** (glass-rub tones, wind chimes, glass harmonica, birdsong). The glass and bell files already in `art-src/audio/` (Kenney `impactGlass_*`, `impactBell_*`, OGA `bell_02`, `item_gem_*`) are used by Moth & Lantern, so Glasshouse may not use them. | "Nothing shared with any other game." Fetching new recordings needs network access to freesound / OpenGameArt from this environment. If that's blocked in Stage 4, I'll stop and tell you rather than reuse files. |
-| D5 | (not in brief) | Glasshouse is the **first game to use a `BoardView` interface**. It doesn't exist in the repo yet (it's only in `reports/Slot provider UI and motion.md`). I define it inside Glasshouse (§11) and don't touch the other games. | The brief says "Do not change the other games". Porting them to BoardView is a separate job. |
+| D5 | (not in brief) | Use the shared **`LuminaBoardView`** seam. When Stage 0 was written it did not exist; `main` added it (#128, `client/shell/board-view.js`) during Stage 3, and Glasshouse registers its board there like the other three games. | One seam for every game; a later renderer port touches only the board. |
 | D6 | "Prism symbol (reel 1 only)" | Up to **2 Sun Lenses** can be visible on reel 1 at once (strip spacing guarantees it); never more. | Keeps the board readable: at most two beams, and the rules for two are fully defined (§4.4). In the shipped strips the lenses are far apart, so two never show together; the rules stay defined and tested. |
 | D7 | 8 regular symbols | **10**: two more cut gems, Heart and Baguette | With 8 symbols on a 6×4 ways board, 85% of spins won and RTP was ~2,500%. The brief allowed 8–10. |
 | D8 | the lens cell lights like any pane | **The Sun Lens is the light source, never a wild pane** | A lit lens made reel 1 wild for every symbol: a beam spin paid ~130 normal spins. As a light source, every symbol still needs a real symbol on reel 1, and a beam spin pays ~34 normal spins. |
@@ -390,20 +390,9 @@ No screen or board shake. No idle motion (no float, bob, shimmer or looping dust
 
 ### 11.6 BoardView (D5)
 
-The Glasshouse board sits behind a small interface so a later PixiJS port only touches the board:
-```
-BoardView {
-  mount(stageEl, rules)           // builds the board in the shell's stage
-  layout(widthPx, heightPx, dpr)  // size from the stage; never moves the shell
-  spin(payload, speed): Promise   // plays a spin's payload to rest
-  feature(event, payload): Promise
-  setSticky(cells)                // restore after reload
-  skip()                          // shorten per the grammar's skip rules
-  idle(): boolean                 // true when nothing animates (loop stopped)
-  destroy()
-}
-```
-Canvas2D for Stage 3. A PixiJS port is not part of this game's plan.
+The board is registered with the shared seam, `LuminaBoardView.define("glasshouse", { mount, resize, presentRound, setTheme, destroy })` (`client/shell/board-view.js`). `presentRound(payload, { bet, stake })` lands the reels on the server's stops, replays the beams and explains the win; `setTheme("feature")` is the midday scene. The round flow, the shell, the RGS calls and the market rules never touch the canvas directly. Canvas2D; a PixiJS port is not part of this game's plan.
+
+The feature intro and outro use the shell's shared panel (`shell.panel`), the retrigger uses `shell.flyPlus`, and the first beam of a visit gets one line of explanation over the board (`shell.callout`: "The light turns every pane it crosses wild.").
 
 ---
 

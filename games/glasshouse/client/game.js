@@ -540,6 +540,24 @@
       shell.waiting(false);
     }
     S.lastAnswerAt = performance.now();
+    const stake = buy ? cost : bet;
+    await view.presentRound(r, { bet, stake });
+    setBalance(Number(r.balance?.amount ?? r.balance ?? r.balance_after));
+    S.freeSpinsLeft = Number(r.free_spins_left || 0);
+    S.featureState = r.feature_state || null;
+    if (!r.is_free_spin && r.free_spins_awarded > 0) { S.featureStake = stake; S.featureWin = Number(r.bonus_round_win ?? r.total_win); }
+    else if (r.is_free_spin) S.featureWin = Number(r.bonus_round_win ?? S.featureWin + r.total_win);
+    if (S.featureRun || S.freeSpinsLeft > 0) shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" });
+    emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
+    S.inFlight = false; S.resultShown = false; setControls();
+    Sound?.warmMusic?.();
+    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
+    return r;
+  }
+
+  /** The board's half of a round (BoardView.presentRound): land the reels on the server's
+   *  stops, replay the beams, then explain the win. A pure function of the payload. */
+  async function presentRound(r, { bet, stake }) {
     // Land reels left to right. Anticipation only while the landed reels can still complete a
     // trigger and have not already (a pure function of what has landed; DESIGN §10).
     const need = S.rules.free_spins.scatters, slam = () => S.quickStop && shell.slamAllowed();
@@ -547,7 +565,10 @@
     let roses = 0;
     for (let col = 0; col < 6; col++) {
       const reelsLeft = 6 - col; // a reel shows at most one rose
-      const anticipate = roses >= need - 1 && roses < need && roses + reelsLeft >= need && !slam();
+      const could = roses >= need - 1 && roses < need && roses + reelsLeft >= need;
+      // UKGC / ON: anticipation is shown in full even after a slam press (LuminaMotion grammar).
+      if (could && !shell.anticipationSkippable()) S.quickStop = false;
+      const anticipate = could && !slam();
       const dur = (slam() ? T.reelLandQuick : (anticipate ? T.reelLandAnticipate : T.reelLand) * speed()) + (slam() ? 0 : col * T.reelLandColExtra);
       if (!slam() && col > 0) await sleep((anticipate ? T.reelGapAnticipate : T.reelGap) * speed());
       R.anticipate = anticipate ? col : -1; kick();
@@ -560,20 +581,10 @@
     if (R.anticipate >= 0) { R.anticipate = -1; kick(); }
     // The result is on the board; the beam is part of it (never skipped before it is shown).
     await playBeams(r);
+    // The first beam of a visit gets one line of explanation over the board (no tap needed).
+    if (r.beams?.length && !S.beamExplained) { S.beamExplained = true; shell.callout("The light turns every pane it crosses wild."); }
     S.resultShown = true; setControls();
-    const stake = buy ? cost : bet;
     await presentWin(r, stake, bet);
-    setBalance(Number(r.balance?.amount ?? r.balance ?? r.balance_after));
-    S.freeSpinsLeft = Number(r.free_spins_left || 0);
-    S.featureState = r.feature_state || null;
-    if (!r.is_free_spin && r.free_spins_awarded > 0) { S.featureStake = stake; S.featureWin = Number(r.bonus_round_win ?? r.total_win); }
-    else if (r.is_free_spin) S.featureWin = Number(r.bonus_round_win ?? S.featureWin + r.total_win);
-    if (S.featureRun || S.freeSpinsLeft > 0) shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" });
-    emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
-    S.inFlight = false; S.resultShown = false; setControls();
-    Sound?.warmMusic?.();
-    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
-    return r;
   }
 
   // The shared ladder (LuminaMotion.BIG_WIN, × the stake), named in the glasshouse's voice (§11.4).
@@ -605,17 +616,17 @@
     const tier = celebrate ? M.tierFor(total / (r.is_free_spin ? bet : stake)) : null;
     const capped = (r.events || []).some((e) => /MAX_WIN_CAP/.test(e.type));
     if (celebrate && !S.quickStop) await sleep(ms("winHighlight"));
-    const counted = countUp(total, !celebrate ? M.ms("neutralCredit") : tier ? T.countUpTier : T.countUpPlain * speed(), celebrate);
+    const counted = countUp(total, !celebrate ? M.ms("neutralCredit") : tier ? T.countUpTier : M.countUpMs(total / bet, shell.motionSpeed()), celebrate);
     if (total > 0) say(celebrate ? `Sunlit: ${fmt(total)}` : `Credit: ${fmt(total)}`, true, celebrate);
     sfx(!celebrate ? "click" : total / bet >= 5 ? "win_land" : "win_small");
-    if (capped && celebrate) await bigWin("Full Bloom", total, "max_win");
-    else if (tier) await bigWin(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key]);
+    if (capped && celebrate) await bigWin("Full Bloom", total, "max_win", "max");
+    else if (tier) await bigWin(TIER_NAMES[tier.key], total, TIER_SOUND[tier.key], tier.key);
     await counted;
     if (r.free_spins_awarded > 0) {
       sfx("feature_award", { retrigger: r.is_free_spin });
-      if (r.is_free_spin) { say(`More sun: +${r.free_spins_awarded} spins`, true, true); await flyPlus(r.free_spins_awarded, r.scatter.positions); }
-      else say(`The sun climbs: ${r.free_spins_awarded} free spins`, true, true);
-      await sleep(T.featureAward * speed());
+      // A retrigger: "+N" flies into the spins readout, which then shows the new count.
+      if (r.is_free_spin) { say(`More sun: +${r.free_spins_awarded} spins`, true, true); await shell.flyPlus(`+${r.free_spins_awarded}`); shell.featureHud({ left: Number(r.free_spins_left || 0), win: S.featureWin, label: "Spins", winLabel: "Midday win" }); }
+      else { say(`The sun climbs: ${r.free_spins_awarded} free spins`, true, true); await sleep(T.featureAward * speed()); }
     }
   }
   let countTimer = 0, countDone = null;
@@ -629,41 +640,24 @@
     });
   }
   function stopCount() { cancelAnimationFrame(countTimer); countDone?.(); }
-  /** "+N": from the roses into the free-spins counter (the Bet readout shows spins in the feature). */
-  async function flyPlus(n, positions) {
-    const target = document.getElementById("footerBet");
-    if (!target) return;
-    const box = el.board.getBoundingClientRect(), tb = target.getBoundingClientRect();
-    const [pr, pc] = positions?.[0] || [1, 2];
-    const x0 = box.left + ((pc + 0.5) / 6) * box.width, y0 = box.top + ((pr + 0.5) / 4) * box.height;
-    const d = document.createElement("div"); d.className = "plus"; d.textContent = `+${n}`; document.body.appendChild(d);
-    const w = d.offsetWidth, h = d.offsetHeight;
-    const from = `translate(${x0 - w / 2}px, ${y0 - h / 2}px) scale(1.2)`, to = `translate(${tb.left + tb.width / 2 - w / 2}px, ${tb.top + tb.height / 2 - h / 2}px) scale(0.8)`;
-    d.style.left = "0"; d.style.top = "0";
-    if (calm() || !d.animate) { d.style.transform = to; await sleep(M.ms("retrigger", "reduced") / 2); }
-    else await d.animate([{ transform: from, opacity: 0 }, { transform: from, opacity: 1, offset: 0.15 }, { transform: to, opacity: 1, offset: 0.9 }, { transform: to, opacity: 0 }], { duration: T.plusFly * speed(), easing: "ease-in-out", fill: "forwards" }).finished.catch(() => {});
-    d.remove();
-    shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" });
-  }
-  function bigWin(title, amount, sound) {
+  function bigWin(title, amount, sound, tierKey) {
     return new Promise((resolve) => {
       el.celTitle.textContent = title; el.celAmount.textContent = "0.00"; el.cel.hidden = false; sfx(sound);
       const t0 = performance.now(), dur = shell.speed() === "turbo" ? T.celebrateTurbo : T.celebrate;
-      let done = false;
-      const finish = () => { if (done) return; done = true; el.cel.hidden = true; el.cel.removeEventListener("pointerdown", finish); resolve(); };
-      const tick = (now) => { if (done) return; const t = Math.min(1, (now - t0) / dur); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop) requestAnimationFrame(tick); else { el.celAmount.textContent = fmt(amount); setTimeout(finish, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold); } };
+      // A tap while counting lands the amount; the title then holds 400-700 ms by tier
+      // (LuminaMotion.BIG_WIN `hold`, MAX_WIN for Full Bloom) before a tap may close it.
+      const hold = (tierKey === "max" ? M.MAX_WIN.hold : M.BIG_WIN.find((t) => t.key === tierKey)?.hold) ?? 450;
+      let done = false, skipped = false, landedAt = 0, closeT = 0;
+      const finish = () => { if (done) return; done = true; clearTimeout(closeT); el.cel.hidden = true; el.cel.removeEventListener("pointerdown", tap); resolve(); };
+      const land = () => { el.celAmount.textContent = fmt(amount); landedAt = performance.now(); closeT = setTimeout(finish, Math.max(skipped ? hold : 0, S.autoplay || S.freeSpinsLeft > 0 ? T.celebrateHoldAuto : T.celebrateHold)); };
+      const tap = () => { if (!landedAt) { skipped = true; return; } if (performance.now() - landedAt >= (skipped ? hold : 150)) finish(); };
+      const tick = (now) => { if (done || landedAt) return; const t = Math.min(1, (now - t0) / dur); el.celAmount.textContent = fmt(amount * (1 - Math.pow(1 - t, 3))); if (t < 1 && !S.quickStop && !skipped) requestAnimationFrame(tick); else land(); };
       requestAnimationFrame(tick);
-      el.cel.addEventListener("pointerdown", finish);
+      el.cel.addEventListener("pointerdown", tap);
     });
   }
 
   // ── free spins: "Midday" (DESIGN §5, §11.3) ──────────────────────────────
-  /** A panel that waits for a tap, or continues by itself in autoplay after `autoMs`. */
-  async function panel(title, html, label, autoMs) {
-    const choice = shell.ask(title, html, [{ reason: "go", label, primary: true }]);
-    if (!S.autoplay) return choice;
-    return Promise.race([choice, sleep(autoMs).then(() => { shell.closeSheets(); return "auto"; })]);
-  }
   async function runFreeSpins() {
     if (S.freeSpinsLeft <= 0 || S.featureRun) return 0;
     S.featureRun = true;
@@ -671,23 +665,30 @@
   }
   async function playFeature() {
     shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" });
-    document.body.classList.add("midday");
+    view.setTheme("feature");
     emit("featureState", { active: true, free_spins_left: S.freeSpinsLeft, bonus_win: S.featureWin });
     Sound?.setMusic?.("freeSpins");
     sfx("fs_intro");
-    await sleep(M.ms("featureTransition", shell.motionSpeed()) * 0.4);
-    await panel("Midday", `<p><b>${S.freeSpinsLeft} free spins.</b> Lit panes stay lit for two more spins.</p>`, "Start", M.ms("featureAutoContinue"));
+    // The intro says what the feature is (A6): the spins and the one special rule. A tap or
+    // Spin starts it; in autoplay it starts by itself.
+    const resumed = S.resuming; S.resuming = false;
+    const ttl = S.rules.free_spins.sticky_spins;
+    await shell.panel({ kicker: resumed ? "Resuming" : "Midday", title: `${S.freeSpinsLeft} free spins`, line: `Lit panes stay lit for ${ttl === 2 ? "two" : ttl} more spins. More Glass Roses add spins.`, stats: [["Bet", fmt(S.bets[S.betIndex])], ["Lit panes", `${ttl} spins`]], auto: Boolean(S.autoplay) });
+    let played = 0;
     while (S.freeSpinsLeft > 0 && !S.paused) {
       const r = await playRound({ auto: true });
       if (!r) break;
+      played++;
       await sleep(T.betweenFreeSpins * speed());
     }
-    document.body.classList.remove("midday");
+    view.setTheme("base");
     Sound?.setMusic?.("base");
     const total = S.featureWin, stake = S.featureStake || S.bets[S.betIndex];
     const celebrate = shell.celebrates(total, stake);
     if (celebrate) sfx("fs_outro");
-    await panel(celebrate ? "The house is full of light" : "The sun sets", `<p>Free spins paid <b>${fmt(total)}</b>.</p>`, "Collect", M.ms("featureOutroAuto"));
+    // The outro says what the feature paid, counted (plainly where the market forbids win
+    // effects at or below the stake).
+    if (!S.paused) await shell.panel({ kicker: "Evening", title: "Free spins complete", stats: [["Spins", String(played)], ["Bet", fmt(S.bets[S.betIndex])]], total, totalLabel: "Midday win", countX: total / S.bets[S.betIndex], count: celebrate, auto: Boolean(S.autoplay) });
     say(total > 0 ? (celebrate ? `Midday gave ${fmt(total)}` : `Credit: ${fmt(total)}`) : "Morning light.", total > 0, celebrate);
     emit("featureState", { active: false, free_spins_left: S.freeSpinsLeft, bonus_win: total });
     S.featureWin = 0; S.featureStake = 0;
@@ -731,15 +732,17 @@
   // ── controls (the shell calls these) ─────────────────────────────────────
   async function onSpinPress() {
     Sound?.unlock?.();
-    if (S.autoplay) { stopAutoplay("stopped"); if (S.resultShown || shell.slamAllowed()) S.quickStop = true; return; }
+    const slamNow = () => shell.slamAllowed() && (R.anticipate < 0 || shell.anticipationSkippable());
+    if (S.autoplay) { stopAutoplay("stopped"); if (S.resultShown || slamNow()) S.quickStop = true; return; }
     if (S.inFlight || S.featureRun) {
       // Never a new round mid-round or mid-feature. A press shows the result sooner only where
       // slam stop is allowed; elsewhere it may only skip presentation AFTER the result is shown.
-      if (S.inFlight && (S.resultShown || shell.slamAllowed())) S.quickStop = true;
+      // Reels in anticipation are never cut short where the market says so (UKGC, ON).
+      if (S.inFlight && (S.resultShown || slamNow())) S.quickStop = true;
       return;
     }
-    // A reload in the middle of the feature: the next press continues it.
-    if (S.freeSpinsLeft > 0) { await runFreeSpins(); return; }
+    // A feature left unfinished (a reload mid-feature) resumes from its intro panel.
+    if (S.freeSpinsLeft > 0) { S.resuming = true; await runFreeSpins(); return; }
     const r = await playRound();
     if (r && S.freeSpinsLeft > 0) await runFreeSpins();
   }
@@ -819,14 +822,27 @@
       betIndex: (i) => setBetIndex(i),
       autoplay: (n, limits) => startAutoplay(n, limits),
       autoplayStop: () => stopAutoplay("stopped"),
+      // DE panic button (the shell asked first): stop now; the casino locks play 24 h.
+      panic: () => { stopAutoplay(); S.paused = true; emit("exitRequested", { reason: "panic" }); say("Play paused for 24 hours"); },
       info: () => rulesHtml(),
       pref: () => { R.sprites.clear(); kick(); }
     }
   });
 
+  // The board behind the shared BoardView seam (client/shell/board-view.js): the round flow
+  // above talks to the board only through these five calls.
+  let boardRO = null;
+  const view = window.LuminaBoardView.define("glasshouse", {
+    mount() { resize(); boardRO = new ResizeObserver(() => view.resize()); boardRO.observe(el.board); },
+    resize() { resize(); },
+    presentRound: (payload, t = {}) => presentRound(payload, { bet: t.bet ?? S.bets[S.betIndex], stake: t.stake ?? t.bet ?? S.bets[S.betIndex] }),
+    // The feature scene: dawn turns to full midday sun, the panes glow brighter.
+    setTheme(name) { document.body.classList.toggle("midday", name === "feature"); },
+    destroy() { boardRO?.disconnect(); boardRO = null; stopCount(); cancelAnimationFrame(R.raf); R.raf = -1; }
+  });
+
   async function boot() {
-    resize();
-    new ResizeObserver(() => resize()).observe(el.board);
+    view.mount(el.board);
     const params = new URLSearchParams(location.search);
     const lt = params.get("lt");
     const KEY = "glasshouse.session";
@@ -858,6 +874,7 @@
     S.currency = session.currency;
     shell.setCurrency(S.currency);
     shell.applyMarket(session.regulatory || {});
+    shell.setRtp(S.variant.theoretical_percent);
     S.minRoundMs = Number(shell.rule("min_round_ms", 0)) || 0;
     S.bets = session.allowed_bets.slice().sort((a, b) => a - b);
     const resumeBet = session.resume?.bet_amount;
@@ -878,7 +895,7 @@
     const startAudio = () => { removeEventListener("pointerdown", startAudio, true); removeEventListener("keydown", startAudio, true); Sound?.preload?.(); Sound?.unlock?.(); };
     addEventListener("pointerdown", startAudio, true);
     addEventListener("keydown", startAudio, true);
-    if (S.freeSpinsLeft > 0) { shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" }); document.body.classList.add("midday"); say(`Midday · ${S.freeSpinsLeft} left · tap Spin`); }
+    if (S.freeSpinsLeft > 0) { shell.featureHud({ left: S.freeSpinsLeft, win: S.featureWin, label: "Spins", winLabel: "Midday win" }); view.setTheme("feature"); say(`Midday · ${S.freeSpinsLeft} left · tap Spin`); }
     else shell.ticker.idle(["Morning light.", "The glass is warm.", "Dew on the panes."]);
     setControls();
   }

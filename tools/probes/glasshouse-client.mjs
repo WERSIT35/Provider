@@ -137,10 +137,10 @@ for (const size of [[390, 844], [1440, 900]]) {
   await settled(page);
   await force(page, BOARDS.trigger.stops);
   await press(page);
-  await page.waitForFunction(() => [...document.querySelectorAll(".lsh-sheet")].some((s) => s.getBoundingClientRect().height > 0 && /Midday/.test(s.textContent)), { timeout: 30000 });
+  await page.waitForFunction(() => { const p = document.querySelector(".lsh-panel"); return p && !p.classList.contains("hidden") && /free spins/.test(p.textContent); }, { timeout: 30000 });
   await new Promise((r) => setTimeout(r, 500));
   await shot(page, `state-feature-intro-${tag}`);
-  const intro = await page.evaluate(() => [...document.querySelectorAll(".lsh-sheet")].find((s) => /Midday/.test(s.textContent)).textContent.replace(/\s+/g, " ").trim());
+  const intro = await page.evaluate(() => document.querySelector(".lsh-panel").innerText.replace(/\s+/g, " ").trim());
   check(`${tag}: feature intro: one line of rules and the spin count`, /10 free spins/.test(intro) && /two more spins/.test(intro), intro.slice(0, 90));
   check(`${tag}: no console or page errors`, errors.length === 0, errors.slice(0, 3).join(" | "));
   await ctx.close();

@@ -154,7 +154,6 @@
       reelGapAnticipate: 400,
       errorLand: 120,
       countUpTier: 300,
-      countUpPlain: 520,
       featureAward: 900,
       betweenFreeSpins: 260,
       celebrate: 2200,
@@ -162,8 +161,7 @@
       celebrateHold: 2500,
       celebrateHoldAuto: 900,
       autoplayGap: 400,
-      autoplayGapTurbo: 150,
-      plusFly: 700             // the "+5" flying into the free-spins counter
+      autoplayGapTurbo: 150
     },
     // Relic Forge (games/relicforge/client/game.js).
     relicforge: {

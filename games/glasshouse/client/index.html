@@ -106,8 +106,6 @@
     .celebration b { display: block; font: 400 clamp(1.8rem, 8vmin, 4.2rem)/1 var(--display); letter-spacing: 0.08em; color: #fffaf0; text-shadow: 0 0 26px rgba(255, 227, 138, 0.9), 0 2px 0 #1e2124; }
     .celebration span { display: block; margin-top: 10px; font: 600 clamp(1.6rem, 6.5vmin, 3.2rem)/1.1 var(--num); color: #ffe38a; text-shadow: 0 0 18px rgba(201, 138, 43, 0.9), 0 2px 0 #1e2124; font-variant-numeric: tabular-nums lining-nums; }
     .celebration small { display: block; margin-top: 12px; color: #e9e0d2; font-size: 0.8rem; }
-    /* "+5": flies from the roses into the free-spins counter. */
-    .plus { position: fixed; z-index: 30; pointer-events: none; font: 600 1.6rem var(--num); color: #ffe38a; text-shadow: 0 0 12px rgba(201, 138, 43, 0.9), 0 2px 0 #1e2124; }
 
     /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the logo. */
     @media (max-width: 560px) { .sky { padding-top: 30px; } }
@@ -118,6 +116,7 @@
       .logo svg { width: min(46vw, 230px); }
     }
     @media (prefers-reduced-motion: reduce) { body::before, body::after { transition: none !important; } }
+    html.lsh-reduced body::before, html.lsh-reduced body::after { transition: none !important; } /* the Menu switch */
   </style>
 </head>
 <body>
@@ -185,6 +184,7 @@
   <script src="/play/notify.js"></script>
   <script src="/play/shell/motion.js"></script>
   <script src="/play/shell/shell.js"></script>
+  <script src="/play/shell/board-view.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
