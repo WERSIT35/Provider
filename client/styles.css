@@ -1,12 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   VAULT 20K — DESIGN TOKENS  (Lumina Games)
-   The single source of truth for colour and type. main.js reads these at boot
-   into THEME, so the canvas and the DOM cannot drift apart.
 
-   RULE: colour tokens are 6-digit hex ONLY. THEME.alpha() derives every
-   translucent canvas colour from them and rejects anything else. For CSS
-   transparency use color-mix(in srgb, var(--token) N%, transparent).
-   ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Family names are aliases: swapping in a licensed face later is a one-line
    src change and nothing else in the codebase references the real name.
@@ -404,113 +396,6 @@ button:disabled {
   100% { transform: scale(1); }
 }
 
-/* ============================================================================
-   Production-feel makeover (inspired by Pragmatic layouts): branded header
-   wordmark, bottom control toolbar (autoplay + turbo), persistent Balance·Bet
-   footer, and a richer themed reel frame.
-============================================================================ */
-.tool-wrap { position: relative; }
-
-.tool-btn {
-  min-height: 0;
-  height: 46px;
-  min-width: 46px;
-  padding: 0 14px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: #dce7ff;
-  background: linear-gradient(180deg, rgba(36, 48, 78, 0.92), rgba(14, 22, 42, 0.96));
-  border: 1px solid rgba(170, 210, 255, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 12px rgba(0, 0, 0, 0.4);
-  transition: transform 0.14s ease, filter 0.14s ease, border-color 0.14s ease;
-}
-.tool-btn:hover:not(:disabled) { transform: translateY(-1px); }
-.tool-btn .tool-glyph { font-size: 1.2rem; line-height: 1; }
-.tool-btn .tool-label {
-  font: 800 0.72rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.tool-btn .tool-count {
-  font: 800 0.8rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  font-variant-numeric: tabular-nums;
-}
-.tool-btn .tool-count:empty { display: none; }
-.tool-btn.is-active {
-  color: #0c1226;
-  background: linear-gradient(180deg, #ffe28a, #f0b44b);
-  border-color: rgba(255, 226, 138, 0.7);
-  box-shadow: 0 0 16px rgba(255, 200, 90, 0.5);
-}
-
-/* Autoplay count popover. */
-.autoplay-popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(20, 30, 54, 0.97), rgba(8, 14, 30, 0.98));
-  border: 1px solid rgba(165, 203, 255, 0.28);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-}
-.autoplay-popover-head {
-  font: 800 0.62rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #8aa0c2;
-  text-align: center;
-}
-.autoplay-popover-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-.autoplay-popover-grid button {
-  min-height: 0;
-  height: 40px;
-  min-width: 44px;
-  padding: 0 10px;
-  border-radius: 9px;
-  font: 800 0.9rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  color: #0c1226;
-  background: linear-gradient(180deg, #ecdcb7, #b89c6d);
-}
-
-.autoplay-limits {
-  display: grid;
-  gap: 6px;
-  font: 600 0.7rem/1.2 "SF Pro Display", "Segoe UI", sans-serif;
-  color: #c7d4ea;
-}
-.autoplay-limits label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  white-space: nowrap;
-}
-.autoplay-limits select {
-  min-height: 30px;
-  padding: 0 6px;
-  border-radius: 7px;
-  border: 1px solid rgba(165, 203, 255, 0.28);
-  background: rgba(8, 14, 30, 0.9);
-  color: #ecdcb7;
-  font: inherit;
-}
-.autoplay-limits__check { justify-content: flex-start !important; }
-.autoplay-limits input[type="checkbox"] { width: 18px; height: 18px; accent-color: #d9b878; }
-
 /* Richer themed reel frame — warmer inner glow reads more premium. */
 body.public-mode .reels-stage {
   border: 1px solid rgba(245, 214, 169, 0.22);
@@ -650,16 +535,6 @@ body.public-mode .altar-core {
   gap: 0;
 }
 
-/* The vertical stack. FLEX, not grid-with-counted-rows: the previous
-   `grid-template-rows: auto auto minmax(0,1fr) auto` had to match the number of
-   VISIBLE children, and several rows here toggle `hidden` at runtime (round-id
-   bar, bonus nodes). When the count drifted, the 1fr landed on the wrong row and
-   the board was left with only its content height. Flex assigns the free space
-   by flex-grow, so hidden children simply drop out and the board still wins. */
-/* The vertical stack (HUD → round id → rail → board) now lives in .ps-center,
-   and .vault-shell is the player-shell grid. Both are declared ONCE, in the
-   PLAYER SHELL block below. */
-
 /* THE BOARD ROW — the only row that grows. Everything else is content-sized, so
    whatever the chrome does not use belongs to the grid. `min-height: 0` is what
    lets it shrink on short viewports rather than pushing the deck off-screen. */
@@ -731,16 +606,6 @@ body.public-mode .reels-canvas {
   }
 }
 
-/* ----------------------------------------------------------------------------
-   Mobile portrait-first tuning (player view only). The public-mode layout is
-   already a vertical stack (title → HUD → reels → controls); here we size the
-   controls for one-thumb play and keep them in the bottom thumb zone.
----------------------------------------------------------------------------- */
-/* ── PROPORTIONAL CHROME ───────────────────────────────────────────────────
-   Every row that is not the board, sized from the .altar scale tokens. These
-   replace ~10 per-breakpoint blocks that each hard-coded px heights and often
-   disagreed with each other. Nothing here is a raw pixel dimension, so the
-   whole stack reflows proportionally instead of stepping at breakpoints. */
 /* Same zero-reflow contract for the Round ID strip. It is written fresh after
    EVERY resolved round (platform mode), and its base styling is `flex-wrap:
    wrap` + `word-break: break-all` — so a round ref one character too long for
@@ -775,20 +640,6 @@ body.public-mode .round-id-copied {
 body.public-mode .round-id-copy {
   padding: calc(2 * var(--ui) / 16) calc(7 * var(--ui) / 16);
 }
-/* Tap targets. The floor was 26px, which is well under the ~44px that touch
-   guidance (and #25's "buttons remain accessible and not too small on mobile")
-   asks for — and 26px is exactly what a landscape phone got, where these are the
-   turbo and reset controls. vmin rather than vh so the floor does not collapse
-   just because the viewport is short; the height budget is protected by the cap,
-   not by starving the target. */
-body.public-mode .tool-btn {
-  height: clamp(36px, 6vmin, 44px);
-  min-width: clamp(36px, 6vmin, 44px);
-  min-height: 0;
-  padding: 0 clamp(8px, 2vw, 16px);
-}
-body.public-mode .tool-btn .tool-glyph { font-size: calc(1.1 * var(--ui)); }
-body.public-mode .tool-btn .tool-label { font-size: calc(0.68 * var(--ui)); }
 
 /* Portrait phones/tablets. The board is width-bound here, so the only job left
    is to reclaim horizontal pixels — symbol size is boardWidth/6, so every pixel
@@ -822,18 +673,8 @@ body.public-mode .tool-btn .tool-label { font-size: calc(0.68 * var(--ui)); }
 /* Landscape on short viewports: the header is the first thing to go, since the
    board is height-bound and every vertical pixel is board size. */
 @media (orientation: landscape) and (max-height: 560px) {
-  /* Every vertical pixel here is board size, and this orientation has the
-     OPPOSITE problem to portrait: the 6/5 board is height-bound, so it
-     pillarboxes and leaves a wide empty band down each side while stacked
-     chrome rows starve it. So fold the duplicated rows away and spend the
-     reclaimed height on the board.
-
-     The bottom CREDIT/BET strip exists because portrait's HUD has no room for
-     Balance and Bet. Landscape has room to spare — three nodes across 844px —
-     so promote them back into the HUD and drop the strip. Same information,
-     one row instead of two. */
-  /* Balance and Bet live in the deck's status readouts at every size now, so
-     they are no longer promoted into the HUD here. */
+  
+  
   /* The Round ID is a support/compliance readout, not something read mid-spin,
      and .altar-top is already hidden at this size for the same reason. It stays
      available in portrait and on every larger viewport. */
@@ -903,16 +744,6 @@ body.public-mode .vault-shell {
   margin: 0;
 }
 
-/* ── Zones ── */
-body.public-mode .ps-left {
-  grid-area: left;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: calc(var(--gap) * 3);
-}
 /* The board column: the vertical stack the ONE SCALING CONTAINER block
    describes (HUD, round id, message rail, board). The board row is the only
    one that grows. */
@@ -924,246 +755,14 @@ body.public-mode .ps-center {
   flex-direction: column;
   gap: var(--gap);
 }
-body.public-mode .ps-right {
-  grid-area: right;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 0.32fr) minmax(0, 1fr);
-  gap: var(--gap);
-}
-body.public-mode .ps-deck {
-  grid-area: deck;
-  position: relative;
-  z-index: 2; /* the spin cluster rises over the bottom of the side columns */
-  display: grid;
-  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--side-w);
-  /* One row, pinned to the deck height. Without it the implicit row sizes to
-     its tallest content (the spin cluster) and pushes the deck off-screen. */
-  grid-template-rows: minmax(0, 1fr);
-  gap: var(--gap);
-  align-items: center;
-  height: var(--deck-h);
-  min-height: 0;
-  padding: 0 clamp(6px, 1.2vw, 18px);
-  border-radius: var(--radius);
-  border: 1px solid var(--steel-edge);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--steel-sheen) 7%, transparent), transparent 40%),
-    color-mix(in srgb, var(--bg-gunmetal) 92%, transparent);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 color-mix(in srgb, var(--steel-sheen) 18%, transparent);
-}
-
-/* ── Art slots ── */
-.ps-slot {
-  --slot-art: none;
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--slot-art) center / contain no-repeat;
-}
-.ps-slot[data-empty] {
-  border: 1px dashed color-mix(in srgb, var(--steel-sheen) 22%, transparent);
-  border-radius: var(--radius, 12px);
-  background-color: color-mix(in srgb, var(--bg-panel) 55%, transparent);
-}
-.ps-slot-label {
-  font: 600 calc(0.6 * var(--ui, 14px)) / 1 var(--font-ui);
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  pointer-events: none;
-}
-.ps-slot:not([data-empty]) .ps-slot-label { display: none; }
-
-/* ── Buy / ante (vector) ──
-   Both sit in a --feat-h tall box and size their type from it, so they scale
-   with the layout like every other control. Width follows height, so the hit
-   area is exactly the painted pill, never a column-wide strip. */
-body.public-mode .ps-feature {
-  width: 100%;
-  height: var(--feat-h);
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  --fs: calc(var(--feat-h) * 0.26);
-}
-.vx-buy,
-.vx-ante {
-  height: 100%;
-  width: min(100%, calc(var(--feat-h, 64px) * 3.2));
-  min-width: 0;
-  min-height: 0;
-  margin: 0;
-  border-radius: 999px;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Buy Feature: the one gold object on the screen, so it reads as premium. */
-.vx-buy {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.08em;
-  padding: 0 1em;
-  border: 1px solid var(--win-gold-deep);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, #FFFFFF 45%, transparent), transparent 46%),
-    linear-gradient(180deg, var(--win-gold-bright), var(--win-gold) 48%, var(--win-gold-deep));
-  color: var(--bg-gunmetal);
-  font-size: var(--fs, 16px);
-  line-height: 1;
-  text-shadow: 0 1px 0 color-mix(in srgb, #FFFFFF 40%, transparent);
-  box-shadow:
-    0 6px 18px color-mix(in srgb, var(--win-gold) 30%, transparent),
-    inset 0 -3px 0 color-mix(in srgb, var(--win-gold-deep) 70%, transparent);
-  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
-}
-.vx-buy__kicker { font-size: 0.62em; font-weight: 600; letter-spacing: 0.32em; opacity: 0.8; }
-.vx-buy__label { font-size: 1.2em; font-weight: 700; letter-spacing: 0.1em; }
-.vx-buy:hover:not(:disabled) {
-  transform: none;
-  filter: brightness(1.08);
-  box-shadow:
-    0 6px 26px color-mix(in srgb, var(--win-gold) 55%, transparent),
-    inset 0 -3px 0 color-mix(in srgb, var(--win-gold-deep) 70%, transparent);
-}
-.vx-buy:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
-.vx-buy:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 3px; }
-.vx-buy:disabled {
-  cursor: not-allowed;
-  filter: grayscale(0.85) brightness(0.6);
-  box-shadow: none;
-}
-
-/* Ante Bet: a switch. The real checkbox stays in the DOM (main.js and the
-   keyboard drive it); the track and knob are its painted state. */
-.vx-ante {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.7em;
-  padding: 0 1em 0 0.8em;
-  border: 1px solid var(--steel-edge);
-  background: linear-gradient(180deg, var(--bg-panel-raised), var(--bg-gunmetal));
-  color: var(--text-muted);
-  font-size: var(--fs, 16px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-}
-.vx-ante__input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.vx-ante__track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 2.3em;
-  height: 1.3em;
-  border-radius: 999px;
-  background: var(--bg-vault-door);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
-  transition: background 0.2s ease;
-}
-.vx-ante__knob {
-  position: absolute;
-  top: 0.15em;
-  left: 0.15em;
-  width: 1em;
-  height: 1em;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, var(--steel-sheen), var(--steel-brushed));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-  transition: transform 0.2s cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-.vx-ante__text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.05;
-  text-align: left;
-}
-.vx-ante__title { font-weight: 700; letter-spacing: 0.12em; white-space: nowrap; }
-.vx-ante__sub {
-  font: 600 0.5em / 1.3 var(--font-ui);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.vx-ante:has(.vx-ante__input:checked) {
-  border-color: color-mix(in srgb, var(--signal-ok) 70%, transparent);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--signal-ok) 30%, transparent);
-  color: var(--text-hud);
-}
-.vx-ante__input:checked + .vx-ante__track { background: var(--signal-ok); }
-.vx-ante__input:checked + .vx-ante__track .vx-ante__knob {
-  transform: translateX(1em);
-  background: radial-gradient(circle at 40% 35%, #FFFFFF, var(--steel-sheen));
-}
-.vx-ante:has(.vx-ante__input:focus-visible) { outline: 2px solid var(--accent-laser); outline-offset: 3px; }
-.vx-ante:has(.vx-ante__input:disabled) { opacity: 0.5; cursor: not-allowed; }
-
-body.public-mode .ps-slot--logo,
-body.public-mode .ps-slot--mascot {
-  width: 100%;
-  height: 100%;
-}
 
 /* The two global `button` rules (58px min-height, bevel shadows, hover lift)
    style the legacy admin buttons. The shell's own buttons opt out here so
    each one is exactly the size and surface its own rule gives it. */
-.ps-icon-btn,
-.ps-bet-btn,
-.ps-modal__tab,
-.vx-spin,
-.vx-buy {
+.ps-icon-btn {
   min-height: 0;
   box-shadow: none;
   text-shadow: none;
-}
-.ps-modal__tab:hover:not(:disabled) { transform: none; filter: none; }
-
-/* ── Settings dialog: device controls (full screen, vibration) ── */
-.ps-settings-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
-.ps-settings-controls:not(:has(> :not([hidden]))) { display: none; }
-.ps-setting {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid var(--steel-edge);
-  background: radial-gradient(circle at 50% 30%, var(--bg-panel-raised), var(--bg-gunmetal));
-  color: var(--steel-sheen);
-  font: 700 0.85rem/1 "SF Pro Display", "Segoe UI", sans-serif;
-  box-shadow: none;
-  cursor: pointer;
-}
-.ps-setting[hidden] { display: none; }
-.ps-setting[aria-pressed="true"] { border-color: rgba(255, 226, 138, 0.7); }
-.ps-setting input { width: 18px; height: 18px; accent-color: #d9b878; }
-
-/* ── Deck: system buttons ── */
-body.public-mode .ps-deck-sys {
-  display: flex;
-  align-items: center;
-  /* ≥ 8px between 36px buttons: their 44px hit areas then never overlap. */
-  gap: clamp(8px, 0.8vw, 12px);
-  min-width: 0;
 }
 
 /* ── Touch targets (Step 6) ──
@@ -1173,17 +772,10 @@ body.public-mode .ps-deck-sys {
    it is out of flow, so nothing moves and the board is untouched. inset
    percentages resolve per axis (top/bottom against height, left/right against
    width), so each axis grows only as far as it needs to reach 44px. */
-.ps-icon-btn,
-.ps-bet-btn,
-.vx-buy,
-body.public-mode .ps-spin-sub .tool-btn {
+.ps-icon-btn {
   position: relative;
 }
-.ps-icon-btn::after,
-.ps-bet-btn::after,
-.vx-buy::after,
-.vx-ante::after,
-body.public-mode .ps-spin-sub .tool-btn::after {
+.ps-icon-btn::after {
   content: "";
   position: absolute;
   inset: min(0px, calc((100% - 44px) / 2));
@@ -1213,18 +805,7 @@ body.public-mode .ps-spin-sub .tool-btn::after {
 }
 .ps-icon-btn:hover { color: var(--text-hud); border-color: var(--steel-brushed); }
 .ps-icon-btn:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 2px; }
-.ps-icon-btn[aria-pressed="false"] .ps-sound-wave { opacity: 0; }
 
-/* ── Deck: status (ticker + readouts) ── */
-body.public-mode .ps-deck-status {
-  min-width: 0;
-  height: 100%;
-  display: grid;
-  grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  align-items: center;
-  justify-items: center;
-  overflow: hidden;
-}
 .ps-ticker {
   width: 100%;
   min-width: 0;
@@ -1283,171 +864,6 @@ body.public-mode .ps-deck-status {
   .ps-ticker.soul-hit, .bonus-multi-badge.soul-hit { animation: none; }
 }
 
-.ps-readouts {
-  display: flex;
-  justify-content: center;
-  gap: clamp(14px, 4vw, 48px);
-  min-width: 0;
-  max-width: 100%;
-}
-.ps-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5em;
-  min-width: 0;
-  white-space: nowrap;
-}
-.ps-readout span {
-  font: 600 calc(0.58 * var(--ui, 14px)) / 1 var(--font-ui);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--win-gold);
-}
-.ps-readout strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: calc(1 * var(--ui, 14px));
-  font-weight: 600;
-  color: var(--text-hud);
-}
-
-/* ── Deck: spin cluster ──
-   Bottom-aligned in a fixed-height deck and allowed to overflow UPWARD, so the
-   spin button can be larger than the deck (the Pragmatic look) without the
-   deck, and therefore the board, ever changing size. */
-body.public-mode .ps-deck-spin {
-  height: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px; /* spin row ↔ autoplay/turbo: keeps their 44px hit areas apart */
-  padding-bottom: clamp(2px, 0.6vh, 8px);
-}
-body.public-mode .ps-spin-row {
-  display: flex;
-  align-items: center;
-  gap: clamp(6px, 1vw, 14px);
-}
-/* Spin: a vector disc. Gunmetal face, brushed-steel ring, gold on hover and
-   laser while a round is fast-stopping. main.js toggles .is-spinning (round in
-   flight) and .is-fast-stopping on it; both are compositor-only animations. */
-.vx-spin {
-  position: relative;
-  flex: 0 0 auto;
-  width: var(--spin, 96px);
-  height: var(--spin, 96px);
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: max(2px, calc(var(--spin, 96px) * 0.035)) solid var(--steel-brushed);
-  background:
-    radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--steel-sheen) 22%, transparent), transparent 55%),
-    radial-gradient(circle at 50% 50%, var(--bg-panel-raised), var(--bg-vault-door) 78%);
-  color: var(--steel-sheen);
-  box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.6),
-    inset 0 2px 0 color-mix(in srgb, var(--steel-sheen) 35%, transparent),
-    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-.vx-spin__icon {
-  width: 64%;
-  height: 64%;
-  overflow: visible;
-}
-.vx-spin__arrow path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 5;
-  stroke-linecap: round;
-}
-.vx-spin__arrow .vx-spin__head {
-  fill: currentColor;
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-.vx-spin:hover:not(:disabled) {
-  transform: none;
-  filter: none;
-  color: var(--win-gold);
-  border-color: var(--win-gold);
-  box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.6),
-    0 0 22px color-mix(in srgb, var(--win-gold) 45%, transparent),
-    inset 0 2px 0 color-mix(in srgb, var(--win-gold-bright) 40%, transparent),
-    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
-}
-.vx-spin:active:not(:disabled) { transform: scale(0.95); }
-.vx-spin:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 4px; }
-/* State icons: arrows (idle) → skip (round in flight: a press fast-forwards)
-   → stop (autoplay: a press ends the run). One icon at a time, swapped by
-   class, so the button always says what a press will do. */
-.vx-spin__skip,
-.vx-spin__stop {
-  position: absolute;
-  width: 56%;
-  height: 56%;
-  display: none;
-}
-.vx-spin__skip path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.vx-spin__stop rect { fill: currentColor; }
-.vx-spin.is-spinning .vx-spin__icon,
-.vx-spin.is-autoplay .vx-spin__icon { display: none; }
-.vx-spin.is-spinning:not(.is-autoplay) .vx-spin__skip { display: block; }
-.vx-spin.is-autoplay .vx-spin__stop { display: block; }
-.vx-spin.is-fast-stopping {
-  color: var(--accent-laser-hot);
-  border-color: var(--accent-laser);
-  box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.6),
-    0 0 26px color-mix(in srgb, var(--accent-laser) 55%, transparent),
-    inset 0 -4px 10px rgba(0, 0, 0, 0.55);
-}
-
-.vx-spin:disabled { cursor: default; opacity: 0.55; }
-
-.ps-bet-btn {
-  width: var(--bet-btn, 44px);
-  height: var(--bet-btn, 44px);
-  min-width: 0;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px solid var(--steel-brushed);
-  background: radial-gradient(circle at 50% 30%, var(--bg-panel-raised), var(--bg-gunmetal));
-  color: var(--text-hud);
-  font: 600 calc(var(--bet-btn, 44px) * 0.6) / 1 var(--font-display);
-  cursor: pointer;
-}
-.ps-bet-btn:hover { border-color: var(--steel-sheen); }
-.ps-bet-btn:disabled { opacity: 0.4; cursor: default; }
-body.public-mode .ps-spin-sub {
-  height: var(--sub-h);
-  display: flex;
-  align-items: center;
-  gap: clamp(6px, 1vw, 12px);
-}
-body.public-mode .ps-spin-sub .tool-btn {
-  height: var(--sub-h);
-  min-width: var(--sub-h);
-  padding: 0 clamp(8px, 1.2vw, 14px);
-}
 /* Kept for main.js (it writes the bet here); the Bet readout shows it. */
 body.public-mode .ps-bet-display { display: none; }
 
@@ -1477,33 +893,13 @@ body.public-mode .ps-bet-display { display: none; }
       "buy    ante"
       "deck   deck";
   }
-  /* The side columns dissolve so their slots join the grid directly. */
-  body.public-mode .ps-left,
-  body.public-mode .ps-right { display: contents; }
-  body.public-mode .ps-feature--buy { grid-area: buy; }
-  body.public-mode .ps-feature--ante { grid-area: ante; }
-  body.public-mode .ps-slot--logo { grid-area: logo; }
-  body.public-mode .ps-slot--mascot { display: none; }
 
-  body.public-mode .ps-deck {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) var(--status-h);
-    grid-template-areas:
-      "spin   spin"
-      "sys    status";
-    row-gap: max(var(--gap), 12px);
-    align-items: stretch;
-    padding: var(--gap) clamp(6px, 2vw, 14px);
-  }
-  body.public-mode .ps-deck-spin { grid-area: spin; padding-bottom: 0; }
-  body.public-mode .ps-deck-sys { grid-area: sys; }
-  body.public-mode .ps-deck-status { grid-area: status; }
 }
 /* Short portrait (320x568 class): the logo row is the first thing to give
    its height to the board. */
 @media (orientation: portrait) and (max-height: 640px) {
   body.public-mode .altar { --logo-h: 0px; }
-  body.public-mode .ps-slot--logo { display: none; }
+
 }
 
 /* ── Short landscape (phones): every vertical pixel is board ── */
@@ -1512,38 +908,13 @@ body.public-mode .ps-bet-display { display: none; }
     --deck-h: clamp(46px, 13vh, 60px);
     --feat-h: clamp(36px, 13vh, 56px);
   }
-  /* The ticker is the only message line (wins included), so it stays: it
-     shares the one deck row with the readouts instead of taking its own. */
-  body.public-mode .ps-deck-status {
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: clamp(10px, 2vw, 20px);
-  }
+  
+
   body.public-mode .ps-ticker { justify-content: flex-end; }
-  /* The autoplay / turbo row sits flush at the screen's bottom edge here, so the
-     lower half of its 44px hit area (the ::after, (44px - --sub-h) / 2 past the
-     row) fell 1–2px off-screen (hit-target-probe at 844x390 / 740x360). Lift it
-     just enough to keep the whole hit area on screen; transform is out of flow,
-     so the deck and board do not move, and it still clears the spin button. */
-  body.public-mode .ps-spin-sub {
-    transform: translateY(min(0px, calc((var(--sub-h) - 44px) / 2 + 5px)));
-  }
+  
+
 }
 
-/* ── Admin view: same markup, plain stacked layout, no art slots ── */
-body.admin-mode .ps-right,
-body.admin-mode .ps-deck-status,
-body.admin-mode .ps-spin-sub { display: none; }
-body.admin-mode .ps-left,
-body.admin-mode .ps-deck,
-body.admin-mode .ps-deck-sys,
-body.admin-mode .ps-spin-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
 body.admin-mode .ps-center { display: grid; gap: 10px; }
 
 /* ── Info / settings modal ── */
@@ -1591,31 +962,7 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   text-transform: uppercase;
   color: var(--win-gold);
 }
-.ps-modal__nav {
-  grid-area: nav;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px;
-  overflow-y: auto;
-  border-right: 1px solid var(--steel-edge);
-}
-.ps-modal__tab {
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  font: 600 0.82rem / 1.2 var(--font-ui);
-  text-align: left;
-  cursor: pointer;
-}
-.ps-modal__tab:hover { color: var(--text-hud); background: var(--bg-panel-raised); }
-.ps-modal__tab[aria-current="page"] {
-  color: var(--text-hud);
-  background: var(--bg-panel-raised);
-  box-shadow: inset 3px 0 0 var(--accent-laser);
-}
+
 .ps-modal__body {
   grid-area: body;
   min-height: 0;
@@ -1632,32 +979,6 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-hud);
-}
-.ps-modal__dots {
-  grid-area: dots;
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  border-top: 1px solid var(--steel-edge);
-}
-.ps-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--steel-edge);
-}
-.ps-dot.is-active { background: var(--accent-laser); box-shadow: var(--glow-laser); }
-/* The dots are also a pager. An 8px dot is too small to hit, so the hit area
-   is a transparent ring around it. */
-.ps-dot {
-  position: relative;
-  cursor: pointer;
-}
-.ps-dot::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
 }
 
 /* Generated Game Rules page (renderInfoRules in main.js). */
@@ -1715,15 +1036,6 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   color: var(--text-hud);
 }
 
-/* Spin is press-and-hold (turbo autoplay): stop touch browsers from turning a
-   hold into a scroll, a text selection or a callout. */
-.vx-spin {
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
 /* Phones: sections become pages with a scrolling tab strip on top; the dots
    show where you are. */
 @media (max-width: 720px) {
@@ -1736,21 +1048,8 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     grid-template-areas: "head" "nav" "body" "dots";
   }
-  .ps-modal__nav {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--steel-edge);
-    scrollbar-width: none;
-  }
-  .ps-modal__tab { flex: 0 0 auto; white-space: nowrap; }
-  .ps-modal__tab[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--accent-laser); }
-}
 
-/* Spin is centered by the deck's 3-column "1fr auto 1fr" layout — the auto
-   middle is Spin, with deck-left (bet+ante) and deck-right (buy) flanking
-   it at equal weight. */
+}
 
 /* Round-ID badge — only shown when a server-authoritative round_ref is known
    (platform mode). Players hand this ID to support to look up the exact spin. */
@@ -2543,18 +1842,6 @@ body.crazy-mode-on .vault-window {
 .sigil.explode-out .multiplier-value,
 .sigil.explode-out .sigil-chain {
   animation: ashFade 0.82s cubic-bezier(0.16, 0.78, 0.24, 1) forwards;
-}
-
-.bet-select-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .visually-hidden {
@@ -3965,15 +3252,6 @@ body.public-mode .reels-stage {
   box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Floating HUD pills. The deck keeps its grid, height and tracks; only its
-   full-width bar is gone, and its zones become pills. */
-body.public-mode .ps-deck {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-body.public-mode .ps-deck-sys,
-body.public-mode .ps-deck-status,
 body.public-mode .bonus-multi-badge {
   background:
     linear-gradient(180deg, var(--glass-sheen), transparent 55%),
@@ -3982,19 +3260,7 @@ body.public-mode .bonus-multi-badge {
   -webkit-backdrop-filter: blur(16px) saturate(125%);
   box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), inset 0 0 0 1px var(--glass-edge);
 }
-body.public-mode .ps-deck-sys {
-  justify-self: start;
-  width: max-content;
-  max-width: 100%;
-  padding: clamp(4px, 0.6vh, 6px) clamp(6px, 0.8vw, 10px);
-  border-radius: 999px;
-}
-body.public-mode .ps-deck-status {
-  justify-self: center;
-  width: min(100%, 640px);
-  padding: 0 clamp(12px, 2vw, 28px);
-  border-radius: clamp(14px, 2vh, 22px);
-}
+
 /* System buttons inside a pill: borderless glass discs, not steel plates. */
 body.public-mode .ps-icon-btn {
   border-color: transparent;
@@ -4004,16 +3270,6 @@ body.public-mode .ps-icon-btn {
 body.public-mode .ps-icon-btn:hover {
   background: rgba(255, 255, 255, 0.12);
   border-color: transparent;
-}
-/* Crisp readout type: tabular figures, tighter tracking on the values. */
-body.public-mode .ps-readout span {
-  letter-spacing: 0.14em;
-  color: var(--text-muted);
-}
-body.public-mode .ps-readout strong {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  color: var(--text-hud);
 }
 
 /* Bonus "Total Multiplier": a floating glass pill; the tier still colours its
@@ -4026,22 +3282,6 @@ body.public-mode .bonus-multi-badge {
 body.public-mode .bonus-multi-badge-label,
 body.public-mode .bonus-multi-badge-value {
   font-family: var(--font-display);
-}
-
-/* Ante Bet: the same dark glass as the deck pills (Buy Feature stays gold). */
-body.public-mode .vx-ante {
-  background:
-    linear-gradient(180deg, var(--glass-sheen), transparent 55%),
-    var(--glass-bg);
-  backdrop-filter: blur(16px) saturate(125%);
-  -webkit-backdrop-filter: blur(16px) saturate(125%);
-  border-color: var(--glass-edge);
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65);
-}
-/* Keep the "on" state readable on glass: the green edge + glow win over the glass edge. */
-body.public-mode .vx-ante:has(.vx-ante__input:checked) {
-  border-color: color-mix(in srgb, var(--signal-ok) 70%, transparent);
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), 0 0 18px color-mix(in srgb, var(--signal-ok) 28%, transparent);
 }
 
 /* ── Reality check (jurisdiction profile) ── a fixed overlay (never in the flow) on the
@@ -4097,7 +3337,6 @@ body.public-mode .vx-ante:has(.vx-ante__input:checked) {
    (client --trace): on the low tier, the CSS on screen during a spin cost about
    as much as the reels themselves. */
 body.perf-low button,
-body.perf-low .vx-ante,
 body.perf-low .crazy-toggle {
   transition-property: transform !important;
 }
