@@ -1236,7 +1236,19 @@ class ReelCanvasRenderer {
       cleared: new Set(),
       hidden: false
     };
-    this.fx = {
+    // Idle zero (docs/lumina-overhaul A8): a resting board draws NO frames. The loop
+    // sleeps once nothing animates (loop()), and anything that starts an effect wakes
+    // it: an fx assignment, a push onto an fx list or the particle list, a shard, a new
+    // board, a focus change, a resize, a decoded image.
+    const watchArray = (a) => {
+      if (Array.isArray(a) && !Object.prototype.hasOwnProperty.call(a, "push")) {
+        const push = Array.prototype.push;
+        Object.defineProperty(a, "push", { value: (...items) => { this.wake(); return push.apply(a, items); } });
+      }
+      return a;
+    };
+    this._watchArray = watchArray;
+    this.fx = new Proxy({
       drop: null,
       pulse: null,
       blast: null,
@@ -1261,9 +1273,19 @@ class ReelCanvasRenderer {
       sweeps: [],
       reticles: [],   // 5a: scatter landing reticles
       lockOn: null    // 5c/5d: trigger lock-on
-    };
-    this.particles = [];
+    }, {
+      set: (target, key, value) => {
+        target[key] = watchArray(value);
+        if (value !== null && value !== undefined) this.wake();
+        return true;
+      }
+    });
+    for (const v of Object.values(this.fx)) watchArray(v);
+    let particles = watchArray([]);
+    Object.defineProperty(this, "particles", { get: () => particles, set: (v) => { particles = watchArray(v); } });
     this.shards = new ShardEmitter(480);
+    const shardAdd = this.shards.add.bind(this.shards);
+    this.shards.add = (...a) => { this.wake(); return shardAdd(...a); };
     // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
     this.focus = { ...makeEnvelope(), set: null };
     // Per-frame perf caches (built lazily, invalidated on resize):
@@ -1344,6 +1366,7 @@ class ReelCanvasRenderer {
         //    splash for.
         // resolve() is idempotent, so a late decode after either is harmless.
         image.onload = () => {
+          this.wake(); // the board repaints with the decoded art
           if (typeof image.decode !== "function" || document.hidden) return settle();
           const cap = setTimeout(settle, 2000);
           const done = () => { clearTimeout(cap); settle(); };
@@ -1416,6 +1439,7 @@ class ReelCanvasRenderer {
    *  unchanged — used by a quality-tier change, where fxCeil moves but the
    *  pixel dimensions may not. */
   resize(force) {
+    this.wake?.();
     const box = this.canvas.getBoundingClientRect();
     if (!box.width || !box.height) return;
     this.dpr = Math.min(this.maxDpr, Math.max(1, window.devicePixelRatio || 1));
@@ -1655,6 +1679,7 @@ class ReelCanvasRenderer {
   }
 
   setBoard(matrix, { winning = [], multipliers = [] } = {}) {
+    this.wake?.(); // a new board is painted
     // Strong commit: always deep-copy when we have a real matrix so future
     // mutations of the source array can't leak back into the rendered board.
     let safeMatrix;
@@ -2363,6 +2388,7 @@ class ReelCanvasRenderer {
 
   /** Win focus (FOCUS) on `keys`: the rest of the board fades back. */
   focusOn(keys) {
+    this.wake();
     const now = performance.now();
     this.focus.set = new Set(keys);
     envelopeTo(this.focus, 1, Math.round(FOCUS.inMs * turboScale()), now);
@@ -2370,6 +2396,7 @@ class ReelCanvasRenderer {
 
   /** Release the win focus: the whole board fades back up together. */
   focusOff() {
+    this.wake();
     const f = this.focus;
     if (f.to === 0) return;
     f.set = null; // the old winners are gone: brighten everything as one
@@ -2544,7 +2571,20 @@ class ReelCanvasRenderer {
       // canvas on the last successful frame even though state updates.
       console.error("[reelRenderer.draw] exception (continuing loop):", err);
     }
-    // Schedule the next frame UNCONDITIONALLY, even if draw threw.
+    // Idle zero: once nothing animates (and the focus fade has finished), paint two
+    // more frames so the final state is on screen, then stop asking for frames until
+    // something wakes the loop. Otherwise schedule the next frame, even if draw threw.
+    const settled = !busy && !(this.focus.ms > 0 && now - this.focus.t0 < this.focus.ms + 20);
+    this._restFrames = settled ? (this._restFrames || 0) + 1 : 0;
+    if (this._restFrames >= 2) { this._asleep = true; return; }
+    this._scheduleFrame();
+  }
+
+  /** Start drawing again after an idle sleep (no-op while awake or paused). */
+  wake() {
+    if (!this._asleep) return;
+    this._asleep = false;
+    this._restFrames = 0;
     this._scheduleFrame();
   }
 
@@ -2574,6 +2614,8 @@ class ReelCanvasRenderer {
   resumeRendering() {
     if (!this._paused) return;
     this._paused = false;
+    this._asleep = false;
+    this._restFrames = 0;
     this.lastTick = performance.now();
     this._lastDrawAt = 0;
     this._frameSamples = [];
@@ -6803,7 +6845,7 @@ async function spin(options = {}) {
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
-    if (_platform.enabled && regulatory.rules) {
+    if (regulatory.rules) { // the demo applies a review market too (pacing only: no RGS)
       if (!(await realityCheckGate())) return undefined; // the player left
       if (Number(el.freeSpins.textContent || 0) === 0) await paceRound();
     }
@@ -7072,7 +7114,7 @@ async function buyFreeSpins() {
   setControls(true);
   try {
     pulseBanner("Buying Free Spins...", "bonus", 900);
-    if (_platform.enabled && regulatory.rules) {
+    if (regulatory.rules) {
       if (!(await realityCheckGate())) return;
       await paceRound();
     }
