@@ -36,7 +36,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/chromium"].filter(Boolean).find((p) => fs.existsSync(p));
 const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
-const GAMES = ["vault", "classic", "relicforge"];
+const GAMES = ["vault", "classic", "relicforge", "glasshouse"];
 const CONTROLS = ["#spinBtn", "#betDownBtn", "#betUpBtn", "#autoplayBtn", "#turboBtn", "#psMenuBtn", "#psInfoBtn", "#footerBalance", "#betSheetBtn", "#footerWin", "#psTicker"];
 const SIZES = [[390, 844, true], [844, 390, true], [1440, 900, false]];
 const SIZES_FIRST = new Set(["390x844"]); // order, names and states do not depend on the size
@@ -101,7 +101,7 @@ for (const size of SIZES) {
   const show = (sel, f) => GAMES.map((g) => `${g} ${JSON.stringify(f(geometry[`${g}@${key}`][sel]))}`).join(" · ");
   for (const sel of CONTROLS) {
     const pos = rest.every((g) => JSON.stringify(g[sel]?.box) === JSON.stringify(ref[sel]?.box));
-    check(`${key}: ${sel} at the same place and size in all three games`, Boolean(ref[sel]) && pos, show(sel, (x) => x?.box));
+    check(`${key}: ${sel} at the same place and size in every game`, Boolean(ref[sel]) && pos, show(sel, (x) => x?.box));
     if (!SIZES_FIRST.has(key)) continue;
     // Relic Forge ships without a speed control (its design): hidden in place, never moved.
     const present = GAMES.map((g) => geometry[`${g}@${key}`][sel]).filter((x) => x && !x.off);

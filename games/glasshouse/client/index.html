@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#1e2124">
+  <title>Glasshouse</title>
+  <!-- Start the session handshake and the rules while the scripts download (game.js picks
+       them up): on Slow 4G every serial round trip is ~0.6 s. -->
+  <link rel="preload" href="rules.json" as="fetch" crossorigin>
+  <link rel="preload" href="game.js" as="script">
+  <link rel="preload" href="assets/fonts/marcellus-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/play/shell/shell.css">
+  <script>
+    (function () {
+      var lt = new URLSearchParams(location.search).get("lt");
+      if (!lt) return;
+      window.__glasshouseEarlySession = fetch("/game/v1/session/init", { method: "POST", headers: { authorization: "Bearer " + lt } })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
+      window.__glasshouseEarlySession.catch(function () {});
+    })();
+  </script>
+  <style>
+    /* Glasshouse (code glasshouse): a stained-glass greenhouse at sunrise. Design: games/glasshouse/DESIGN.md
+       §12. Marcellus + Josefin Sans + Barlow Semi Condensed, SIL OFL 1.1 (assets/fonts). */
+    @font-face { font-family: "GH Display"; src: url("assets/fonts/marcellus-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "GH UI"; src: url("assets/fonts/josefin-sans-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    @font-face { font-family: "GH Num"; src: url("assets/fonts/barlow-semi-condensed-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    :root {
+      --lead: #1e2124; --lead-shine: #4b5158; --ruby: #b3263a; --emerald: #1f8a5b; --sapphire: #2457a6; --amber: #c98a2b;
+      --brass: #b08d57; --brass-dark: #6f5631; --brass-light: #e3c58e; --dawn: #f3c9bc; --midday: #fff6e2; --beam: #fff3cf; --beam-core: #ffe38a;
+      --text: #fff6e2; --muted: #c9c2b8; --gap: clamp(6px, 1.6vmin, 14px);
+      --display: "GH Display", "Palatino Linotype", Georgia, serif;
+      --ui: "GH UI", "Trebuchet MS", system-ui, sans-serif;
+      --num: "GH Num", "Arial Narrow", system-ui, sans-serif;
+      font-family: var(--ui); font-weight: 600;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; color: var(--text); -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
+    /* Dawn behind the glass: rose sky, a low sun on the left where the light comes in. Midday
+       (free spins): the sky climbs to a warm white and the sun goes overhead. */
+    body { background: #2a2326; }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; transition: opacity 1.4s ease;
+      background:
+        radial-gradient(70vmax 50vmax at 4% 30%, rgba(255, 227, 138, 0.42), transparent 60%),
+        linear-gradient(180deg, #5a4048 0%, #8e5f62 34%, #c88d83 62%, #3a2e30 100%); }
+    body::after { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s ease;
+      background:
+        radial-gradient(60vmax 40vmax at 50% -6%, rgba(255, 246, 226, 0.75), transparent 62%),
+        linear-gradient(180deg, #e8d6b6 0%, #d8b98e 40%, #8a6a52 78%, #3a2e30 100%); }
+    body.midday::after { opacity: 1; }
+    body.midday::before { opacity: 0.4; }
+    button { font: inherit; color: inherit; border: 0; cursor: pointer; background: none; }
+    :focus-visible { outline: 3px solid var(--beam-core); outline-offset: 2px; }
+
+    /* The game's stage inside the Lumina Shell (client/shell): the logo and the glasshouse.
+       Every control, readout and dialog is the shell's; this page only themes it. */
+    .gh-stage { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); position: relative; z-index: 1; }
+    .lsh { z-index: 1; }
+    /* Shell theme: brass fittings on charcoal lead, a sun-lens Spin. */
+    :root {
+      --lsh-deck: rgba(30, 33, 36, 0.9); --lsh-deck-line: rgba(227, 197, 142, 0.18);
+      --lsh-face: linear-gradient(180deg, #e9cd96, #b08d57); --lsh-face-hover: linear-gradient(180deg, #f2dcae, #c19c62); --lsh-face-ink: #1e2124;
+      --lsh-ink: #fff6e2; --lsh-muted: #d7cfc3; --lsh-win: #ffe38a;
+      --lsh-read-bg: rgba(255, 246, 226, 0.94); --lsh-read-ink: #1e2124; --lsh-read-k: #5b5146; --lsh-feature-ink: #8a1f30;
+      --lsh-accent: #ffe38a; --lsh-accent-2: #c98a2b; --lsh-accent-ink: #2b2112;
+      --lsh-spin-face: radial-gradient(circle at 42% 38%, #ffffff 0%, #fff3cf 26%, #ffe38a 52%, #c98a2b 100%);
+      --lsh-spin-ring: 0 0 0 3px #1e2124, 0 0 0 7px #b08d57, 0 0 0 9px #1e2124, 0 0 24px 6px rgba(255, 227, 138, 0.45), 0 4px 0 rgba(0, 0, 0, 0.5);
+      --lsh-sheet: #fff6e2; --lsh-radius: 6px;
+      --lsh-font-ui: "GH UI", "Trebuchet MS", system-ui, sans-serif; --lsh-font-num: "GH Num", "Arial Narrow", system-ui, sans-serif;
+    }
+    .lsh-sheet__panel { color: #1e2124; background: linear-gradient(180deg, #fffaf0, #f4e8d2); --lsh-ink: #1e2124; --lsh-muted: #5b5146; --lsh-deck-line: rgba(30, 33, 36, 0.14); --lsh-face: rgba(30, 33, 36, 0.08); --lsh-face-hover: rgba(30, 33, 36, 0.12); --lsh-face-ink: #1e2124; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked { background: #1e2124; }
+    .lsh-sheet__panel .lsh-row input[type="checkbox"]:checked::after { background: #ffe38a; }
+    .lsh-sheet__title { font-family: var(--display); font-weight: 400; letter-spacing: 0.04em; }
+    .lsh-read { box-shadow: inset 0 0 0 2px #1e2124, 0 2px 0 rgba(0, 0, 0, 0.35); border-radius: 3px; }
+    .lsh-btn { box-shadow: inset 0 0 0 2px #1e2124, 0 2px 0 rgba(0, 0, 0, 0.45); }
+    .lsh-btn[aria-pressed="true"] { background: #ffe38a; color: #1e2124; }
+    .lsh-chip { box-shadow: inset 0 0 0 2px #1e2124; }
+    .lsh-ticker { font: 400 1rem var(--display); letter-spacing: 0.03em; }
+    body:not(.app-ready) .lsh { visibility: hidden; }
+
+    /* ── Logo: glass letters in lead came, the sunbeam passing through them (SVG, no image). ── */
+    .sky { position: relative; display: grid; justify-items: center; padding-top: 6px; }
+    .lobby-slot { position: absolute; left: 0; top: 0; z-index: 2; }
+    .logo { margin: 0; line-height: 0; }
+    .logo svg { width: clamp(220px, 72vw, 420px); height: auto; overflow: visible; display: block; }
+    .logo text { font-family: var(--display); font-weight: 400; letter-spacing: 0.06em; }
+
+    /* ── The glasshouse: a brass frame with an arched top rail around the board. ── */
+    .stage { position: relative; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; container-type: size; }
+    .house { --rail: clamp(8px, 1.6cqmin, 16px); --arch: clamp(14px, 6cqh, 44px); position: relative; padding: calc(var(--rail) + var(--arch)) var(--rail) var(--rail);
+      width: min(100cqw, calc((100cqh - var(--arch) - 2 * var(--rail)) * 1.5 + 2 * var(--rail))); }
+    .house::before { content: ""; position: absolute; inset: var(--arch) 0 0 0; border-radius: 4px; pointer-events: none;
+      background: linear-gradient(180deg, var(--brass-light), var(--brass) 30%, var(--brass-dark));
+      box-shadow: inset 0 0 0 2px var(--lead), inset 0 2px 0 4px rgba(255, 255, 255, 0.18), 0 10px 26px rgba(0, 0, 0, 0.45); }
+    .arch { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--arch) + var(--rail) + 2px); pointer-events: none; }
+    .arch svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .board { position: relative; z-index: 1; width: 100%; aspect-ratio: 3 / 2; background: var(--lead); border-radius: 2px; }
+    .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .ferns { position: absolute; left: -4%; right: -4%; bottom: calc(-1 * clamp(10px, 3cqh, 26px)); height: clamp(16px, 6cqh, 44px); pointer-events: none; z-index: 2; }
+    .ferns svg { width: 100%; height: 100%; display: block; }
+    .celebration { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; text-align: center; cursor: pointer; overflow: hidden; border-radius: 2px;
+      background: radial-gradient(circle at 50% 50%, rgba(255, 243, 207, 0.55), rgba(30, 33, 36, 0.88) 64%); }
+    .celebration[hidden] { display: none; }
+    .celebration b { display: block; font: 400 clamp(1.8rem, 8vmin, 4.2rem)/1 var(--display); letter-spacing: 0.08em; color: #fffaf0; text-shadow: 0 0 26px rgba(255, 227, 138, 0.9), 0 2px 0 #1e2124; }
+    .celebration span { display: block; margin-top: 10px; font: 600 clamp(1.6rem, 6.5vmin, 3.2rem)/1.1 var(--num); color: #ffe38a; text-shadow: 0 0 18px rgba(201, 138, 43, 0.9), 0 2px 0 #1e2124; font-variant-numeric: tabular-nums lining-nums; }
+    .celebration small { display: block; margin-top: 12px; color: #e9e0d2; font-size: 0.8rem; }
+    /* "+5": flies from the roses into the free-spins counter. */
+    .plus { position: fixed; z-index: 30; pointer-events: none; font: 600 1.6rem var(--num); color: #ffe38a; text-shadow: 0 0 12px rgba(201, 138, 43, 0.9), 0 2px 0 #1e2124; }
+
+    /* Room for the demo's Lobby link (.lobby-slot, top-left): it never covers the logo. */
+    @media (max-width: 560px) { .sky { padding-top: 30px; } }
+    @media (orientation: portrait) and (max-height: 700px) { .logo svg { width: clamp(200px, 64vw, 320px); } }
+    @media (orientation: landscape) and (max-height: 520px) {
+      .gh-stage { gap: 4px; }
+      .sky { padding: 0 0 0 84px; }
+      .logo svg { width: min(46vw, 230px); }
+    }
+    @media (prefers-reduced-motion: reduce) { body::before, body::after { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="gh-stage" id="ghStage">
+    <header class="sky">
+      <div class="lobby-slot"></div>
+      <h1 class="logo" aria-label="Glasshouse">
+        <svg viewBox="0 0 520 96" aria-hidden="true">
+          <defs>
+            <linearGradient id="ghBeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffaf0" stop-opacity="0"/><stop offset=".12" stop-color="#fffaf0" stop-opacity=".95"/><stop offset=".9" stop-color="#ffe38a" stop-opacity=".9"/><stop offset="1" stop-color="#ffe38a" stop-opacity="0"/></linearGradient>
+            <filter id="ghGlow" x="-10%" y="-60%" width="120%" height="220%"><feGaussianBlur stdDeviation="3.2"/></filter>
+            <!-- The band of light the beam throws across the word: letters inside it shine. -->
+            <clipPath id="ghBand"><path d="M0 49 L520 33 L520 53 L0 69 Z"/></clipPath>
+            <linearGradient id="ghRuby" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e05264"/><stop offset="1" stop-color="#8e1a2c"/></linearGradient>
+            <linearGradient id="ghEmerald" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3fbf86"/><stop offset="1" stop-color="#136a44"/></linearGradient>
+            <linearGradient id="ghSapphire" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a8be0"/><stop offset="1" stop-color="#173f80"/></linearGradient>
+            <linearGradient id="ghAmber" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0b856"/><stop offset="1" stop-color="#996419"/></linearGradient>
+          </defs>
+          <!-- Each letter is a pane: coloured glass with a lead outline (stroke under the fill). -->
+          <text x="260" y="74" text-anchor="middle" font-size="70" stroke="#1e2124" stroke-width="7" stroke-linejoin="round" paint-order="stroke" fill="#1e2124">GLASSHOUSE</text>
+          <text x="260" y="74" text-anchor="middle" font-size="70"><tspan fill="url(#ghRuby)">G</tspan><tspan fill="url(#ghEmerald)">L</tspan><tspan fill="url(#ghSapphire)">A</tspan><tspan fill="url(#ghAmber)">S</tspan><tspan fill="url(#ghRuby)">S</tspan><tspan fill="url(#ghEmerald)">H</tspan><tspan fill="url(#ghSapphire)">O</tspan><tspan fill="url(#ghAmber)">U</tspan><tspan fill="url(#ghRuby)">S</tspan><tspan fill="url(#ghEmerald)">E</tspan></text>
+          <!-- Lead came across each letter (a thin dark line through the glass, as in a leaded window). -->
+          <text x="260" y="74" text-anchor="middle" font-size="70" fill="none" stroke="#1e2124" stroke-width="1.2" opacity=".55" stroke-dasharray="2 9">GLASSHOUSE</text>
+          <!-- Where the beam crosses, the glass lights up white-gold. -->
+          <g clip-path="url(#ghBand)"><text x="260" y="74" text-anchor="middle" font-size="70" fill="#fff6dc">GLASSHOUSE</text></g>
+          <path d="M-6 59 L526 42" stroke="url(#ghBeam)" stroke-width="9" filter="url(#ghGlow)" opacity=".75"/>
+          <path d="M-6 59 L526 42" stroke="url(#ghBeam)" stroke-width="1.6"/>
+        </svg>
+      </h1>
+    </header>
+    <div class="stage">
+      <div class="house">
+        <div class="arch" aria-hidden="true">
+          <svg viewBox="0 0 300 30" preserveAspectRatio="none">
+            <defs><linearGradient id="ghBrass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3c58e"/><stop offset=".5" stop-color="#b08d57"/><stop offset="1" stop-color="#6f5631"/></linearGradient></defs>
+            <!-- The arched top rail and its glazing bars, glass panes of dawn between them. -->
+            <path d="M0 30 L0 22 Q150 -6 300 22 L300 30 Z" fill="rgba(243,201,188,.32)" stroke="#1e2124" stroke-width="1.4"/>
+            <g stroke="#1e2124" stroke-width="1.6"><path d="M50 30 L56 12"/><path d="M100 30 L103 6"/><path d="M150 30 L150 4"/><path d="M200 30 L197 6"/><path d="M250 30 L244 12"/></g>
+            <path d="M0 22 Q150 -6 300 22" fill="none" stroke="url(#ghBrass)" stroke-width="4"/>
+            <path d="M0 22 Q150 -6 300 22" fill="none" stroke="#1e2124" stroke-width=".8"/>
+          </svg>
+        </div>
+        <div class="board" id="board">
+          <canvas id="panes" aria-label="Glasshouse panes"></canvas>
+          <div class="celebration" id="celebration" hidden role="status" aria-live="polite"><div><b id="celTitle"></b><span id="celAmount"></span><small>Tap to continue</small></div></div>
+        </div>
+        <div class="ferns" aria-hidden="true">
+          <svg viewBox="0 0 400 40" preserveAspectRatio="none">
+            <g fill="#1d2a22">
+              <path d="M0 40 C10 22 22 14 40 10 C30 20 24 28 22 40 Z"/><path d="M18 40 C30 18 46 8 70 6 C56 18 46 28 42 40 Z"/>
+              <path d="M70 40 C74 26 82 18 96 14 C90 24 88 32 88 40 Z"/>
+              <path d="M330 40 C326 26 318 18 304 14 C310 24 312 32 312 40 Z"/>
+              <path d="M400 40 C390 22 378 14 360 10 C370 20 376 28 378 40 Z"/><path d="M382 40 C370 18 354 8 330 6 C344 18 354 28 358 40 Z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Its own sounds (audio/, built by tools/build-game-audio.mjs), through the shared engine. -->
+  <script>window.VX_AUDIO_BASE = "audio/"; window.VX_AUDIO_PRELOAD = "manual";</script>
+  <script src="/play/embed-bridge.js"></script>
+  <script src="/play/audio/audio.js"></script>
+  <script src="/play/notify.js"></script>
+  <script src="/play/shell/motion.js"></script>
+  <script src="/play/shell/shell.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

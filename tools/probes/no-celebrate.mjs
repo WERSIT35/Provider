@@ -41,6 +41,7 @@ const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--n
 const WIN_EVENTS = {
   classic: ["win_small", "win_land", "win_big", "win_mega", "win_epic", "line_show", "win_tick", "feature_award"],
   relicforge: ["rf_win", "rf_win_tier", "rf_max_win", "rf_mult_tier"],
+  glasshouse: ["win_small", "win_land", "win_big", "win_mega", "win_epic", "win_tick", "max_win", "feature_award", "fs_outro"],
   vault: ["win_small", "win_land", "win_light", "win_tick", "win_big", "win_mega", "win_epic", "bigwin_open", "max_win", "combine_enter", "combine_slam", "combine_total", "multiplier_combine"]
 };
 
@@ -117,7 +118,7 @@ async function run(game, market) {
   return results;
 }
 
-const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge"];
+const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge", "glasshouse"];
 for (const game of GAMES) {
   const uk = await run(game, "UKGC");
   check(`${game} (UKGC): ${uk.sub} rounds returned ≤ the stake and none was celebrated`, uk.sub > 0 && uk.subBad.length === 0, uk.subBad.slice(0, 3).join(" | ") || (uk.sub ? "" : "no sub-stake round seen; raise --rounds"));

@@ -39,7 +39,7 @@ const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--n
 
 const PX = 48;
 const rows = [];
-for (const [game, title] of [["vault", "Vault 20K"], ["classic", "Moth & Lantern"], ["relicforge", "Relic Forge"]]) {
+for (const [game, title] of [["vault", "Vault 20K"], ["classic", "Moth & Lantern"], ["relicforge", "Relic Forge"], ["glasshouse", "Glasshouse"]]) {
   const page = await browser.newPage();
   await page.setViewport({ width: 800, height: 600 });
   await page.goto(`${base}/${game}/`, { waitUntil: "networkidle0" });
