@@ -1,0 +1,117 @@
+{
+  "game": "clockwork",
+  "variant": "clockwork",
+  "mode": "buy",
+  "seed": "clockwork",
+  "shards": 20,
+  "engine_version": "cw-1.0.0",
+  "rules_version": "1.0.0",
+  "seconds": 4950,
+  "samples": 10000000,
+  "rtp": 95.82226906500199,
+  "ci99": [
+    95.52907963233265,
+    96.1154584976713
+  ],
+  "se": 0.11382461086626133,
+  "sd": 3.599450241197372,
+  "hitRate": 1,
+  "baseRtp": null,
+  "respinRtp": 0,
+  "featureRtp": 93.42303947500349,
+  "triggerRtp": 2.399229589997685,
+  "scatterRtp": 2,
+  "respinRoundOneIn": null,
+  "respinsPerRespinRound": null,
+  "featureOneIn": 1,
+  "avgFeatureWin": 95.8222690650012,
+  "avgFeatureSpins": 8.0414206,
+  "retriggerPerFeature": 0.0103552,
+  "woundAtEnd": 0.7849525,
+  "trig": [
+    1,
+    0,
+    0
+  ],
+  "capHits": 11,
+  "max": 10000.000000000002,
+  "buyDrawsAvg": 235.3388126,
+  "dist": [
+    {
+      "from": 0,
+      "count": 0,
+      "rtp": 0
+    },
+    {
+      "from": 0.000001,
+      "count": 0,
+      "rtp": 0
+    },
+    {
+      "from": 1,
+      "count": 0,
+      "rtp": 0
+    },
+    {
+      "from": 2,
+      "count": 3360227,
+      "rtp": 1.219999545000003
+    },
+    {
+      "from": 5,
+      "count": 1632913,
+      "rtp": 1.0919933799999824
+    },
+    {
+      "from": 10,
+      "count": 995236,
+      "rtp": 1.4520031700000018
+    },
+    {
+      "from": 20,
+      "count": 1765176,
+      "rtp": 5.839208469999997
+    },
+    {
+      "from": 50,
+      "count": 840611,
+      "rtp": 5.725558660000005
+    },
+    {
+      "from": 100,
+      "count": 553539,
+      "rtp": 9.022342270000014
+    },
+    {
+      "from": 250,
+      "count": 409711,
+      "rtp": 14.695408684999988
+    },
+    {
+      "from": 500,
+      "count": 292361,
+      "rtp": 19.85251417000001
+    },
+    {
+      "from": 1000,
+      "count": 90957,
+      "rtp": 14.384273230000009
+    },
+    {
+      "from": 2500,
+      "count": 51166,
+      "rtp": 17.789876600000007
+    },
+    {
+      "from": 5000,
+      "count": 8092,
+      "rtp": 4.738090885000001
+    },
+    {
+      "from": 10000,
+      "count": 11,
+      "rtp": 0.011
+    }
+  ],
+  "target": null
+}
