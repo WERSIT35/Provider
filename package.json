@@ -20,6 +20,7 @@
     "test:scatter": "node tools/scatter-celebration-check.js",
     "test:motion": "node tools/probes/motion-table.mjs",
     "test:shell": "node tools/probes/shell-layout.mjs",
+    "check:clockwork": "node tools/probes/clockwork-client.mjs",
     "test:lumina": "node tools/probes/theme-lint.mjs && node tools/probes/chrome-identity.mjs && node tools/probes/lumina-parity.mjs && node tools/probes/lumina-audit.mjs && node tools/probes/market-switches.mjs && node tools/probes/no-celebrate.mjs --rounds 30 && node tools/probes/symbol-sheet.mjs",
     "test:client": "npm run test:motion && npm run test:shell && npm run test:spin-lock && npm run test:layout && npm run test:spin-e2e && npm run test:scatter && npm run test:haptics",
     "bench:load": "node tools/bench/load.mjs",

@@ -163,6 +163,29 @@
       autoplayGap: 400,
       autoplayGapTurbo: 150
     },
+    // Clockwork Menagerie (games/clockwork/client/game.js). Lines read GRAMMAR.
+    clockwork: {
+      turbo: 0.5,              // speed() factor in turbo
+      quick: 0.75,             // speed() factor in quick spin
+      minSpin: 300,            // reels spin at least this long before landing
+      reelLand: 340,           // one reel's landing
+      reelLandAnticipate: 950,
+      reelLandQuick: 120,      // a quick-stopped reel
+      reelLandColExtra: 20,    // + col × this per reel
+      reelGap: 100,            // between reel landings
+      reelGapAnticipate: 400,
+      errorLand: 120,
+      wind: 450,               // a key winds its reel: the wild column turns in under a flash
+      windHold: 250,           // the wound reel shown before its wins
+      multTick: 300,           // a wound reel's multiplier steps up (free spins)
+      unwind: 320,             // wound reels let go at the end of a paid round
+      respinGap: 260,          // between one board's result and the respin
+      boardHold: 450,          // a board's wins stay up before the respin
+      featureAward: 900,
+      betweenFreeSpins: 260,
+      autoplayGap: 400,
+      autoplayGapTurbo: 150
+    },
     // Relic Forge (games/relicforge/client/game.js).
     relicforge: {
       reducedCap: 120,         // pace() under reduced motion

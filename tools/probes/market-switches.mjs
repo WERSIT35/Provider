@@ -23,7 +23,7 @@ import { untilIdle } from "./lib/until-idle.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const argv = process.argv.slice(2);
-const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge", "glasshouse"];
+const GAMES = argv.includes("--games") ? argv[argv.indexOf("--games") + 1].split(",") : ["vault", "classic", "relicforge", "glasshouse", "clockwork"];
 let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${detail ? ` (${detail})` : ""}`); if (!ok) failed++; };
 
@@ -42,7 +42,7 @@ const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin
 const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
 // What each game has at all (before any market switches it off).
-const HAS = { vault: { turbo: true, slam: true, buy: true }, classic: { turbo: true, slam: true, buy: false }, relicforge: { turbo: false, slam: false, buy: false }, glasshouse: { turbo: true, slam: true, buy: true } };
+const HAS = { vault: { turbo: true, slam: true, buy: true }, classic: { turbo: true, slam: true, buy: false }, relicforge: { turbo: false, slam: false, buy: false }, glasshouse: { turbo: true, slam: true, buy: true }, clockwork: { turbo: true, slam: true, buy: true } };
 // UKGC allows the buy, but its 5.00 stake cap hides a buy that costs more (100x a 1.00 bet).
 const MARKETS = { UKGC: { autoplay: false, turbo: false, buy: false, minMs: 2500 }, DE: { autoplay: false, turbo: false, buy: false, minMs: 5000 }, "": { autoplay: true, turbo: true, buy: true, minMs: 0 } };
 
