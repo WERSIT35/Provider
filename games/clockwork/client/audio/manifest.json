@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "formats": [
+    "ogg",
+    "m4a"
+  ],
+  "sounds": {
+    "ui_click": [
+      "sfx/ui_click_1"
+    ],
+    "ui_toggle": [
+      "sfx/ui_toggle_1"
+    ],
+    "ui_confirm": [
+      "sfx/ui_confirm_1"
+    ],
+    "spin_start": [
+      "sfx/spin_start_1"
+    ],
+    "reel_stop": [
+      "sfx/reel_stop_1",
+      "sfx/reel_stop_2",
+      "sfx/reel_stop_3"
+    ],
+    "scatter": [
+      "sfx/scatter_1"
+    ],
+    "cw_wind": [
+      "sfx/cw_wind_1"
+    ],
+    "cw_tick": [
+      "sfx/cw_tick_1"
+    ],
+    "cw_unwind": [
+      "sfx/cw_unwind_1"
+    ],
+    "win_tick": [
+      "sfx/win_tick_1",
+      "sfx/win_tick_2"
+    ],
+    "win_small": [
+      "sfx/win_small_1"
+    ],
+    "win_land": [
+      "sfx/win_land_1"
+    ],
+    "win_big": [
+      "sfx/win_big_1"
+    ],
+    "win_mega": [
+      "sfx/win_mega_1"
+    ],
+    "win_epic": [
+      "sfx/win_epic_1"
+    ],
+    "max_win": [
+      "sfx/max_win_1"
+    ],
+    "bigwin_open": [
+      "sfx/bigwin_open_1"
+    ],
+    "feature_award": [
+      "sfx/feature_award_1"
+    ],
+    "feature_more": [
+      "sfx/feature_more_1"
+    ],
+    "fs_intro": [
+      "sfx/fs_intro_1"
+    ],
+    "fs_outro": [
+      "sfx/fs_outro_1"
+    ]
+  },
+  "sends": {
+    "ui_click": 0,
+    "ui_toggle": 0,
+    "ui_confirm": 0,
+    "spin_start": 0,
+    "reel_stop": 0,
+    "scatter": 0,
+    "cw_wind": 0,
+    "cw_tick": 0,
+    "cw_unwind": 0,
+    "win_tick": 0,
+    "win_small": 0,
+    "win_land": 0,
+    "win_big": 0,
+    "win_mega": 0,
+    "win_epic": 0,
+    "max_win": 0,
+    "bigwin_open": 0,
+    "feature_award": 0,
+    "feature_more": 0,
+    "fs_intro": 0,
+    "fs_outro": 0
+  },
+  "music": {
+    "base": "music/base",
+    "freeSpins": "music/freeSpins"
+  }
+}

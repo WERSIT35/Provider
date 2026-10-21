@@ -8,7 +8,7 @@
  * come from art-src/audio/freesound/, its music from three OpenGameArt tracks). Recordings
  * only: originals are trimmed, layered, pitched, echoed and levelled; nothing is synthesised.
  *
- *   node tools/build-game-audio.mjs            # both games
+ *   node tools/build-game-audio.mjs            # every game below
  *   node tools/build-game-audio.mjs relicforge # one game
  *
  * Needs ffmpeg (the ffmpeg-static devDependency, else ffmpeg on PATH).
@@ -100,6 +100,60 @@ const RECIPES = {
       base: { v: [[L("oga/gong_02.ogg", { p: -24, g: 0 }), L("oga/gong_01.ogg", { p: -19, d: 3200, g: -3 })]], db: -10, echo: "0.8:0.85:900|1700|2600:0.55|0.4|0.3", pad: 14, fade: 2500 },
       freeSpins: { v: [[L("oga/gong_01.ogg", { p: -24 }), L("kenney/sci-fi-sounds/lowFrequency_explosion_000.ogg", { p: -5, d: 2000, g: -6 }), L("oga/gong_02.ogg", { p: -17, d: 5200, g: -4 })]], db: -9, echo: "0.8:0.85:700|1400|2300:0.6|0.45|0.3", pad: 14, fade: 2500 }
     }
+  },
+  clockwork: {
+    title: "Clockwork Menagerie (code clockwork)",
+    note: "A toymaker's workshop: ratchets, key winds, wooden clunks and a music box. Every tune is one small bell, pitched into notes and rung through short echoes like a music-box tine. No chips, no coins.",
+    sounds: (() => {
+      const BELL = "kenney/impact-sounds/impactBell_heavy_004.ogg";
+      // A music-box phrase: the small bell an octave and more up, one note per step.
+      const box = (notes, gap, o = {}) => notes.map((p, i) => L(BELL, { p, d: Math.round(i * gap) + (o.d || 0), g: (o.g || 0) - (o.soften ? i * 0.6 : 0) }));
+      // A ratchet: one click, repeated and stepped in pitch.
+      const ratchet = (f, n, gap, p0, step, o = {}) => Array.from({ length: n }, (_, i) => L(f, { p: p0 + i * step, d: Math.round((o.d || 0) + i * gap), g: o.g || 0 }));
+      return {
+        ui_click: { v: [[L("kenney/interface-sounds/click_001.ogg")]], db: -8 },
+        ui_toggle: { v: [[L("kenney/interface-sounds/click_003.ogg", { p: -2 })]], db: -8 },
+        ui_confirm: { v: [[L("kenney/interface-sounds/select_002.ogg")]], db: -8 },
+        // The mechanism lets go: a quick ratchet over a breath of air.
+        spin_start: { v: [[...ratchet("kenney/interface-sounds/click_003.ogg", 4, 42, -4, 1), L("oga/sfx100v2_air_01.ogg", { t: [0, 0.4], g: -10 })]], db: -6, fade: 120 },
+        // A reel locks: a wooden clunk with a small latch on top.
+        reel_stop: { v: [[L("kenney/impact-sounds/impactSoft_heavy_003.ogg"), L("kenney/interface-sounds/click_001.ogg", { p: -6, g: -8 })], [L("kenney/impact-sounds/impactSoft_heavy_004.ogg"), L("kenney/interface-sounds/click_001.ogg", { p: -7, g: -8 })], [L("kenney/impact-sounds/impactSoft_heavy_003.ogg", { p: -2 }), L("kenney/interface-sounds/click_003.ogg", { p: -6, g: -9 })]], db: -6, fade: 90 },
+        // A music box lands: one note (the engine steps it up per box).
+        scatter: { v: [[L(BELL, { p: 2 }), L("kenney/interface-sounds/click_001.ogg", { p: -3, g: -10 })]], db: -5, echo: "0.8:0.6:70|140|210:0.35|0.22|0.12", fade: 300 },
+        // A key winds its reel: six turns of the ratchet, rising, then the spring rings.
+        cw_wind: { v: [[...ratchet("kenney/interface-sounds/click_003.ogg", 6, 70, 0, 1), L(BELL, { p: 7, d: 470, g: -2 })]], db: -4, echo: "0.8:0.6:70|140|210|180:0.35|0.22|0.12|0.25", fade: 250 },
+        // A wound reel's multiplier steps up: a gear tooth and a tiny bell.
+        cw_tick: { v: [[L("kenney/interface-sounds/click_001.ogg", { p: 4 }), L(BELL, { p: 12, d: 20, g: -5 })]], db: -6, fade: 160 },
+        // The reels let go: the ratchet runs down.
+        cw_unwind: { v: [[...ratchet("kenney/interface-sounds/click_003.ogg", 7, 34, 2, -1.2, { g: -2 }), L("oga/sfx100v2_air_03.ogg", { t: [0, 0.5], g: -12 })]], db: -8, fade: 160 },
+        win_tick: { v: [[L("kenney/interface-sounds/click_001.ogg", { p: 9 })], [L("kenney/interface-sounds/click_003.ogg", { p: 9 })]], db: -14 },
+        win_small: { v: [[...box([0, 4], 120)]], db: -7, echo: "0.8:0.6:70|140|210:0.35|0.22|0.12", fade: 300 },
+        win_land: { v: [[...box([0, 4, 7, 12], 110)]], db: -5, echo: "0.8:0.6:70|140|210|200:0.35|0.22|0.12|0.25", fade: 300 },
+        win_big: { v: [[...box([0, 4, 7, 12, 16], 100), L("kenney/music-jingles/jingles_HIT01.ogg", { g: -6 })]], db: -3, echo: "0.8:0.7:70|140|210|240|480:0.35|0.22|0.12|0.3|0.18" },
+        win_mega: { v: [[...box([0, 4, 7, 12, 7, 12, 16], 95), L("kenney/music-jingles/jingles_HIT07.ogg", { g: -5 })]], db: -2, echo: "0.8:0.7:70|140|210|260|520:0.35|0.22|0.12|0.32|0.2" },
+        win_epic: { v: [[...box([0, 4, 7, 12, 16, 19, 24], 90), L("kenney/music-jingles/jingles_HIT12.ogg", { g: -4 }), L("kenney/impact-sounds/impactSoft_heavy_004.ogg", { p: -5, g: -6 })]], db: -1, echo: "0.8:0.75:70|140|210|280|560:0.35|0.22|0.12|0.35|0.22" },
+        max_win: { v: [[...box([0, 4, 7, 12, 16, 19, 24, 19, 24], 100), L("kenney/music-jingles/jingles_HIT16.ogg", { g: -3 }), L(BELL, { p: -12, d: 900, g: -2 })]], db: -1, echo: "0.8:0.8:70|140|210|300|650:0.35|0.22|0.12|0.4|0.28", fade: 600 },
+        bigwin_open: { v: [[L(BELL, { p: 0 }), L("kenney/interface-sounds/click_003.ogg", { p: -4, g: -6 })]], db: -5, echo: "0.8:0.6:70|140|210:0.35|0.22|0.12", fade: 300 },
+        // The music box opens: the lid, then its tune.
+        feature_award: { v: [[L("kenney/interface-sounds/maximize_002.ogg", { p: -4 }), ...box([0, 7, 4, 12, 16], 120, { d: 150 }), L("kenney/music-jingles/jingles_HIT10.ogg", { d: 120, g: -6 })]], db: -3, echo: "0.8:0.7:70|140|210|240|480:0.35|0.22|0.12|0.3|0.18" },
+        feature_more: { v: [[...box([3, 7, 10, 15], 100)]], db: -4, echo: "0.8:0.6:70|140|210|200:0.35|0.22|0.12|0.25", fade: 300 },
+        // Night falls: the lamp clicks on, the box plays low.
+        fs_intro: { v: [[L("kenney/interface-sounds/click_003.ogg", { p: -6 }), ...box([-5, 0, -2, 3], 260, { d: 200 }), L("kenney/music-jingles/jingles_HIT11.ogg", { p: -2, d: 150, g: -6 })]], db: -4, echo: "0.8:0.8:70|140|210|400|900:0.35|0.22|0.12|0.42|0.28", fade: 500 },
+        // Morning: the box winds down, slower each note.
+        fs_outro: { v: [[L(BELL, { p: 12 }), L(BELL, { p: 7, d: 240 }), L(BELL, { p: 4, d: 560, g: -1 }), L(BELL, { p: 0, d: 980, g: -2 })]], db: -5, echo: "0.8:0.75:70|140|210|380|820:0.35|0.22|0.12|0.4|0.25", fade: 600 }
+      };
+    })(),
+    // The workshop's music box: a slow tune on the small bell through long echoes, a soft clock under it;
+    // at night the same box a fourth lower, in minor.
+    music: (() => {
+      const BELL = "kenney/impact-sounds/impactBell_heavy_004.ogg", TICK = "kenney/interface-sounds/click_001.ogg";
+      const tune = (notes, gap, base) => notes.map((p, i) => L(BELL, { p: p + base, d: Math.round(i * gap), g: -1 - (i % 4 === 0 ? 0 : 2) }));
+      const clock = (n, gap, p) => Array.from({ length: n }, (_, i) => L(TICK, { p, d: i * gap, g: i % 2 ? -16 : -13 }));
+      return {
+        base: { v: [[...tune([0, 4, 7, 4, 2, 5, 9, 5, 0, 4, 7, 12, 7, 4, 5, 2, -1, 2, 5, 9, 7, 4, 2, 0], 800, 0), ...clock(24, 800, -10)]], db: -16, echo: "0.8:0.8:70|140|210|450|900|1350:0.35|0.22|0.12|0.4|0.28|0.18", pad: 16, fade: 1500 },
+        freeSpins: { v: [[...tune([0, 3, 7, 3, 2, 5, 8, 5, 0, 3, 7, 10, 7, 3, 5, 2, -1, 2, 5, 8, 7, 3, 2, 0], 800, -5), ...clock(24, 800, -12)]], db: -15, echo: "0.8:0.85:70|140|210|500|1000|1500:0.35|0.22|0.12|0.45|0.32|0.2", pad: 16, fade: 1500 }
+      };
+    })()
   }
 };
 
