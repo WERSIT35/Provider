@@ -37,7 +37,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const chromePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/chromium"].filter(Boolean).find((p) => fs.existsSync(p));
 const browser = await puppeteer.launch({ executablePath: chromePath, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
-const GAMES = ["vault", "classic", "relicforge", "glasshouse"];
+const GAMES = ["vault", "classic", "relicforge", "glasshouse", "clockwork"];
 const CONTROLS = ["#spinBtn", "#betDownBtn", "#betUpBtn", "#autoplayBtn", "#turboBtn", "#psMenuBtn", "#psInfoBtn", "#footerBalance", "#betSheetBtn", "#footerWin", "#psTicker"];
 const SIZES = [[390, 844, true], [844, 390, true], [1440, 900, false]];
 const SIZES_FIRST = new Set(["390x844"]); // order, names and states do not depend on the size

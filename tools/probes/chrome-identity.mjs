@@ -24,7 +24,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const argv = process.argv.slice(2);
 const ALL = [[320, 568], [360, 740], [375, 667], [390, 844], [430, 932], [844, 390], [740, 360], [768, 1024], [1440, 900]];
 const SIZES = argv.includes("--sizes") ? argv[argv.indexOf("--sizes") + 1].split(",").map((s) => s.split("x").map(Number)) : ALL;
-const GAMES = ["vault", "classic", "relicforge", "glasshouse"];
+const GAMES = ["vault", "classic", "relicforge", "glasshouse", "clockwork"];
 let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${detail ? ` (${detail})` : ""}`); if (!ok) failed++; };
 

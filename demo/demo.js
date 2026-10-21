@@ -3,7 +3,7 @@
  *
  * One play-money balance for every game, kept in this browser (localStorage), that the
  * lobby can reset. Each game page loads this file first, with data-game="vault",
- * "classic", "relicforge" or "glasshouse":
+ * "classic", "relicforge", "glasshouse" or "clockwork":
  *
  *  - vault:   Vault 20K's local engine keeps its session in localStorage
  *             ("bananax.session.v1"). The shared balance is written into it before the
@@ -157,16 +157,18 @@
     backLink();
   }
 
-  if (game === "glasshouse") {
+  if (game === "glasshouse" || game === "clockwork") {
     // As for Classic 5x3: the client's /game/v1/* calls answered in the page by the game's own
     // engine. What the RGS keeps server-side is kept here in localStorage: the feature in
-    // progress (spins left, its running total, the lit panes) and its locked bet.
-    var GH_KEY = "lumina.demo.glasshouse";
-    try { sessionStorage.setItem("glasshouse.session", "demo"); } catch (e) { /* game.js shows its own message */ }
+    // progress (spins left, its running total, its feature state: lit panes or wound reels)
+    // and its locked bet.
+    var GH_NS = game === "clockwork" ? "Clockwork" : "Glasshouse";
+    var GH_KEY = "lumina.demo." + game;
+    try { sessionStorage.setItem(game + ".session", "demo"); } catch (e) { /* game.js shows its own message */ }
     var ghLoad = function () { try { return JSON.parse(store.get(GH_KEY) || "null"); } catch (e) { return null; } };
     var ghReady = fetch("rules.json").then(function (r) { return r.json(); }).then(function (rules) {
-      var engine = new window.Glasshouse.SpinEngine({ rules: rules });
-      engine.initSession({ player_id: "demo", currency: "GEL", locale: "en", game_id: "glasshouse", balance: read() });
+      var engine = new window[GH_NS].SpinEngine({ rules: rules });
+      engine.initSession({ player_id: "demo", currency: "GEL", locale: "en", game_id: game, balance: read() });
       return engine;
     });
     var ghReply = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { "content-type": "application/json" } }); };
@@ -183,7 +185,7 @@
       var f = ghRestore(engine);
       var inFeature = engine.session.freeSpinsLeft > 0;
       return {
-        session_token: "demo", game: { code: "glasshouse" }, currency: "GEL",
+        session_token: "demo", game: { code: game }, currency: "GEL",
         allowed_bets: engine.getAllowedBets(), balance: { amount: engine.session.balance, currency: "GEL" },
         free_spins_left: engine.session.freeSpinsLeft,
         resume: inFeature && f ? { resumed: true, bet_amount: f.bet, feature: { free_spins_left: f.freeSpinsLeft, bonus_round_win: f.bonusRoundWin, locked_bet: f.bet, feature_state: f.featureState } } : null,

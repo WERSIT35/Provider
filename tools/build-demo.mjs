@@ -6,7 +6,7 @@
  *   /vault/      Vault 20K, client/ as it is (its local engine mode)
  *   /classic/    Classic 5x3, games/classic-5x3/client + its engine and rules, its RGS
  *                calls answered in the page by demo/demo.js
- *   /relicforge/ and /glasshouse/: the same, each with its own engine files
+ *   /relicforge/, /glasshouse/ and /clockwork/: the same, each with its own engine files
  *   /demo/       demo.js and the lobby's images
  *
  * Nothing in client/ or games/ changes: the game pages only get demo.js added (and
@@ -72,7 +72,18 @@ writeFileSync(ghi, readFileSync(ghi, "utf8").replaceAll('"/play/', '"/vault/'));
 const ghTags = ghManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
 inject(ghi, '<script src="game.js">', ghTags + '\n  <script src="/demo/demo.js" data-game="glasshouse"></script>\n  ');
 
-for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp", "glasshouse/index.html", "glasshouse/game.js", "glasshouse/rules.json", "glasshouse/engine/engine.js", "demo/img/glasshouse.webp"]) {
+// Clockwork Menagerie: the same.
+const cw = path.join(out, "clockwork");
+const cwManifest = JSON.parse(readFileSync(p("games", "clockwork", "game.json"), "utf8"));
+cpSync(p("games", "clockwork", "client"), cw, { recursive: true });
+cpSync(p("games", "clockwork", cwManifest.engine.dir), path.join(cw, "engine"), { recursive: true });
+cpSync(p("games", "clockwork", cwManifest.rules), path.join(cw, "rules.json"));
+const cwi = path.join(cw, "index.html");
+writeFileSync(cwi, readFileSync(cwi, "utf8").replaceAll('"/play/', '"/vault/'));
+const cwTags = cwManifest.engine.files.map((f) => `<script src="engine/${f}"></script>`).join("\n  ");
+inject(cwi, '<script src="game.js">', cwTags + '\n  <script src="/demo/demo.js" data-game="clockwork"></script>\n  ');
+
+for (const f of ["index.html", "demo/demo.js", "vault/index.html", "vault/main.js", "classic/index.html", "classic/game.js", "classic/engine.js", "classic/rules.json", "demo/img/vault-20k.webp", "demo/img/classic-5x3.webp", "relicforge/index.html", "relicforge/game.js", "relicforge/rules.json", "relicforge/engine/spin-engine.js", "demo/img/relic-forge.webp", "glasshouse/index.html", "glasshouse/game.js", "glasshouse/rules.json", "glasshouse/engine/engine.js", "demo/img/glasshouse.webp", "clockwork/index.html", "clockwork/game.js", "clockwork/rules.json", "clockwork/engine/engine.js", "demo/img/clockwork.webp"]) {
   if (!existsSync(path.join(out, f))) throw new Error(`missing in the build: ${f}`);
 }
-console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/, glasshouse/)`);
+console.log(`demo site → ${path.relative(root, out)}/ (lobby, vault/, classic/, relicforge/, glasshouse/, clockwork/)`);
