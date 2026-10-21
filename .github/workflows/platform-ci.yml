@@ -106,13 +106,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The Lumina games as one family (see package.json test:lumina): the shared controls at the
-  # same places in all three games and every game at the 9 sizes, nothing drawn at rest, the
-  # market switches, no celebration of a sub-stake return, the 48 px symbol sheet. Its own job
-  # so browser-checks keeps its time budget.
+  # The Lumina games as one family (package.json test:lumina, the same probes), split over
+  # three parallel jobs: one job took 30 min with four games and hit 45 min with five on a
+  # busy runner. This one: one chrome in every game (theme lint, chrome identity, shared
+  # controls at the same places + idle zero) and the 48 px symbol sheet.
   lumina-checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -123,12 +123,69 @@ jobs:
       - run: npm ci
       - run: |
           set -o pipefail
-          npm run test:lumina 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+          (node tools/probes/theme-lint.mjs && node tools/probes/chrome-identity.mjs && node tools/probes/lumina-parity.mjs && node tools/probes/symbol-sheet.mjs) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
       - name: Failure lines as annotations
         if: failure()
         run: |
-          grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=test:lumina::/'
-          tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=test:lumina (end)::/'
+          grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=lumina-checks::/'
+          tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=lumina-checks (end)::/'
+
+  # Every game at the 9 sizes (in view, no overlap, hit areas, labels, contrast) and the
+  # market switches.
+  lumina-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: |
+          set -o pipefail
+          (node tools/probes/lumina-audit.mjs && node tools/probes/market-switches.mjs) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+      - name: Failure lines as annotations
+        if: failure()
+        run: |
+          grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=lumina-audit::/'
+          tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=lumina-audit (end)::/'
+
+  # Rounds played: no celebration of a sub-stake return (30+ real rounds per game and market),
+  # and Clockwork Menagerie's client (layout at 11 sizes, respins, big win, feature, UK
+  # sub-stake, frame time). One job per group: Vault 20K alone takes ~12 min locally (it plays
+  # on until it has seen three sub-stake rounds), all of them in one job ran past 35 min on CI.
+  lumina-rounds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: vault
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games vault
+          - group: classic-relicforge
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games classic,relicforge
+          - group: glasshouse-clockwork
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games glasshouse,clockwork && node tools/probes/clockwork-client.mjs
+    name: lumina-rounds (${{ matrix.group }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: |
+          set -o pipefail
+          (${{ matrix.cmd }}) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+      - name: Failure lines as annotations
+        if: failure()
+        run: |
+          grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=lumina-rounds::/'
+          tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=lumina-rounds (end)::/'
 
   # Reduced seeded RTP parity of the shared engine (the full 30M run stays a local /
   # certification step). Seeded, so a given engine always gives the same verdict: it
@@ -197,7 +254,7 @@ jobs:
   # host key means a spoofed server never receives the deploy).
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
-    needs: [release-check, browser-checks, lumina-checks, rtp-parity, chaos]
+    needs: [release-check, browser-checks, lumina-checks, lumina-audit, lumina-rounds, rtp-parity, chaos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
