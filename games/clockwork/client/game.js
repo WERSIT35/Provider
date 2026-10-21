@@ -23,6 +23,12 @@
   const Sound = window.Sound;
   const M = window.LuminaMotion;
   const T = window.LuminaMotion.game("clockwork");
+  // Clockwork's own events on top of the shared engine's (its sounds: audio/manifest.json).
+  Sound?.defineEvents?.({
+    cw_wind: { minGap: 120, voice: () => ({ key: "cw_wind", bus: "sfx", db: -2 }) },
+    cw_tick: { minGap: 40, voice: (o) => ({ key: "cw_tick", bus: "sfx", rate: Sound.util.semis(Math.min(8, ((Number(o.mult) || 2) - 2) * 2)), jitter: false }) },
+    cw_unwind: { minGap: 120, voice: () => ({ key: "cw_unwind", bus: "sfx", db: -4 }) }
+  });
   const sfx = (name, opts) => { Haptics.onEvent(name); try { Sound?.play(name, opts); } catch { /* sound is never load-bearing */ } };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
 
@@ -260,6 +266,7 @@
     if (!R.wound.size) return;
     const now = performance.now();
     for (const w of R.wound.values()) w.outAt = now;
+    sfx("cw_unwind");
     kick();
     await sleep(calm() ? 0 : T.unwind);
     R.wound.clear(); kick();
@@ -359,6 +366,7 @@
     emit("roundEnded", { round_ref: r.round_ref, bet, win: r.total_win, free_spin: r.is_free_spin, free_spins_left: S.freeSpinsLeft });
     S.inFlight = false; S.resultShown = false; setControls();
     Sound?.warmMusic?.();
+    if (!S.musicOn) { S.musicOn = true; Sound?.startMusic?.(); }
     return r;
   }
 
@@ -415,7 +423,7 @@
         shell.ticker.say(free ? "A key winds its reel: wild, ×1" : `A key winds its reel: wild for ${S.rules.wild.respins} respins`);
         if (!S.windExplained && !free) { S.windExplained = true; shell.callout("A wind-up key turns its whole reel wild and respins the others."); }
         await sleep(gms("wind") + gms("windHold"));
-      } else if (ticked) await sleep(gms("multTick"));
+      } else if (ticked) { sfx("cw_tick", { mult: Math.max(...(b.wound || []).map(([, n]) => n)) }); await sleep(gms("multTick")); }
       S.resultShown = true; setControls();
       running = await presentBoardWin(b, running, celebrate, bet, i < boards.length - 1);
     }
