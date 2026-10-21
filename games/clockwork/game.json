@@ -1,0 +1,8 @@
+{
+  "code": "clockwork",
+  "title": "Clockwork Menagerie",
+  "engine": { "dir": "engine", "namespace": "Clockwork", "files": ["engine.js"] },
+  "rules": "math/rules.json",
+  "client": "client",
+  "presentation": { "turbo": true, "slam_stop": true }
+}
