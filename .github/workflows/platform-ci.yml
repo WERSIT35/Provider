@@ -152,11 +152,24 @@ jobs:
           grep -nE "FAIL|Error|timed out|Timeout" "$RUNNER_TEMP/lumina.log" | head -n 8 | sed 's/^/::error title=lumina-audit::/'
           tail -n 2 "$RUNNER_TEMP/lumina.log" | sed 's/^/::error title=lumina-audit (end)::/'
 
-  # Rounds played: no celebration of a sub-stake return, and Clockwork Menagerie's client
-  # (layout at 11 sizes, respins, big win, feature, UK sub-stake, frame time).
+  # Rounds played: no celebration of a sub-stake return (30+ real rounds per game and market),
+  # and Clockwork Menagerie's client (layout at 11 sizes, respins, big win, feature, UK
+  # sub-stake, frame time). One job per group: Vault 20K alone takes ~12 min locally (it plays
+  # on until it has seen three sub-stake rounds), all of them in one job ran past 35 min on CI.
   lumina-rounds:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: vault
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games vault
+          - group: classic-relicforge
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games classic,relicforge
+          - group: glasshouse-clockwork
+            cmd: node tools/probes/no-celebrate.mjs --rounds 30 --games glasshouse,clockwork && node tools/probes/clockwork-client.mjs
+    name: lumina-rounds (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -167,7 +180,7 @@ jobs:
       - run: npm ci
       - run: |
           set -o pipefail
-          (node tools/probes/no-celebrate.mjs --rounds 30 && node tools/probes/clockwork-client.mjs) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+          (${{ matrix.cmd }}) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
       - name: Failure lines as annotations
         if: failure()
         run: |
