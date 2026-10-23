@@ -486,7 +486,7 @@
     if (prefs.muted) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     music.wanted = true;
     playMood(music.mood);
   }
@@ -537,7 +537,7 @@
       if (prefs.muted || state.suspended || !state.unlocked) return;
       const ctx = ensureContext();
       if (!ctx) return;
-      if (ctx.state === "suspended") ctx.resume();
+      wakeContext(ctx);
       const file = nextVariant("riser");
       if (!file) return;
       const t = ctx.currentTime;
@@ -565,11 +565,41 @@
     return { start, stop, isPlaying: () => Boolean(nodes) };
   })();
 
+  // --- keeping the output alive ------------------------------------------------
+  // iOS parks a page's audio when the app goes to the background or the browser is closed
+  // and reopened: the context comes back "suspended" or "interrupted" (a Safari-only state),
+  // and Safari lets it run again only from inside a tap. Resume any state that is not
+  // "running" (never only "suspended"), and re-try on every tap, not just the first.
+  function wakeContext(ctx) {
+    if (!ctx || ctx.state === "running" || ctx.state === "closed") return;
+    try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+  }
+  function revive() {
+    if (!state.unlocked || state.suspended) return;
+    let ctx = state.ctx;
+    if (ctx && ctx.state === "closed") {
+      // The system closed it: build a fresh graph (decoded buffers work in any context).
+      state.ctx = null; state.warmed = false; state.reverbReady = false;
+      ctx = ensureContext();
+      applyMasterGain();
+      if (music.wanted && !prefs.muted) { stopMusic(); startMusic(); }
+    }
+    if (!ctx || ctx.state === "running") return;
+    wakeContext(ctx);
+    // Safari also wants a sound started inside the tap before the output really restarts.
+    state.warmed = false;
+    prewarm();
+  }
+  if (typeof root.addEventListener === "function") {
+    for (const ev of ["touchend", "pointerup", "click", "keydown"]) root.addEventListener(ev, revive, { capture: true, passive: true });
+    root.addEventListener("pageshow", revive);
+  }
+
   // --- public API ------------------------------------------------------------
   function unlock() {
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     state.unlocked = true;
     applyMasterGain();
     prewarm();
@@ -591,7 +621,7 @@
     if (!state.unlocked) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     if (!state.manifestP) loadManifest();
 
     const minGap = ev.minGap || 0;
@@ -668,9 +698,7 @@
     if (!state.suspended) return;
     state.suspended = false;
     const ctx = state.ctx;
-    if (ctx && ctx.state === "suspended") {
-      try { ctx.resume(); } catch (e) { /* ignore */ }
-    }
+    if (ctx) wakeContext(ctx);
     if (state.wasPlaying && !prefs.muted && state.unlocked) startMusic();
     state.wasPlaying = false;
   }
