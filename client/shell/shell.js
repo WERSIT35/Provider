@@ -81,6 +81,14 @@
       const lines = [`screen ${frames} fps  worst ${worst.toFixed(0)} ms`];
       if (R) lines.push(`board ${draws.length} fps  draw p50 ${q(draws, 0.5).toFixed(1)} p95 ${q(draws, 0.95).toFixed(1)} ms`, `tier ${R.tier}  dpr ${R.dpr}  ${R.canvas?.width}x${R.canvas?.height}`);
       lines.push(`devicePixelRatio ${root.devicePixelRatio}`);
+      const S = root.Sound;
+      if (S && S.debug) {
+        const ctx = S.debug.context();
+        lines.push(`audio ${S.contextState()} t ${ctx ? ctx.currentTime.toFixed(1) : "-"}  parked ${S.isSuspended() ? "yes" : "no"}  unlocked ${S.debug.unlocked() ? "yes" : "no"}  muted ${S.isMuted() ? "yes" : "no"}`);
+        const sess = navigator.audioSession;
+        if (sess) lines.push(`session ${sess.type} ${sess.state || ""}`);
+        if (S.debug.trace) lines.push(...S.debug.trace());
+      }
       hud.textContent = lines.join("\n");
       frames = 0; worst = 0; draws.length = 0;
     }, 1000);
