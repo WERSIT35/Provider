@@ -574,21 +574,39 @@
     if (!ctx || ctx.state === "running" || ctx.state === "closed") return;
     try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
   }
-  function revive() {
-    if (!state.unlocked || state.suspended) return;
-    let ctx = state.ctx;
-    if (ctx && ctx.state === "closed") {
-      // The system closed it: build a fresh graph (decoded buffers work in any context).
-      state.ctx = null; state.warmed = false; state.reverbReady = false;
-      ctx = ensureContext();
-      applyMasterGain();
-      if (music.wanted && !prefs.muted) { stopMusic(); startMusic(); }
-    }
-    if (!ctx || ctx.state === "running") return;
+  // Swap in a fresh context (inside a tap, so Safari lets it start). Decoded buffers are not
+  // tied to a context, so nothing is fetched or decoded again.
+  function rebuild() {
+    const old = state.ctx;
+    const wanted = music.wanted;
+    drone.stop();
+    stopMusic();
+    try { const p = old && old.close && old.close(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+    state.ctx = null; state.warmed = false; state.reverbReady = false; state.rebuildNext = false;
+    const ctx = ensureContext();
+    if (!ctx) return;
     wakeContext(ctx);
-    // Safari also wants a sound started inside the tap before the output really restarts.
+    prewarm();
+    applyMasterGain();
+    const irPath = state.manifest && state.manifest.ir;
+    const ir = irPath && state.buffers.get(irPath);
+    if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; }
+    if (wanted && !prefs.muted) startMusic();
+  }
+  function revive() {
+    if (!state.unlocked) return;
+    // iOS can bring a closed tab back without the event that says it is visible again, so the
+    // game never un-parks its audio: a tap on a visible page means the player is back.
+    if (state.suspended && !(root.document && root.document.hidden)) resumeAudio();
+    if (state.suspended) return;
+    const ctx = state.ctx;
+    if (!ctx || ctx.state === "running") { state.rebuildNext = false; return; }
+    // Closed, Safari's "interrupted", or a resume that did not take last time: a new context.
+    if (ctx.state === "closed" || ctx.state === "interrupted" || state.rebuildNext) { rebuild(); return; }
+    wakeContext(ctx);
     state.warmed = false;
     prewarm();
+    setTimeout(() => { if (state.ctx === ctx && ctx.state !== "running") state.rebuildNext = true; }, 350);
   }
   if (typeof root.addEventListener === "function") {
     for (const ev of ["touchend", "pointerup", "click", "keydown"]) root.addEventListener(ev, revive, { capture: true, passive: true });
@@ -615,6 +633,7 @@
     // Timer-driven game state (autoplay, win count-ups) keeps advancing while
     // hidden, and without this every one of those steps would un-suspend the
     // audio hardware we just parked.
+    if (state.suspended && root.document && !root.document.hidden && state.unlocked) resumeAudio();
     if (state.suspended) return;
     // Before the first gesture the output cannot start: a sound scheduled now
     // would be held and burst out late once it does. Skip it instead.
@@ -783,7 +802,8 @@
       reverbReady: () => state.reverbReady,
       music: () => ({ mood: music.mood, prev: music.prev, playing: music.voice ? music.voice.mood : null }),
       duckLevel: () => (state.duckNode ? state.duckNode.gain.value : 1),
-      contexts: () => (state.ctx ? 1 : 0)
+      contexts: () => (state.ctx ? 1 : 0),
+      context: () => state.ctx
     }
   };
 })(typeof window !== "undefined" ? window : globalThis);
