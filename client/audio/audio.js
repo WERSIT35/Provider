@@ -105,11 +105,22 @@
     wasPlaying: false
   };
 
+  // Diagnostics (?fps=1 meter): the last few audio lifecycle events, cheap and capped.
+  const trace = [];
+  let ctxCount = 0;
+  function note(msg) {
+    trace.push(`${(performance.now() / 1000).toFixed(1)} ${msg}`);
+    if (trace.length > 8) trace.shift();
+  }
+
   function ensureContext() {
     if (state.ctx) return state.ctx;
     const Ctor = root.AudioContext || root.webkitAudioContext;
     if (!Ctor) return null;
     const ctx = new Ctor();
+    const id = ++ctxCount;
+    note(`ctx#${id} new ${ctx.state}`);
+    ctx.onstatechange = () => note(`ctx#${id} → ${ctx.state}`);
     // Limiter: a fast, hard compressor just under 0 dBFS, so stacked voices
     // (a burst + a strike + a sting) never clip.
     const limiter = ctx.createDynamicsCompressor();
@@ -572,13 +583,18 @@
   // "running" (never only "suspended"), and re-try on every tap, not just the first.
   function wakeContext(ctx) {
     if (!ctx || ctx.state === "running" || ctx.state === "closed") return;
-    try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+    note(`resume from ${ctx.state}`);
+    try {
+      const p = ctx.resume();
+      if (p && p.then) p.then(() => note(`resume ok ${ctx.state}`), (e) => note(`resume fail ${e && e.name}`));
+    } catch (e) { note(`resume threw ${e && e.name}`); }
   }
   // Swap in a fresh context (inside a tap, so Safari lets it start). Decoded buffers are not
   // tied to a context, so nothing is fetched or decoded again.
   function rebuild() {
     const old = state.ctx;
     const wanted = music.wanted;
+    note(`rebuild (was ${old ? old.state : "none"})`);
     drone.stop();
     stopMusic();
     try { const p = old && old.close && old.close(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
@@ -593,8 +609,9 @@
     if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; }
     if (wanted && !prefs.muted) startMusic();
   }
-  function revive() {
+  function revive(e) {
     if (!state.unlocked) return;
+    if (state.suspended || (state.ctx && state.ctx.state !== "running")) note(`revive ${e && e.type} ${state.suspended ? "parked " : ""}${state.ctx ? state.ctx.state : "none"}`);
     // iOS can bring a closed tab back without the event that says it is visible again, so the
     // game never un-parks its audio: a tap on a visible page means the player is back.
     if (state.suspended && !(root.document && root.document.hidden)) resumeAudio();
@@ -611,12 +628,16 @@
   if (typeof root.addEventListener === "function") {
     for (const ev of ["touchend", "pointerup", "click", "keydown"]) root.addEventListener(ev, revive, { capture: true, passive: true });
     root.addEventListener("pageshow", revive);
+    root.addEventListener("pageshow", (e) => note(`pageshow${e.persisted ? " bfcache" : ""}`));
+    root.addEventListener("pagehide", (e) => note(`pagehide${e.persisted ? " bfcache" : ""}`));
+    if (root.document) root.document.addEventListener("visibilitychange", () => note(root.document.hidden ? "hidden" : "visible"));
   }
 
   // --- public API ------------------------------------------------------------
-  function unlock() {
+  function unlock(e) {
     const ctx = ensureContext();
     if (!ctx) return;
+    if (!state.unlocked) note(`unlock ${e && e.type ? e.type : "call"}`);
     wakeContext(ctx);
     state.unlocked = true;
     applyMasterGain();
@@ -703,6 +724,7 @@
   // never made the first gesture.
   function suspendAudio() {
     if (state.suspended) return;
+    note("park");
     state.suspended = true;
     state.wasPlaying = music.wanted;
     stopMusic();
@@ -715,6 +737,7 @@
 
   function resumeAudio() {
     if (!state.suspended) return;
+    note("unpark");
     state.suspended = false;
     const ctx = state.ctx;
     if (ctx) wakeContext(ctx);
@@ -726,8 +749,8 @@
   // even if main.js forgets to call unlock().
   function installAutoUnlock() {
     const events = ["pointerdown", "touchstart", "keydown", "click"];
-    const handler = () => {
-      unlock();
+    const handler = (e) => {
+      unlock(e);
       events.forEach((ev) => root.removeEventListener(ev, handler, true));
     };
     events.forEach((ev) => root.addEventListener(ev, handler, true));
@@ -803,7 +826,8 @@
       music: () => ({ mood: music.mood, prev: music.prev, playing: music.voice ? music.voice.mood : null }),
       duckLevel: () => (state.duckNode ? state.duckNode.gain.value : 1),
       contexts: () => (state.ctx ? 1 : 0),
-      context: () => state.ctx
+      context: () => state.ctx,
+      trace: () => trace.slice()
     }
   };
 })(typeof window !== "undefined" ? window : globalThis);
