@@ -213,17 +213,18 @@
     turbo_toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
     // Every other on/off switch (ante, autoplay start/stop) shares turbo's pair.
     toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
-    spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -2 }) },
+    spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -5 }) },
     // A reel lands as a stack: one thud per reel, placed left → right.
     reel_stop: { minGap: 8, voice: (o) => ({ key: "reel_stop", bus: "sfx", pan: colPan(o.index), rate: semis(-(Number(o.index) || 0) * 0.35) }) },
     // One light tick per symbol landing, rising as a reel stacks up.
-    tick: { minGap: 5, voice: (o) => {
+    tick: { minGap: 45, voice: (o) => {
       const up = Math.max(0, (Number(o.rows) || 5) - 1 - (Number(o.row) || 0));
-      return { key: "tick", bus: "sfx", db: -9, pan: colPan(o.col), rate: semis(Math.min(10, up * 1.5 + (Number(o.col) || 0) * 0.5)) };
+      return { key: "tick", bus: "sfx", db: -14, pan: colPan(o.col), rate: semis(Math.min(10, up * 1.5 + (Number(o.col) || 0) * 0.5)) };
     } },
     // A tumble refill: an airy fall, a little brighter each step of a chain.
     tumble: { minGap: 16, voice: (o) => ({ key: "refill", bus: "sfx", db: -3, rate: semis(Math.min(6, (Number(o.step) || 0) * 1.2)) }) },
-    explode: { voice: (o) => ({ key: isGreat(o.tier) ? "explode_great" : "explode", bus: "sfx" }) },
+    // A cluster bursting: never more than one every 150 ms, a little under the win sounds.
+    explode: { minGap: 150, voice: (o) => ({ key: isGreat(o.tier) ? "explode_great" : "explode", bus: "sfx", db: isGreat(o.tier) ? -2 : -4 }) },
     win_tick: { minGap: 45, voice: (o) => ({ key: "win_tick", bus: "sfx", db: -6, rate: 0.92 + clamp(Number(o.progress) || 0, 0, 1) * 0.5 }) },
     // A scatter lands: one bell, stepped up a major triad per scatter on the
     // board (1st, 2nd, 3rd, 4th+ = root, 3rd, 5th, octave), a touch louder each

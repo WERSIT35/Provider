@@ -913,8 +913,11 @@ const TIER_PROFILES = {
   // (20fps), 62 → every 4th (15fps). They used to sit exactly ON the boundary
   // (33 vs 33.3, 50 vs 50.0), so ordinary vsync jitter made frames skip one
   // more vsync: phones measured ~24fps while spinning instead of 30.
-  low:  { maxDpr: 1,   fxCeil: 0.5, idleThrottleMs: 62, maxFrameMs: 30 },
-  mid:  { maxDpr: 1.5, fxCeil: 0.8, idleThrottleMs: 45, maxFrameMs: 30 },
+  // Phones (mid) draw a moving board at the display's full rate and at 2x pixels: a 30fps
+  // cap read as stutter and 1.5x as blur on every modern phone (owner, 2026-10-23). Only a
+  // device the governor has measured too slow drops to low (30fps, 1.5x).
+  low:  { maxDpr: 1.5, fxCeil: 0.5, idleThrottleMs: 62, maxFrameMs: 30 },
+  mid:  { maxDpr: 2,   fxCeil: 0.8, idleThrottleMs: 45, maxFrameMs: 0 },
   high: { maxDpr: 2,   fxCeil: 1,   idleThrottleMs: 45, maxFrameMs: 0  }
 };
 const TIER_RANK = { low: 0, mid: 1, high: 2 };

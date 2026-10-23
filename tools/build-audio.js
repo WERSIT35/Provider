@@ -74,8 +74,12 @@ const SOUNDS = {
   refill: { tier: "base", onset: false, variations: [{ layers: [[P("refill"), 0, 0]], max: 0.4, fadeOut: 120, hp: 120 }] },
   // Wins.
   win_light: { tier: "win", variations: [{ layers: [[P("win_light"), 0, 0]], max: 1.2, fadeOut: 500, hp: 300, comp: true }] },
-  explode: { tier: "win", variations: takes(3, { layers: [[P("explode"), 0, 0]], max: 1.2, fadeOut: 450, hp: 80, comp: true }) },
-  explode_great: { tier: "win", variations: takes(2, { layers: [[P("explode"), 0, 0], [P("sub_impact"), -6, 0]], max: 1.6, fadeOut: 550, hp: 30, comp: true }) },
+  // A winning cluster dissolves: a soft crystal chime, not breaking glass (the chandelier
+  // smash read as a window put through on every win, owner 2026-10-23). The scatter bell,
+  // short and darker, with the shimmer under it; three takes a step apart so a chain of
+  // bursts climbs instead of repeating.
+  explode: { tier: "base", variations: [1, 1.122, 1.26].map((pitch) => ({ layers: [[P("scatter"), 0, 0], [P("win_light"), -9, 0]], max: 0.55, fadeOut: 300, hp: 220, lp: 6500, pitch })) },
+  explode_great: { tier: "win", variations: [1, 1.122].map((pitch) => ({ layers: [[P("scatter"), 0, 0], [P("win_light"), -5, 30], [P("sub_impact"), -14, 0]], max: 1.0, fadeOut: 500, hp: 40, lp: 7000, pitch })) },
   win_tick: { tier: "tick", mono: true, variations: takes(4, { layers: [[P("win_tick"), 0, 0]], max: 0.17, fadeOut: 50, hp: 300 }) },
   win_land: { tier: "win", variations: takes(2, { layers: [[P("win_land"), 0, 0, 40]], max: 0.5, fadeOut: 150, hp: 200 }) },
   win_small: { tier: "win", variations: [{ layers: [[P("win_land"), 0, 0, 40], [P("win_light"), -8, 0]], max: 1.0, fadeOut: 400, hp: 150 }] },
@@ -88,7 +92,7 @@ const SOUNDS = {
   soul_launch: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.3, fadeOut: 80, hp: 150 }] },
   catch: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0]], max: 0.25, fadeOut: 60, hp: 200 }] },
   combine_enter: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.35, fadeOut: 100, hp: 150, pitch: 0.9 }] },
-  combine_slam: { tier: "win", variations: takes(2, { layers: [[P("combine_slam"), 0, 0]], max: 0.45, fadeOut: 150, hp: 40, comp: true }) },
+  combine_slam: { tier: "base", variations: takes(2, { layers: [[P("combine_slam"), 0, 0]], max: 0.4, fadeOut: 150, hp: 60, lp: 4500, comp: true }) },
   // The total locks in: the lock-in click, deeper, with a touch of the impact.
   combine: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0], [P("combine_slam"), -12, 0]], max: 0.4, fadeOut: 120, hp: 60, pitch: 0.85 }] },
   // Scatters & feature.
