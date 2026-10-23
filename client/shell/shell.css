@@ -62,6 +62,12 @@
 :where(.lsh, .lsh-sheet, .lsh-panel) button:hover:not(:disabled) { transform: none; filter: none; }
 :where(.lsh, .lsh-sheet, .lsh-panel) button:disabled { opacity: 1; }
 
+/* No page zoom from tapping, in every game: a double tap or a burst of taps never zooms the
+   page (touch-action has no specificity here, so a rule that needs none / pan-y still wins).
+   shell.js adds the event guards iOS Safari needs on top (it ignores user-scalable=no). */
+:where(html, body, body *) { touch-action: manipulation; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 /* ── frame ─────────────────────────────────────────────────────────────── */
 .lsh {
   position: fixed;

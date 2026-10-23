@@ -213,17 +213,18 @@
     turbo_toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
     // Every other on/off switch (ante, autoplay start/stop) shares turbo's pair.
     toggle: { minGap: 30, voice: (o) => ({ key: "ui_toggle", bus: "ui", rate: semis(o.on ? 2 : -2), jitter: false }) },
-    spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -2 }) },
+    spin_start: { minGap: 60, voice: () => ({ key: "spin_start", bus: "sfx", db: -5 }) },
     // A reel lands as a stack: one thud per reel, placed left → right.
     reel_stop: { minGap: 8, voice: (o) => ({ key: "reel_stop", bus: "sfx", pan: colPan(o.index), rate: semis(-(Number(o.index) || 0) * 0.35) }) },
     // One light tick per symbol landing, rising as a reel stacks up.
-    tick: { minGap: 5, voice: (o) => {
+    tick: { minGap: 45, voice: (o) => {
       const up = Math.max(0, (Number(o.rows) || 5) - 1 - (Number(o.row) || 0));
-      return { key: "tick", bus: "sfx", db: -9, pan: colPan(o.col), rate: semis(Math.min(10, up * 1.5 + (Number(o.col) || 0) * 0.5)) };
+      return { key: "tick", bus: "sfx", db: -14, pan: colPan(o.col), rate: semis(Math.min(10, up * 1.5 + (Number(o.col) || 0) * 0.5)) };
     } },
     // A tumble refill: an airy fall, a little brighter each step of a chain.
     tumble: { minGap: 16, voice: (o) => ({ key: "refill", bus: "sfx", db: -3, rate: semis(Math.min(6, (Number(o.step) || 0) * 1.2)) }) },
-    explode: { voice: (o) => ({ key: isGreat(o.tier) ? "explode_great" : "explode", bus: "sfx" }) },
+    // A cluster bursting: never more than one every 150 ms, a little under the win sounds.
+    explode: { minGap: 150, voice: (o) => ({ key: isGreat(o.tier) ? "explode_great" : "explode", bus: "sfx", db: isGreat(o.tier) ? -2 : -4 }) },
     win_tick: { minGap: 45, voice: (o) => ({ key: "win_tick", bus: "sfx", db: -6, rate: 0.92 + clamp(Number(o.progress) || 0, 0, 1) * 0.5 }) },
     // A scatter lands: one bell, stepped up a major triad per scatter on the
     // board (1st, 2nd, 3rd, 4th+ = root, 3rd, 5th, octave), a touch louder each
@@ -485,7 +486,7 @@
     if (prefs.muted) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     music.wanted = true;
     playMood(music.mood);
   }
@@ -536,7 +537,7 @@
       if (prefs.muted || state.suspended || !state.unlocked) return;
       const ctx = ensureContext();
       if (!ctx) return;
-      if (ctx.state === "suspended") ctx.resume();
+      wakeContext(ctx);
       const file = nextVariant("riser");
       if (!file) return;
       const t = ctx.currentTime;
@@ -564,11 +565,59 @@
     return { start, stop, isPlaying: () => Boolean(nodes) };
   })();
 
+  // --- keeping the output alive ------------------------------------------------
+  // iOS parks a page's audio when the app goes to the background or the browser is closed
+  // and reopened: the context comes back "suspended" or "interrupted" (a Safari-only state),
+  // and Safari lets it run again only from inside a tap. Resume any state that is not
+  // "running" (never only "suspended"), and re-try on every tap, not just the first.
+  function wakeContext(ctx) {
+    if (!ctx || ctx.state === "running" || ctx.state === "closed") return;
+    try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+  }
+  // Swap in a fresh context (inside a tap, so Safari lets it start). Decoded buffers are not
+  // tied to a context, so nothing is fetched or decoded again.
+  function rebuild() {
+    const old = state.ctx;
+    const wanted = music.wanted;
+    drone.stop();
+    stopMusic();
+    try { const p = old && old.close && old.close(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+    state.ctx = null; state.warmed = false; state.reverbReady = false; state.rebuildNext = false;
+    const ctx = ensureContext();
+    if (!ctx) return;
+    wakeContext(ctx);
+    prewarm();
+    applyMasterGain();
+    const irPath = state.manifest && state.manifest.ir;
+    const ir = irPath && state.buffers.get(irPath);
+    if (ir && state.convolver) { state.convolver.buffer = ir; state.reverbReady = true; }
+    if (wanted && !prefs.muted) startMusic();
+  }
+  function revive() {
+    if (!state.unlocked) return;
+    // iOS can bring a closed tab back without the event that says it is visible again, so the
+    // game never un-parks its audio: a tap on a visible page means the player is back.
+    if (state.suspended && !(root.document && root.document.hidden)) resumeAudio();
+    if (state.suspended) return;
+    const ctx = state.ctx;
+    if (!ctx || ctx.state === "running") { state.rebuildNext = false; return; }
+    // Closed, Safari's "interrupted", or a resume that did not take last time: a new context.
+    if (ctx.state === "closed" || ctx.state === "interrupted" || state.rebuildNext) { rebuild(); return; }
+    wakeContext(ctx);
+    state.warmed = false;
+    prewarm();
+    setTimeout(() => { if (state.ctx === ctx && ctx.state !== "running") state.rebuildNext = true; }, 350);
+  }
+  if (typeof root.addEventListener === "function") {
+    for (const ev of ["touchend", "pointerup", "click", "keydown"]) root.addEventListener(ev, revive, { capture: true, passive: true });
+    root.addEventListener("pageshow", revive);
+  }
+
   // --- public API ------------------------------------------------------------
   function unlock() {
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     state.unlocked = true;
     applyMasterGain();
     prewarm();
@@ -584,13 +633,14 @@
     // Timer-driven game state (autoplay, win count-ups) keeps advancing while
     // hidden, and without this every one of those steps would un-suspend the
     // audio hardware we just parked.
+    if (state.suspended && root.document && !root.document.hidden && state.unlocked) resumeAudio();
     if (state.suspended) return;
     // Before the first gesture the output cannot start: a sound scheduled now
     // would be held and burst out late once it does. Skip it instead.
     if (!state.unlocked) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    wakeContext(ctx);
     if (!state.manifestP) loadManifest();
 
     const minGap = ev.minGap || 0;
@@ -667,9 +717,7 @@
     if (!state.suspended) return;
     state.suspended = false;
     const ctx = state.ctx;
-    if (ctx && ctx.state === "suspended") {
-      try { ctx.resume(); } catch (e) { /* ignore */ }
-    }
+    if (ctx) wakeContext(ctx);
     if (state.wasPlaying && !prefs.muted && state.unlocked) startMusic();
     state.wasPlaying = false;
   }
@@ -754,7 +802,8 @@
       reverbReady: () => state.reverbReady,
       music: () => ({ mood: music.mood, prev: music.prev, playing: music.voice ? music.voice.mood : null }),
       duckLevel: () => (state.duckNode ? state.duckNode.gain.value : 1),
-      contexts: () => (state.ctx ? 1 : 0)
+      contexts: () => (state.ctx ? 1 : 0),
+      context: () => state.ctx
     }
   };
 })(typeof window !== "undefined" ? window : globalThis);

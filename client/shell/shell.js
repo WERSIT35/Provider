@@ -27,6 +27,66 @@
 (function (root) {
   "use strict";
 
+  // ── no zoom from tapping (every game loads the shell) ────────────────────
+  // iOS Safari ignores user-scalable=no: a double tap or a burst of taps zooms the page, and
+  // two fingers pinch it. Cancel those gestures, keep every tap: a second tap inside 350 ms
+  // has its native click cancelled (that is what zooms) and gets one dispatched click
+  // instead, so buttons count every press. Pointer events (Spin, hold-to-autoplay) are untouched.
+  if (typeof document !== "undefined" && !root.__lshNoZoom) {
+    root.__lshNoZoom = true;
+    const stop = (e) => e.preventDefault();
+    const typing = (t) => t && t.closest && t.closest("input, textarea, select, [contenteditable]");
+    document.addEventListener("gesturestart", stop, { passive: false });
+    document.addEventListener("gesturechange", stop, { passive: false });
+    document.addEventListener("dblclick", stop, { passive: false });
+    document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    let lastEnd = -1e9;
+    document.addEventListener("touchend", (e) => {
+      const t = e.target, now = e.timeStamp;
+      const quick = now - lastEnd < 350;
+      lastEnd = now;
+      if (!quick || e.changedTouches.length !== 1 || typing(t)) return;
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: root, clientX: touch.clientX, clientY: touch.clientY }));
+    }, { passive: false });
+  }
+
+  // ── ?fps=1: an on-device frame meter (diagnostics only, never in normal play) ──
+  // Frames the board actually drew per second, the slowest frame, and (Vault 20K) the draw
+  // cost, tier, pixel ratio and canvas size, so a phone can report what it really does.
+  if (typeof document !== "undefined" && /[?&]fps=1\b/.test(root.location?.search || "")) {
+    const hud = document.createElement("div");
+    hud.setAttribute("aria-hidden", "true");
+    hud.style.cssText = "position:fixed;left:6px;top:calc(env(safe-area-inset-top) + 40px);z-index:2147483647;pointer-events:none;font:600 12px/1.35 ui-monospace,Menlo,monospace;color:#9effa8;background:rgba(0,0,0,.72);padding:6px 8px;border-radius:8px;white-space:pre";
+    const draws = [];
+    let frames = 0, worst = 0, last = 0, wrapped = false;
+    const wrap = () => {
+      const R = root.__reelRenderer;
+      if (wrapped || !R || typeof R.draw !== "function") return;
+      wrapped = true;
+      const orig = R.draw.bind(R);
+      R.draw = function () { const t0 = performance.now(); const out = orig(); draws.push(performance.now() - t0); return out; };
+    };
+    const q = (a, p) => { if (!a.length) return 0; const v = a.slice().sort((x, y) => x - y); return v[Math.min(v.length - 1, Math.floor(v.length * p))]; };
+    const tick = (t) => {
+      if (last) { const d = t - last; frames++; if (d > worst) worst = d; }
+      last = t;
+      requestAnimationFrame(tick);
+    };
+    setInterval(() => {
+      if (!hud.isConnected && document.body) document.body.appendChild(hud);
+      wrap();
+      const R = root.__reelRenderer;
+      const lines = [`screen ${frames} fps  worst ${worst.toFixed(0)} ms`];
+      if (R) lines.push(`board ${draws.length} fps  draw p50 ${q(draws, 0.5).toFixed(1)} p95 ${q(draws, 0.95).toFixed(1)} ms`, `tier ${R.tier}  dpr ${R.dpr}  ${R.canvas?.width}x${R.canvas?.height}`);
+      lines.push(`devicePixelRatio ${root.devicePixelRatio}`);
+      hud.textContent = lines.join("\n");
+      frames = 0; worst = 0; draws.length = 0;
+    }, 1000);
+    requestAnimationFrame(tick);
+  }
+
   const SVG = {
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
