@@ -102,7 +102,8 @@
     listeners: new Set(),
     warmed: false,
     suspended: false,
-    wasPlaying: false
+    wasPlaying: false,
+    failedLoads: 0     // loads that failed since the last retry (retryLoads)
   };
 
   // Diagnostics (?fps=1 meter): the last few audio lifecycle events, cheap and capped.
@@ -297,37 +298,81 @@
     return "m4a";
   }
 
+  // A load that fails is forgotten, not remembered: right after iOS relaunches Safari the
+  // network can be down for a moment, and a failure kept for the page's life left the game
+  // silent until a reload. Taps retry what failed (retryLoads, from revive).
   function loadManifest() {
     if (state.manifestP) return state.manifestP;
     state.ext = pickExt();
-    state.manifestP = fetch(AUDIO_BASE + "manifest.json", { cache: "no-cache" })
+    const p = fetch(AUDIO_BASE + "manifest.json", { cache: "no-cache" })
       .then((r) => (r.ok ? r.json() : null))
       .then((m) => {
         state.manifest = m && m.sounds ? m : null;
         if (state.manifest) preloadAll();
         return state.manifest;
       })
-      .catch(() => null);
-    return state.manifestP;
+      .catch(() => null)
+      .then((m) => {
+        if (!m && state.manifestP === p) { state.manifestP = null; state.failedLoads++; note("manifest fail"); }
+        return m;
+      });
+    state.manifestP = p;
+    return p;
+  }
+
+  // A decode that never answers (seen on a context iOS parked) would hold its file forever.
+  const DECODE_TIMEOUT_MS = 8000;
+  function decode(buf) {
+    const ctx = ensureContext(); // the current context: an old one may have been closed by rebuild()
+    if (!ctx) return Promise.reject(new Error("no context"));
+    return new Promise((res, rej) => {
+      const timer = setTimeout(() => rej(new Error("decode timeout")), DECODE_TIMEOUT_MS);
+      const done = (fn) => (v) => { clearTimeout(timer); fn(v); };
+      try {
+        const out = ctx.decodeAudioData(buf, done(res), done(rej));
+        if (out && out.catch) out.catch(() => {}); // the callbacks above settle it
+      } catch (e) { done(rej)(e); }
+    });
   }
 
   function loadFile(path, { low = false } = {}) {
     if (state.buffers.has(path)) return Promise.resolve(state.buffers.get(path));
     if (state.loading.has(path)) return state.loading.get(path);
-    const ctx = ensureContext();
-    if (!ctx) return Promise.resolve(null);
+    if (!ensureContext()) return Promise.resolve(null);
     const url = AUDIO_BASE + path + "." + state.ext;
     // Background files ask for low priority: a spin request must never queue behind them.
     const p = fetch(url, low ? { priority: "low" } : undefined)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("HTTP " + r.status))))
-      .then((buf) => new Promise((res, rej) => ctx.decodeAudioData(buf, res, rej)))
+      .then(decode)
       .then((decoded) => {
         state.buffers.set(path, decoded);
+        state.loading.delete(path);
         return decoded;
       })
-      .catch(() => null); // that variation is skipped (the others still play)
+      .catch((e) => {
+        // That variation is skipped for now (the others still play) and retried later.
+        state.loading.delete(path);
+        state.failedLoads++;
+        note(`load fail ${path.split("/").pop()} ${(e && e.message) || ""}`);
+        return null;
+      });
     state.loading.set(path, p);
     return p;
+  }
+
+  // From a tap: load again whatever failed (manifest, first-spin sounds, and once the game
+  // is warm, the rest), at most every 2 s.
+  let lastRetry = 0;
+  function retryLoads() {
+    if (!state.failedLoads) return;
+    const now = performance.now();
+    if (now - lastRetry < 2000) return;
+    lastRetry = now;
+    state.failedLoads = 0;
+    note("retry loads");
+    if (!state.manifest) { loadManifest(); return; }
+    preloadAll();
+    if (musicWarm) { musicWarm = false; warmMusic(); }
   }
 
   // The first spin's sounds first, then the rest, then the current music mood.
@@ -612,6 +657,7 @@
   function revive(e) {
     if (!state.unlocked) return;
     if (state.suspended || (state.ctx && state.ctx.state !== "running")) note(`revive ${e && e.type} ${state.suspended ? "parked " : ""}${state.ctx ? state.ctx.state : "none"}`);
+    retryLoads();
     // iOS can bring a closed tab back without the event that says it is visible again, so the
     // game never un-parks its audio: a tap on a visible page means the player is back.
     if (state.suspended && !(root.document && root.document.hidden)) resumeAudio();

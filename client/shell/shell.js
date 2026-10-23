@@ -84,7 +84,7 @@
       const S = root.Sound;
       if (S && S.debug) {
         const ctx = S.debug.context();
-        lines.push(`audio ${S.contextState()} t ${ctx ? ctx.currentTime.toFixed(1) : "-"}  parked ${S.isSuspended() ? "yes" : "no"}  unlocked ${S.debug.unlocked() ? "yes" : "no"}  muted ${S.isMuted() ? "yes" : "no"}`);
+        lines.push(`audio ${S.contextState()} t ${ctx ? ctx.currentTime.toFixed(1) : "-"}  parked ${S.isSuspended() ? "yes" : "no"}  unlocked ${S.debug.unlocked() ? "yes" : "no"}  muted ${S.isMuted() ? "yes" : "no"}  sounds ${S.debug.loaded().length}${S.debug.manifest() ? "" : " (no list)"}`);
         const sess = navigator.audioSession;
         if (sess) lines.push(`session ${sess.type} ${sess.state || ""}`);
         if (S.debug.trace) lines.push(...S.debug.trace());
