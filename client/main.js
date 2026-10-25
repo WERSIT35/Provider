@@ -7719,7 +7719,7 @@ function renderInfoRules() {
 VxNotify.register("feature", el.featureScreen, {
   kind: "feature",
   visibility: "class",
-  dismiss: { anywhere: "tap" },
+  dismiss: { anywhere: "tap", enter: "tap" }, // Space / Spin: spinHoldStart
   fill: (slots, d) => {
     if (slots.kicker) slots.kicker.textContent = d.kicker ?? "Feature";
     if (slots.title) slots.title.textContent = d.title ?? "";
@@ -8031,6 +8031,8 @@ const yieldTask = (fn) => { const ch = new MessageChannel(); ch.port1.onmessage 
 
 function spinHoldStart(source, at = performance.now()) {
   if (spinHold.active || el.spinBtn.disabled) return;
+  // The feature screen up (intro / outro): Spin means "continue", as on the shared panel.
+  if (VxNotify.isOpen("feature")) { dismissFeature(); return; }
   spinHold.active = true;
   spinHold.source = source;
   spinHold.fired = false;
