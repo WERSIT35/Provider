@@ -100,8 +100,14 @@ async function main() {
   });
 
   try {
-    const list = await (await fetch(`${wsBase}/json/list`)).json();
-    const cdp = connect(list.find((t) => t.type === "page").webSocketDebuggerUrl);
+    // Chrome reports its port before it lists the about:blank page: ask again until it does.
+    let page;
+    for (let i = 0; i < 50 && !page; i++) {
+      page = (await (await fetch(`${wsBase}/json/list`)).json()).find((t) => t.type === "page");
+      if (!page) await new Promise((r) => setTimeout(r, 200));
+    }
+    if (!page) throw new Error("chrome listed no page target");
+    const cdp = connect(page.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Runtime.enable");
     await cdp.send("Page.enable");
