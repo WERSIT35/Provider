@@ -21,18 +21,27 @@
 :root {
   /* System values (Layer 1: identical in every game; games may not set them). */
   --lsh-bg: #0b0f14;                       /* page background behind the stage */
-  --lsh-deck: rgba(10, 14, 20, 0.86);      /* deck / rail surface */
-  --lsh-deck-line: rgba(255, 255, 255, 0.10);
-  --lsh-face: rgba(255, 255, 255, 0.06);   /* button face */
-  --lsh-face-hover: rgba(255, 255, 255, 0.12);
+  --lsh-deck: rgba(12, 16, 22, 0.78);      /* deck / rail surface where glass cannot blur */
+  --lsh-deck-line: rgba(255, 255, 255, 0.12);
+  --lsh-face: rgba(255, 255, 255, 0.10);   /* button face (flat) */
+  --lsh-face-hover: rgba(255, 255, 255, 0.16);
+  /* Liquid glass (owner's direction A, 2026-10-26): clear glass that lets the game's light
+     through, a bright rim along the top edge, a soft drop. The blur sits only behind the
+     deck, rails and sheets, never over the moving board. */
+  --lsh-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04) 42%, rgba(255, 255, 255, 0.07)), rgba(12, 16, 22, 0.6);
+  --lsh-glass-blur: blur(22px) saturate(185%);
+  --lsh-glass-rim: inset 0 1.5px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --lsh-glass-drop: 0 24px 48px -18px rgba(0, 0, 0, 0.6);
+  --lsh-disc: radial-gradient(120% 100% at 30% 12%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.07) 54%, rgba(255, 255, 255, 0.12));
+  --lsh-disc-rim: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -3px 8px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 8px 18px -8px rgba(0, 0, 0, 0.7);
   --lsh-ink: #eef1f4;                      /* text and icons */
-  --lsh-muted: #9aa7ad;                    /* labels */
+  --lsh-muted: #d3dae0;                    /* labels (on glass: kept light enough for 4.5:1) */
   --lsh-accent: #f2c14e;                   /* spin face, pressed toggles, focus */
   --lsh-accent-ink: #1d1300;               /* icon on the spin face */
   --lsh-accent-2: #d9a334;                 /* spin face lower stop */
   --lsh-win: #ffe7a3;                      /* celebrated win text */
   --lsh-sheet: #10161d;                    /* sheet panel */
-  --lsh-radius: 14px;
+  --lsh-radius: 26px;
   --lsh-font-ui: "Lumina UI", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lsh-font-num: var(--lsh-font-ui);
   --lsh-texture: none;                     /* optional deck texture (url or gradient) */
@@ -42,8 +51,9 @@
   --lsh-read-ink: var(--lsh-ink);          /* readout value */
   --lsh-read-k: var(--lsh-muted);          /* readout label */
   --lsh-feature-ink: var(--lsh-accent);    /* readout values during a feature (spins left, feature win) */
-  --lsh-spin-ring: 0 6px 18px rgba(0, 0, 0, 0.45);  /* outer shadow / glow of the spin face */
-  --lsh-spin-face: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--lsh-accent) 70%, #fff) 0%, var(--lsh-accent) 46%, var(--lsh-accent-2) 100%);
+  /* The one bold thing: Spin is liquid gold inside a clear glass ring, a highlight on its cap. */
+  --lsh-spin-ring: 0 0 0 5px rgba(255, 255, 255, 0.10), 0 0 0 6px rgba(255, 255, 255, 0.42), 0 14px 34px -8px rgba(255, 170, 40, 0.55), 0 4px 10px rgba(0, 0, 0, 0.45);
+  --lsh-spin-face: radial-gradient(60% 34% at 50% 18%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 70%), radial-gradient(circle at 50% 60%, #ffe39a 0, #f6b93b 45%, #c27a12 82%, #8a4f05 100%);
 
   /* Fixed geometry (not themable: identical in every game). */
   --lsh-gutter: 16px;
@@ -119,15 +129,15 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
   width: var(--lsh-hit); height: var(--lsh-hit); align-self: center; justify-self: center;
   border-radius: 50%;
   color: var(--lsh-face-ink);
-  background: var(--lsh-face);
-  box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
-  transition: background-color 120ms, transform 80ms;
+  background: var(--lsh-disc);
+  box-shadow: var(--lsh-disc-rim);
+  transition: filter 120ms, transform 80ms;
 }
 .lsh-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.lsh-btn:hover:not(:disabled) { background: var(--lsh-face-hover); }
+.lsh-btn:hover:not(:disabled) { filter: brightness(1.15); }
 .lsh-btn:active:not(:disabled) { transform: scale(0.94); }
 .lsh-btn:disabled { opacity: 0.38; cursor: default; }
-.lsh-btn[aria-pressed="true"] { color: var(--lsh-accent); box-shadow: inset 0 0 0 2px var(--lsh-accent); }
+.lsh-btn[aria-pressed="true"] { color: var(--lsh-accent); box-shadow: inset 0 0 0 2px var(--lsh-accent), 0 0 16px -2px color-mix(in srgb, var(--lsh-accent) 60%, transparent); }
 .lsh-btn[data-speed="turbo"] svg { fill: currentColor; }
 .lsh-btn__count { position: absolute; right: -2px; bottom: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--lsh-accent); color: var(--lsh-accent-ink); font: 800 12px/18px var(--lsh-font-num); text-align: center; }
 .lsh-btn__count:empty { display: none; }
@@ -140,7 +150,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
   border-radius: 50%;
   color: var(--lsh-spin-glyph);
   background: var(--lsh-spin-face);
-  box-shadow: var(--lsh-spin-ring), inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: var(--lsh-spin-ring), inset 0 -8px 14px rgba(110, 55, 0, 0.45);
   transition: transform 80ms, filter 120ms;
 }
 .lsh-spin:active { transform: scale(0.95); }
@@ -163,25 +173,26 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-chip {
   display: grid; align-content: center; justify-items: center; gap: 2px;
   min-width: 120px; min-height: 48px; padding: 6px 16px;
-  border-radius: var(--lsh-radius);
-  /* On the deck surface, so its label reads over any game art (A7: contrast ≥ 4.5:1). */
-  background: linear-gradient(var(--lsh-face), var(--lsh-face)), var(--lsh-texture), var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line);
+  border-radius: 999px;
+  /* Glass over the game, dark enough that its label reads over any art (A7: contrast ≥ 4.5:1). */
+  background: var(--lsh-glass); box-shadow: var(--lsh-glass-rim), 0 10px 24px -12px rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: var(--lsh-glass-blur); backdrop-filter: var(--lsh-glass-blur);
 }
-.lsh-chip__k { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--lsh-muted); }
-.lsh-chip__v { font: 800 15px/1 var(--lsh-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.lsh-chip__k { font: 600 12px/1 var(--lsh-font-ui); letter-spacing: 0.02em; color: var(--lsh-muted); }
+.lsh-chip__v { font: 800 15px/1 var(--lsh-font-ui); letter-spacing: 0.01em; }
 /* Rail cards are a themed slot (layers.md, Layer 2): place, size, labels and states are the
    shell's; the surface, edge, ink and title face are the game's skin (--skin-*). */
-.lsh-chip { background: var(--skin-slot-bg, var(--lsh-face)); color: var(--skin-slot-ink, var(--lsh-ink)); box-shadow: var(--skin-slot-edge, inset 0 0 0 1px var(--lsh-deck-line)); }
+.lsh-chip { background: var(--skin-slot-bg, var(--lsh-glass)); color: var(--skin-slot-ink, var(--lsh-ink)); box-shadow: var(--skin-slot-edge, var(--lsh-glass-rim)), 0 10px 24px -12px rgba(0, 0, 0, 0.7); }
 .lsh-chip .lsh-chip__k { color: inherit; opacity: 0.8; }
 .lsh-chip .lsh-chip__v { font-family: var(--skin-title-font, var(--lsh-font-ui)); }
-.lsh-chip--buy { background: var(--skin-buy-bg, linear-gradient(180deg, var(--lsh-accent), var(--lsh-accent-2))); color: var(--skin-buy-ink, var(--lsh-accent-ink)); box-shadow: var(--skin-buy-edge, none); }
+.lsh-chip--buy { background: var(--skin-buy-bg, radial-gradient(70% 60% at 50% 8%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 70%), linear-gradient(180deg, #ffd37a, #d68c1e)); color: var(--skin-buy-ink, var(--lsh-accent-ink)); box-shadow: var(--skin-buy-edge, inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 10px 24px -10px rgba(214, 140, 30, 0.7)); }
 .lsh-chip[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--skin-accent, var(--lsh-accent)), var(--skin-slot-edge, 0 0 0 0 transparent); color: var(--skin-accent, var(--lsh-accent)); }
 .lsh-chip:disabled { opacity: 0.4; cursor: default; }
 
 /* Readouts: one line each, tabular, clipped: a value can never resize the deck. */
-.lsh-read { min-width: 0; display: grid; align-content: center; justify-items: center; gap: 3px; text-align: center; padding: 2px 6px; border-radius: 8px; background: var(--lsh-read-bg); }
-.lsh-read__k { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--lsh-read-k); white-space: nowrap; }
-.lsh-read__v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--lsh-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--lsh-read-ink); }
+.lsh-read { min-width: 0; display: grid; align-content: center; justify-items: center; gap: 3px; text-align: center; padding: 2px 4px; border-radius: 8px; background: var(--lsh-read-bg); }
+.lsh-read__k { font: 600 12px/1 var(--lsh-font-ui); letter-spacing: 0.02em; color: var(--lsh-read-k); white-space: nowrap; }
+.lsh-read__v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--lsh-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--lsh-read-ink); text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35); }
 .lsh-read--bet { border-radius: 10px; min-height: var(--lsh-hit); }
 /* Its value may run past the narrow centre column into the empty space beside it (centred;
    Balance and Win keep their values in the middle of their wider cells). */
@@ -215,7 +226,8 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh::before {
   /* The deck surface behind the bottom three rows (decoration: no layout role). */
   content: ""; grid-row: 4 / 7; grid-column: 1 / -1; margin: -6px calc(-1 * var(--lsh-gutter) + 6px) -6px;
-  border-radius: var(--lsh-radius); background: var(--lsh-texture), var(--lsh-deck); box-shadow: inset 0 1px 0 var(--lsh-deck-line); z-index: -1;
+  border-radius: var(--lsh-radius); background: var(--lsh-texture), var(--lsh-glass); box-shadow: var(--lsh-glass-rim), var(--lsh-glass-drop); z-index: -1;
+  -webkit-backdrop-filter: var(--lsh-glass-blur); backdrop-filter: var(--lsh-glass-blur);
 }
 .lsh-rail:not([hidden]) { height: 48px; }
 .lsh-read__v { font-size: 16px; }
@@ -270,7 +282,8 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
   .lsh::before { grid-row: 2 / 8; grid-column: 1 / 3; margin: -6px -5px -6px calc(-1 * var(--lsh-gutter) + 6px); }
   .lsh::after {
     content: ""; grid-row: 2 / 6; grid-column: 4; margin: -6px calc(-1 * var(--lsh-gutter) + 6px) -6px -5px;
-    border-radius: var(--lsh-radius); background: var(--lsh-texture), var(--lsh-deck); box-shadow: inset 0 1px 0 var(--lsh-deck-line); z-index: -1;
+    border-radius: var(--lsh-radius); background: var(--lsh-texture), var(--lsh-glass); box-shadow: var(--lsh-glass-rim), var(--lsh-glass-drop); z-index: -1;
+    -webkit-backdrop-filter: var(--lsh-glass-blur); backdrop-filter: var(--lsh-glass-blur);
   }
   .lsh[data-hand="left"]::before { grid-column: 3 / 5; margin: -6px calc(-1 * var(--lsh-gutter) + 6px) -6px -5px; }
   .lsh[data-hand="left"]::after { grid-column: 1; margin: -6px -5px -6px calc(-1 * var(--lsh-gutter) + 6px); }
@@ -312,17 +325,19 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 }
 
 /* ── sheets (VxNotify modals) ─────────────────────────────────────────── */
-.lsh-sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: end center; background: rgba(0, 0, 0, 0.55); padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+.lsh-sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: end center; background: rgba(4, 6, 10, 0.5); padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
 .lsh-sheet.hidden { display: none; }
 .lsh-sheet__panel {
   width: min(560px, 100%); max-height: min(86vh, 720px); overflow: auto; overscroll-behavior: contain;
-  border-radius: 18px 18px 14px 14px; background: var(--lsh-texture), var(--lsh-sheet); color: var(--lsh-ink);
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 var(--lsh-deck-line);
+  border-radius: 28px 28px 22px 22px; color: var(--lsh-ink);
+  background: var(--lsh-texture), linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03) 30%), rgba(16, 20, 28, 0.8);
+  -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: var(--lsh-glass-rim), 0 -12px 48px rgba(0, 0, 0, 0.55);
   font: 500 15px/1.45 var(--lsh-font-ui);
 }
-@media (min-width: 700px) { .lsh-sheet { place-items: center; } .lsh-sheet__panel { border-radius: 18px; } }
-.lsh-sheet__head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px 20px; background: inherit; }
-.lsh-sheet__title { margin: 0; font: 800 18px/1.2 var(--lsh-font-ui); letter-spacing: 0.02em; }
+@media (min-width: 700px) { .lsh-sheet { place-items: center; } .lsh-sheet__panel { border-radius: 28px; } }
+.lsh-sheet__head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 10px 22px; background: linear-gradient(180deg, rgba(22, 27, 36, 0.96), rgba(22, 27, 36, 0.86) 70%, rgba(22, 27, 36, 0)); }
+.lsh-sheet__title { margin: 0; font: 800 19px/1.2 var(--lsh-font-ui); letter-spacing: -0.01em; }
 .lsh-sheet__body { padding: 4px 20px 20px; }
 .lsh-sheet__body p { margin: 0 0 12px; }
 .lsh-sheet__body table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
@@ -335,23 +350,26 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--lsh-deck-line); }
 .lsh-row__t { display: grid; gap: 2px; }
 .lsh-row__t small { color: var(--lsh-muted); font-size: 12px; }
-.lsh-row input[type="checkbox"] { appearance: none; width: 48px; height: 28px; border-radius: 14px; background: var(--lsh-face-hover); position: relative; cursor: pointer; flex: none; }
-.lsh-row input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--lsh-ink); transition: transform 140ms; }
-.lsh-row input[type="checkbox"]:checked { background: var(--lsh-accent); }
-.lsh-row input[type="checkbox"]:checked::after { transform: translateX(20px); background: var(--lsh-accent-ink); }
-.lsh-row select { min-height: 40px; border-radius: 10px; border: 0; padding: 0 10px; background: var(--lsh-face-hover); color: var(--lsh-ink); font: inherit; }
-.lsh-seg { display: inline-flex; border-radius: 12px; background: var(--lsh-face); padding: 3px; gap: 3px; }
-.lsh-seg button { min-height: 40px; min-width: 64px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--lsh-muted); font: 700 13px/1 var(--lsh-font-ui); cursor: pointer; }
-.lsh-seg button[aria-checked="true"] { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
-.lsh-pill { display: inline-grid; place-items: center; min-height: 44px; min-width: 64px; padding: 0 16px; border-radius: 12px; background: var(--lsh-face-hover); color: var(--lsh-ink); font: 700 15px/1 var(--lsh-font-num); text-decoration: none; }
-.lsh-pill[aria-pressed="true"] { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
+.lsh-row input[type="checkbox"] { appearance: none; width: 50px; height: 30px; border-radius: 15px; background: rgba(255, 255, 255, 0.12); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.12); position: relative; cursor: pointer; flex: none; transition: background 160ms; }
+.lsh-row input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle at 40% 30%, #fff, #dfe5ea); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); transition: transform 160ms; }
+.lsh-row input[type="checkbox"]:checked { background: linear-gradient(180deg, #ffd37a, #d68c1e); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 14px -2px rgba(246, 185, 59, 0.6); }
+.lsh-row input[type="checkbox"]:checked::after { transform: translateX(20px); }
+.lsh-row select { min-height: 40px; border-radius: 999px; border: 0; padding: 0 14px; background: var(--lsh-disc); box-shadow: var(--lsh-disc-rim); color: var(--lsh-ink); font: inherit; }
+.lsh-seg { display: inline-flex; border-radius: 999px; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1); padding: 3px; gap: 3px; }
+.lsh-seg button { min-height: 40px; min-width: 64px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--lsh-muted); font: 700 13px/1 var(--lsh-font-ui); cursor: pointer; }
+.lsh-seg button[aria-checked="true"] { background: var(--lsh-disc); box-shadow: var(--lsh-disc-rim); color: var(--lsh-ink); }
+.lsh-pill { display: inline-grid; place-items: center; min-height: 44px; min-width: 64px; padding: 0 18px; border-radius: 999px; background: var(--lsh-disc); box-shadow: var(--lsh-disc-rim); color: var(--lsh-ink); font: 700 15px/1 var(--lsh-font-num); text-decoration: none; }
+.lsh-pill[aria-pressed="true"], .lsh-pill--primary { background: radial-gradient(70% 60% at 50% 8%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%), linear-gradient(180deg, #ffd37a, #d68c1e); color: var(--lsh-accent-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 22px -10px rgba(214, 140, 30, 0.7); }
 .lsh-pill:disabled { opacity: 0.35; cursor: default; }
-.lsh-pill--primary { background: var(--lsh-accent); color: var(--lsh-accent-ink); }
 .lsh-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .lsh-presets, .lsh-ladder { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
 .lsh-market { color: var(--lsh-muted); font-size: 13px; }
 .lsh-controls { color: var(--lsh-muted); font-size: 13px; }
 .lsh-build { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--lsh-deck-line); color: var(--lsh-muted); font: 600 12px/1.4 var(--lsh-font-num); letter-spacing: 0.04em; }
+
+/* No live blur (an old browser, or the OS asks for less transparency): the same glass, denser. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { :root { --lsh-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03) 42%), rgba(14, 18, 25, 0.86); } }
+@media (prefers-reduced-transparency: reduce) { :root { --lsh-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 42%), rgb(16, 20, 27); } }
 
 /* Reduced motion (OS or menu) and battery saver: the shell's own motion stops. */
 .lsh-reduced .lsh *, .lsh-reduced .lsh-sheet * { transition: none !important; }
@@ -362,7 +380,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-panel.hidden { display: none; }
 /* The feature panel is a themed slot (Layer 2): fixed structure, the game's skin. */
 .lsh-panel .lsh-panel__card { width: min(100%, 420px); padding: 22px 22px 18px; border-radius: var(--skin-panel-radius, var(--lsh-radius)); text-align: center;
-  background: var(--skin-panel-bg, var(--lsh-sheet)); color: var(--skin-panel-ink, var(--lsh-ink)); box-shadow: var(--skin-panel-frame, inset 0 0 0 1px var(--lsh-deck-line), 0 18px 48px rgba(0, 0, 0, 0.55)); font-family: var(--lsh-font-ui); }
+  background: var(--skin-panel-bg, linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 40%), rgba(16, 20, 28, 0.82)); color: var(--skin-panel-ink, var(--lsh-ink)); box-shadow: var(--skin-panel-frame, var(--lsh-glass-rim), 0 18px 48px rgba(0, 0, 0, 0.55)); font-family: var(--lsh-font-ui); }
 /* The card is a sheet panel, so each game's sheet skin (paper, ink) applies to it too. */
 .lsh-panel .lsh-panel__kicker { margin: 0 0 6px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--skin-panel-muted, var(--lsh-muted)); }
 .lsh-panel .lsh-panel__title { margin: 0; font: var(--skin-title-weight, 800) 26px/1.15 var(--skin-title-font, var(--lsh-font-ui)); text-transform: var(--skin-title-case, none); color: var(--skin-panel-title, inherit); }
@@ -405,7 +423,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-nav--back { justify-self: start; }
 .lsh-nav--full { justify-self: end; margin-right: calc(var(--lsh-strip) + 6px); }
 .lsh[data-session="panic"] .lsh-nav--full { margin-right: calc(var(--lsh-strip) + 136px); }
-.lsh-nav > span { display: inline-flex; align-items: center; gap: 6px; height: 18px; padding: 0 10px; border-radius: 999px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.04em; background: var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line); }
+.lsh-nav > span { display: inline-flex; align-items: center; gap: 6px; height: 18px; padding: 0 10px; border-radius: 999px; font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.02em; background: var(--lsh-glass); box-shadow: var(--lsh-glass-rim); -webkit-backdrop-filter: var(--lsh-glass-blur); backdrop-filter: var(--lsh-glass-blur); }
 .lsh-nav svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .lsh-nav:focus-visible > span { outline: 2px solid var(--lsh-accent); outline-offset: 2px; }
 /* the session strip's items start after the back link */
@@ -597,7 +615,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-splash__art svg { width: min(38cqh, 150px); height: min(38cqh, 150px); }
 .lsh-splash__art b { font: 700 clamp(26px, 9cqi, 56px)/1 var(--skin-title-font, var(--lsh-font-ui)); color: var(--skin-panel-total, var(--skin-accent, var(--lsh-accent))); }
 .lsh-splash__card p { margin: 0; font: 600 clamp(12px, 3.6cqi, 15px)/1.35 var(--lsh-font-ui); text-align: center; }
-.lsh-splash__facts { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; width: min(100%, 720px); justify-self: center; padding: 8px 10px; border-radius: var(--lsh-radius); background: var(--lsh-deck); box-shadow: inset 0 0 0 1px var(--lsh-deck-line); }
+.lsh-splash__facts { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; width: min(100%, 720px); justify-self: center; padding: 8px 12px; border-radius: 20px; background: var(--lsh-glass); box-shadow: var(--lsh-glass-rim); -webkit-backdrop-filter: var(--lsh-glass-blur); backdrop-filter: var(--lsh-glass-blur); }
 .lsh-splash__list { display: grid; gap: 4px; }
 .lsh-splash__list p { margin: 0; font: 700 12px/1.3 var(--lsh-font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lsh-muted); }
 .lsh-splash__list strong, .lsh-splash__list b { font: 800 16px/1 var(--lsh-font-num); letter-spacing: 0; text-transform: none; color: var(--lsh-ink); }
