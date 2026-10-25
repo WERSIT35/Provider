@@ -6,6 +6,7 @@
 //      there (the games without an icon link asked for /favicon.ico on every load).
 //   2. Vault 20K's feature screen (free-spins intro / outro) continues on Spin, Space and
 //      Enter, as the shared panel does in the other games: a phone player taps Spin there.
+//      Enter on another focused control keeps its own meaning.
 //   3. Vault 20K's free spins: the Spins readout and the message line give the same count
 //      (the readout lagged one spin behind), and the line shows no base-game tips between
 //      free spins ("Buy feature available" while the buy is off).
@@ -52,6 +53,10 @@ async function open(game) {
     const u = r.url().replace(base, "");
     if (r.status() >= 400 && !KNOWN_MISSING.some((re) => re.test(u))) page.missing.push(`${r.status()} ${u}`);
   });
+  page.on("requestfailed", (r) => {
+    const u = r.url().replace(base, "");
+    if (!u.startsWith("data:") && !KNOWN_MISSING.some((re) => re.test(u))) page.missing.push(`failed ${u}`);
+  });
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await page.goto(`${base}/${game}/?intro=0`, { waitUntil: "networkidle0" });
   await page.waitForFunction(() => document.body.classList.contains("app-ready") && window.__spinLifecycle, { timeout: 30000 });
@@ -85,7 +90,8 @@ async function buy(page) {
   await page.tap("#spinBtn");
   await sleep(400);
   check("vault: Spin continues the intro", !(await featureOpen(page)));
-  check("vault: ...and the free spins run", await page.evaluate(() => window.__spinLifecycle.inFlight));
+  // (The buy holds the round lock throughout, so "in flight" proves nothing: the count must drop.)
+  check("vault: ...and the free spins run", await page.waitForFunction(() => Number(document.getElementById("footerBet").textContent) < 15, { timeout: 15000 }).then(() => true, () => false));
   // Sample the free spins until the outro opens.
   const seen = { mismatch: [], tips: [], samples: 0 };
   for (const t0 = Date.now(); Date.now() - t0 < 170000 && !(await featureOpen(page));) {
@@ -105,10 +111,28 @@ async function buy(page) {
   await untilIdle(page, 60000);
   await buy(page);
   check("vault: a second bought feature opens its intro", await waitFeature(page, 60000));
-  await page.keyboard.press("Space");
+  // Enter on another enabled control keeps its own meaning (most are locked during a feature).
+  const other = await page.evaluate(() => {
+    const b = [...document.querySelectorAll(".lsh button")].find((x) => !x.disabled && x.id !== "spinBtn" && x.getBoundingClientRect().width && !x.closest(".hidden,[hidden]"));
+    if (!b) return null;
+    b.dataset.probeFocus = "1"; b.focus();
+    return document.activeElement === b ? (b.id || b.getAttribute("aria-label") || b.className) : null;
+  });
+  if (other) {
+    await page.keyboard.press("Enter");
+    await sleep(400);
+    check(`vault: Enter on another focused control (${other}) leaves the intro waiting`, await featureOpen(page));
+    await page.keyboard.press("Escape");
+    await sleep(300);
+  } else console.log("  (no other control is enabled on the intro: Enter there cannot hit one)");
+  await page.evaluate(() => document.activeElement?.blur?.());
+  // Held past the hold-for-autoplay threshold (400 ms): it continues, it never starts autoplay.
+  await page.keyboard.down("Space");
+  await sleep(900);
+  await page.keyboard.up("Space");
   await sleep(400);
   check("vault: Space continues the intro", !(await featureOpen(page)));
-  check("vault: no autoplay started by that press", !(await page.evaluate(() => window.__spinLifecycle.autoplayActive)));
+  check("vault: a held Space there starts no autoplay", !(await page.evaluate(() => window.__spinLifecycle.autoplayActive)));
   await untilIdle(page, 170000);
   check("vault: no failed request through two features", page.missing.length === 0, page.missing.slice(0, 3).join(", "));
   await page.close();
