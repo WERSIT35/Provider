@@ -6915,6 +6915,7 @@ async function spin(options = {}) {
   // A free spin is used as it starts: the Spins readout counts what is left after it, as the
   // message line does and as the other games count (the round's answer confirms it).
   if (state.bonusAutoplay && state.shellFeatureHud && el.footerBet) el.footerBet.textContent = String(freeSpinsRemainingAfter(el.freeSpins?.textContent));
+  let answered = false; // the server answered: whatever fails after this, the round was played
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
@@ -6943,6 +6944,7 @@ async function spin(options = {}) {
         ? Number(state.forcedMultiplierLock)
         : undefined
     });
+    answered = true;
     rememberFeatureTerms(payload, bet, Boolean(el.anteToggle.checked));
     if (!payload?.is_free_spin) roundAnswered();
     // Diagnostic: confirm each spin produces a unique id and a fresh first matrix.
@@ -6997,6 +6999,9 @@ async function spin(options = {}) {
     }
     el.resultDump.textContent = `Error: ${err.message}`;
     pushGameMessage(`Spin error: ${err.message}`, "error");
+    // The player is told on the message line (the log above is never on screen), only when
+    // the round was not played: a failure while showing an answered round is not theirs to read.
+    if (!answered) ticker.flash(window.LuminaShell?.roundNotPlayed?.(err) || "Round not played: please try again", "info", 4000);
     embedError(err);
   } finally {
     // Release reliably on every exit path — success, error, or fast-stop

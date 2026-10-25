@@ -11,6 +11,9 @@ export async function untilIdle(page, ms) {
       if (panel) N?.close?.("lsh-panel", "continue");
       const fs = document.getElementById("featureScreen");
       if (fs && !fs.hidden && fs.getAttribute("aria-hidden") !== "true" && getComputedStyle(fs).display !== "none") N?.close?.("feature", "dismissed");
+      // A choice the round waits for (Relic Forge's relic draft before each Forge spin): the
+      // game is idle meanwhile and a Spin press only reopens it, so take its default choice.
+      if (N?.isOpen?.("lsh-ask")) { document.querySelector(".lsh-sheet:not(.hidden) [data-vx-autofocus]")?.click(); return true; }
       return Boolean(window.__spinLifecycle?.inFlight);
     });
     if (!busy) return;

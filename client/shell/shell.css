@@ -183,6 +183,9 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 .lsh-read__k { font: 700 12px/1 var(--lsh-font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--lsh-read-k); white-space: nowrap; }
 .lsh-read__v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--lsh-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--lsh-read-ink); }
 .lsh-read--bet { border-radius: 10px; min-height: var(--lsh-hit); }
+/* Its value may run past the narrow centre column into the empty space beside it (centred;
+   Balance and Win keep their values in the middle of their wider cells). */
+.lsh-read--bet .lsh-read__v { max-width: none; overflow: visible; }
 .lsh-read--bet:hover:not(:disabled) { filter: brightness(1.08); }
 .lsh-read--bet:disabled { cursor: default; }
 .lsh.is-feature .lsh-read--bet .lsh-read__v, .lsh.is-feature .lsh-read--win .lsh-read__v { color: var(--lsh-feature-ink); }
@@ -216,16 +219,20 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
 }
 .lsh-rail:not([hidden]) { height: 48px; }
 .lsh-read__v { font-size: 16px; }
+/* Long numbers (shell.js: data-len by character count) step down to fit their cell. */
+.lsh-read__v[data-len="l"] { font-size: 14px; }
+.lsh-read__v[data-len="xl"] { font-size: 12px; letter-spacing: -0.02em; }
 
 @media (max-width: 359px) {
   .lsh { --lsh-gutter: 10px; --lsh-spin: 64px; column-gap: 4px; }
   .lsh-read__v { font-size: 15px; }
+  .lsh-read__v[data-len="l"] { font-size: 13px; }
 }
 
 /* Tablets upright: same layout, a little more air. */
 @media (orientation: portrait) and (min-width: 700px) {
   .lsh { --lsh-gutter: 28px; --lsh-spin: 80px; column-gap: 14px; }
-  .lsh-read__v { font-size: 19px; }
+  .lsh-read__v, .lsh-read__v[data-len] { font-size: 19px; }
 }
 
 /* ── landscape phones (short) ─────────────────────────────────────────── */
@@ -273,7 +280,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
   .lsh-chip__k { font-size: 12px; letter-spacing: 0.08em; }
   .lsh-read--bet { min-height: 40px; }
   .lsh-read { justify-items: start; text-align: left; }
-  .lsh-read__v { font-size: 15px; }
+  .lsh-read__v, .lsh-read__v[data-len] { font-size: 15px; }
   .lsh-ticker { font-size: 12px; }
 }
 
@@ -299,7 +306,7 @@ body:not(.app-ready):not(.ui-prerender) .lsh { visibility: hidden; } /* never ha
   }
   .lsh::before { grid-row: 4; margin: 0 -12px; }
   .lsh-rail:not([hidden]) { height: auto; flex-direction: column; justify-content: center; }
-  .lsh-read__v { font-size: 20px; }
+  .lsh-read__v, .lsh-read__v[data-len] { font-size: 20px; }
   .lsh-read { justify-self: center; width: min(100%, 240px); }
   .lsh-ticker { font-size: 14px; }
 }

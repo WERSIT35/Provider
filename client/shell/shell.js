@@ -190,6 +190,13 @@
     (o.host || doc.body).appendChild(frame);
     if (o.stage) el.stage.appendChild(o.stage);
 
+    // Long numbers fit their readout (a balance in the millions on a 320 px phone): each value
+    // carries a length bucket and the CSS steps its size down. Whoever writes the text (the
+    // shell, a game, a count-up), nothing is measured, so no write ever forces a layout.
+    // Bet sits in the narrow centre column (the Spin width), so it steps down sooner.
+    const fitBucket = (n, [l, xl]) => { const len = (n.textContent || "").length; const b = len >= xl ? "xl" : len >= l ? "l" : ""; if ((n.dataset.len || "") !== b) { if (b) n.dataset.len = b; else delete n.dataset.len; } };
+    if (root.MutationObserver) for (const [n, steps] of [[el.balance, [13, 14]], [el.bet, [7, 9]], [el.win, [13, 14]]]) { fitBucket(n, steps); new MutationObserver(() => fitBucket(n, steps)).observe(n, { childList: true, characterData: true, subtree: true }); }
+
     // ── preferences (left-hand, reduced motion, battery saver, intro, speed) ──
     function reducedMotion() { return prefs.reducedMotion === null ? Boolean(osReduced?.matches) : prefs.reducedMotion; }
     function applyPrefs() {
@@ -313,6 +320,8 @@
           // A game that drives the message line itself (o.tickerFlash) takes the shell's notices.
           if (o.tickerFlash) { o.tickerFlash(text, tone, ms); return; }
           clearTimeout(flashT); flashing = true; paint(text, `flash-${tone}`); flashT = setTimeout(() => { flashing = false; show(); }, Math.max(TICK.flashMinMs, ms)); },
+        /** End a flash now (the line it covered comes back); with `text`, only that flash. */
+        endFlash(text) { if (!flashing || (text && el.tickerText.textContent !== text)) return; clearTimeout(flashT); flashing = false; show(); },
         get mode() { return mode; },
         get text() { return el.tickerText.textContent; }
       };
@@ -352,14 +361,18 @@
     function setBetLocked(locked) { S.betLocked = Boolean(locked); setPhase(S.phase); }
 
     // Connection state: a ring on the button after 1 s, a ticker line after 3 s.
+    const WAIT_LINE = "Waiting for the server…";
     function waiting(on1) {
       S.waitTimers.forEach(clearTimeout); S.waitTimers = [];
       el.spin.classList.remove("is-waiting");
+      // The answer came (or the round failed): a waiting line already up goes now, never
+      // covering what the game says next for its full minute.
+      if (S.waitShown) { S.waitShown = false; if (!o.tickerFlash) ticker.endFlash(WAIT_LINE); }
       if (!on1) return;
       const M = root.LuminaMotion;
       const ring = M ? M.ms("waitRing") : 1000, msg = M ? M.ms("waitMessage") : 3000;
       S.waitTimers.push(setTimeout(() => el.spin.classList.add("is-waiting"), ring));
-      S.waitTimers.push(setTimeout(() => ticker.flash("Waiting for the server…", "info", 60000), msg));
+      S.waitTimers.push(setTimeout(() => { S.waitShown = true; ticker.flash(WAIT_LINE, "info", 60000); }, msg));
     }
 
     // ── free-spins HUD: replaces the bet stepper (bet frozen), never moves anything ──
@@ -756,5 +769,17 @@
     return api;
   }
 
-  root.LuminaShell = Object.freeze({ mount, MARKET_FALLBACK });
+  /** The player's line for a round the server did not play (every game says it alike). A
+   *  failure that a retry cannot clear says what to do instead; an unknown one keeps its code
+   *  (support asks for it). Safari's lost connection reads "Load failed". */
+  function roundNotPlayed(err) {
+    const code = String(err?.code || ""), msg = String(err?.message || "");
+    const is = (re) => re.test(code) || re.test(msg);
+    if (is(/INSUFFICIENT_FUNDS/)) return "Not enough credit for this bet";
+    if (is(/SESSION_EXPIRED|TOKEN_EXPIRED|SESSION_NOT_FOUND|UNAUTHORI[SZ]ED|HTTP_401/)) return "Session ended: please reopen the game";
+    if (is(/INVALID_BET/)) return "Bet not accepted: choose another bet";
+    if (/^(NETWORK|TIMEOUT)/.test(code) || /network|fetch|connection|load failed|timed? ?out/i.test(msg)) return "No connection: round not played";
+    return code && /^[A-Z0-9_]+$/.test(code) ? `Round not played (${code})` : "Round not played: please try again";
+  }
+  root.LuminaShell = Object.freeze({ mount, MARKET_FALLBACK, roundNotPlayed });
 })(typeof window !== "undefined" ? window : globalThis);
