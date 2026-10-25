@@ -692,7 +692,7 @@
         if (!wasForge) setBalance(S.balance + bet);
         if (err.code === "REALITY_CHECK_REQUIRED") { await realityCheck(err.details); return null; }
         if (err.code === "INSUFFICIENT_FUNDS") await notEnoughCredit();
-        else say(`Round not played (${err.code || err.message})`);
+        else say(LuminaShell.roundNotPlayed(err));
         return null;
       } finally {
         shell.waiting(false);

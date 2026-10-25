@@ -10,6 +10,14 @@
 //   3. Vault 20K's free spins: the Spins readout and the message line give the same count
 //      (the readout lagged one spin behind), and the line shows no base-game tips between
 //      free spins ("Buy feature available" while the buy is off).
+//   4. A round the server never answers (the connection lost after the 3 s "Waiting for the
+//      server…" line): every game says "No connection: round not played" (Vault 20K said
+//      nothing), the waiting line never outlives the answer (it stuck for a minute), and the
+//      next round plays.
+//      The line names what to do when a retry cannot help (no credit, session ended, bet
+//      refused) and reads a lost connection in every browser's words (Safari: "Load failed").
+//   5. Long numbers fit their readouts on a 320 px phone and a landscape phone (a balance in
+//      the millions was cut; a bet of 100.00 was cut at 320 px, 1,000.00 at 390 px).
 //
 //   CHROME_PATH=… node tools/probes/phone-anomalies.mjs
 //
@@ -98,7 +106,9 @@ async function buy(page) {
     const r = await page.evaluate(() => ({ left: document.getElementById("footerBet").textContent.trim(), line: document.getElementById("psTicker").textContent.trim() }));
     const m = /^Free spins · Remaining: (\d+)$/.exec(r.line);
     if (m) { seen.samples++; if (m[1] !== r.left) seen.mismatch.push(`${r.left} vs "${r.line}"`); }
-    else if (!/^(Win|Credit): |^Scatters |^\+\d|^Free spins complete$/.test(r.line) && !seen.tips.includes(r.line)) seen.tips.push(r.line);
+    // The base game's resting tips (main.js tips()); bonus lines of their own (wins, scatter
+    // counts, "Retrigger Catch") are the bonus talking and are fine.
+    else if (/^Minimum \d+ matches|^Tumbles keep paying|^Multipliers up to|scatters award|^Buy feature available|^Win up to|^Hold space/.test(r.line) && !seen.tips.includes(r.line)) seen.tips.push(r.line);
     await sleep(60);
   }
   check("vault: the feature ends on its outro", await featureOpen(page));
@@ -135,6 +145,99 @@ async function buy(page) {
   check("vault: a held Space there starts no autoplay", !(await page.evaluate(() => window.__spinLifecycle.autoplayActive)));
   await untilIdle(page, 170000);
   check("vault: no failed request through two features", page.missing.length === 0, page.missing.slice(0, 3).join(", "));
+  await page.close();
+}
+
+// 4a. The words for each kind of failure (one function, shared by every game).
+{
+  const page = await open("classic");
+  const said = await page.evaluate(() => {
+    const f = window.LuminaShell.roundNotPlayed, E = (message, code) => Object.assign(new Error(message), code ? { code } : {});
+    return {
+      chrome: f(new TypeError("Failed to fetch")), safari: f(new TypeError("Load failed")), firefox: f(new TypeError("NetworkError when attempting to fetch resource.")),
+      games: f(E("NETWORK: connection lost")), funds: f(E("INSUFFICIENT_FUNDS")), session: f(E("SESSION_EXPIRED", "SESSION_EXPIRED")),
+      bet: f(E("INVALID_BET", "INVALID_BET")), other: f(E("CHOICE_REQUIRED", "CHOICE_REQUIRED")), plain: f(new Error("boom"))
+    };
+  });
+  const want = { chrome: "No connection: round not played", safari: "No connection: round not played", firefox: "No connection: round not played", games: "No connection: round not played",
+    funds: "Not enough credit for this bet", session: "Session ended: please reopen the game", bet: "Bet not accepted: choose another bet",
+    other: "Round not played (CHOICE_REQUIRED)", plain: "Round not played: please try again" };
+  for (const k of Object.keys(want)) check(`round not played, ${k}: "${want[k]}"`, said[k] === want[k], said[k]);
+  await page.close();
+}
+
+// 4. A spin the server never answers, in every game.
+for (const game of GAMES) {
+  const page = await open(game);
+  const read = () => page.evaluate(() => ({ line: document.getElementById("psTicker").textContent.trim(), bal: document.getElementById("footerBalance").textContent.trim(), busy: window.__spinLifecycle.inFlight }));
+  const before = await read();
+  // The connection is down: every spin request fails after 3.6 s (past the 3 s waiting line),
+  // retries included, until the game gives up. Vault 20K's in-page engine, the other games'
+  // fetch (their demo answers it in the page).
+  await page.evaluate((isVault) => {
+    window.__down = true;
+    const fail = () => new Promise((_, rej) => setTimeout(() => rej(new TypeError("Failed to fetch")), 3600));
+    if (isVault) {
+      const proto = window.SlotEngine.SpinEngine.prototype, spin = proto.spin;
+      proto.spin = function (...a) { return window.__down ? fail() : spin.apply(this, a); };
+    } else {
+      const f = window.fetch;
+      window.fetch = function (input, ...rest) {
+        if (window.__down && String(input?.url || input).includes("/game/v1/spin")) return fail();
+        return f.call(this, input, ...rest);
+      };
+    }
+  }, game === "vault");
+  await page.tap("#spinBtn");
+  const said = await page.waitForFunction(() => document.getElementById("psTicker").textContent.trim() === "No connection: round not played", { timeout: 30000, polling: 50 }).then(() => true, () => false);
+  await page.evaluate(() => { window.__down = false; });
+  check(`${game}: a lost round says "No connection: round not played"`, said, (await read()).line);
+  await untilIdle(page, 10000);
+  check(`${game}: ...and leaves the balance as it was`, (await read()).bal === before.bal, `${before.bal} -> ${(await read()).bal}`);
+  await sleep(4500); // the notice has had its time
+  await page.tap("#spinBtn");
+  const played = await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 8000 }).then(() => true, () => false);
+  await untilIdle(page, 60000);
+  check(`${game}: the next round plays`, played);
+  const after = (await read()).line;
+  if (game !== "vault") check(`${game}: no waiting line left over after it`, !/Waiting for the server/.test(after), after); // Vault 20K shows none
+  await page.close();
+}
+
+// 5. Long numbers fit their readouts on a small phone, upright and on its side, in every game.
+for (const game of GAMES) for (const [w, h] of [[320, 568], [667, 375]]) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: w, height: h, isMobile: true, hasTouch: true });
+  await page.goto(`${base}/${game}/?intro=0`, { waitUntil: "networkidle0" });
+  await page.waitForFunction(() => document.body.classList.contains("app-ready"), { timeout: 30000 });
+  const clipped = await page.evaluate(async () => {
+    const out = [], tick = () => new Promise((r) => setTimeout(r, 0));
+    const ink = (n) => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect(); }; // the text itself
+    const [bal, bet, win] = ["footerBalance", "footerBet", "footerWin"].map((id) => document.getElementById(id));
+    const old = [bal, bet, win].map((n) => n.textContent);
+    for (const n of [bal, win]) {
+      for (const v of ["1,234,567.89", "12,345,678.90", "123,456,789.01", "1,234,567,890.12"]) {
+        n.textContent = v;
+        await tick();
+        if (n.scrollWidth > n.clientWidth + 0.5) out.push(`${n.id} ${v}`);
+        if (parseFloat(getComputedStyle(n).fontSize) < 12) out.push(`${n.id} ${v} below 12 px`);
+      }
+    }
+    // Bet (the narrow centre column) beside a long balance and win: on screen, apart, ≥ 12 px.
+    bal.textContent = "1,234,567.89"; win.textContent = "1,234,567.89";
+    for (const v of ["1.00", "100.00", "1,000.00", "10,000.00", "100,000.00"]) {
+      bet.textContent = v;
+      await tick();
+      const b = ink(bet), l = ink(bal), w = ink(win);
+      if (b.left < 0 || b.right > innerWidth) out.push(`Bet ${v} off screen`);
+      const meet = (p, q) => p.left < q.right + 2 && p.right > q.left - 2 && p.top < q.bottom && p.bottom > q.top;
+      if (meet(b, l) || meet(b, w)) out.push(`Bet ${v} touches Balance or Win`);
+      if (parseFloat(getComputedStyle(bet).fontSize) < 12) out.push(`Bet ${v} below 12 px`);
+    }
+    [bal, bet, win].forEach((n, i) => { n.textContent = old[i]; });
+    return out;
+  });
+  check(`${game}: numbers up to 1.2 billion fit their readouts at ${w}×${h}`, clipped.length === 0, clipped.slice(0, 3).join(", "));
   await page.close();
 }
 
