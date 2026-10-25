@@ -123,7 +123,7 @@ jobs:
       - run: npm ci
       - run: |
           set -o pipefail
-          (node tools/probes/theme-lint.mjs && node tools/probes/chrome-identity.mjs && node tools/probes/lumina-parity.mjs && node tools/probes/symbol-sheet.mjs) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
+          (node tools/probes/theme-lint.mjs && node tools/probes/chrome-identity.mjs && node tools/probes/lumina-parity.mjs && node tools/probes/symbol-sheet.mjs && node tools/probes/phone-anomalies.mjs) 2>&1 | tee "$RUNNER_TEMP/lumina.log"
       - name: Failure lines as annotations
         if: failure()
         run: |

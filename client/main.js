@@ -5039,6 +5039,9 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
     shell.featureHud(spins > 0 ? { left: spins, win: total, label: "Spins", winLabel: mult > 0 ? `Bonus ×${Number.isInteger(mult) ? mult : mult.toFixed(1)}` : "Bonus win" } : null);
     if (spins <= 0 && el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
   }
+  ticker.refresh(); // a resting line follows the bonus starting or ending (tips() reads it)
+  // A retrigger mid-spin: the spin line follows the readout's new count.
+  if (state.bonusAutoplay && ticker.mode === "spin" && spins > 0) ticker.say(`Free spins · Remaining: ${spins}`);
   // Bonus total-multiplier badge over the top of the reels — the signature
   // bonus element (and the multiplier display on mobile, where the HUD column
   // is hidden). Its glow tier scales with the multiplier, and it pops on
@@ -6909,6 +6912,9 @@ async function spin(options = {}) {
   el.spinBtn?.classList.remove("is-fast-stopping");
   setControls(true);
   ticker.roundStart();
+  // A free spin is used as it starts: the Spins readout counts what is left after it, as the
+  // message line does and as the other games count (the round's answer confirms it).
+  if (state.bonusAutoplay && state.shellFeatureHud && el.footerBet) el.footerBet.textContent = String(freeSpinsRemainingAfter(el.freeSpins?.textContent));
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
@@ -6998,6 +7004,9 @@ async function spin(options = {}) {
     // blocked until the whole lifecycle (including bonus autoplay) settles.
     if (manual) spinLock.release();
     if (!state.bonusAutoplay) setControls(false);
+    // The readout counted this free spin as used when it started; after the answer (or a
+    // refusal) it shows what the session holds.
+    if (state.bonusAutoplay && state.shellFeatureHud && el.footerBet) el.footerBet.textContent = String(Number(el.freeSpins?.textContent) || 0);
     ticker.roundEnd();
     freeRoundsUi.settle(); // after roundEnd, so a completion line wins over the tips
     state.roundSettledAt = performance.now();
@@ -7054,6 +7063,7 @@ async function autoplayBonus() {
     window.Sound?.setMusic("base");
     embedEmit("featureState", { active: false, free_spins_left: Number(el.freeSpins.textContent || 0), bonus_win: total });
     state.bonusAutoplay = false;
+    ticker.refresh();
     // Clear any fast-stop latched on the final free spin so the next base-game
     // spin does not inherit it and play out instantly.
     state.fastStopRequested = false;
@@ -7719,7 +7729,10 @@ function renderInfoRules() {
 VxNotify.register("feature", el.featureScreen, {
   kind: "feature",
   visibility: "class",
-  dismiss: { anywhere: "tap" },
+  dismiss: { anywhere: "tap", enter: "tap" }, // Space / Spin: spinHoldStart
+  // Enter continues it only when it is the player's focus: not under an open sheet, and not
+  // on another control (a focused menu row or bet button keeps its own Enter).
+  onKey: (e) => e.key === "Enter" && (VxNotify.anyModalOpen() || Boolean(e.target?.closest?.("button, a, input, select, textarea") && e.target !== el.spinBtn)),
   fill: (slots, d) => {
     if (slots.kicker) slots.kicker.textContent = d.kicker ?? "Feature";
     if (slots.title) slots.title.textContent = d.title ?? "";
@@ -7782,6 +7795,10 @@ const ticker = (() => {
       const n = freeRounds.remaining;
       return [`${n} Free Round${n === 1 ? "" : "s"} left · Bet ${fmt(freeRounds.bet)}`];
     }
+    // Between free spins the bonus is the message: no base-game tips (the buy is off then).
+    const fsLeft = Number(el.freeSpins?.textContent) || 0;
+    if (fsLeft > 0) return [`Free spins · Remaining: ${fsLeft}`];
+    if (state.bonusAutoplay) return ["Free spins complete"]; // the last one played, the outro next
     const r = state.rules || {};
     const f = r.features || {};
     const out = [`Minimum ${Number(r.layout?.min_match_count) || 8} matches to win`];
@@ -8031,6 +8048,8 @@ const yieldTask = (fn) => { const ch = new MessageChannel(); ch.port1.onmessage 
 
 function spinHoldStart(source, at = performance.now()) {
   if (spinHold.active || el.spinBtn.disabled) return;
+  // The feature screen up (intro / outro): Spin means "continue", as on the shared panel.
+  if (VxNotify.isOpen("feature")) { dismissFeature(); if (state.autoplayActive) stopAutoplay(); return; }
   spinHold.active = true;
   spinHold.source = source;
   spinHold.fired = false;

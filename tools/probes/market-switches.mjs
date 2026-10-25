@@ -76,10 +76,13 @@ async function run(game, market) {
     const panic = document.querySelector(".lsh-panic");
     return { autoplay: vis("autoplayBtn"), turbo: vis("turboBtn"), buy: vis("buyFreeBtn"), panic: Boolean(panic) && !panic.hidden && panic.getBoundingClientRect().height >= 40, betLabel: document.querySelector('.lsh [data-k="bet"]')?.textContent || "", rtp: (() => { const n = document.querySelector(".lsh-rtp"); return n && !n.hidden && n.getBoundingClientRect().width > 0 ? n.textContent.replace(/\s+/g, " ").trim() : ""; })() };
   });
-  // Three rounds, each pressed the moment the game is idle again: the gaps between the
+  // Three paid rounds, each pressed the moment the game is idle again: the gaps between the
   // rounds' answers must keep the market's minimum (the client paces; it never queues).
+  // A press that lands in a feature plays a free spin (never paced, not counted), so press
+  // until three paid rounds are in (at most 8 presses).
   const slams = [];
-  for (let i = 0; i < 3; i++) {
+  const paid = () => page.evaluate(() => (window.__luminaRounds || window.__rounds || []).length);
+  for (let i = 0; i < 8 && (i < 3 || (await paid()) < 3); i++) {
     await untilIdle(page, 240000);
     const press = () => page.evaluate(() => { const b = document.getElementById("spinBtn"); b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 })); });
     await press();
