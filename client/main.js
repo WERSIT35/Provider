@@ -5039,6 +5039,7 @@ function updateBonusHud({ freeSpinsLeft, multiplier, bonusTotal }) {
     shell.featureHud(spins > 0 ? { left: spins, win: total, label: "Spins", winLabel: mult > 0 ? `Bonus ×${Number.isInteger(mult) ? mult : mult.toFixed(1)}` : "Bonus win" } : null);
     if (spins <= 0 && el.footerBet && el.betView) el.footerBet.textContent = freeRoundsReadoutText() ?? el.betView.textContent;
   }
+  ticker.refresh(); // a resting line follows the bonus starting or ending (tips() reads it)
   // Bonus total-multiplier badge over the top of the reels — the signature
   // bonus element (and the multiplier display on mobile, where the HUD column
   // is hidden). Its glow tier scales with the multiplier, and it pops on
@@ -6909,6 +6910,9 @@ async function spin(options = {}) {
   el.spinBtn?.classList.remove("is-fast-stopping");
   setControls(true);
   ticker.roundStart();
+  // A free spin is used as it starts: the Spins readout counts what is left after it, as the
+  // message line does and as the other games count (the round's answer confirms it).
+  if (state.bonusAutoplay && state.shellFeatureHud && el.footerBet) el.footerBet.textContent = String(freeSpinsRemainingAfter(el.freeSpins?.textContent));
   try {
     const bet = Number(el.betSelect.value || 1);
     el.betView.textContent = fmt(bet);
@@ -7782,6 +7786,10 @@ const ticker = (() => {
       const n = freeRounds.remaining;
       return [`${n} Free Round${n === 1 ? "" : "s"} left · Bet ${fmt(freeRounds.bet)}`];
     }
+    // Between free spins the bonus is the message: no base-game tips (the buy is off then).
+    const fsLeft = Number(el.freeSpins?.textContent) || 0;
+    if (fsLeft > 0) return [`Free spins · Remaining: ${fsLeft}`];
+    if (state.bonusAutoplay) return ["Free spins complete"]; // the last one played, the outro next
     const r = state.rules || {};
     const f = r.features || {};
     const out = [`Minimum ${Number(r.layout?.min_match_count) || 8} matches to win`];

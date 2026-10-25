@@ -6,6 +6,9 @@
 //      there (the games without an icon link asked for /favicon.ico on every load).
 //   2. Vault 20K's feature screen (free-spins intro / outro) continues on Spin, Space and
 //      Enter, as the shared panel does in the other games: a phone player taps Spin there.
+//   3. Vault 20K's free spins: the Spins readout and the message line give the same count
+//      (the readout lagged one spin behind), and the line shows no base-game tips between
+//      free spins ("Buy feature available" while the buy is off).
 //
 //   CHROME_PATH=… node tools/probes/phone-anomalies.mjs
 //
@@ -83,7 +86,19 @@ async function buy(page) {
   await sleep(400);
   check("vault: Spin continues the intro", !(await featureOpen(page)));
   check("vault: ...and the free spins run", await page.evaluate(() => window.__spinLifecycle.inFlight));
-  check("vault: the feature ends on its outro", await waitFeature(page, 170000));
+  // Sample the free spins until the outro opens.
+  const seen = { mismatch: [], tips: [], samples: 0 };
+  for (const t0 = Date.now(); Date.now() - t0 < 170000 && !(await featureOpen(page));) {
+    const r = await page.evaluate(() => ({ left: document.getElementById("footerBet").textContent.trim(), line: document.getElementById("psTicker").textContent.trim() }));
+    const m = /^Free spins · Remaining: (\d+)$/.exec(r.line);
+    if (m) { seen.samples++; if (m[1] !== r.left) seen.mismatch.push(`${r.left} vs "${r.line}"`); }
+    else if (!/^(Win|Credit): |^Scatters |^\+\d|^Free spins complete$/.test(r.line) && !seen.tips.includes(r.line)) seen.tips.push(r.line);
+    await sleep(60);
+  }
+  check("vault: the feature ends on its outro", await featureOpen(page));
+  check("vault: the free spins were sampled", seen.samples > 10, String(seen.samples));
+  check("vault: the Spins readout and the message line give the same count", seen.mismatch.length === 0, seen.mismatch.slice(0, 3).join(", "));
+  check("vault: no base-game tips between free spins", seen.tips.length === 0, seen.tips.slice(0, 3).join(" / "));
   await page.keyboard.press("Enter");
   await sleep(400);
   check("vault: Enter continues the outro", !(await featureOpen(page)));
