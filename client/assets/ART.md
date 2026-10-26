@@ -20,8 +20,16 @@ from another game, provider or brand, and no prompt named one.
 | `Feature*.webp`, `sm/Feature.webp` | The same chamber with the Golden Fleece (free spins) | `chamber_fleece_*.webp` |
 | `Frame.webp` | The board frame: a 9-slice of the bead rail and the ram corner block | `rail.webp`, `corner.webp` |
 
-Not used yet (the art effects, a later change): `fx_splash`, `fx_swirl`, `fx_shards`, `fx_glint`,
-`fx_flare` (frame strips, 256 px cells, additive on black), `fx_beam`, `drop`, `logo`.
+Effects (`client/assets/fx/`):
+
+| Client file | What it is | Master |
+|---|---|---|
+| `splash.webp`, `shards`, `glint`, `swirl`, `flare` | The board effects, frame by frame (one row of 192 px cells) | `fx_*.webp` (generated sheets, cut on their grid) |
+| `beam.webp` | The sunbeam of the multiplier reveal (stretched along its length) | `fx_beam.webp` |
+
+Not used yet: `drop`, `coin_face`, `coin_edge` (the big-win coin shower), `logo`. The effect
+strips are light on black turned into light with alpha (alpha = brightness, colour un-blended),
+so they add up correctly over the transparent board.
 
 Cutting: objects rendered on black were cut with a flood from the image border; the body is
 opaque and the soft bloom around it is un-blended from black (alpha = brightness), so a glow

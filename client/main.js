@@ -220,6 +220,13 @@ const uiAssets = {
 // before the screen opens, and it is warm long before a first bonus in practice.
 const deferredUiAssets = {
   UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp",
+  // The art effects (ArtFx): first needed at the first win, loaded right after the reveal.
+  FX_SPLASH: "assets/fx/splash.webp",
+  FX_SHARDS: "assets/fx/shards.webp",
+  FX_GLINT: "assets/fx/glint.webp",
+  FX_SWIRL: "assets/fx/swirl.webp",
+  FX_FLARE: "assets/fx/flare.webp",
+  FX_BEAM: "assets/fx/beam.webp",
   // The chamber with the Golden Fleece (free spins), same query as the CSS.
   UI_FEATURE_SCENE: PHONE_ART ? symbolArt("Feature.webp")
     : `assets/symbols/${window.matchMedia?.("(orientation: portrait)").matches ? "Feature-portrait.webp" : "Feature.webp"}`
@@ -933,6 +940,58 @@ function detectDeviceTier() {
 const SHARD = { GEM: 0, GOLD: 1, STEEL: 2, SPARK: 3, FLASH: 4, DUST: 5 };
 const SHARD_SPRITE_PX = 48;
 
+// The art effects (client/assets/ART.md): the owner's frame-by-frame sheets, one row of
+// square cells on black, drawn additively (black = nothing). Every effect on the board is
+// one of these; the reels' own motion is the only other animation.
+const ART_FX = {
+  splash: { key: "FX_SPLASH", frames: 14, fps: 30 }, // a symbol of gold bursts
+  shards: { key: "FX_SHARDS", frames: 11, fps: 28 }, // a gem shatters
+  glint: { key: "FX_GLINT", frames: 7, fps: 22 },    // a winning symbol catches the light
+  swirl: { key: "FX_SWIRL", frames: 9, fps: 20 },    // a scatter lands / locks on
+  flare: { key: "FX_FLARE", frames: 14, fps: 30 }    // the sunbeam burns the plate in
+};
+
+class ArtFx {
+  constructor(images, wake) {
+    this.images = images;
+    this.wake = wake;
+    this.items = [];
+  }
+
+  get live() { return this.items.length; }
+
+  /** Play sheet `name` centred on (x, y), `size` CSS px square, from `start` (ms,
+   *  performance clock; later = a delayed start) for `loops` passes. */
+  play(name, x, y, size, start = performance.now(), { fps, loops = 1 } = {}) {
+    const def = ART_FX[name];
+    if (!def || this.items.length >= 160) return;
+    this.items.push({ def, x, y, size, start, fps: fps || def.fps, loops });
+    this.wake?.();
+  }
+
+  clear() { this.items.length = 0; }
+
+  draw(ctx, now) {
+    if (!this.items.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 1;
+    let keep = 0;
+    for (const it of this.items) {
+      const f = Math.floor(((now - it.start) * it.fps) / 1000);
+      if (f >= it.def.frames * it.loops) continue; // done: dropped
+      this.items[keep++] = it;
+      if (f < 0) continue; // not started yet
+      const img = this.images.get(it.def.key);
+      if (!img?.complete || !img.naturalWidth) continue;
+      const cell = img.naturalHeight;
+      ctx.drawImage(img, (f % it.def.frames) * cell, 0, cell, cell, it.x - it.size / 2, it.y - it.size / 2, it.size, it.size);
+    }
+    this.items.length = keep;
+    ctx.restore();
+  }
+}
+
 class ShardEmitter {
   constructor(capacity = 480) {
     this.cap = capacity;
@@ -1233,8 +1292,8 @@ class ReelCanvasRenderer {
     let particles = watchArray([]);
     Object.defineProperty(this, "particles", { get: () => particles, set: (v) => { particles = watchArray(v); } });
     this.shards = new ShardEmitter(480);
-    const shardAdd = this.shards.add.bind(this.shards);
-    this.shards.add = (...a) => { this.wake(); return shardAdd(...a); };
+    this.shards.add = () => {}; // the burst is art now (ArtFx); nothing is emitted
+    this.art = new ArtFx(this.images, () => this.wake());
     // Win focus (FOCUS): `set` = the focused cells (null = none, dims all).
     this.focus = { ...makeEnvelope(), set: null };
     // Multipliers that landed on a chain with no win (A6): they fade, nothing is applied.
@@ -2493,7 +2552,8 @@ class ReelCanvasRenderer {
       this.fx.bangs.length ||
       this.fx.rays.length ||
       this.particles.length ||
-      this.shards.live > 0
+      this.shards.live > 0 ||
+      this.art.live > 0
     );
   }
 
@@ -2936,6 +2996,7 @@ class ReelCanvasRenderer {
   }
 
   /** Canvas layer for 5a reticles and the 5c/5d lock-on (over the symbols). */
+  // Not drawn since the art effects (ArtFx, syncArtFx); removed with the old spawners next.
   drawScatterLocks(ctx, radius) {
     const now = performance.now();
     const spinOk = !this._reducedMotion;
@@ -3023,6 +3084,50 @@ class ReelCanvasRenderer {
         ctx.fillRect(x + 2, sy, laneW - 4, 2);
       }
     }
+  }
+
+  /** Start the art effects for what the round just did (ArtFx): each event fires
+   *  once, at its own time. Winners glint during the hold; a burst splashes (gold) or
+   *  shatters (gems) cell by cell with the burst's stagger; a scatter's reticle and the
+   *  trigger lock-on swirl on the scatters. Reduced motion: no effects. */
+  syncArtFx({ padX, top, laneW, rowStep }) {
+    if (this._reducedMotion) return;
+    const cell = Math.min(laneW, rowStep);
+    const at = (key) => { const [r, c] = key.split("-").map(Number); return [padX + laneW * (c + 0.5), top + rowStep * (r + 0.5), r, c]; };
+    const p = this.fx.pulse;
+    if (p && p !== this._artPulse) {
+      this._artPulse = p;
+      const every = 650;
+      for (const key of this.board.winningSet || []) {
+        const [x, y] = at(key);
+        for (let t = Math.random() * 250; t < p.duration - 200; t += every + Math.random() * 300) {
+          this.art.play("glint", x - cell * 0.18 + Math.random() * cell * 0.36, y - cell * 0.22 + Math.random() * cell * 0.3, cell * 0.8, p.start + t);
+        }
+      }
+    }
+    const b = this.fx.blast;
+    if (b && b !== this._artBlast) {
+      this._artBlast = b;
+      for (const key of b.set) {
+        const [x, y, r, c] = at(key);
+        const sym = String(this.board.matrix?.[r]?.[c] || "");
+        const gem = /GEM|TRIANGLE|HEX|DIAMOND/.test(sym);
+        this.art.play(gem ? "shards" : "splash", x, y, cell * (gem ? 1.45 : 1.6), b.start + (b.delays?.get(key) || 0));
+      }
+    }
+    for (const q of this.fx.reticles) {
+      if (q.art) continue;
+      q.art = true;
+      this.art.play("swirl", q.x, q.y, cell * 1.5, q.born);
+    }
+    const L = this.fx.lockOn;
+    if (L && L !== this._artLock) {
+      this._artLock = L;
+      const loops = Math.max(1, Math.round(L.duration / ((ART_FX.swirl.frames * 1000) / ART_FX.swirl.fps)));
+      for (const q of L.cells) this.art.play("swirl", q.x, q.y, cell * 1.8, L.start, { loops });
+    }
+    // The old code layers' timers: lists drained, nothing else drawn for them.
+    if (this.fx.reticles.length) this.fx.reticles = this.fx.reticles.filter((q) => performance.now() - q.born < q.life);
   }
 
   _queueColumnStop(col, ms, glintRows = null) {
@@ -3141,92 +3246,38 @@ class ReelCanvasRenderer {
     }
   }
 
-  /** The reveal's light (vault-multiplier.md, storyboard A): an emitter flickers on the
-   *  LEFT frame rail at the cell's row, the beam fires sideways to the cell, its hot point
-   *  traces the plate's hexagon (the traced edge glows amber, sparks fall), and as the cut
-   *  closes the art turns into the plate under a short amber edge flash. Drawn ON TOP of
-   *  the cells, additive; the art itself never fades. Nothing comes from above. */
+  /** The reveal's light (vault-multiplier.md): a sunbeam (art, fx_beam) reaches sideways
+   *  from the LEFT frame rail to the cell while its burning point (fx_flare frames) plays
+   *  on the plate; as the cut closes the art turns into the plate. Additive, local to the
+   *  cell's row; nothing comes from above. Reduced motion: no beam, the swap only. */
   drawStrikes(ctx, { padX, top, laneW, rowStep }) {
     const d = this.fx.drop;
-    if (!d?.strikes?.length) return;
+    if (!d?.strikes?.length || this._reducedMotion) return;
+    const beam = this.images.get("FX_BEAM");
+    if (!beam?.complete || !beam.naturalWidth) return;
     const now = performance.now();
     const e = now - d.start;
-    const t = turboScale();
-    const calm = this._reducedMotion;
-    const flashMs = Math.max(60, Math.round(STRIKE.flashMs * (d.strikeQuick ? 0.5 : t)));
-    const R = plateGeom(laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH).R * 0.97;
+    const flashMs = Math.max(60, Math.round(STRIKE.flashMs * (d.strikeQuick ? 0.5 : turboScale())));
     const railX = Math.max(2, padX - Math.max(4, laneW * 0.06));
-    // Pointy-top hexagon, from the upper-left vertex, clockwise.
-    const vx = (cx, i) => cx + Math.cos((7 * Math.PI) / 6 + (i * Math.PI) / 3) * R;
-    const vy = (cy, i) => cy + Math.sin((7 * Math.PI) / 6 + (i * Math.PI) / 3) * R;
-    const trace = (cx, cy, k) => { // the outline up to fraction k; returns the hot point
-      ctx.beginPath();
-      ctx.moveTo(vx(cx, 0), vy(cy, 0));
-      const segs = 6 * clamp(k, 0, 1);
-      let hx = vx(cx, 0), hy = vy(cy, 0);
-      for (let i = 0; i < Math.ceil(segs); i += 1) {
-        const f = Math.min(1, segs - i);
-        hx = lerp(vx(cx, i), vx(cx, i + 1), f);
-        hy = lerp(vy(cy, i), vy(cy, i + 1), f);
-        ctx.lineTo(hx, hy);
-      }
-      return { hx, hy };
-    };
+    const thick = Math.min(laneW, rowStep) * 0.42;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
     for (const st of d.strikes) {
       const at = this._strikeAt(d, st);
       const peak = Math.max(1, this._strikeSwapAt(d, st) - at);
+      const u = e - at;
+      if (u < 0 || u >= peak + flashMs) continue;
       const cx = padX + laneW * (st.c + 0.5);
       const cy = top + rowStep * (st.r + 0.5);
-      // The emitter on the frame rail, flickering in just before the beam.
-      const flick = Math.round(STRIKE.flickerMs * t);
-      if (!calm && !d.strikeQuick && e >= at - flick && e < at) {
-        const k = (e - (at - flick)) / Math.max(1, flick);
-        ctx.globalAlpha = (0.4 + 0.5 * k) * (0.7 + 0.3 * Math.random());
-        ctx.fillStyle = STRIKE.beam;
-        ctx.beginPath(); ctx.arc(railX, cy, Math.max(1.5, R * 0.08), 0, Math.PI * 2); ctx.fill();
-      }
-      if (e < at || e >= at + peak + flashMs) continue;
-      const u = e - at;
-      const dim = calm ? 0.5 : 1;
-      if (u < peak) {
-        // Cutting: the traced edge (amber), then the beam from the rail to the hot point.
-        ctx.globalAlpha = 0.9 * dim;
-        ctx.strokeStyle = STRIKE.cut;
-        ctx.lineWidth = Math.max(1.5, R * 0.07);
-        const { hx, hy } = trace(cx, cy, u / peak);
-        ctx.stroke();
-        ctx.globalAlpha = 0.35 * dim;
-        ctx.strokeStyle = STRIKE.beam;
-        ctx.lineWidth = Math.max(3, R * 0.16);
-        ctx.beginPath(); ctx.moveTo(railX, cy); ctx.lineTo(hx, hy); ctx.stroke();
-        ctx.globalAlpha = dim;
-        ctx.strokeStyle = "#e9fffd";
-        ctx.lineWidth = Math.max(1, R * 0.035);
-        ctx.stroke();
-        if (!calm && this.particles.length < 260) {
-          this.particles.push({
-            x: hx, y: hy, vx: (Math.random() - 0.5) * 1.6, vy: -0.4 - Math.random() * 0.8,
-            life: 220 + Math.random() * 160, born: now, size: 0.8 + Math.random() * 1.1,
-            colorA: STRIKE.cut, colorB: "#fff3d6", mode: "shard", rot: Math.random() * Math.PI, spin: 0.1
-          });
-        }
-      } else {
-        // Closed: the cut edge's afterglow and a short local flash on the cell, fading.
-        const a = 1 - (u - peak) / flashMs;
-        ctx.globalAlpha = clamp(a, 0, 1) * 0.85 * dim;
-        ctx.strokeStyle = STRIKE.cut;
-        ctx.lineWidth = Math.max(1.5, R * 0.07);
-        trace(cx, cy, 1);
-        ctx.closePath();
-        ctx.stroke();
-        const flash = this.getGlowSprite(STRIKE.cut);
-        ctx.globalAlpha = clamp(a, 0, 1) * 0.45 * dim;
-        const fr = R * 1.25;
-        ctx.drawImage(flash.cvs, cx - fr, cy - fr, fr * 2, fr * 2);
+      // The beam grows from the rail to the cell over the first third, holds, and
+      // fades with the flash after the cut closes.
+      const reach = clamp(u / (peak * 0.35), 0, 1);
+      const a = u < peak ? 1 : 1 - (u - peak) / flashMs;
+      ctx.globalAlpha = clamp(a, 0, 1) * 0.9;
+      ctx.drawImage(beam, railX, cy - thick / 2, (cx - railX) * reach, thick);
+      if (!st.flared) {
+        st.flared = true;
+        this.art.play("flare", cx, cy, Math.min(laneW, rowStep) * 1.7, now, { fps: Math.max(18, (ART_FX.flare.frames * 1000) / (peak + flashMs)) });
       }
     }
     ctx.restore();
@@ -3447,13 +3498,6 @@ class ReelCanvasRenderer {
     // marks.
     ctx.drawImage(this.stageCacheFront.cvs, 0, 0, width, height);
 
-    if (this.fx.spinBurst) {
-      const t = clamp((performance.now() - this.fx.spinBurst.start) / this.fx.spinBurst.duration, 0, 1);
-      const a = (1 - t) * 0.22;
-      ctx.fillStyle = THEME.alpha(THEME.stage.spinFlash, a.toFixed(3));
-      ctx.fillRect(0, 0, width, height);
-    }
-
     // Live (animated) content. With no painted frame the glass edge IS the board
     // edge, and CSS already clips the canvas to it (.reels-stage: overflow hidden,
     // rounded), so there is no inner table clip any more: the old one cut the art of
@@ -3461,283 +3505,20 @@ class ReelCanvasRenderer {
     // symbols are still masked to the grid per cell (REEL_MASK).
     ctx.save();
 
-    // Falling-symbol streaks down each column — only while a drop is in flight.
-    if (this.fx.drop) {
-      for (let c = 0; c < this.cols; c += 1) {
-        const x = padX + laneW * (c + 0.5);
-        const streak = ctx.createLinearGradient(x, top * 0.15, x, top + rowStep * this.rows);
-        streak.addColorStop(0, "rgba(208, 233, 255, 0.18)");
-        streak.addColorStop(0.3, "rgba(178, 216, 255, 0.09)");
-        streak.addColorStop(1, "rgba(178, 216, 255, 0)");
-        ctx.strokeStyle = streak;
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(x, top * 0.1);
-        ctx.lineTo(x, top + rowStep * this.rows);
-        ctx.stroke();
-      }
-    }
+    // Effects are art (ArtFx: the owner's frame-by-frame sheets, client/assets/ART.md).
+    // The old code-drawn layers (rings, blooms, rays, particles, shards, flashes) are
+    // gone; their timers still pace the round, their spawned lists are just dropped.
+    this.fx.waves.length = 0; this.fx.shockwaves.length = 0; this.fx.sweeps.length = 0;
+    this.fx.impacts.length = 0; this.fx.bangs.length = 0; this.fx.rays.length = 0;
+    this.particles.length = 0; this.shards.live = 0; this.shards.dust = 0;
+    this.syncArtFx({ padX, top, laneW, rowStep });
 
-    const pulse = this.fx.pulse
-      ? clamp((performance.now() - this.fx.pulse.start) / this.fx.pulse.duration, 0, 1)
-      : 0;
-    // Celebration glow: quick attack, then SUSTAIN at a high plateau with a
-    // gentle shimmer for the whole (now multi-second) hold, then a short
-    // release at the tail. The old curve faded back to 0 by the end, so a 2.5s
-    // celebration visibly "died" before the explosion — this keeps the caught
-    // cluster alive and breathing right up until it bursts.
-    const pulseGlow = this.fx.pulse
-      ? (() => {
-          const attack = 0.1;
-          const release = 0.16;
-          const plateau = 0.84;
-          let env;
-          if (pulse < attack) env = easeOutCubic(pulse / attack);
-          else if (pulse > 1 - release) env = 1 - easeInOutCubic((pulse - (1 - release)) / release);
-          else env = 1;
-          const shimmer = 0.16 * (0.5 + 0.5 * Math.sin((performance.now() - this.fx.pulse.start) * 0.011));
-          return clamp(env * (plateau + shimmer), 0, 1);
-        })()
-      : 0;
-    const blast = this.fx.blast
-      ? clamp((performance.now() - this.fx.blast.start) / this.fx.blast.duration, 0, 1)
-      : 0;
-    const multiCatch = this.fx.multiCatch
-      ? clamp((performance.now() - this.fx.multiCatch.start) / this.fx.multiCatch.duration, 0, 1)
-      : 0;
-    // Elastic overshoot for multiplier catch — feels like a snap-grab.
-    const multiCatchPulse = this.fx.multiCatch
-      ? (multiCatch < 0.45
-          ? easeOutElastic(multiCatch / 0.45)
-          : 1 - easeOutCubic((multiCatch - 0.45) / 0.55))
-      : 0;
-    const reelSlamProgress = this.fx.reelSlam
-      ? clamp((performance.now() - this.fx.reelSlam.start) / this.fx.reelSlam.duration, 0, 1)
-      : 0;
-    const reelSlamWave = this.fx.reelSlam
-      ? Math.sin(reelSlamProgress * Math.PI * 3.4) * (1 - reelSlamProgress) * this.fx.reelSlam.force
-      : 0;
-
-    if (this.fx.waves.length) {
-      // Cluster-blast shockwave (#54): a thin ring riding the wave's front,
-      // fading as it spreads. The symbols it passes light up in the cell pass.
-      const now = performance.now();
-      this.fx.waves = this.fx.waves.filter((w) => now - w.born < w.life);
-      for (const w of this.fx.waves) {
-        const t = clamp((now - w.born) / w.life, 0, 1);
-        ctx.globalAlpha = 0.5 * (1 - t) * (1 - t);
-        ctx.strokeStyle = w.color;
-        ctx.lineWidth = Math.max(1.2, w.band * 0.22 * (1 - t));
-        ctx.beginPath();
-        ctx.arc(w.x, w.y, Math.max(1, w.reach * easeOutCubic(t)), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    if (this.fx.shockwaves.length) {
-      const now = performance.now();
-      this.fx.shockwaves = this.fx.shockwaves.filter((w) => now - w.born < w.life);
-      this.fx.shockwaves.forEach((w) => {
-        const t = clamp((now - w.born) / w.life, 0, 1);
-        if (w.crunch) {
-          // Thicker, darker-edged crunch ring for explode impact.
-          const r = radius * (0.6 + t * 1.2);
-          ctx.globalAlpha = (1 - t) * 0.72;
-          ctx.strokeStyle = w.color || "rgba(255, 240, 196, 0.95)";
-          ctx.lineWidth = Math.max(2, radius * 0.12 * (1 - t * 0.5));
-          ctx.shadowColor = "rgba(20, 12, 6, 0.6)";
-          ctx.shadowBlur = 12 * (1 - t);
-          ctx.beginPath();
-          ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          return;
-        }
-        const r = radius * (0.8 + t * 3.4);
-        ctx.globalAlpha = (1 - t) * 0.52;
-        ctx.strokeStyle = w.color || "rgba(182, 219, 255, 0.9)";
-        ctx.lineWidth = Math.max(1.4, radius * 0.07 * (1 - t * 0.6));
-        ctx.beginPath();
-        ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
-        ctx.stroke();
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    // Wave-front sweep across the winning bounding box (great-tier explodes).
-    if (this.fx.sweeps.length) {
-      const now = performance.now();
-      this.fx.sweeps = this.fx.sweeps.filter((s) => now - s.start < s.duration);
-      this.fx.sweeps.forEach((s) => {
-        const t = clamp((now - s.start) / s.duration, 0, 1);
-        const bbox = s.bbox;
-        const sweepW = (bbox.maxX - bbox.minX) * 0.55;
-        const cx = bbox.minX + t * (bbox.maxX - bbox.minX + sweepW) - sweepW * 0.5;
-        const grad = ctx.createLinearGradient(cx - sweepW, 0, cx + sweepW, 0);
-        const peak = (1 - Math.abs(t - 0.5) * 2) * 0.45;
-        grad.addColorStop(0, "rgba(255, 255, 255, 0)");
-        grad.addColorStop(0.5, s.color);
-        grad.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = peak;
-        ctx.fillStyle = grad;
-        ctx.fillRect(bbox.minX - sweepW, bbox.minY, (bbox.maxX - bbox.minX) + sweepW * 2, bbox.maxY - bbox.minY);
-        ctx.restore();
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    // Cluster Resonance Bloom — phase-driven celebration for winning clusters.
-    if (this.fx.cluster) {
-      const now = performance.now();
-      const c = this.fx.cluster;
-      const t = clamp((now - c.start) / c.duration, 0, 1);
-      // Phase 1: centroid iris (0 → 0.08)
-      if (t < 0.12) {
-        const iT = t / 0.12;
-        const r = radius * (0.4 + iT * 0.9);
-        ctx.save();
-        ctx.globalAlpha = (1 - iT) * 0.85;
-        ctx.strokeStyle = c.tone[0] || "rgba(255, 240, 196, 0.95)";
-        ctx.lineWidth = Math.max(2, radius * 0.10);
-        ctx.beginPath();
-        ctx.arc(c.centroid.x, c.centroid.y, r, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = (1 - iT) * 0.5;
-        ctx.lineWidth = Math.max(1.5, radius * 0.06);
-        ctx.beginPath();
-        ctx.arc(c.centroid.x, c.centroid.y, r * 1.7, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-      // Phase 2: subtle energy bloom — smaller radius, lower alpha, no
-      // screen-blend cascade. Just a brief glow at the cluster center.
-      if (t >= 0.05 && t < 0.7) {
-        const bT = clamp((t - 0.05) / 0.65, 0, 1);
-        const diag = Math.hypot(c.bbox.maxX - c.bbox.minX, c.bbox.maxY - c.bbox.minY);
-        const rOuter = (diag * 0.5) * (0.45 + bT * 0.7);
-        const alphaProfile = bT < 0.5 ? bT / 0.5 : 1 - (bT - 0.5) / 0.5;
-        const peakAlpha = c.tier === "blast-great" ? 0.55 : 0.35;
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        const bloom = ctx.createRadialGradient(c.centroid.x, c.centroid.y, 0, c.centroid.x, c.centroid.y, rOuter);
-        bloom.addColorStop(0, `rgba(255, 250, 220, ${(0.45 * alphaProfile).toFixed(3)})`);
-        bloom.addColorStop(0.5, c.tone[0]);
-        bloom.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.globalAlpha = peakAlpha * alphaProfile;
-        ctx.fillStyle = bloom;
-        ctx.beginPath();
-        ctx.arc(c.centroid.x, c.centroid.y, rOuter, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      if (t >= 1) this.fx.cluster = null;
-    }
-
-    // Spotlight dim — draws a darkening overlay during epic+ events so the
-    // active cells visually pop. The envelope fades in then out over the
-    // spotlight's full duration.
-    let spotlightAlpha = 0;
-    if (this.fx.spotlight) {
-      const t = clamp((performance.now() - this.fx.spotlight.start) / this.fx.spotlight.duration, 0, 1);
-      const env = t < 0.2 ? t / 0.2 : t > 0.85 ? (1 - t) / 0.15 : 1;
-      spotlightAlpha = clamp(env * (this.fx.spotlight.intensity || 0.5), 0, 0.9);
-      if (spotlightAlpha > 0) {
-        ctx.fillStyle = `rgba(2, 5, 12, ${spotlightAlpha.toFixed(3)})`;
-        ctx.fillRect(0, 0, width, height);
-      }
-    }
-
-    // Heavy-drop falls completely silent — no beam, no comet, no glow. The
-    // player gets no telegraph that a big multiplier is incoming; the symbol
-    // is concealed during descent and the BANG on landing is the reveal.
-
-    // Heavy-impact ground rings — drawn as hard flashing rings on top of
-    // shockwaves at the landing cell with a ground-flash ellipse.
-    if (this.fx.impacts.length) {
-      const now = performance.now();
-      this.fx.impacts = this.fx.impacts.filter((im) => now - im.born < im.life);
-      this.fx.impacts.forEach((im) => {
-        const t = clamp((now - im.born) / im.life, 0, 1);
-        const ringR = radius * (0.5 + t * 3.0 * im.heaviness);
-        ctx.globalAlpha = (1 - t) * 0.6;
-        ctx.strokeStyle = im.tier.accent;
-        ctx.lineWidth = Math.max(2, radius * 0.12 * (1 - t * 0.7));
-        ctx.beginPath();
-        ctx.arc(im.x, im.y, ringR, 0, Math.PI * 2);
-        ctx.stroke();
-        // Ground flash ellipse — short-lived.
-        if (t < 0.35) {
-          const fT = t / 0.35;
-          ctx.globalAlpha = (1 - fT) * 0.42;
-          const flashGrad = ctx.createRadialGradient(im.x, im.y, 0, im.x, im.y, radius * 1.8);
-          flashGrad.addColorStop(0, "rgba(255, 255, 255, 1)");
-          flashGrad.addColorStop(0.4, im.tier.accent);
-          flashGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-          ctx.fillStyle = flashGrad;
-          ctx.beginPath();
-          ctx.ellipse(im.x, im.y + radius * 0.5, radius * 1.7, radius * 0.6, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    // BANG flashes — short, intense, tier-colored radial bursts on impact.
-    if (this.fx.bangs.length) {
-      const now = performance.now();
-      this.fx.bangs = this.fx.bangs.filter((b) => now - b.born < b.life);
-      this.fx.bangs.forEach((b) => {
-        const t = clamp((now - b.born) / b.life, 0, 1);
-        const env = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
-        const a = clamp(env, 0, 1);
-        // Localised impact light (it used to white out the whole frame and
-        // bloom across the canvas): a tier-coloured bloom about two cells
-        // across plus a white-hot core, centred on the landing cell.
-        const r = radius * (1.6 + 0.6 * b.heaviness) * (0.85 + 0.15 * a);
-        const bloom = this.getGlowSprite(b.tier.accent);
-        const core = this.getGlowSprite("#ffffff");
-        ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = a * 0.9;
-        ctx.drawImage(bloom.cvs, b.x - r, b.y - r, r * 2, r * 2);
-        ctx.globalAlpha = a * 0.7;
-        ctx.drawImage(core.cvs, b.x - r * 0.45, b.y - r * 0.45, r * 0.9, r * 0.9);
-        ctx.globalCompositeOperation = "source-over";
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    if (this.fx.jackpotFlash) {
-      const t = clamp((performance.now() - this.fx.jackpotFlash.start) / this.fx.jackpotFlash.duration, 0, 1);
-      const p = Math.sin(t * Math.PI);
-      const flash = ctx.createRadialGradient(width * 0.5, height * 0.48, 24, width * 0.5, height * 0.48, Math.max(width, height) * 0.8);
-      flash.addColorStop(0, this.fx.jackpotFlash.colorA);
-      flash.addColorStop(0.55, this.fx.jackpotFlash.colorB);
-      flash.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.globalAlpha = p * 0.95;
-      ctx.fillStyle = flash;
-      ctx.fillRect(0, 0, width, height);
-      ctx.globalAlpha = 1;
-    }
-
-    // 5b: anticipation lanes, behind the symbols.
-    if (this.fx.drop?.antic) this.drawAnticipationLanes(ctx, this.fx.drop.antic, { padX, top, laneW, rowStep });
     // Multiplier reveals due this frame (the cut, then the swap as it closes).
     this._fireStrikes();
 
-    // Win focus (FOCUS, #55): one backdrop darkening behind the symbols; the
-    // symbols outside the focus set step back through their own alpha below.
+    // A spent multiplier steps back (its alpha below).
     const frameNow = performance.now();
-    const focusLevel = envelopeLevel(this.focus, frameNow);
-    const focusSet = this.focus.set;
     const spentSet = this.spent.set, spentLevel = spentSet ? envelopeLevel(this.spent, frameNow) : 0;
-    if (focusLevel > 0.001) {
-      ctx.fillStyle = `rgba(2, 5, 12, ${(FOCUS.backdrop * focusLevel).toFixed(3)})`;
-      ctx.fillRect(0, 0, width, height);
-    }
-
     // Spin-out (#47): the old board falling out, behind the new one.
     if (this.fx.exit) this.drawExitBoard(ctx, { width, top, padX, laneW, rowStep, radius });
 
@@ -3750,10 +3531,8 @@ class ReelCanvasRenderer {
         const key = `${r}-${c}`;
         const x = padX + laneW * (c + 0.5);
         const yBase = top + rowStep * (r + 0.5);
-        const isSlamColumn = Boolean(this.fx.reelSlam?.columns?.has(c));
-        const slamOffset = isSlamColumn ? reelSlamWave * radius * 0.46 : 0;
-        const y = yBase + this.cellOffset(r, c, rowStep) + slamOffset;
-        const isWinner = this.board.winningSet.has(key);
+        const slamOffset = 0;
+        const y = yBase + this.cellOffset(r, c, rowStep);
         // A cell that is actively falling (refilled by the tumble drop) must not
         // inherit the explode fade. The drop commits the new board ~200ms into
         // the 540ms explode, so the former winning-cell positions now hold the
@@ -3800,58 +3579,28 @@ class ReelCanvasRenderer {
           continue;
         }
         if (this._traceCells) this._traceCells.add(key); // probes: cells drawn this frame
-        // Blast (#50): the symbol pops (swells CLUSTER_BLAST.pop) and is gone by
-        // BLAST_GONE of its burst: no lingering see-through ghost. The shards,
-        // flare and shockwave carry the rest of the burst.
+        // Blast (#50): the symbol is gone by BLAST_GONE of its burst, under its
+        // splash (ArtFx); no lingering see-through ghost.
         const goneT = clamp(cellBlast / BLAST_GONE, 0, 1);
         const blastFade = isBlast ? 1 - easeInCubic(goneT) : 1;
-        const blastPop = isBlast && !this._reducedMotion ? 1 + CLUSTER_BLAST.pop * easeOutCubic(goneT) : 1;
-        // Charge: anticipation phase before pop. Cell shrinks slightly and
-        // brightens — the visual "inhale" before the burst.
-        const isCharging = Boolean(this.fx.charge?.set?.has(key));
-        let chargeT = 0;
-        let chargeShrink = 1;
-        let chargeGlow = 0;
-        if (isCharging) {
-          chargeT = clamp((performance.now() - this.fx.charge.start) / this.fx.charge.duration, 0, 1);
-          chargeShrink = 1 - easeOutCubic(chargeT) * 0.08;
-          chargeGlow = easeOutCubic(chargeT);
-        }
-        const isSpotlit = Boolean(this.fx.spotlight?.set?.has(key));
-        // Winners breathe during the hold: a resting swell plus a slow in-out,
-        // phase-lagged from the cluster centre (breathPhases) so it ripples.
-        let pulseScale = 1;
-        if (isWinner && this.fx.pulse) {
-          const m = this.motion();
-          const lag = this.fx.pulse.phase?.get(key) || 0;
-          const w = ((performance.now() - this.fx.pulse.start) / m.breathMs) * Math.PI * 2 - lag;
-          const breath = 0.5 - 0.5 * Math.cos(w);
-          pulseScale = 1 + pulseGlow * (m.breathBase + m.breathDepth * breath);
-        }
-        const isMultiCaught = symbol === "MULTI" && Boolean(this.fx.multiCatch?.set?.has(key));
-        const catchScale = isMultiCaught ? 1 + multiCatchPulse * 0.26 : 1;
-        // Rigid: a multiplier BANG never squashes its symbol. Its weight is the
-        // thud, the local bloom and the spotlight flash fired in
-        // spawnHeavyImpact(). squashX/Y stay as the hook dropDeform() feeds.
+        // Only the fall moves a symbol (the landing squash below); a win, a burst and a
+        // reveal are drawn by the art effects (ArtFx), the symbol itself stays still.
         let squashY = 1;
         let squashX = 1;
         const deform = this.dropDeform(r, c);
         squashX *= deform.sx;
         squashY *= deform.sy;
-        const baseScale = pulseScale * catchScale * chargeShrink * blastPop;
-        // A multiplier that just landed punches (MULTI_PUNCH): it swells and
-        // settles back, never shrinking, never fading, never hidden.
+        const baseScale = 1;
+        // A multiplier that just landed: its reveal window (the flare is ArtFx).
         const reveal = this.fx.heavyReveals.get(key);
         let revealScale = 1;
         if (reveal) {
           const nowMs = performance.now();
           if (nowMs >= reveal.revealAt) {
             const rt = clamp((nowMs - reveal.revealAt) / reveal.revealDuration, 0, 1);
-            if (!this._reducedMotion) revealScale = 1 + MULTI_PUNCH.scale * Math.sin(Math.PI * rt);
             if (rt >= 1) this.fx.heavyReveals.delete(key);
           }
         }
-        const ringR = radius * 1.05 * baseScale * revealScale;
         const coreR = radius * 1.05 * baseScale * revealScale;
         const scatterSizeBoost = symbol === "SCATTER" ? 1.22 : 1;
         // Fill the cell: symbols are drawn nearly edge-to-edge (Pragmatic-style)
@@ -3873,62 +3622,7 @@ class ReelCanvasRenderer {
         // pulse. At rest every symbol is now centred on its cell.)
         const restH = isMulti ? rowStep * MULTI_EMBLEM.boxH * baseScale * revealScale : iconBase;
         const iconCy = y + Math.max(0, restH - iconH) * 0.5;
-        // Win focus (FOCUS): symbols outside the focus set step back.
-        const spotDim = (focusLevel > 0.001 && !focusSet?.has(key) ? 1 - FOCUS.dim * focusLevel : 1)
-          * (spentSet?.has(key) ? 1 - MULTI_SPENT_DIM * spentLevel : 1);
-
-        // Spotlight halo: brighten cells on the spotlight set during big
-        // events, working with the dim overlay to draw the eye in.
-        if (isSpotlit && spotlightAlpha > 0.05) {
-          const sp = ctx.createRadialGradient(x, y, 0, x, y, coreR * 2.4);
-          sp.addColorStop(0, `rgba(255, 240, 210, ${(0.32 * spotlightAlpha / 0.7).toFixed(3)})`);
-          sp.addColorStop(0.55, `rgba(255, 220, 170, ${(0.14 * spotlightAlpha / 0.7).toFixed(3)})`);
-          sp.addColorStop(1, "rgba(0, 0, 0, 0)");
-          ctx.fillStyle = sp;
-          ctx.beginPath();
-          ctx.arc(x, y, coreR * 2.4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (isCharging) {
-          // Building glow during the wind-up.
-          const cg = ctx.createRadialGradient(x, y, 0, x, y, coreR * 1.9);
-          cg.addColorStop(0, `rgba(255, 245, 215, ${(0.55 * chargeGlow).toFixed(3)})`);
-          cg.addColorStop(0.5, `rgba(255, 210, 150, ${(0.25 * chargeGlow).toFixed(3)})`);
-          cg.addColorStop(1, "rgba(0, 0, 0, 0)");
-          ctx.fillStyle = cg;
-          ctx.beginPath();
-          ctx.arc(x, y, coreR * 1.9, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Winner aura colour: the symbol's own (THEME.aura), so a cluster of blue
-        // diamonds glows cyan and a cluster of crowns glows gold.
-        const auraColor = isWinner ? (THEME.aura[symbol] || THEME.glow.win) : null;
-        if (isWinner) {
-          // Halo breathes with the celebration pulse so the held cluster reads
-          // as actively celebrating, not statically lit. A floor keeps it
-          // clearly marked even at the shimmer's low point. Blitted from the
-          // cached glow sprite (one per colour) instead of a gradient per frame.
-          const haloPulse = 0.55 + 0.45 * pulseGlow;
-          const glow = this.getGlowSprite(auraColor);
-          const haloR = ringR * 1.55;
-          ctx.globalAlpha = 0.85 * blastFade * haloPulse;
-          ctx.drawImage(glow.cvs, x - haloR, y - haloR, haloR * 2, haloR * 2);
-          ctx.globalAlpha = 1;
-        }
-
-        if (isSlamColumn) {
-          const slamGlow = ctx.createRadialGradient(x, y - coreR * 0.8, 0, x, y, coreR * 1.7);
-          slamGlow.addColorStop(0, this.fx.reelSlam.accent || "rgba(170, 214, 255, 0.36)");
-          slamGlow.addColorStop(1, "rgba(170, 214, 255, 0)");
-          ctx.globalAlpha = Math.max(0, 0.62 * (1 - reelSlamProgress));
-          ctx.fillStyle = slamGlow;
-          ctx.beginPath();
-          ctx.arc(x, y, coreR * 1.7, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
+        const spotDim = spentSet?.has(key) ? 1 - MULTI_SPENT_DIM * spentLevel : 1;
 
         const multiValueNum = isMulti ? Number(this.board.multiMap.get(key) || 1) : null;
         // A multiplier is its hex plate, number baked in (one sprite
@@ -3954,30 +3648,6 @@ class ReelCanvasRenderer {
           ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
           // probes: where each cell's art was drawn this frame (centre and size, CSS px)
           if (this._traceDraw) this._traceDraw.push({ key, symbol, x, y: iconCy, w: drawW, h: drawH, fall: inFlight });
-          if (this.fx.waves.length && !isBlast) {
-            // Shockwave light (#54): the front lights each symbol it passes.
-            const lit = this.waveLight(x, iconCy, performance.now());
-            if (lit.a > 0.01) {
-              const gr = Math.max(drawW, drawH) * 0.62;
-              ctx.save();
-              ctx.globalCompositeOperation = "lighter";
-              ctx.globalAlpha = lit.a * spotDim;
-              ctx.drawImage(lit.wave.glow.cvs, x - gr, iconCy - gr, gr * 2, gr * 2);
-              ctx.restore();
-            }
-          }
-          if (isWinner && !isFalling) {
-            // Inner glow: the aura added back OVER the art (additive), small and
-            // breathing with the pulse, so the winning symbol itself lights up
-            // instead of sitting in a box. One cached-sprite blit per winner.
-            const inner = this.getGlowSprite(auraColor);
-            const innerR = Math.min(drawW, drawH) * 0.42;
-            ctx.save();
-            ctx.globalCompositeOperation = "lighter";
-            ctx.globalAlpha = (0.16 + 0.22 * pulseGlow) * blastFade * spotDim;
-            ctx.drawImage(inner.cvs, x - innerR, iconCy - innerR, innerR * 2, innerR * 2);
-            ctx.restore();
-          }
         } else {
           ctx.fillStyle = THEME.text.label;
           ctx.font = THEME.canvasFont(600, Math.max(10, coreR * 0.22), THEME.font.ui);
@@ -3994,102 +3664,9 @@ class ReelCanvasRenderer {
     // Multiplier strikes: the crackle and the flash, over the symbols.
     if (this.fx.drop?.strikes?.length) this.drawStrikes(ctx, { padX, top, laneW, rowStep });
 
-    // 5a/5c/5d: scatter reticles and the trigger lock-on, over the symbols.
-    if (this.fx.reticles.length || this.fx.lockOn) this.drawScatterLocks(ctx, radius);
+    // The art effects (splash, shards, glints, swirls), additive over the symbols.
+    this.art.draw(ctx, performance.now());
 
-    // Radial light rays from explosion centers — fast-growing, fading streaks
-    // that telegraph an audible "crack" on the upcoming sound layer.
-    if (this.fx.rays.length) {
-      const now = performance.now();
-      this.fx.rays = this.fx.rays.filter((ray) => now - ray.born < ray.life);
-      this.fx.rays.forEach((ray) => {
-        const age = now - ray.born;
-        if (age < 0) return;
-        const t = clamp(age / ray.life, 0, 1);
-        const reach = radius * ray.len * easeOutQuint(t);
-        const ex = ray.x + Math.cos(ray.angle) * reach;
-        const ey = ray.y + Math.sin(ray.angle) * reach;
-        const grad = ctx.createLinearGradient(ray.x, ray.y, ex, ey);
-        grad.addColorStop(0, `rgba(255, 255, 255, ${(0.85 * (1 - t)).toFixed(3)})`);
-        grad.addColorStop(0.4, ray.color);
-        grad.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = Math.max(1.4, radius * 0.06 * (1 - t * 0.6));
-        ctx.globalAlpha = 1;
-        ctx.beginPath();
-        ctx.moveTo(ray.x, ray.y);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    // Symbol destruction fragments + local light (time-based, pooled).
-    this.shards.render(ctx, this.dpr);
-
-    if (this.particles.length) {
-      const now = performance.now();
-      this.particles = this.particles.filter((p) => now - p.born < p.life);
-      this.particles.forEach((p) => {
-        const age = now - p.born;
-        if (age < 0) return; // not yet born
-        const t = clamp(age / p.life, 0, 1);
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.mode === "convergent" && p.target) {
-          const dx = p.target.x - p.x;
-          const dy = p.target.y - p.y;
-          const d = Math.hypot(dx, dy) || 1;
-          const accel = 0.16;
-          p.vx += (dx / d) * accel;
-          p.vy += (dy / d) * accel;
-          p.vx *= 0.94;
-          p.vy *= 0.94;
-        } else if (p.mode === "ember") {
-          p.vy += -0.004; // gentle upward drift
-          p.vx *= 0.985;
-        } else {
-          p.vy += p.mode === "orb" ? 0.015 : 0.05;
-        }
-        p.rot = (p.rot || 0) + (p.spin || 0);
-        const alpha = 1 - t;
-        // Soft glow via a pre-rendered per-colour sprite (no per-particle
-        // gradient allocation). Blit scaled to the particle's glow radius.
-        const glowR = p.size * 3.2;
-        const sprite = this.getGlowSprite(p.colorA);
-        ctx.globalAlpha = alpha * 0.7;
-        ctx.drawImage(sprite.cvs, p.x - glowR, p.y - glowR, glowR * 2, glowR * 2);
-        if (p.mode === "shard") {
-          ctx.save();
-          ctx.globalAlpha = alpha;
-          ctx.translate(p.x, p.y);
-          ctx.rotate(p.rot || 0);
-          ctx.fillStyle = p.colorB;
-          ctx.beginPath();
-          ctx.moveTo(p.size * 1.8, 0);
-          ctx.lineTo(-p.size * 0.6, p.size * 0.66);
-          ctx.lineTo(-p.size * 0.9, -p.size * 0.66);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        } else if (p.mode === "ember") {
-          // Soft hot-coal twinkle that fades slowly.
-          const flicker = 0.6 + 0.4 * Math.sin(age * 0.02 + p.x * 0.13);
-          ctx.globalAlpha = alpha * flicker;
-          ctx.fillStyle = p.colorB;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = p.colorB;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-      ctx.globalAlpha = 1;
-    }
     ctx.restore();
   }
 }
