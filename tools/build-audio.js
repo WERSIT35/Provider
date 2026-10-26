@@ -116,10 +116,12 @@ const SOUNDS = {
 const IR = { src: P("reverb_ir"), max: 2.0, fadeOut: 400 };
 
 // The three music moods: source, the section used (s), loop crossfade (s).
+// Colchis Treasury (2026-10-26): the owner's Lyria 3 tracks (LICENSES.md), each looped on
+// beats whose next two seconds match (8-beat multiples, chroma + level).
 const MUSIC = {
-  base: { src: "oga/desert_mystic2.mp3", start: 0, end: 56.0, xfade: 2.5 },
-  freeSpins: { src: "oga/hidden_temple.ogg", start: 0, end: 67.4, xfade: 2.5 },
-  bigWin: { src: "oga/determined_pursuit_0-40s.ogg", start: 0, end: 32, xfade: 1.5 }
+  base: { src: "lyria/gilded_reliquary.mp3", start: 6.084, end: 48.437, xfade: 2.0 },
+  freeSpins: { src: "lyria/rite_of_the_fleece.mp3", start: 6.664, end: 36.664, xfade: 2.0 },
+  bigWin: { src: "lyria/treasury_gate_opens.mp3", start: 12.121, end: 34.969, xfade: 1.5 }
 };
 const MUSIC_FILE = { base: "base", freeSpins: "free_spins", bigWin: "big_win" };
 // Sound effects may not come from the old game-asset packs any more.
@@ -243,13 +245,17 @@ function buildMusic(mood, m) {
   const p = path.join(SRC, m.src);
   const X = m.xfade;
   const raw = path.join(TMP, `music_${mood}.wav`);
-  // Seamless loop: [tail ⨯ head crossfade] + body.
+  // Seamless loop of exactly end - start: the music just after `end` fades out over the
+  // first X seconds while the head fades in, then the body runs to `end`. The file's last
+  // sample is the one right before the music after `end` begins, so the wrap is the music's
+  // own continuation (acrossfade did not start at full tail weight: a step at the seam).
+  const L = m.end - m.start;
   const fc = [
-    `[0:a]aformat=sample_rates=48000:channel_layouts=stereo,asplit=3[a][b][c]`,
-    `[a]atrim=${m.start}:${m.start + X},asetpts=PTS-STARTPTS[head]`,
-    `[b]atrim=${m.end - X}:${m.end},asetpts=PTS-STARTPTS[tail]`,
-    `[c]atrim=${m.start + X}:${m.end - X},asetpts=PTS-STARTPTS[body]`,
-    `[tail][head]acrossfade=d=${X}:c1=qsin:c2=qsin[xf]`,
+    `[0:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=${m.start}:${m.end + X},asetpts=PTS-STARTPTS,asplit=3[a][b][c]`,
+    `[a]atrim=0:${X},asetpts=PTS-STARTPTS,afade=t=in:d=${X}:curve=qsin[head]`,
+    `[b]atrim=${L}:${L + X},asetpts=PTS-STARTPTS,afade=t=out:d=${X}:curve=qsin[tail]`,
+    `[c]atrim=${X}:${L},asetpts=PTS-STARTPTS[body]`,
+    `[tail][head]amix=inputs=2:normalize=0:duration=longest[xf]`,
     `[xf][body]concat=n=2:v=0:a=1[o]`
   ].join(";");
   ff(["-i", p, "-filter_complex", fc, "-map", "[o]", raw]);
@@ -264,6 +270,13 @@ function buildMusic(mood, m) {
 
 function build() {
   importPicks();
+  if (process.argv.includes("--music")) { // the three moods only, every sound effect untouched
+    const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "manifest.json"), "utf8"));
+    for (const [mood, m] of Object.entries(MUSIC)) manifest.music[mood] = buildMusic(mood, m);
+    fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    console.log("rebuilt music");
+    return;
+  }
   const only = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1].split(",") : null;
   if (only) {
     const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "manifest.json"), "utf8"));
