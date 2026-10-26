@@ -2310,12 +2310,14 @@ body.perf-low .stage-character { display: none; }
    carries one permanently and sits directly over the reels, so on a phone it is
    re-blurring a moving canvas every single frame. Dropped on ALL handhelds, not
    just devices that have already been demoted to perf-low. */
-body.perf-low *,
-body.perf-low *::before,
-body.perf-low *::after,
-body.perf-handheld *,
-body.perf-handheld *::before,
-body.perf-handheld *::after {
+/* The shared controls are exempt: their glass only blurs the static art behind the deck,
+   rails and sheets (never the board), and the chrome must look the same in every game. */
+body.perf-low *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *)),
+body.perf-low *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *))::before,
+body.perf-low *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *))::after,
+body.perf-handheld *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *)),
+body.perf-handheld *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *))::before,
+body.perf-handheld *:not(.lsh):not(:where(.lsh *)):not(.lsh-sheet):not(:where(.lsh-sheet *))::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
