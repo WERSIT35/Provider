@@ -117,7 +117,9 @@ const PAGE_CHECK = (gameId) => `(async () => {
           if (paidScatter(tiers[tiers.length - 1] + 1, bet, scaler) !== paidScatter(tiers[tiers.length - 1], bet, scaler)) mismatches.push("scatter top tier not a lower bound");
           continue;
         }
-        const code = row[0].toUpperCase().replace(/\\s+/g, "_");
+        // The row shows the player-facing name (main.js SYMBOL_NAMES); its id comes from the rules label.
+        const shown = typeof SYMBOL_NAMES === "object" ? Object.keys(SYMBOL_NAMES).find((k) => SYMBOL_NAMES[k] === row[0]) : null;
+        const code = (shown || row[0]).toUpperCase().replace(/\\s+/g, "_");
         if (!regularSymbols.includes(code)) { mismatches.push("unknown symbol row " + row[0]); continue; }
         groups.forEach((g, i) => {
           for (const n of [g.match_min, g.match_max === 30 ? 30 : g.match_max]) {
