@@ -77,7 +77,7 @@ for (const game of GAMES) {
   const page = await open(game);
   await page.tap("#spinBtn");
   await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 5000 }).catch(() => {});
-  await untilIdle(page, 60000);
+  await untilIdle(page, 240000); // a random round can trigger a whole free-spins feature
   await sleep(500);
   check(`${game}: load and a round ask for nothing missing`, page.missing.length === 0, page.missing.slice(0, 3).join(", "));
   await page.close();
@@ -118,7 +118,7 @@ async function buy(page) {
   await page.keyboard.press("Enter");
   await sleep(400);
   check("vault: Enter continues the outro", !(await featureOpen(page)));
-  await untilIdle(page, 60000);
+  await untilIdle(page, 240000); // a random round can trigger a whole free-spins feature
   await buy(page);
   check("vault: a second bought feature opens its intro", await waitFeature(page, 60000));
   // Enter on another enabled control keeps its own meaning (most are locked during a feature).
@@ -197,7 +197,7 @@ for (const game of GAMES) {
   await sleep(4500); // the notice has had its time
   await page.tap("#spinBtn");
   const played = await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 8000 }).then(() => true, () => false);
-  await untilIdle(page, 60000);
+  await untilIdle(page, 240000); // a random round can trigger a whole free-spins feature
   check(`${game}: the next round plays`, played);
   const after = (await read()).line;
   if (game !== "vault") check(`${game}: no waiting line left over after it`, !/Waiting for the server/.test(after), after); // Vault 20K shows none
