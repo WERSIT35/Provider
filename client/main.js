@@ -182,8 +182,20 @@ const symbolAssets = {
   YELLOW_HEX: symbolArt("YellowGem.webp"),
   GREEN_TRIANGLE: symbolArt("GreenGem.webp"),
   BLUE_DIAMOND: symbolArt("BlueGem.webp"),
-  // Multipliers have no art file: they are drawn in code (MULTI_EMBLEM).
   SCATTER: symbolArt("Scatter.webp")
+};
+// The multiplier's seal plates (MULTI_EMBLEM.art): the number is drawn on them in code.
+const plateAssets = {
+  PLATE_BRONZE: symbolArt("PlateBronze.webp"),
+  PLATE_GOLD: symbolArt("PlateGold.webp"),
+  PLATE_RUBY: symbolArt("PlateRuby.webp")
+};
+// Players see these names (the info sheet's pay table); the rules file keeps the ids
+// and its own labels (they are part of the certified rules and its hash).
+const SYMBOL_NAMES = {
+  "Top Crown": "Diadem", Hourglass: "Sand-glass", Ring: "Signet Ring", Chalice: "Ritual Cup",
+  "Red Gem": "Ruby", "Purple Triangle": "Amethyst", "Yellow Hex": "Citrine",
+  "Green Triangle": "Emerald", "Blue Diamond": "Sapphire"
 };
 
 // Art that is NOT drawn on the canvas: <img> buttons and CSS backgrounds. None
@@ -198,7 +210,8 @@ const symbolAssets = {
 const uiAssets = {
   // Phones get the 640 px backdrop (29 KB instead of 42 KB on the critical path); the CSS
   // and the preload in index.html switch on the same query, so it is fetched once.
-  UI_BACKGROUND: symbolArt("Background.webp")
+  UI_BACKGROUND: PHONE_ART ? symbolArt("Background.webp")
+    : `assets/symbols/${window.matchMedia?.("(orientation: portrait)").matches ? "Background-portrait.webp" : "Background.webp"}`
 };
 
 // Art first shown well after the reveal (the free-spins award screen): loaded right
@@ -206,7 +219,10 @@ const uiAssets = {
 // it. Never painted in progressively either: showFeature() waits for it (capped)
 // before the screen opens, and it is warm long before a first bonus in practice.
 const deferredUiAssets = {
-  UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp"
+  UI_FREESPINS_INFO: "assets/symbols/FREESPINS_INFO-removebg-preview.webp",
+  // The chamber with the Golden Fleece (free spins), same query as the CSS.
+  UI_FEATURE_SCENE: PHONE_ART ? symbolArt("Feature.webp")
+    : `assets/symbols/${window.matchMedia?.("(orientation: portrait)").matches ? "Feature-portrait.webp" : "Feature.webp"}`
 };
 
 const stats = { spins: 0, wins: 0, losses: 0, wagered: 0, won: 0, maxWinX: 0, bonusHits: 0 };
@@ -723,164 +739,86 @@ function getMultiplierTier(value) {
   return MULTIPLIER_TIER_BY_VALUE.get(Number(value)) || MULTIPLIER_TIER_DEFS[0];
 }
 
-// The multiplier (docs/lumina-overhaul/vault-multiplier.md): a MACHINED HEX PLATE,
-// drawn as vectors in code. A flat-topped hexagon with a bevelled rim, a rivet at each
-// vertex and a bolt tab on the left and right edges: a silhouette no other Vault symbol
-// has, also at 48 px in grayscale. The number is the hero (engraved across the face, a
-// smaller "x"). Tiers share the shape and differ in the face metal; no glow at rest
-// (rare and above bake a static inner edge light). One table, so a second game re-skins
-// it by values; baked per value + size (multiplierSprite): one drawImage per cell.
+// The multiplier (docs/lumina-overhaul/vault-multiplier.md): a gold hex SEAL PLATE, art
+// (client/assets/ART.md): a pointy-top hexagon with a granulated rim, one plate per tier
+// band (bronze, gold, gold with rubies). The number is the hero, engraved across the face
+// in the game font (a smaller "x"). Baked per value + size (multiplierSprite): one
+// drawImage per cell. The laser traces the same hexagon (plateGeom).
 const MULTI_EMBLEM = {
   boxW: 0.98, boxH: 0.92,     // the emblem's box, fractions of the cell
-  hexR: 0.4,                  // hexagon circumradius, fraction of min(box w, h)
-  tab: { w: 0.2, h: 0.42 },   // bolt tabs (× hexR): how far they stand out, how tall
-  text: { w: 1.56, cap: 0.86, x: 0.6 }, // text box (× hexR; it may cover the rim), "x" size (× number)
-  outline: "#0b0f14",
-  tiers: {
-    common:    { rim: ["#e7c3a0", "#9a5d33", "#3d200c"], face: ["#f6dcc0", "#c58350", "#6e3a15"], text: "#ffe6cc" },
-    rare:      { rim: ["#e3eef6", "#6f8fa8", "#1d2f3e"], face: ["#e8f6ff", "#5f9cc6", "#173e5c"], text: "#dff4ff", edge: "#7fd6ff" },
-    epic:      { rim: ["#ffe2c4", "#c8662a", "#4c1a04"], face: ["#ffecd6", "#ef8c45", "#7a2b06"], text: "#ffe4c8", edge: "#ffae6b" },
-    legendary: { rim: ["#fff4c9", "#c99a2e", "#4f3506"], face: ["#fffbe6", "#f1cf6a", "#86600f"], text: "#fff4c0", edge: "#ffe08a" },
-    mythic:    { rim: ["#ffd9e7", "#b02a4d", "#3c0614"], face: ["#ffeef5", "#e8507f", "#640d2e"], text: "#ffe0ec", edge: "#ff8fb3", prism: true }
+  fill: 0.96,                 // the plate's height, share of the box (it keeps its aspect)
+  text: { w: 1.12, cap: 0.5, x: 0.6 }, // text box (× circumradius), "x" size (× number)
+  art: { common: "PLATE_BRONZE", rare: "PLATE_GOLD", epic: "PLATE_GOLD", legendary: "PLATE_RUBY", mythic: "PLATE_RUBY" },
+  ink: {
+    PLATE_BRONZE: { fill: ["#fff6e3", "#f3d2a0"], outline: "#2a1606", cut: null },
+    PLATE_GOLD: { fill: ["#6a430c", "#2e1b03"], outline: null, cut: "rgba(255, 247, 222, 0.85)" },
+    PLATE_RUBY: { fill: ["#7a1020", "#3a0610"], outline: null, cut: "rgba(255, 247, 222, 0.85)" }
   }
 };
 
-/** Draw the hex plate for multiplier `value` into a W×H box on `ctx` (CSS px, origin
- *  top-left). Pure: no renderer state. */
-function drawHexPlate(ctx, W, H, tierKey, value) {
+/** The plate's hexagon in a W×H box: centre and circumradius (pointy-top, so the
+ *  plate is 2R tall and √3·R wide). Shared by the plate and the laser's trace. */
+function plateGeom(W, H) {
+  const h = Math.min(H, W / 0.866) * MULTI_EMBLEM.fill;
+  return { cx: W / 2, cy: H / 2, R: h / 2 };
+}
+
+/** Draw the plate for multiplier `value` into a W×H box on `ctx` (CSS px, origin
+ *  top-left). `images` holds the decoded plate art; returns false (nothing cached)
+ *  while that art is not decoded yet. */
+function drawHexPlate(ctx, W, H, tierKey, value, images) {
   const E = MULTI_EMBLEM;
-  const T = E.tiers[tierKey] || E.tiers.common;
-  const cx = W / 2;
-  const cy = H / 2;
-  const R = Math.min(W, H) * E.hexR;
-  const edge = Math.max(0.8, R * 0.04);
-  const hex = (r) => { // flat-topped: vertices at 0°, 60°, … (left/right points)
-    ctx.beginPath();
-    for (let i = 0; i < 6; i += 1) {
-      const a = (i * Math.PI) / 3;
-      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.92;
-      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-    }
-    ctx.closePath();
-  };
-  const grad = (stops, y0, y1) => {
-    const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0, stops[0]); g.addColorStop(0.55, stops[1]); g.addColorStop(1, stops[2]);
-    return g;
-  };
+  const key = E.art[tierKey] || E.art.common;
+  const img = images?.get?.(key);
+  if (!img?.complete || !img.naturalWidth) return false;
+  const { cx, cy, R } = plateGeom(W, H);
+  const ph = R * 2;
+  const pw = ph * (img.naturalWidth / img.naturalHeight);
   ctx.save();
-  ctx.lineJoin = "round";
+  ctx.drawImage(img, cx - pw / 2, cy - ph / 2, pw, ph);
 
-  // Bolt tabs on the left and right points, behind the plate, each with a bolt head.
-  const tw = R * E.tab.w, th = R * E.tab.h;
-  for (const side of [-1, 1]) {
-    const x0 = cx + side * R * 0.86, x1 = cx + side * (R + tw);
-    ctx.beginPath();
-    ctx.moveTo(x0, cy - th / 2);
-    ctx.lineTo(x1, cy - th * 0.36);
-    ctx.lineTo(x1, cy + th * 0.36);
-    ctx.lineTo(x0, cy + th / 2);
-    ctx.closePath();
-    ctx.fillStyle = grad(T.rim, cy - th / 2, cy + th / 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(11, 15, 20, 0.8)";
-    ctx.lineWidth = edge;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx + side * (R + tw * 0.45), cy, th * 0.17, 0, Math.PI * 2);
-    ctx.fillStyle = T.rim[2];
-    ctx.fill();
-  }
-
-  // The rim (a prism band on mythic), then the bevelled face, inset.
-  hex(R);
-  if (T.prism && typeof ctx.createConicGradient === "function") {
-    const g = ctx.createConicGradient(0, cx, cy);
-    ["#ff5b8a", "#ffb84a", "#fff07a", "#7dffb0", "#6ad5ff", "#b98bff", "#ff5b8a"].forEach((col, i, arr) => g.addColorStop(i / (arr.length - 1), col));
-    ctx.fillStyle = g;
-  } else ctx.fillStyle = grad(T.rim, cy - R, cy + R);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(11, 15, 20, 0.85)";
-  ctx.lineWidth = edge * 1.4;
-  ctx.stroke();
-  const faceR = R * 0.8;
-  hex(faceR);
-  const face = ctx.createLinearGradient(cx - faceR, cy - faceR, cx + faceR, cy + faceR);
-  face.addColorStop(0, T.face[0]); face.addColorStop(0.5, T.face[1]); face.addColorStop(1, T.face[2]);
-  ctx.fillStyle = face;
-  ctx.fill();
-  ctx.strokeStyle = "rgba(11, 15, 20, 0.55)";
-  ctx.lineWidth = edge;
-  ctx.stroke();
-  // Machined grain: fine horizontal lines across the face (static).
-  ctx.save();
-  hex(faceR);
-  ctx.clip();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-  ctx.lineWidth = Math.max(0.5, R * 0.012);
-  for (let y = cy - faceR; y < cy + faceR; y += Math.max(1.5, R * 0.07)) {
-    ctx.beginPath(); ctx.moveTo(cx - faceR, y); ctx.lineTo(cx + faceR, y); ctx.stroke();
-  }
-  ctx.restore();
-  if (T.edge) { // a static inner edge light (no glow at rest)
-    hex(faceR * 0.95);
-    ctx.strokeStyle = T.edge;
-    ctx.globalAlpha = 0.65;
-    ctx.lineWidth = Math.max(1, R * 0.045);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  // Rivets at the rim's six vertices.
-  for (let i = 0; i < 6; i += 1) {
-    const a = (i * Math.PI) / 3;
-    const x = cx + Math.cos(a) * R * 0.9, y = cy + Math.sin(a) * R * 0.9 * 0.92;
-    const rr = Math.max(1, R * 0.06);
-    const g = ctx.createRadialGradient(x - rr * 0.3, y - rr * 0.3, rr * 0.1, x, y, rr);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, T.rim[1]); g.addColorStop(1, T.rim[2]);
-    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
-  }
-
-  // The number: as large as the text box allows, a smaller "x", engraved (light fill,
-  // heavy dark outline).
+  // The number: as large as the text box allows, a smaller "x". Engraved: dark ink
+  // with a light lower lip on the gold faces; light with a dark outline on bronze.
+  const ink = E.ink[key];
   const num = String(value);
-  const fit = (size) => {
+  const measure = (size) => {
     ctx.font = THEME.canvasFont(700, size);
     const m = ctx.measureText(num);
     ctx.font = THEME.canvasFont(700, size * E.text.x);
     const mx = ctx.measureText("x");
-    const cap = (m.actualBoundingBoxAscent || size * 0.72);
-    return { w: m.width + mx.width * 0.92, cap, numW: m.width };
+    return { w: m.width + mx.width * 0.92, cap: m.actualBoundingBoxAscent || size * 0.72, numW: m.width };
   };
-  const boxW = R * E.text.w;
-  const boxCap = R * E.text.cap;
   let size = R * 2;
-  let mt = fit(size);
-  size *= Math.min(boxW / mt.w, boxCap / mt.cap);
-  mt = fit(size);
+  let mt = measure(size);
+  size *= Math.min((R * E.text.w) / mt.w, (R * E.text.cap) / mt.cap);
+  mt = measure(size);
   const left = cx - mt.w / 2;
   const base = cy + mt.cap / 2;
-  const fill = ctx.createLinearGradient(0, base - mt.cap, 0, base);
-  fill.addColorStop(0, "#ffffff");
-  fill.addColorStop(1, T.text);
+  const xLeft = left + mt.numW + size * 0.02;
+  const text = (fn) => {
+    ctx.font = THEME.canvasFont(700, size); fn(num, left, base);
+    ctx.font = THEME.canvasFont(700, size * E.text.x); fn("x", xLeft, base);
+  };
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
-  ctx.shadowBlur = size * 0.1;
-  ctx.shadowOffsetY = size * 0.04;
-  ctx.strokeStyle = E.outline;
-  ctx.lineWidth = Math.max(2, size * 0.16);
-  ctx.font = THEME.canvasFont(700, size);
-  ctx.strokeText(num, left, base);
-  ctx.font = THEME.canvasFont(700, size * E.text.x);
-  ctx.strokeText("x", left + mt.numW + size * 0.02, base);
-  ctx.shadowColor = "transparent";
+  if (ink.outline) {
+    ctx.strokeStyle = ink.outline;
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(2, size * 0.14);
+    text((t, x, y) => ctx.strokeText(t, x, y));
+  }
+  if (ink.cut) {
+    ctx.fillStyle = ink.cut;
+    const lip = Math.max(0.75, size * 0.035);
+    text((t, x, y) => ctx.fillText(t, x, y + lip));
+  }
+  const fill = ctx.createLinearGradient(0, base - mt.cap, 0, base);
+  fill.addColorStop(0, ink.fill[0]);
+  fill.addColorStop(1, ink.fill[1]);
   ctx.fillStyle = fill;
-  ctx.font = THEME.canvasFont(700, size);
-  ctx.fillText(num, left, base);
-  ctx.font = THEME.canvasFont(700, size * E.text.x);
-  ctx.fillText("x", left + mt.numW + size * 0.02, base);
+  text((t, x, y) => ctx.fillText(t, x, y));
   ctx.restore();
-  return { capPx: mt.cap, size };
+  return true;
 }
 
 // True when the player has asked the OS to minimise motion. Re-read live so a
@@ -1347,7 +1285,7 @@ class ReelCanvasRenderer {
     // first time they are shown. Their HTMLImageElements go into `this.images`
     // too, so they stay referenced and cannot be evicted mid-session.
     this.imageLoads = new Map();
-    this.loadImages({ ...symbolAssets, ...uiAssets });
+    this.loadImages({ ...symbolAssets, ...plateAssets, ...uiAssets });
   }
 
   /** The deferred art (deferredUiAssets), once; resolves when all of it is ready to paint. */
@@ -1545,9 +1483,10 @@ class ReelCanvasRenderer {
     let cvs = this.emblemSprites.get(key);
     if (!cvs) {
       const off = this.makeOffscreen(w, h);
-      drawHexPlate(off.ctx, w, h, getMultiplierTier(value).key, value);
       cvs = off.cvs;
-      this.emblemSprites.set(key, cvs);
+      // Not cached until the plate art is decoded (the boot waits for it; a resize
+      // racing a slow decode just bakes again next frame).
+      if (drawHexPlate(off.ctx, w, h, getMultiplierTier(value).key, value, this.images)) this.emblemSprites.set(key, cvs);
     }
     return cvs;
   }
@@ -3215,10 +3154,11 @@ class ReelCanvasRenderer {
     const t = turboScale();
     const calm = this._reducedMotion;
     const flashMs = Math.max(60, Math.round(STRIKE.flashMs * (d.strikeQuick ? 0.5 : t)));
-    const R = Math.min(laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH) * MULTI_EMBLEM.hexR;
+    const R = plateGeom(laneW * MULTI_EMBLEM.boxW, rowStep * MULTI_EMBLEM.boxH).R * 0.97;
     const railX = Math.max(2, padX - Math.max(4, laneW * 0.06));
-    const vx = (cx, i) => cx + Math.cos(Math.PI + (i * Math.PI) / 3) * R; // from the left vertex, clockwise
-    const vy = (cy, i) => cy + Math.sin(Math.PI + (i * Math.PI) / 3) * R * 0.92;
+    // Pointy-top hexagon, from the upper-left vertex, clockwise.
+    const vx = (cx, i) => cx + Math.cos((7 * Math.PI) / 6 + (i * Math.PI) / 3) * R;
+    const vy = (cy, i) => cy + Math.sin((7 * Math.PI) / 6 + (i * Math.PI) / 3) * R;
     const trace = (cx, cy, k) => { // the outline up to fraction k; returns the hot point
       ctx.beginPath();
       ctx.moveTo(vx(cx, 0), vy(cy, 0));
@@ -4046,29 +3986,6 @@ class ReelCanvasRenderer {
           ctx.fillText(symbol.slice(0, 2), x, y);
         }
 
-        if (symbol === "TOP_CROWN") {
-          const crownGlow = ctx.createRadialGradient(x, y - coreR * 0.36, 0, x, y - coreR * 0.36, coreR * 0.75);
-          crownGlow.addColorStop(0, THEME.alpha(THEME.glow.winHot, 0.26));
-          crownGlow.addColorStop(1, THEME.alpha(THEME.glow.winHot, 0));
-          ctx.fillStyle = crownGlow;
-          ctx.beginPath();
-          ctx.arc(x, y - coreR * 0.22, coreR * 0.75, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (symbol === "SCATTER") {
-          const orbit = 0.82 + Math.sin(this.time * 0.006 + c + r * 0.5) * 0.12;
-          ctx.strokeStyle = `rgba(198, 211, 255, ${0.38 * blastFade})`;
-          ctx.lineWidth = 1.4;
-          ctx.beginPath();
-          ctx.arc(x, y, ringR * orbit, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.strokeStyle = `rgba(224, 235, 255, ${0.22 * blastFade})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(x, y, ringR * (orbit + 0.15), 0, Math.PI * 2);
-          ctx.stroke();
-        }
         ctx.globalAlpha = 1;
         if (inFlight) ctx.restore(); // reel mask
       }
@@ -5145,7 +5062,7 @@ window.__luminaSymbols = {
     const c = document.createElement("canvas");
     c.width = c.height = px;
     const g = c.getContext("2d");
-    if (id.startsWith("MULTI_")) { const v = Number(id.slice(6)); drawHexPlate(g, px, px, getMultiplierTier(v).key, v); }
+    if (id.startsWith("MULTI_")) { const v = Number(id.slice(6)); drawHexPlate(g, px, px, getMultiplierTier(v).key, v, reelRenderer.images); }
     else { const img = reelRenderer.images.get(id); if (img) g.drawImage(img, 0, 0, px, px); }
     return c;
   }
@@ -6011,7 +5928,7 @@ function paytableRows(bet, scaler) {
       }));
       return;
     }
-    rows.push({ label: s.symbol, cells: groups.map((g) => scaledSymbolPay(Number(s.payouts?.[g] || 0), bet, scaler)) });
+    rows.push({ label: SYMBOL_NAMES[s.symbol] || s.symbol, cells: groups.map((g) => scaledSymbolPay(Number(s.payouts?.[g] || 0), bet, scaler)) });
   });
   return { groups, rows, scatter };
 }
@@ -7244,37 +7161,23 @@ async function buyFreeSpins() {
  *  gold-lit, and the doors swing open on it (LuminaMotion "featureTransition"). Leaving
  *  the bonus fades the gold back to the teal vault. Transforms and opacity only; reduced
  *  motion keeps the light change and drops the doors. Presentation only. */
-let vaultDoorsEl = null;
 async function bonusScene(on) {
   const stage = el.reels?.closest?.(".reels-stage");
   if (!stage) return;
-  if (!on) { stage.classList.remove("is-bonus-lit"); return; }
+  // The chamber (art): the Golden Fleece lights the room for the whole bonus. The
+  // fleece scene crossfades in over the base one (body::after, opacity only).
+  if (!on) {
+    stage.classList.remove("is-bonus-lit");
+    document.body.classList.remove("colchis-feature");
+    return;
+  }
   if (stage.classList.contains("is-bonus-lit")) return; // a resumed bonus already shows it
   const calm = prefersReducedMotion() || window.VaultShell?.api?.reducedMotion?.();
   const total = window.LuminaMotion ? window.LuminaMotion.ms("featureTransition", state.turbo ? "turbo" : "normal") : 1400;
-  if (calm || !document.body.animate) { stage.classList.add("is-bonus-lit"); return; }
-  if (!vaultDoorsEl) {
-    vaultDoorsEl = document.createElement("div");
-    vaultDoorsEl.className = "vault-doors";
-    vaultDoorsEl.setAttribute("aria-hidden", "true");
-    vaultDoorsEl.innerHTML = "<i></i><i></i>";
-    stage.appendChild(vaultDoorsEl);
-  }
-  vaultDoorsEl.hidden = false;
-  const [l, r] = vaultDoorsEl.children, shut = total * 0.3, hold = total * 0.1, open = total * 0.6;
-  const ease = "cubic-bezier(0.6, 0, 0.3, 1)";
-  await Promise.all([
-    l.animate([{ transform: "translateX(-101%)" }, { transform: "none" }], { duration: shut, easing: ease, fill: "forwards" }).finished,
-    r.animate([{ transform: "translateX(101%)" }, { transform: "none" }], { duration: shut, easing: ease, fill: "forwards" }).finished
-  ]).catch(() => {});
+  document.body.style.setProperty("--chamber-fade", `${calm ? 0 : Math.round(total * 0.8)}ms`);
+  document.body.classList.add("colchis-feature");
   stage.classList.add("is-bonus-lit");
-  await sleep(hold);
-  await Promise.all([
-    l.animate([{ transform: "none" }, { transform: "translateX(-101%)" }], { duration: open, easing: ease, fill: "forwards" }).finished,
-    r.animate([{ transform: "none" }, { transform: "translateX(101%)" }], { duration: open, easing: ease, fill: "forwards" }).finished
-  ]).catch(() => {});
-  for (const d of [l, r]) d.getAnimations().forEach((a) => a.cancel());
-  vaultDoorsEl.hidden = true;
+  if (!calm) await sleep(total);
 }
 
 /** The feature screen (a VxNotify "feature"): resolves when it is dismissed
@@ -8143,7 +8046,7 @@ renderExamples();
 renderSpinLog();
 renderTestPanel();
 bindFooterMirror();
-el.symbolLegend.textContent = "Top Crown, Hourglass, Ring, Chalice, Red Gem, Purple Triangle, Yellow Hex, Green Triangle, Blue Diamond, Wild Multiplier, Scatter";
+el.symbolLegend.textContent = `${Object.values(SYMBOL_NAMES).join(", ")}, Wild Multiplier, Fleece Medallion (scatter)`;
 el.payoutRuleText.textContent = "High-volatility pays-anywhere model. Wild multipliers and scatter-triggered bonus spins drive peak wins.";
 el.multiplierInfo.textContent = "Loading...";
 el.activeMultiplier.textContent = "1x";

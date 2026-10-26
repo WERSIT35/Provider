@@ -36,30 +36,8 @@ const SYMBOLS_DIR = path.join(__dirname, "..", "client", "assets", "symbols");
 // ratio (fit: "inside", never enlarging). Sizes are ~2x the largest the asset
 // is ever painted at, measured from the CSS/canvas layout.
 const TARGETS = [
-  // Symbol tiles — drawn into grid cells that top out around 120px.
-  { src: "Crown.png",       max: 256 },
-  { src: "HourGlass.png",   max: 256 },
-  { src: "Ring.png",        max: 256 },
-  { src: "Chaile.png",      max: 256 },
-  { src: "RedGem.png",      max: 256 },
-  { src: "PurpleGem.png",   max: 256 },
-  { src: "YellowGem.png",   max: 256 },
-  { src: "GreenGem.png",    max: 256 },
-  { src: "BlueGem.png",     max: 256 },
-  // Multipliers have no art: they are drawn in code (client/main.js MULTI_EMBLEM).
-
-  // Scatter is a wide tile drawn contained inside a cell, so it needs a little
-  // more than a square symbol to keep its detail.
-  { src: "Scatter.png",     max: 512 },
-
-  // The reel frame is baked into the full-height stage cache once per resize,
-  // so it can be asked for the full backing-store height of a tall canvas.
-  // Kept at native size — WebP makes it cheap enough that downscaling is not
-  // worth the risk of a soft frame on a large display.
-  { src: "REEL.png",        max: 1672 },
-
-  // Full-viewport background. Keep the pixels, just drop the PNG overhead.
-  { src: "Background.png",  max: 1376, quality: 78 },
+  // The symbols, the multiplier plates, the chamber backgrounds and the board frame are
+  // the Colchis Treasury art now: built from art-src/colchis/ by tools/build-vault-art.mjs.
 
   // The free-spins panel plate (a wide banner, never over ~400px CSS). Spin,
   // Buy, Ante and the bet pill are vector controls now; their source PNGs stay

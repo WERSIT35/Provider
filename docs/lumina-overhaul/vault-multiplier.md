@@ -26,7 +26,7 @@ The vault's own security laser cuts the plate free. It matches the game's laser 
 | `beatMs` − `flickerMs` | A teal emitter dot lights on the **left frame rail**, level with the cell's row (a short flicker, no sound yet). |
 | `beatMs` | The beam fires **horizontally** from the rail to the cell's left edge (one frame: light is instant). A thin teal line, 2 px core, soft glow, clipped to the board. |
 | `beatMs` → + `flashPeakMs` | The beam's hot point traces the **hexagon outline** of the plate around the cell, clockwise from the left vertex; the traced edge glows amber behind it; a few pooled sparks fall from the hot point (`ShardEmitter`). The zap plays on the first contact. |
-| + `flashPeakMs` | The cut closes. The stand-in's art is replaced by the **machined hex plate** under a short amber edge flash (local, on the cell only); the plate seats with the existing impact squash (≤3.5 %, `MULTI_PUNCH`) and a metal clunk. The beam is gone. |
+| + `flashPeakMs` | The cut closes. The stand-in's art is replaced by the **gold seal plate** under a short amber edge flash (local, on the cell only); the plate seats with the existing impact squash (≤3.5 %, `MULTI_PUNCH`) and a metal clunk. The beam is gone. |
 | + `flashMs` | The cut edge's afterglow has faded. The plate rests, perfectly still. |
 
 Two multipliers in one board: each has its own beam from the rail at its own row, in landing
@@ -43,19 +43,15 @@ the way to the one it did: a staged near-miss. A reveal must not invent tension 
 does not hold. It also needs a second, slower beat (the bolt) before the dial, which would
 lengthen every round with a multiplier.
 
-## The multiplier: a machined hex plate
+## The multiplier: a gold seal plate (art)
 
-Replaces the winged sun disc (`drawWingedSun` → `drawHexPlate`, same signature, same cache).
-
-- A **hexagonal steel plate** (flat top and bottom) with a bevelled rim and a rivet at each
-  vertex, plus two **bolt tabs** on the left and right edges. The tabs give it a silhouette no
-  other Vault symbol has (gems, crown, hourglass, ring, chalice, scatter), also in a 48 px
-  grayscale render.
-- The value is the hero: engraved large across the plate face, a smaller "x".
-- Tiers share the shape and differ in the face metal: copper (common), blued steel (rare),
-  heat-tempered orange (epic), gold (legendary), crimson anodised with a prism edge (mythic).
-  No glow at rest; rare and above get a static inner edge light baked into the sprite.
-- Static, drawn as vectors in code, baked once per value and size (`multiplierSprite`).
+Since the Colchis Treasury art (October 2026, `client/assets/ART.md`) the plate is an image,
+not vectors: a **pointy-top hexagonal seal** with a granulated rim, one per tier band:
+bronze (common), gold (rare, epic), gold with a ruby at each corner (legendary, mythic).
+`drawHexPlate` draws the art contained in the multiplier's box and engraves the value across
+the face in the game font (dark ink with a light lower lip on gold, light with a dark outline
+on bronze), baked once per value and size (`multiplierSprite`). The laser traces the same
+hexagon (`plateGeom`), so the cut closes on the plate's outline.
 
 ## Timing and sound
 
