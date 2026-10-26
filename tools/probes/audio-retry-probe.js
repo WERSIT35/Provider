@@ -54,7 +54,10 @@ async function spinVoiced(page) {
   await page.evaluate(() => document.getElementById("spinBtn").click());
   await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 5000 }).catch(() => {});
   await page.waitForFunction(() => !window.__spinLifecycle.inFlight, { timeout: 30000 }).catch(() => {});
-  return page.evaluate(() => Sound.debug.recent().some((r) => r.name === "spin_start" && r.file));
+  const voiced = await page.evaluate(() => Sound.debug.recent().some((r) => r.name === "spin_start" && r.file));
+  // On a miss, say why (context, parked/unlocked, the audio lifecycle, what did play).
+  if (!voiced) console.log("  why:", JSON.stringify(await page.evaluate(() => ({ ctx: Sound.contextState(), parked: Sound.isSuspended(), muted: Sound.isMuted(), trace: Sound.debug.trace(), recent: Sound.debug.recent().slice(-6).map((r) => r.name) }))));
+  return voiced;
 }
 
 (async () => {

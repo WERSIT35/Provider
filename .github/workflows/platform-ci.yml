@@ -60,7 +60,15 @@ jobs:
         working-directory: demo-operator
       # The single release gate: platform typecheck/test/build, demo-operator typecheck/test,
       # the client browser tests, and the production dependency audit (see package.json).
-      - run: npm run verify:release
+      - run: |
+          set -o pipefail
+          npm run verify:release 2>&1 | tee "$RUNNER_TEMP/release.log"
+      # The failing lines as annotations, so a red run says why on the PR page itself.
+      - name: Failure lines as annotations
+        if: failure()
+        run: |
+          grep -nE "^[[:space:]]*(FAIL|not ok|✗|×)|FAIL:|Error:|AssertionError|vulnerabilit|timed out" "$RUNNER_TEMP/release.log" | head -n 10 | sed 's/^/::error title=release-check::/'
+          tail -n 3 "$RUNNER_TEMP/release.log" | sed 's/^/::error title=release-check (end)::/'
 
   # The end-to-end, real-Chrome checks (see package.json verify:browser): session
   # resume on both boot paths, the casino embedding boundary, the Round Inspector and
