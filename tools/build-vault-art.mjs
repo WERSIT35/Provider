@@ -114,5 +114,25 @@ for (const [file, master, size, quality] of SCENES) {
   await sharp(src(master)).resize(size).webp({ quality, effort: 6 }).toFile(out);
   console.log(`${file.padEnd(26)} ${kb(out)}`);
 }
+// The art effects: frame strips (one row of square cells on black, additive) and the
+// beam (a strip stretched along its length).
+const FX = path.join(ROOT, "client", "assets", "fx");
+fs.mkdirSync(FX, { recursive: true });
+for (const name of ["splash", "shards", "glint", "swirl", "flare", "beam"]) {
+  const out = path.join(FX, `${name}.webp`);
+  // Light on black -> light with alpha (alpha = brightness, colour un-blended), so it
+  // also adds up correctly over the transparent board canvas, not only over black.
+  const { data, info } = await sharp(src(`fx_${name}`)).resize(name === "beam" ? {} : { height: 192 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const rgba = Buffer.alloc(info.width * info.height * 4);
+  for (let i = 0, j = 0; i < data.length; i += 3, j += 4) {
+    const m = Math.max(data[i], data[i + 1], data[i + 2]);
+    const a = m < 12 ? 0 : m; // JPEG noise in the black stays black
+    const k = a ? 255 / a : 0;
+    rgba[j] = Math.min(255, data[i] * k); rgba[j + 1] = Math.min(255, data[i + 1] * k); rgba[j + 2] = Math.min(255, data[i + 2] * k);
+    rgba[j + 3] = a;
+  }
+  await sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } }).webp({ quality: 80, alphaQuality: 80, effort: 6 }).toFile(out);
+  console.log(`fx/${name}.webp`.padEnd(27) + kb(out));
+}
 const f = await frame(path.join(OUT, "Frame.webp"));
 console.log(`Frame.webp                 ${kb(path.join(OUT, "Frame.webp"))} (slice ${f.C}px of ${f.W}px)`);

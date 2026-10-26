@@ -51,7 +51,9 @@ bronze (common), gold (rare, epic), gold with a ruby at each corner (legendary, 
 `drawHexPlate` draws the art contained in the multiplier's box and engraves the value across
 the face in the game font (dark ink with a light lower lip on gold, light with a dark outline
 on bronze), baked once per value and size (`multiplierSprite`). The laser traces the same
-hexagon (`plateGeom`), so the cut closes on the plate's outline.
+hexagon (`plateGeom`). Since the art effects the reveal's light is art too: the sunbeam strip
+(`fx/beam.webp`) reaches from the left rail to the cell and the flare sheet (`fx/flare.webp`) burns
+on the plate while the cut runs; no code-drawn laser, trace or sparks.
 
 ## Timing and sound
 
