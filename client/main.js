@@ -3905,6 +3905,8 @@ const bigWin = new BigWinController({
   },
   maxDpr: reelRenderer.maxDpr,
   fxScale: TIER_PROFILES[reelRenderer.tier].fxCeil,
+  // The shower is the scatter's own coin turning (fx/coin.webp, COIN_TURN): art only.
+  art: { coin: { src: "assets/fx/coin.webp", frames: COIN_TURN.frames }, only: true },
   hooks: {
     // The overlay animates its own stage, and the board underneath is dimmed
     // and paused, so only sound is routed out here.
