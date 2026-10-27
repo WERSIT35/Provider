@@ -227,6 +227,7 @@ const deferredUiAssets = {
   FX_SWIRL: "assets/fx/swirl.webp",
   FX_FLARE: "assets/fx/flare.webp",
   FX_BEAM: "assets/fx/beam.webp",
+  FX_COIN: "assets/fx/coin.webp", // the scatter's turn (COIN_TURN)
   // The chamber with the Golden Fleece (free spins), same query as the CSS.
   UI_FEATURE_SCENE: PHONE_ART ? symbolArt("Feature.webp")
     : `assets/symbols/${window.matchMedia?.("(orientation: portrait)").matches ? "Feature-portrait.webp" : "Feature.webp"}`
@@ -951,6 +952,11 @@ const ART_FX = {
   flare: { key: "FX_FLARE", frames: 14, fps: 30 }    // the sunbeam burns the plate in
 };
 
+// The scatter's turn: the owner's coin, frame by frame (8 square cells laid out
+// exactly like Scatter.webp; cell 1 IS the scatter, so a turn starts and ends on it).
+// One half turn = 8 frames; the cell's sprite is replaced while it plays.
+const COIN_TURN = { key: "FX_COIN", frames: 8, rest: 1, fps: 30 };
+
 class ArtFx {
   constructor(images, wake) {
     this.images = images;
@@ -1280,6 +1286,7 @@ class ReelCanvasRenderer {
       cluster: null,
       sweeps: [],
       reticles: [],   // 5a: scatter landing reticles
+      coinTurns: new Map(), // "r-c" -> { start, steps }: a scatter turning (COIN_TURN)
       lockOn: null    // 5c/5d: trigger lock-on
     }, {
       set: (target, key, value) => {
@@ -2553,7 +2560,8 @@ class ReelCanvasRenderer {
       this.fx.rays.length ||
       this.particles.length ||
       this.shards.live > 0 ||
-      this.art.live > 0
+      this.art.live > 0 ||
+      this.fx.coinTurns.size > 0
     );
   }
 
@@ -2981,6 +2989,27 @@ class ReelCanvasRenderer {
   spawnReticle(row, col) {
     const c = this.cellCenter(row, col);
     this.fx.reticles.push({ x: c.x, y: c.y, born: performance.now(), life: 900 });
+    this.turnCoin(row, col, performance.now(), 2);
+  }
+
+  /** The scatter at (row, col) turns `halfTurns` half turns from `start` and comes to
+   *  rest as itself. Reduced motion: it stays still. */
+  turnCoin(row, col, start, halfTurns) {
+    if (prefersReducedMotion()) return;
+    this.fx.coinTurns.set(`${row}-${col}`, { start, steps: halfTurns * COIN_TURN.frames });
+    this.wake();
+  }
+
+  /** The coin-turn frame to draw on cell `key` now, or null (no turn, finished, not
+   *  started, or the art not loaded yet: the scatter's own sprite then). */
+  coinTurnFrame(key, now) {
+    const t = this.fx.coinTurns.get(key);
+    if (!t) return null;
+    const step = Math.floor(((now - t.start) * COIN_TURN.fps) / 1000);
+    if (step >= t.steps) { this.fx.coinTurns.delete(key); return null; }
+    const img = this.images.get(COIN_TURN.key);
+    if (step < 0 || !img?.complete || !img.naturalWidth) return null;
+    return { img, f: (COIN_TURN.rest + step) % COIN_TURN.frames };
   }
 
   /** 5c/5d: wide reticles converge on every scatter, then pulse locked. */
@@ -2991,6 +3020,8 @@ class ReelCanvasRenderer {
       duration: Math.round(duration * turboScale()),
       cells: cells.map((p) => this.cellCenter(p.row, p.col))
     };
+    const halfTurns = Math.max(2, Math.round((this.fx.lockOn.duration * COIN_TURN.fps) / (1000 * COIN_TURN.frames)));
+    for (const p of cells) this.turnCoin(p.row, p.col, this.fx.lockOn.start, halfTurns);
     await animationSleep(duration);
     this.fx.lockOn = null;
   }
@@ -3088,8 +3119,8 @@ class ReelCanvasRenderer {
 
   /** Start the art effects for what the round just did (ArtFx): each event fires
    *  once, at its own time. Winners glint during the hold; a burst splashes (gold) or
-   *  shatters (gems) cell by cell with the burst's stagger; a scatter's reticle and the
-   *  trigger lock-on swirl on the scatters. Reduced motion: no effects. */
+   *  shatters (gems) cell by cell with the burst's stagger; the trigger lock-on swirls
+   *  on the scatters (a landing scatter turns instead: turnCoin). Reduced motion: no effects. */
   syncArtFx({ padX, top, laneW, rowStep }) {
     if (this._reducedMotion) return;
     const cell = Math.min(laneW, rowStep);
@@ -3114,11 +3145,6 @@ class ReelCanvasRenderer {
         const gem = /GEM|TRIANGLE|HEX|DIAMOND/.test(sym);
         this.art.play(gem ? "shards" : "splash", x, y, cell * (gem ? 1.45 : 1.6), b.start + (b.delays?.get(key) || 0));
       }
-    }
-    for (const q of this.fx.reticles) {
-      if (q.art) continue;
-      q.art = true;
-      this.art.play("swirl", q.x, q.y, cell * 1.5, q.born);
     }
     const L = this.fx.lockOn;
     if (L && L !== this._artLock) {
@@ -3644,8 +3670,15 @@ class ReelCanvasRenderer {
           }
           // Blit the pre-scaled sprite rather than resampling the source art on
           // every cell, every frame (a multiplier: its baked emblem).
-          const sprite = emblem || this.getSymbolSprite(symbol, img, drawW, drawH);
-          ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          // A turning scatter: its frame of the coin's turn, in the same box.
+          const turn = symbol === "SCATTER" ? this.coinTurnFrame(key, frameNow) : null;
+          if (turn) {
+            const cell = turn.img.naturalHeight;
+            ctx.drawImage(turn.img, turn.f * cell, 0, cell, cell, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          } else {
+            const sprite = emblem || this.getSymbolSprite(symbol, img, drawW, drawH);
+            ctx.drawImage(sprite, x - drawW / 2, iconCy - drawH / 2, drawW, drawH);
+          }
           // probes: where each cell's art was drawn this frame (centre and size, CSS px)
           if (this._traceDraw) this._traceDraw.push({ key, symbol, x, y: iconCy, w: drawW, h: drawH, fall: inFlight });
         } else {

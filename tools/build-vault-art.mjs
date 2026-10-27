@@ -134,5 +134,41 @@ for (const name of ["splash", "shards", "glint", "swirl", "flare", "beam"]) {
   await sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } }).webp({ quality: 80, alphaQuality: 80, effort: 6 }).toFile(out);
   console.log(`fx/${name}.webp`.padEnd(27) + kb(out));
 }
+// The scatter's turn (a real object, alpha kept, drawn over the cell instead of the
+// scatter): 8 square cells, each laid out exactly like Scatter.webp (same box, same
+// height), so the scatter cell IS frame 1 and the hand-off is invisible.
+// Order: face-on, the scatter, 45°, 67.5°, edge, then 67.5°, 45° and the scatter
+// mirrored (the far half of the turn). The face-on frame is the scatter's near half
+// mirrored (coin_turn_00); 45° is the 22.5° render narrowed.
+{
+  const box = 256;
+  const h = Math.round(box * 0.9);
+  const sc = await sharp(src("scatter")).metadata();
+  const w0 = sc.width / sc.height; // the scatter's aspect
+  const at = async (name, aspect, flop = false) => {
+    let img = sharp(src(name));
+    const m = await img.metadata();
+    const w = Math.max(2, Math.round(h * (aspect ?? m.width / m.height)));
+    let buf = await img.resize({ width: w, height: h, fit: "fill" }).toBuffer();
+    if (flop) buf = await sharp(buf).flop().toBuffer();
+    return buf;
+  };
+  const frames = [
+    await at("coin_turn_00"), await at("scatter"), await at("coin_turn_22", w0 * 0.707),
+    await at("coin_turn_67"), await at("coin_turn_90"), await at("coin_turn_67", null, true),
+    await at("coin_turn_22", w0 * 0.707, true), await at("scatter", null, true)
+  ];
+  const layers = [];
+  for (const [i, input] of frames.entries()) {
+    const m = await sharp(input).metadata();
+    layers.push({ input, left: i * box + Math.round((box - m.width) / 2), top: Math.round((box - h) / 2) });
+  }
+  const out = path.join(FX, "coin.webp");
+  await sharp({ create: { width: box * frames.length, height: box, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite(layers)
+    .webp({ quality: 86, alphaQuality: 100, effort: 6 })
+    .toFile(out);
+  console.log(`fx/coin.webp`.padEnd(27) + kb(out));
+}
 const f = await frame(path.join(OUT, "Frame.webp"));
 console.log(`Frame.webp                 ${kb(path.join(OUT, "Frame.webp"))} (slice ${f.C}px of ${f.W}px)`);
