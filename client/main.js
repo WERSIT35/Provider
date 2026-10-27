@@ -632,9 +632,7 @@ const THEME = (() => {
       spinFlash: c.tungsten,                // + burst alpha
       vignette:  alpha(c.vaultDoor, 0.85),
       cellWell:  alpha(c.gunmetal, 0.72),
-      cellEdge:  alpha(c.steelSheen, 0.10),
-      gridDot:   alpha(c.steelSheen, 0.22),   // frameless board: where four cells meet
-      gridTick:  alpha(c.steelSheen, 0.08)    // the faint cross arms around each dot
+      cellEdge:  alpha(c.steelSheen, 0.10)
     },
 
     // Win aura behind a winning symbol, by symbol (getGlowSprite #rrggbb). Scatter
@@ -1668,31 +1666,12 @@ class ReelCanvasRenderer {
    * Rebuilt on resize.
    */
   buildStageCache() {
-    const { width, height, padX, top, laneW, rowStep } = this.getLayout();
+    const { width, height } = this.getLayout();
     this.stageCacheBack = this.makeOffscreen(width, height);
 
+    // Nothing is drawn between the cells any more (art, not CSS or code shapes):
+    // the board's look is its art; the front layer stays an empty cache.
     const front = this.makeOffscreen(width, height);
-    const fctx = front.ctx;
-    const dotR = Math.max(1, Math.min(laneW, rowStep) * 0.012);
-    const arm = Math.max(3, Math.min(laneW, rowStep) * 0.06);
-    for (let r = 1; r < this.rows; r += 1) {
-      for (let c = 1; c < this.cols; c += 1) {
-        const x = Math.round(padX + laneW * c) + 0.5;
-        const y = Math.round(top + rowStep * r) + 0.5;
-        fctx.strokeStyle = THEME.stage.gridTick;
-        fctx.lineWidth = 1;
-        fctx.beginPath();
-        fctx.moveTo(x - arm, y);
-        fctx.lineTo(x + arm, y);
-        fctx.moveTo(x, y - arm);
-        fctx.lineTo(x, y + arm);
-        fctx.stroke();
-        fctx.fillStyle = THEME.stage.gridDot;
-        fctx.beginPath();
-        fctx.arc(x, y, dotR, 0, Math.PI * 2);
-        fctx.fill();
-      }
-    }
     this.stageCacheFront = front;
   }
 
