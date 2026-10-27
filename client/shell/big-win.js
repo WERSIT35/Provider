@@ -156,6 +156,10 @@
       this.dpr = 1;
       this.sprites = null;
       this.sparkColors = ["#ffffff"];
+      // A game's own coin, frame by frame (art.coin): one row of square cells, one
+      // half turn around the vertical axis; replaces the drawn coin and its flip.
+      this.coinArt = null;  // { img, frames }
+      this.artOnly = false; // only the art coin: bars and gems become coins, no sparks
     }
 
     resize() {
@@ -188,14 +192,20 @@
       const { w, h } = this;
       const g = (GRAVITY * h) / 1e6; // px per ms²
       const unit = clamp(Math.min(w, h) / 700, 0.7, 1.5);
+      if (this.artOnly) {
+        if (kind === "spark") return;
+        kind = "coin";
+      }
+      const art = kind === "coin" && this.coinArt;
       for (let n = 0; n < count; n++) {
         const p = this._spawn();
         if (!p) return;
         p.live = true;
         p.kind = kind;
         p.age = 0;
-        p.rot = rand(0, Math.PI * 2);
-        p.vr = rand(-0.004, 0.004);
+        // An art coin turns around its own vertical axis (its frames); it only tilts a little.
+        p.rot = art ? rand(-0.35, 0.35) : rand(0, Math.PI * 2);
+        p.vr = art ? rand(-0.0006, 0.0006) : rand(-0.004, 0.004);
         p.phase = rand(0, Math.PI * 2);
         p.spin = rand(0.006, 0.014);
         p.grav = kind === "spark" ? g * 0.25 : g;
@@ -229,7 +239,7 @@
           p.color = pick(this.sparkColors);
         } else {
           p.life = 6000;
-          p.size = unit * (kind === "bar" ? rand(30, 40) : kind === "diamond" ? rand(18, 28) : rand(20, 32));
+          p.size = unit * (kind === "bar" ? rand(30, 40) : kind === "diamond" ? rand(18, 28) : art ? rand(44, 66) : rand(20, 32));
         }
       }
     }
@@ -269,11 +279,21 @@
       // instead of save/translate/rotate/scale/restore.
       for (const p of this.pool) {
         if (!p.live || p.kind === "spark") continue;
-        const sprite = this.sprites[p.kind];
-        const flip = p.kind === "coin" ? Math.max(0.12, Math.abs(Math.cos(p.phase))) : 1;
         const c = Math.cos(p.rot);
         const s = Math.sin(p.rot);
         ctx.globalAlpha = p.life - p.age < 400 ? Math.max(0, (p.life - p.age) / 400) : 1;
+        const art = p.kind === "coin" ? this.coinArt : null;
+        if (art && art.img.complete && art.img.naturalWidth) {
+          // One phase turn (2π) = two half turns of the sheet.
+          const turn = (p.phase % (Math.PI * 2)) / (Math.PI * 2);
+          const f = Math.floor(turn * art.frames * 2) % art.frames;
+          const cell = art.img.naturalHeight;
+          ctx.setTransform(c * dpr, s * dpr, -s * dpr, c * dpr, p.x * dpr, p.y * dpr);
+          ctx.drawImage(art.img, f * cell, 0, cell, cell, -p.size / 2, -p.size / 2, p.size, p.size);
+          continue;
+        }
+        const sprite = this.sprites[p.kind];
+        const flip = p.kind === "coin" ? Math.max(0.12, Math.abs(Math.cos(p.phase))) : 1;
         ctx.setTransform(c * flip * dpr, s * flip * dpr, -s * dpr, c * dpr, p.x * dpr, p.y * dpr);
         ctx.drawImage(sprite, -p.size / 2, -p.size / 2, p.size, p.size);
       }
@@ -314,8 +334,10 @@
      * @param {number} [o.maxDpr=2]    canvas resolution cap (pass the renderer's tier cap)
      * @param {number} [o.fxScale=1]   particle density (pass the renderer's fxCeil)
      * @param {object} [o.hooks]       onTier(tier, {skipped}), onTick(value, total), onComplete(), onDismiss()
+     * @param {object} [o.art]         { coin: { src, frames }, only }: the game's coin sheet (one half
+     *                                 turn, square cells); only = no drawn particles at all
      */
-    constructor({ root, format, palette, maxDpr = 2, fxScale = 1, hooks = {} }) {
+    constructor({ root, format, palette, maxDpr = 2, fxScale = 1, hooks = {}, art = null }) {
       this.root = root;
       this.format = format || ((v) => Number(v).toFixed(2));
       this.hooks = hooks;
@@ -330,6 +352,13 @@
       });
       this.field.sprites = buildSprites(palette);
       this.field.sparkColors = palette.sparks && palette.sparks.length ? palette.sparks : ["#ffffff"];
+      if (art && art.coin && art.coin.src) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = art.coin.src;
+        this.field.coinArt = { img, frames: art.coin.frames || 8 };
+        this.field.artOnly = Boolean(art.only);
+      }
 
       this.run = null;
       this._rafId = 0;

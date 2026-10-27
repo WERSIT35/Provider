@@ -28,7 +28,7 @@ Effects (`client/assets/fx/`):
 | `coin.webp` | The scatter turning like a coin (8 cells of 256 px, alpha; cell 1 = Scatter.webp) | `coin_turn_22` / `_67` (the owner's Gemini turns), `_90` (edge from the first turn sheet), `_00` (face-on: the scatter's near half mirrored) + `scatter` |
 | `beam.webp` | The sunbeam of the multiplier reveal (stretched along its length) | `fx_beam.webp` |
 
-Not used yet: `drop`, `coin_face`, `coin_edge` (the big-win coin shower), `logo`. The effect
+Not used yet: `drop`, `coin_face`, `coin_edge`, `logo`. The big-win coin shower uses `coin.webp`. The effect
 strips are light on black turned into light with alpha (alpha = brightness, colour un-blended),
 so they add up correctly over the transparent board.
 
