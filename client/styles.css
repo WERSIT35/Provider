@@ -2525,3 +2525,9 @@ body.public-mode .reels-stage {
     border-image-outset: 16px;
   }
 }
+
+/* Big win (Vault): the title and amount are one SVG (index.html, .vx-bw-figures); CSS
+   only sizes it and sets the face. The gold and the dark edge live in the SVG. */
+.vx-bw-figures { display: block; width: min(94vw, 980px); height: auto; overflow: visible; }
+.vx-bw-figures text { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-variant-numeric: tabular-nums lining-nums; }
+.vx-bw-title { transform-box: fill-box; transform-origin: center; }

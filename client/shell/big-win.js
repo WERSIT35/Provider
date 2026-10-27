@@ -47,6 +47,23 @@
   const prefersReducedMotion = () =>
     Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
+  // An SVG <text> figure (a game's own title / amount in SVG) never runs past its
+  // box: past 92% of the viewBox width it is squeezed to fit (textLength), else natural.
+  function fitSvgText(el) {
+    if (typeof SVGTextElement === "undefined" || !(el instanceof SVGTextElement)) return;
+    const box = el.ownerSVGElement && el.ownerSVGElement.viewBox && el.ownerSVGElement.viewBox.baseVal;
+    if (!box || !box.width) return;
+    el.removeAttribute("textLength");
+    el.removeAttribute("lengthAdjust");
+    let natural = 0;
+    try { natural = el.getComputedTextLength(); } catch (_) { return; }
+    const max = box.width * 0.92;
+    if (natural > max) {
+      el.setAttribute("textLength", String(max));
+      el.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    }
+  }
+
   // ── Per-tier effects ─────────────────────────────────────────────────────
   // rate: particles per second while the tier is active. burst: fired once on
   // the tier-up, as [kind, count, pattern]. All counts scale with fxScale.
@@ -582,18 +599,27 @@
       run.tier = tier;
       this.root.dataset.tier = tier.key;
       this.labelEl.textContent = tier.label || "";
+      fitSvgText(this.labelEl);
       const fx = FX[tier.fx] || FX.coins;
       if (!run.reduced && !quiet) {
         for (const [kind, count, pattern] of fx.burst) {
           this.field.emit(kind, Math.round(count * this.fxScale), pattern);
         }
         // Web Animations, not class toggling: no forced reflow to restart them.
+        // An SVG title (Vault) scales and fades only: no CSS blur on art.
+        const svg = typeof SVGElement !== "undefined" && this.labelEl instanceof SVGElement;
         this.labelEl.animate(
-          [
-            { transform: "scale(1.9)", opacity: 0, filter: "blur(6px)" },
-            { transform: "scale(0.94)", opacity: 1, filter: "blur(0)", offset: 0.6 },
-            { transform: "scale(1)", opacity: 1, filter: "blur(0)" }
-          ],
+          svg
+            ? [
+                { transform: "scale(1.9)", opacity: 0 },
+                { transform: "scale(0.94)", opacity: 1, offset: 0.6 },
+                { transform: "scale(1)", opacity: 1 }
+              ]
+            : [
+                { transform: "scale(1.9)", opacity: 0, filter: "blur(6px)" },
+                { transform: "scale(0.94)", opacity: 1, filter: "blur(0)", offset: 0.6 },
+                { transform: "scale(1)", opacity: 1, filter: "blur(0)" }
+              ],
           { duration: 420, easing: "cubic-bezier(0.2, 0.9, 0.3, 1.2)" }
         );
       }
@@ -624,6 +650,7 @@
       if (text !== this._lastText) {
         this.amountEl.textContent = text;
         this._lastText = text;
+        fitSvgText(this.amountEl);
       }
     }
 

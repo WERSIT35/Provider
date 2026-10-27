@@ -299,10 +299,25 @@
     <div class="big-win-overlay" id="bigWinOverlay" role="dialog" aria-modal="true"
          aria-label="Big win" aria-hidden="true" tabindex="-1">
       <canvas class="bw-canvas" data-bw-canvas aria-hidden="true"></canvas>
-      <div class="bw-lasers" aria-hidden="true"></div>
       <div class="bw-stage" data-bw-stage aria-hidden="true">
-        <div class="bw-label" data-bw-label></div>
-        <div class="bw-amount" data-bw-amount>0.00</div>
+        <!-- The title and the amount are SVG text with the gold inside the SVG (art, not
+             CSS: docs/lumina-overhaul/art-not-css.md). big-win.js fills them as before and
+             fits a long amount into the box (textLength). -->
+        <svg class="vx-bw-figures" viewBox="0 0 1000 330" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="vxBwGold" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff6d6" />
+              <stop offset="0.42" stop-color="#ffd978" />
+              <stop offset="0.55" stop-color="#e2a630" />
+              <stop offset="0.8" stop-color="#b5791a" />
+              <stop offset="1" stop-color="#ffe7a3" />
+            </linearGradient>
+          </defs>
+          <text class="vx-bw-title" data-bw-label x="500" y="104" text-anchor="middle" font-size="92" letter-spacing="7"
+                fill="url(#vxBwGold)" stroke="#2a1704" stroke-width="5" stroke-linejoin="round" paint-order="stroke"></text>
+          <text class="vx-bw-amount" data-bw-amount x="500" y="292" text-anchor="middle" font-size="176"
+                fill="url(#vxBwGold)" stroke="#2a1704" stroke-width="7" stroke-linejoin="round" paint-order="stroke">0.00</text>
+        </svg>
         <div class="bw-hint">Tap to continue</div>
       </div>
       <p class="visually-hidden" data-bw-announce aria-live="assertive"></p>
