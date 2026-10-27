@@ -139,9 +139,6 @@ body {
 body {
   font-family: var(--font-ui);
   color: var(--ink);
-  background:
-    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--tungsten) 8%, transparent), transparent 36%),
-    linear-gradient(180deg, var(--bg-0), var(--bg-1) 34%, var(--bg-2));
   overflow-x: hidden;
   /* Mobile input hardening: no double-tap zoom delay, no rubber-band/pull-to-
      refresh, and no grey tap flash on touch. */
@@ -156,17 +153,6 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-}
-
-body::before {
-  background:
-    linear-gradient(90deg, transparent 0, rgba(255, 240, 214, 0.03) 50%, transparent 100%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 36px);
-}
-
-body::after {
-  background:
-    linear-gradient(180deg, rgba(255, 247, 230, 0.04), transparent 18%, transparent 84%, rgba(0, 0, 0, 0.2));
 }
 
 .hidden {
@@ -192,16 +178,7 @@ body::after {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 18px;
-  /* Drowned sun-temple scene as the whole-game backdrop. The translucent gradient
-     sits ON TOP of the image to keep text/UI readable; `cover` fills the panel
-     (and the full viewport in public mode) responsively, cropping only the safe
-     outer edges. The reel table (canvas) is opaque and floats on top, so the
-     temple shows above, below and around it. */
-  background:
-    linear-gradient(180deg, rgba(20, 13, 11, 0.66), rgba(10, 7, 6, 0.82)),
-    url("assets/symbols/Background.webp") center / cover no-repeat,
-    var(--bg-0);
-  box-shadow: var(--shadow-hard);
+  /* Transparent: the chamber art on <body> is the backdrop (art, not CSS). */
   display: grid;
   gap: 16px;
 }
@@ -1531,22 +1508,6 @@ body.crazy-mode-on .vault-window {
   min-height: clamp(520px, 70vh, 780px);
 }
 
-.vault-aura {
-  position: absolute;
-  /* Glow sits over the top of the BOARD, tracking the same box as the badge
-     (was a fixed 520x180px block offset 14px from the panel). */
-  left: calc(var(--board-x, 0%) + var(--board-w, 100%) * 0.5);
-  top: var(--board-y, 0%);
-  width: calc(var(--board-w, 100%) * 0.86);
-  height: calc(var(--board-h, 100%) * 0.3);
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(238, 183, 106, 0.12), rgba(234, 125, 99, 0.05) 38%, transparent 72%);
-  filter: blur(16px);
-  pointer-events: none;
-}
-
 .reels-stage {
   position: relative;
   z-index: 1;
@@ -1749,9 +1710,6 @@ pre {
    no shake, no aura pulses, no spinning glints. Canvas particle FX are thinned
    separately in main.js (fxScale + reduced-motion gates). */
 @media (prefers-reduced-motion: reduce) {
-  .vault-aura {
-    animation: none !important;
-  }
   *,
   *::before,
   *::after {
