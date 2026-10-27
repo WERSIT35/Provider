@@ -107,7 +107,7 @@ npm run test:rtp-parity   # validate client engine RTP vs. theoretical
 npm run test:client       # spin-lock + layout-check (12 viewports: 320 px to 4K, notched phones with emulated safe areas) + spin-e2e (incl. autoplay stop conditions) + scatter-celebration (seeded), real Chrome via CDP
 npm run verify:release    # CI job release-check: platform + demo-operator typecheck/test, test:client, audit:prod
 npm run verify:browser    # CI job browser-checks: check:resume/embed/inspector/campaigns, e2e, check:back-office/casino-embed
-npm run test:lumina       # CI job lumina-checks: theme lint + chrome identity (styles + pixels), shell parity + idle zero, the 9-size audit (hit areas, labels, contrast), market switches, no-celebrate, symbol sheet
+npm run test:lumina       # CI job lumina-checks: theme lint + visual lint (art, not CSS; tools/probes/visual-lint-allow.json only shrinks) + chrome identity (styles + pixels), shell parity + idle zero, the 9-size audit (hit areas, labels, contrast), market switches, no-celebrate, symbol sheet
 GAME_ID=bananax_94 node tools/rtp-report.js > qa/rtp-certification-report-94.md  # lab report from qa/data/rtp-certification/<game_id>-*.json
 node tools/probes/paytable-probe.js  # displayed pays = paid pays, all profiles/bets (needs Chrome)
 npm run bench:load -- --matrix   # server latency/throughput table (tools/bench/README.md; Postgres rows need BENCH_DATABASE_URL)

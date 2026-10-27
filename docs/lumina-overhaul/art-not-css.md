@@ -58,8 +58,9 @@ drawing too; it follows the same rule game by game, after Vault.
 3. Vault board: V1, V2, V4, V13 deleted; V3 with art A; V5 with art D.
 4. Vault big win: V7 (SVG title and amount, art D glow).
 5. Vault dialogs: V8–V11 with art B + C, V12 with E.
-6. A lint (`tools/probes/visual-lint.mjs`, in `test:lumina`) that fails on banned properties in
-   Vault's files, with an explicit allowlist for anything the owner approves.
+6. A lint (`tools/probes/visual-lint.mjs`, first step of `test:lumina`) that fails on banned
+   properties in Vault's files. `visual-lint-allow.json` lists what is still there: the work list.
+   A new entry fails, and so does one that is gone (remove it: the list only ever shrinks).
 7. Shared chrome S1–S8 with art F, after the owner approves it (theme-lint, chrome-identity,
    lumina-parity and lumina-audit updated where they compare what changed).
 
