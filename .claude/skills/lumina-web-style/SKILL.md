@@ -45,6 +45,19 @@ Judge the page against the direction (section 2) first, then pick a scope and st
 - **Report (short):** what changed per task + screenshots · checks run · `TODO(oto)` list · one
   next step. No recap of steps. Oto prefers rendered results to descriptions.
 
+## 1a. Art, not CSS (game pages: the player chrome, every game's look, the lobby)
+
+Owner's rule, permanent: everything players see is art images (the owner's Gemini art,
+keyed WebP, built from `art-src/` by a `tools/build-*.mjs` script) or SVG (gradients inside
+the SVG). CSS only places things: layout, show/hide, opacity fades, transforms that move or
+scale art, live text's font/size/weight/colour, focus rings. CSS never draws: no decorative
+gradients, box-shadow, text-shadow, filter/drop-shadow, backdrop-filter glass, `::before` /
+`::after` shapes, clip-path/mask shapes, keyframes that fake light; `border-image` only for
+one 9-slice art frame. Missing art → a ready-to-paste Gemini prompt under "Art needed", never
+a CSS stand-in. Text stays real text; text effects = SVG `<text>` or an art plate. Inventory
+and order of work: `docs/lumina-overhaul/art-not-css.md`. (The consoles and the demo casino's
+back-office are staff tools: this rule doesn't apply to them unless Oto says so.)
+
 ## 2. The direction (every page)
 
 1. **Content is the hero.** The game, real numbers, real screens lead; decoration never competes.
