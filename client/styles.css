@@ -230,25 +230,15 @@ body::after {
 
 .oracle-band,
 .archive-band,
-.codex-band,
-.meter-node,
-.header-readout,
-.engine-tag,
-.ritual-module,
-.ritual-toggle {
+.codex-band {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-soft), var(--panel-deep));
   box-shadow: inset 0 1px 0 rgba(255, 245, 221, 0.04), var(--shadow-soft);
 }
 
-.meter-node span,
-.header-readout span,
 .summary-grid span,
 .sim-grid span,
-.ritual-module span,
-.ritual-toggle span,
-#spinLogStatus,
-.engine-tag {
+#spinLogStatus {
   color: var(--ink-soft);
   text-transform: uppercase;
   font-size: 0.68rem;
@@ -806,53 +796,7 @@ body.public-mode .ps-center {
 }
 .ps-icon-btn:hover { color: var(--text-hud); border-color: var(--steel-brushed); }
 .ps-icon-btn:focus-visible { outline: 2px solid var(--accent-laser); outline-offset: 2px; }
-
-.ps-ticker {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-align: center;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font: 600 calc(0.6 * var(--ui, 14px)) / 1 var(--font-ui);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-/* Ticker states (see the ticker in main.js). The box never changes size:
-   it fills its deck track (align-self: stretch) and centres its one line, so
-   only the colour, weight and size of that clipped line change. */
-.ps-ticker {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ps-ticker > span {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-.ps-ticker[data-state="spin"],
-.ps-ticker[data-state="neutral"] { color: var(--text-hud); }
-/* The win stat (#46): 1.5x the old 0.8 size so a win commands the deck. It is
-   still one line in the same fixed box, so nothing moves; on the narrowest
-   phones the vw cap keeps a six-figure win ("WIN: 123,456.78") unclipped. */
-.ps-ticker[data-state="win"] {
-  color: var(--win-gold);
-  font-weight: 800;
-  font-size: min(calc(1.2 * var(--ui, 14px)), 4.2vw);
-  letter-spacing: 0.08em;
-  text-shadow: 0 0 12px rgba(242, 193, 78, 0.45), 0 0 2px var(--accent-laser-hot);
-}
-.ps-ticker[data-state="flash-info"] { color: var(--text-hud); }
-.ps-ticker[data-state="flash-bonus"] { color: var(--accent-laser-hot); font-weight: 700; }
-.ps-ticker[data-state="flash-win"] { color: var(--win-gold-bright); font-weight: 700; }
 /* Multiplier souls landing (flyMultiplierSouls): light, never movement. */
-.ps-ticker.soul-hit,
 .bonus-multi-badge.soul-hit {
   animation: soulGlow 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
@@ -862,11 +806,8 @@ body.public-mode .ps-center {
   100% { filter: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ps-ticker.soul-hit, .bonus-multi-badge.soul-hit { animation: none; }
+  .bonus-multi-badge.soul-hit { animation: none; }
 }
-
-/* Kept for main.js (it writes the bet here); the Bet readout shows it. */
-body.public-mode .ps-bet-display { display: none; }
 
 /* ── Portrait: stack it ── */
 @media (orientation: portrait) {
@@ -909,9 +850,6 @@ body.public-mode .ps-bet-display { display: none; }
     --deck-h: clamp(46px, 13vh, 60px);
     --feat-h: clamp(36px, 13vh, 56px);
   }
-  
-
-  body.public-mode .ps-ticker { justify-content: flex-end; }
   
 
 }
@@ -1136,33 +1074,14 @@ body.admin-mode .ps-center { display: grid; gap: 10px; }
   margin: 0;
 }
 
-.meter-pair,
 .summary-grid,
 .sim-grid {
   display: grid;
   gap: 8px;
 }
 
-.meter-pair,
 .summary-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.meter-node {
-  min-height: 74px;
-  border-radius: 6px;
-  padding: 10px;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-}
-
-.meter-node strong {
-  font-size: 1.04rem;
-}
-
-.meter-node-multi strong {
-  color: #ffd891;
 }
 
 .summary-grid > div,
@@ -1569,11 +1488,6 @@ body.crazy-mode-on .vault-window {
   text-shadow: 0 0 8px rgba(255, 226, 138, 0.45);
 }
 
-.spin-log-empty {
-  color: #6c7a93;
-  font-style: italic;
-}
-
 .spin-log-list li.log-event {
   display: flex;
   align-items: center;
@@ -1601,18 +1515,6 @@ body.crazy-mode-on .vault-window {
 .spin-log-list li.log-event {
   border-left: 2px solid rgba(255, 220, 173, 0.45);
   padding-left: 8px;
-}
-
-.spin-log-list li.log-event.event-win {
-  color: #ffefb8;
-}
-
-.spin-log-list li.log-event.event-bonus {
-  color: #bff3c2;
-}
-
-.spin-log-list li.log-event.event-error {
-  color: #ffb1b1;
 }
 
 .vault-window {
@@ -1667,184 +1569,6 @@ body.crazy-mode-on .vault-window {
   border-radius: inherit;
 }
 
-.relic-column {
-  position: relative;
-  min-height: 640px;
-  display: grid;
-  justify-items: center;
-  align-content: start;
-}
-
-.relic-spine {
-  position: absolute;
-  top: 18px;
-  bottom: 14px;
-  width: 8px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(238, 183, 106, 0.14), rgba(104, 49, 52, 0.1));
-  box-shadow: inset 0 1px 0 rgba(255, 236, 199, 0.1);
-}
-
-.relic-crown {
-  width: 56px;
-  height: 56px;
-  margin-bottom: 18px;
-  border-radius: 50%;
-  border: 1px solid rgba(245, 214, 169, 0.16);
-  background:
-    radial-gradient(circle at 50% 50%, rgba(238, 183, 106, 0.22), rgba(109, 49, 70, 0.12) 56%, transparent 72%);
-  box-shadow: 0 0 24px rgba(238, 183, 106, 0.08);
-}
-
-.sigil-stack {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 10px;
-  width: 100%;
-}
-
-.sigil {
-  position: relative;
-  min-height: 108px;
-  display: grid;
-  justify-items: center;
-  align-items: start;
-  transform-origin: 50% 0%;
-}
-
-.sigil-chain {
-  width: 2px;
-  height: 18px;
-  background: linear-gradient(180deg, rgba(255, 239, 211, 0.32), rgba(255, 239, 211, 0.06));
-}
-
-.sigil-medallion {
-  position: relative;
-  width: min(100%, 112px);
-  aspect-ratio: 1 / 1;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid rgba(245, 214, 169, 0.1);
-  background:
-    radial-gradient(circle at 50% 26%, rgba(255, 245, 229, 0.1), transparent 36%),
-    linear-gradient(180deg, rgba(61, 42, 34, 0.96), rgba(21, 15, 13, 0.98));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 221, 0.05),
-    inset 0 -16px 20px rgba(0, 0, 0, 0.3),
-    0 10px 16px rgba(0, 0, 0, 0.16);
-}
-
-.sigil-medallion::before {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 224, 171, 0.08);
-  pointer-events: none;
-}
-
-.symbol-icon {
-  width: 68%;
-  height: 68%;
-  object-fit: contain;
-  pointer-events: none;
-  user-select: none;
-  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.45));
-}
-
-.sigil.wild .sigil-medallion {
-  background:
-    radial-gradient(circle at 50% 26%, rgba(255, 247, 221, 0.14), transparent 36%),
-    linear-gradient(180deg, rgba(114, 82, 28, 0.98), rgba(51, 34, 10, 1));
-}
-
-.sigil.scatter .sigil-medallion {
-  background:
-    radial-gradient(circle at 50% 26%, rgba(255, 220, 212, 0.13), transparent 36%),
-    linear-gradient(180deg, rgba(107, 40, 52, 0.98), rgba(53, 20, 30, 1));
-}
-
-.multiplier-value {
-  position: absolute;
-  right: 10px;
-  bottom: 12px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: rgba(247, 232, 199, 0.95);
-  color: #2b190d;
-  font-size: 0.76rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.sigil.win-sigil .sigil-medallion {
-  border-color: rgba(245, 214, 169, 0.24);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 233, 190, 0.44),
-    0 0 20px rgba(238, 183, 106, 0.12);
-  animation: haloWake 0.92s cubic-bezier(0.18, 0.82, 0.24, 1);
-}
-
-.sigil.strike-sigil .sigil-medallion {
-  animation: relicSnap 0.86s cubic-bezier(0.16, 0.8, 0.24, 1);
-}
-
-.sigil.blast-small {
-  --strike-scale: 1.08;
-  --strike-light: 0.22;
-}
-
-.sigil.blast-medium {
-  --strike-scale: 1.16;
-  --strike-light: 0.36;
-}
-
-.sigil.blast-great {
-  --strike-scale: 1.28;
-  --strike-light: 0.5;
-}
-
-.sigil.scatter.scatter-special .sigil-medallion {
-  animation: omenRing 1.1s cubic-bezier(0.2, 0.82, 0.24, 1);
-}
-
-.sigil.scatter.scatter-special .symbol-icon {
-  animation: omenLift 1.1s cubic-bezier(0.2, 0.82, 0.24, 1);
-}
-
-.reels.spin-prime .sigil.spin-drop-sigil,
-.reels.tumble-prime .sigil.falling-sigil {
-  transform:
-    translateX(var(--drop-sway, 0px))
-    translateY(calc(-1 * var(--drop-px, 110px)))
-    rotate(calc(-1 * var(--drop-tilt, 0deg)))
-    scale(0.92);
-  opacity: 0.92;
-  filter: blur(var(--drop-blur, 0.14px));
-}
-
-.reels.spin-drop .sigil.spin-drop-sigil {
-  animation: pendulumDescent var(--drop-duration, 1300ms) cubic-bezier(0.14, 0.82, 0.22, 1) both;
-  animation-delay: var(--drop-delay, 0ms);
-}
-
-.reels.tumble-fall .sigil.falling-sigil {
-  animation: veilSlip var(--drop-duration, 980ms) cubic-bezier(0.18, 0.82, 0.24, 1) both;
-  animation-delay: var(--drop-delay, 0ms);
-}
-
-.sigil.explode-out .sigil-medallion {
-  animation: ashBloom 0.82s cubic-bezier(0.16, 0.78, 0.24, 1) forwards;
-}
-
-.sigil.explode-out .symbol-icon,
-.sigil.explode-out .multiplier-value,
-.sigil.explode-out .sigil-chain {
-  animation: ashFade 0.82s cubic-bezier(0.16, 0.78, 0.24, 1) forwards;
-}
-
 .visually-hidden {
   position: absolute !important;
   width: 1px;
@@ -1860,39 +1584,6 @@ body.crazy-mode-on .vault-window {
 #simulateBtn,
 #simulateBonusBtn {
   font-size: 0.84rem;
-}
-
-.ritual-module,
-.ritual-toggle {
-  min-height: 58px;
-  border-radius: 6px;
-  padding: 9px 10px;
-}
-
-.ritual-module {
-  display: grid;
-  align-content: center;
-  gap: 6px;
-}
-
-.ritual-module select {
-  width: 100%;
-  min-width: 0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  border: 1px solid rgba(245, 214, 169, 0.12);
-  background: #100b09;
-  color: var(--ink);
-}
-
-.ritual-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ritual-toggle input {
-  margin: 0;
 }
 
 .progress-track {
@@ -2045,7 +1736,6 @@ pre {
     padding: 14px;
   }
 
-  .meter-pair,
   .summary-grid,
   .sim-grid,
   .test-multi-grid {
@@ -2068,197 +1758,6 @@ pre {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-  }
-}
-
-@keyframes haloWake {
-  0% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-  34% {
-    transform: scale(1.08);
-    filter: brightness(1.16);
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 231, 188, 0.5),
-      0 0 28px rgba(238, 183, 106, 0.18);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-}
-
-@keyframes relicSnap {
-  0% {
-    transform: scale(1);
-  }
-  22% {
-    transform: translateY(-9px) scale(var(--strike-scale, 1.12));
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 233, 190, 0.86),
-      0 0 32px rgba(238, 183, 106, var(--strike-light, 0.22));
-  }
-  44% {
-    transform: translateY(10px) scaleX(1.06) scaleY(0.9);
-  }
-  72% {
-    transform: translateY(-3px) scale(1.02);
-  }
-  100% {
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes omenRing {
-  0% {
-    transform: scale(1);
-  }
-  36% {
-    transform: scale(1.12);
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 223, 176, 0.66),
-      0 0 24px rgba(234, 125, 99, 0.22);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes omenLift {
-  0% {
-    transform: scale(1);
-  }
-  36% {
-    transform: translateY(-10px) scale(1.14);
-    filter: drop-shadow(0 0 18px rgba(255, 216, 152, 0.34));
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes pendulumDescent {
-  0% {
-    transform:
-      translateX(var(--drop-sway, 0px))
-      translateY(calc(-1 * var(--drop-px, 110px)))
-      rotate(calc(-1 * var(--drop-tilt, 0deg)))
-      scale(0.92);
-    opacity: 0.92;
-    filter: blur(var(--drop-blur, 0.14px));
-  }
-  44% {
-    transform:
-      translateX(calc(var(--drop-sway, 0px) * -0.24))
-      translateY(calc(var(--drop-px, 110px) * -0.12))
-      rotate(calc(var(--drop-tilt, 0deg) * 0.4))
-      scale(0.97);
-    opacity: 1;
-  }
-  68% {
-    transform:
-      translateX(calc(var(--drop-sway, 0px) * 0.08))
-      translateY(var(--impact-depth, 6px))
-      rotate(calc(var(--drop-tilt, 0deg) * -0.08))
-      scale(1);
-    filter: blur(0);
-  }
-  84% {
-    transform:
-      translateY(calc(-1 * var(--rebound-lift, 3px)))
-      rotate(calc(var(--drop-tilt, 0deg) * 0.04));
-  }
-  100% {
-    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes veilSlip {
-  0% {
-    transform:
-      translateX(calc(var(--drop-sway, 0px) * 0.6))
-      translateY(calc(-1 * var(--drop-px, 110px)))
-      rotate(calc(-1 * var(--drop-tilt, 0deg)))
-      scale(0.94);
-    opacity: 0.9;
-    filter: blur(var(--drop-blur, 0.12px));
-  }
-  56% {
-    transform:
-      translateX(calc(var(--drop-sway, 0px) * -0.1))
-      translateY(0)
-      rotate(calc(var(--drop-tilt, 0deg) * 0.05))
-      scale(1);
-    opacity: 1;
-    filter: blur(0);
-  }
-  78% {
-    transform: translateY(var(--impact-depth, 4px)) scale(1.01);
-  }
-  90% {
-    transform: translateY(calc(-1 * var(--rebound-lift, 2px)));
-  }
-  100% {
-    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes ashBloom {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-    filter: brightness(1.06);
-  }
-  24% {
-    opacity: 1;
-    transform: scale(1.14) rotate(4deg);
-    filter: brightness(1.16);
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 229, 183, 0.7),
-      0 0 24px rgba(238, 183, 106, 0.22);
-  }
-  54% {
-    opacity: 0.72;
-    transform: scale(0.84) rotate(-8deg);
-    filter: brightness(0.96) blur(0.24px);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.14) rotate(24deg);
-    filter: brightness(0.72) blur(0.8px);
-  }
-}
-
-@keyframes ashFade {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  32% {
-    transform: scale(1.04);
-    opacity: 0.96;
-  }
-  58% {
-    transform: scale(0.72);
-    opacity: 0.46;
-  }
-  100% {
-    transform: scale(0.08);
-    opacity: 0;
-  }
-}
-
-@keyframes hushCurtain {
-  0% {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
@@ -2339,12 +1838,7 @@ body::after {
 
 .oracle-band,
 .archive-band,
-.codex-band,
-.meter-node,
-.header-readout,
-.engine-tag,
-.ritual-module,
-.ritual-toggle {
+.codex-band {
   border-radius: 14px;
   border-color: rgba(165, 203, 255, 0.24);
   background: linear-gradient(180deg, rgba(22, 33, 58, 0.5), rgba(10, 17, 34, 0.54));
@@ -2352,7 +1846,6 @@ body::after {
   -webkit-backdrop-filter: blur(16px) saturate(145%);
 }
 
-.meter-node strong,
 .summary-grid strong,
 .sim-grid strong {
   color: #e9f2ff;
@@ -2391,13 +1884,6 @@ button:not(:where(.lsh *, .lsh-sheet *, .lsh-panel *)) {
 #simulateBtn,
 #simulateBonusBtn {
   background: linear-gradient(180deg, #9fbfff, #546ed5);
-}
-
-.ritual-module select {
-  border-radius: 10px;
-  border-color: rgba(167, 205, 255, 0.28);
-  background: rgba(8, 15, 30, 0.72);
-  color: #eaf2ff;
 }
 
 .summary-grid > div,
@@ -2733,31 +2219,6 @@ body.admin-mode .sim-grid strong {
 }
 @media (prefers-reduced-motion: reduce) {
   .soul-plus { animation-name: soulPlusFade; }
-}
-
-.meter-node-multi {
-  transition: transform 0.18s ease;
-}
-
-.meter-node-multi.soul-hit {
-  animation: soulHit 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
-}
-
-.meter-node-multi.soul-hit strong {
-  animation: soulHitText 0.6s cubic-bezier(0.2, 0.9, 0.2, 1);
-}
-
-@keyframes soulHit {
-  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 226, 138, 0); }
-  30%  { transform: scale(1.08); box-shadow: 0 0 22px 6px var(--soul-glow, rgba(255, 226, 138, 0.55)); }
-  70%  { transform: scale(0.985); box-shadow: 0 0 14px 2px var(--soul-glow, rgba(255, 226, 138, 0.3)); }
-  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 226, 138, 0); }
-}
-
-@keyframes soulHitText {
-  0%   { color: inherit; text-shadow: none; }
-  30%  { color: #fff; text-shadow: 0 0 12px var(--soul-glow, rgba(255, 226, 138, 0.9)); transform: scale(1.18); }
-  100% { color: inherit; text-shadow: none; transform: scale(1); }
 }
 
 pre,
