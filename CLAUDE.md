@@ -57,6 +57,10 @@ When changing math, change it in `client/engine/`, then run `npm run test:rtp-pa
 - **Canvas context loss:** `installContextLossGuard` pauses the loop on `contextlost`. On `contextrestored` it drops the sprite and stage caches, redraws, and (in platform mode, when idle) re-reads the session from the RGS. Adaptive quality is the existing `TIER_PROFILES` + FPS governor (`fxCeil`, DPR caps, throttles); don't build a second one.
 - Verify every client change with `npm run test:client` (needs Chrome); a change to boot, restore or embedding also with `npm run verify:browser`. CI (`.github/workflows/platform-ci.yml`) runs both, as the parallel jobs `release-check` and `browser-checks` (plus `lumina-checks` for `test:lumina`), on every PR and on main. The real-Chrome checks launch through `platform/scripts/support/chrome-launch.ts` (60s port wait, one retry); `tools/layout-check.js` has its own copy of the same logic. Motion is verified with headless CDP probes (see `CHECKPOINT.md`).
 
+## Web pages: style skill
+
+Restyling or building any page here (the player chrome, a game's look, the consoles, the demo casino, the lobby, pitch pages) follows the project skill `.claude/skills/lumina-web-style/SKILL.md` (the owner's web direction, adapted to this repo).
+
 ## Game rules config
 
 `game-rules-v2.json` drives layout, symbols, RTP profiles, and features. It exists in **two locations** that must be kept in sync: `math/game-rules-v2.json` (canonical) and `client/math/game-rules-v2.json` (served copy). Both `backend/server.js` and the platform engine-loader **prefer the `client/math/` copy** when it exists. Related config: `math/paytable-v1.json`, `math/reel-strips-v1.json`.
