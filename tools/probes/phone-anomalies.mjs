@@ -72,6 +72,21 @@ async function open(game) {
   return page;
 }
 
+/** Press Spin. Relic Forge's demo keeps its Forge in localStorage, and the pages here share
+ *  one browser, so an earlier random round can leave a Forge running: Spin then opens the
+ *  relic choice first (never auto-made in manual play). Take the first relic, as a player would. */
+async function pressSpin(page) {
+  await page.tap("#spinBtn");
+  // Whichever comes first: the round starts, or the relic choice opens.
+  const first = await page.waitForFunction(() => {
+    if (window.__spinLifecycle?.inFlight) return "round";
+    const card = document.querySelector("[data-pick]");
+    return card && card.getBoundingClientRect().width ? "pick" : false;
+  }, { timeout: 8000, polling: 25 }).then((h) => h.jsonValue(), () => null);
+  if (first === "pick") await page.tap("[data-pick]");
+  return first;
+}
+
 // 1. No failed request in any game: load + one round.
 for (const game of GAMES) {
   const page = await open(game);
@@ -188,15 +203,15 @@ for (const game of GAMES) {
       };
     }
   }, game === "vault");
-  await page.tap("#spinBtn");
+  await pressSpin(page);
   const said = await page.waitForFunction(() => document.getElementById("psTicker").textContent.trim() === "No connection: round not played", { timeout: 30000, polling: 50 }).then(() => true, () => false);
   await page.evaluate(() => { window.__down = false; });
   check(`${game}: a lost round says "No connection: round not played"`, said, (await read()).line);
   await untilIdle(page, 10000);
   check(`${game}: ...and leaves the balance as it was`, (await read()).bal === before.bal, `${before.bal} -> ${(await read()).bal}`);
   await sleep(4500); // the notice has had its time
-  await page.tap("#spinBtn");
-  const played = await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 8000 }).then(() => true, () => false);
+  const first = await pressSpin(page);
+  const played = first === "round" || await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 8000 }).then(() => true, () => false);
   await untilIdle(page, 240000); // a random round can trigger a whole free-spins feature
   check(`${game}: the next round plays`, played);
   const after = (await read()).line;
