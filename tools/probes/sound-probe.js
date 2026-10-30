@@ -2,9 +2,11 @@
 "use strict";
 
 // Sound engine probe (client/audio/audio.js) in real headless Chrome, with
-// autoplay allowed. Checks: every file is decoded at page load, BEFORE any
-// gesture, and nothing plays or queues before it (so the first spin is fully
-// voiced); every game event plays a decoded FILE and no generated
+// autoplay allowed. Checks the staged loading: the first spin's sounds are decoded
+// right after page load, BEFORE any gesture, while the music waits for the first
+// settled round, and nothing plays or queues before the gesture (so the first spin
+// is fully voiced); once warm (Sound.warmMusic(), main.js calls it when the first
+// round settles) every file and the reverb are in; every game event plays a decoded FILE and no generated
 // (oscillator) voice exists at all; variations rotate (never the same twice in a row); the mix
 // graph (buses + limiter) and ONE AudioContext for the whole client; every
 // .m4a (Safari) decodes too; music moods crossfade base → freeSpins → bigWin
@@ -83,18 +85,33 @@ async function main() {
     for (let i = 0; i < 200; i++) { if (await ev("typeof state !== 'undefined' && !!state.sessionId && document.body.classList.contains('app-ready')").catch(() => false)) break; await sleep(100); }
 
     console.log("\nloading (before any gesture)");
+    // The first spin's sounds (FIRST in audio.js): decoded at page load, one at a time.
     const load = await ev(`(async () => {
+      const FIRST = ["spin_start", "reel_stop", "tick", "ui_click", "explode", "refill", "win_tick", "win_small", "scatter"];
       await Sound.debug.ready();
       const m = Sound.debug.manifest(); if (!m) return { manifest: false };
-      const all = Object.values(m.sounds).flat().concat(Object.values(m.music), m.ir ? [m.ir] : []);
+      const first = FIRST.filter((k) => m.sounds[k]).flatMap((k) => m.sounds[k]);
       const t0 = performance.now();
-      while (Sound.debug.loaded().length < all.length && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
+      while (first.some((f) => !Sound.debug.loaded().includes(f)) && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
+      const loaded = Sound.debug.loaded();
       const n0 = Sound.debug.recent().length; Sound.play("spin_start"); Sound.play("reel_stop", { index: 0 });
-      return { manifest: true, ext: Sound.debug.ext(), want: all.length, got: Sound.debug.loaded().length, ms: Math.round(performance.now() - t0), unlocked: Sound.debug.unlocked(), queued: Sound.debug.recent().length - n0, reverb: Sound.debug.reverbReady(), ir: m.ir };
+      return { manifest: true, ext: Sound.debug.ext(), want: first.length, got: first.filter((f) => loaded.includes(f)).length, ms: Math.round(performance.now() - t0),
+        musicEarly: Object.values(m.music).some((f) => loaded.includes(f)), unlocked: Sound.debug.unlocked(), queued: Sound.debug.recent().length - n0 };
     })()`);
-    check("every file is fetched and decoded at page load, before any gesture", load.manifest && load.got === load.want && load.unlocked === false, `${load.got}/${load.want} ${load.ext}, ready ${load.ms}ms after load`);
+    check("the first spin's sounds are decoded at page load, before any gesture", load.manifest && load.got === load.want && load.unlocked === false, `${load.got}/${load.want} ${load.ext}, ready ${load.ms}ms after load`);
+    check("the music waits for the first settled round (never competes with the first spin)", load.musicEarly === false);
     check("nothing plays or queues before the first gesture (no late burst)", load.queued === 0);
-    check("the shared reverb has its impulse response", load.reverb === true, load.ir || "no ir in the manifest");
+    // The first round settles: main.js calls Sound.warmMusic(); everything else trickles in.
+    const warm = await ev(`(async () => {
+      const m = Sound.debug.manifest(); Sound.warmMusic();
+      const all = Object.values(m.sounds).flat().concat([m.music.base], m.ir ? [m.ir] : []);
+      const t0 = performance.now();
+      while ((all.some((f) => !Sound.debug.loaded().includes(f)) || (m.ir && !Sound.debug.reverbReady())) && performance.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 100));
+      const loaded = Sound.debug.loaded();
+      return { want: all.length, got: all.filter((f) => loaded.includes(f)).length, ms: Math.round(performance.now() - t0), reverb: Sound.debug.reverbReady(), ir: m.ir };
+    })()`);
+    check("once warm, every sound, the base music and the reverb are decoded", warm.got === warm.want, `${warm.got}/${warm.want}, ${warm.ms}ms after warmMusic()`);
+    check("the shared reverb has its impulse response", warm.reverb === true, warm.ir || "no ir in the manifest");
     const first = await ev(`(() => { Sound.setMuted(false); Sound.unlock(); Sound.play("spin_start"); const r = Sound.debug.recent(); const l = r[r.length - 1]; return { name: l && l.name, file: l && l.file }; })()`);
     check("the very first sound after the gesture is a real file (the first spin is voiced)", first.name === "spin_start" && Boolean(first.file), String(first.file));
     const m4a = await ev(`(async () => {
@@ -125,14 +142,16 @@ async function main() {
     check("every game event (and the anticipation riser) plays a recorded file", missing.length === 0, missing.length ? "no file: " + missing.map((e) => e.n).join(", ") : `${events.length} events`);
     const rot = await ev(`(async () => {
       const res = {};
-      for (const [n, o, key] of [["reel_stop", { index: 0 }, "reel_stop"], ["tick", { row: 4, col: 0, rows: 5 }, "tick"], ["explode", {}, "explode"], ["win_tick", {}, "win_tick"]]) {
-        const files = []; for (let i = 0; i < 8; i++) { Sound.play(n, o); const r = Sound.debug.recent(); files.push(r[r.length - 1].file); await new Promise((r) => setTimeout(r, 70)); }
+      // Spaced past each event's minGap (audio.js EVENTS: a play inside it is skipped, which
+      // would read as a repeat): explode allows one burst per 150 ms.
+      for (const [n, o, key, gap] of [["reel_stop", { index: 0 }, "reel_stop", 70], ["tick", { row: 4, col: 0, rows: 5 }, "tick", 70], ["explode", {}, "explode", 180], ["win_tick", {}, "win_tick", 70]]) {
+        const files = []; for (let i = 0; i < 8; i++) { Sound.play(n, o); const r = Sound.debug.recent(); files.push(r[r.length - 1].file); await new Promise((r) => setTimeout(r, gap)); }
         let repeats = 0; for (let i = 1; i < files.length; i++) if (files[i] === files[i - 1]) repeats++;
         res[key] = { distinct: new Set(files).size, repeats };
       }
       return res;
     })()`);
-    check("variations rotate, never the same one twice in a row", Object.values(rot).every((r) => r.repeats === 0 && r.distinct >= 2), Object.entries(rot).map(([k, r]) => `${k}:${r.distinct}`).join(" "));
+    check("variations rotate, never the same one twice in a row", Object.values(rot).every((r) => r.repeats === 0 && r.distinct >= 2), Object.entries(rot).map(([k, r]) => `${k}:${r.distinct}/${r.repeats}`).join(" "));
 
     console.log("\nmusic");
     const mus = await ev(`(async () => {
