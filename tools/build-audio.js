@@ -62,6 +62,12 @@ const P = (ev) => importedPath(ev);
 // One identity per key: extra variations are close takes of the same recording
 // (a hair of pitch), so a repeat never sounds like a different event.
 const takes = (n, v) => [1, 0.97, 1.03, 1.06].slice(0, n).map((pitch) => ({ ...v, pitch: (v.pitch || 1) * pitch }));
+// Lyria clips (art-src/audio/lyria/sfx/, LICENSES.md): the owner's Gemini/Lyria 3 takes of the
+// game's MUSICAL sounds (bells, gong, stingers), each cut from the clean opening of a take; the
+// offsets below are on the build's timeline (after leading silence is removed).
+const LY = (name) => `lyria/sfx/${name}.mp3`;
+const BELLS = LY("multiplier_bells"); // 0 s: bright strike · 1.0 s: short strike · 2.0 s: long ring
+const GLINTS = LY("glints");          // 0 s: one ting · 5.1 s: the sparkle shimmer
 const SOUNDS = {
   // UI: soft, short, no tail.
   ui_click: { tier: "ui", mono: true, variations: takes(2, { layers: [[P("ui_click"), 0, 0]], max: 0.07, fadeOut: 15, hp: 300 }) },
@@ -73,44 +79,46 @@ const SOUNDS = {
   tick: { tier: "tick", mono: true, variations: takes(4, { layers: [[P("tick"), 0, 0]], max: 0.12, fadeOut: 40, hp: 400 }) },
   refill: { tier: "base", onset: false, variations: [{ layers: [[P("refill"), 0, 0]], max: 0.4, fadeOut: 120, hp: 120 }] },
   // Wins.
-  win_light: { tier: "win", variations: [{ layers: [[P("win_light"), 0, 0]], max: 1.2, fadeOut: 500, hp: 300, comp: true }] },
-  // A winning cluster dissolves: a soft crystal chime, not breaking glass (the chandelier
-  // smash read as a window put through on every win, owner 2026-10-23). The scatter bell,
-  // short and darker, with the shimmer under it; three takes a step apart so a chain of
-  // bursts climbs instead of repeating.
-  explode: { tier: "base", variations: [1, 1.122, 1.26].map((pitch) => ({ layers: [[P("scatter"), 0, 0], [P("win_light"), -9, 0]], max: 0.55, fadeOut: 300, hp: 220, lp: 6500, pitch })) },
-  explode_great: { tier: "win", variations: [1, 1.122].map((pitch) => ({ layers: [[P("scatter"), 0, 0], [P("win_light"), -5, 30], [P("sub_impact"), -14, 0]], max: 1.0, fadeOut: 500, hp: 40, lp: 7000, pitch })) },
+  win_light: { tier: "win", variations: [{ layers: [[GLINTS, 0, 0, 5170]], max: 1.0, fadeOut: 400, hp: 300, comp: true }] },
+  // A winning cluster dissolves: the short bell strike, darker, with the shimmer under it;
+  // three takes a step apart so a chain of bursts climbs instead of repeating.
+  explode: { tier: "base", variations: [1, 1.122, 1.26].map((pitch) => ({ layers: [[BELLS, 0, 0, 1000], [GLINTS, -9, 0, 5100]], max: 0.48, fadeOut: 250, hp: 220, lp: 6500, pitch })) },
+  explode_great: { tier: "win", variations: [1, 1.122].map((pitch) => ({ layers: [[BELLS, 0, 0, 0], [GLINTS, -5, 30, 5100], [P("sub_impact"), -14, 0]], max: 0.95, fadeOut: 450, hp: 40, lp: 7000, pitch })) },
   win_tick: { tier: "tick", mono: true, variations: takes(4, { layers: [[P("win_tick"), 0, 0]], max: 0.17, fadeOut: 50, hp: 300 }) },
-  win_land: { tier: "win", variations: takes(2, { layers: [[P("win_land"), 0, 0, 40]], max: 0.5, fadeOut: 150, hp: 200 }) },
-  win_small: { tier: "win", variations: [{ layers: [[P("win_land"), 0, 0, 40], [P("win_light"), -8, 0]], max: 1.0, fadeOut: 400, hp: 150 }] },
+  win_land: { tier: "win", variations: takes(2, { layers: [[LY("win_countup"), 0, 0]], max: 0.6, fadeOut: 250, hp: 200 }) },
+  win_small: { tier: "win", variations: [{ layers: [[LY("small_win"), 0, 0, 50]], max: 0.9, fadeOut: 350, hp: 60 }] },
   combine_total: { tier: "win", variations: [{ layers: [[P("combine_total"), 0, 0]], max: 1.0, fadeOut: 300, hp: 150 }] },
   // Multipliers.
-  // The multiplier reveal (vault-multiplier.md): the laser's zap, then the plate's metal clunk. No thunder.
+  // The multiplier reveal (vault-multiplier.md): the beam's zap, then the plate's metal clunk.
   strike: { tier: "win", variations: [{ layers: [[P("strike"), 0, 0], [P("bang"), -5, 90]], max: 1.1, fadeOut: 450, hp: 60, comp: true }] },
-  bang: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0]], max: 0.9, fadeOut: 350, hp: 100 }) },
-  bang_big: { tier: "win", variations: takes(2, { layers: [[P("bang"), 0, 0], [P("sub_impact"), -5, 0]], max: 1.6, fadeOut: 550, hp: 30, comp: true }) },
+  // The plate rings: one bright bell, pitched by value in audio.js (2x high … 49x low).
+  bang: { tier: "win", variations: takes(2, { layers: [[BELLS, 0, 0, 0]], max: 0.9, fadeOut: 350, hp: 100 }) },
+  bang_big: { tier: "win", variations: takes(2, { layers: [[LY("big_multiplier"), 0, 0], [P("sub_impact"), -6, 0]], max: 2.0, fadeOut: 700, hp: 30, comp: true }) },
   soul_launch: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.3, fadeOut: 80, hp: 150 }] },
-  catch: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0]], max: 0.25, fadeOut: 60, hp: 200 }] },
+  catch: { tier: "win", variations: [{ layers: [[GLINTS, 0, 0]], max: 0.45, fadeOut: 150, hp: 200 }] },
   combine_enter: { tier: "base", onset: false, variations: [{ layers: [[P("soul_launch"), 0, 0]], max: 0.35, fadeOut: 100, hp: 150, pitch: 0.9 }] },
   combine_slam: { tier: "base", variations: takes(2, { layers: [[P("combine_slam"), 0, 0]], max: 0.4, fadeOut: 150, hp: 60, lp: 4500, comp: true }) },
   // The total locks in: the lock-in click, deeper, with a touch of the impact.
   combine: { tier: "win", variations: [{ layers: [[P("catch"), 0, 0], [P("combine_slam"), -12, 0]], max: 0.4, fadeOut: 120, hp: 60, pitch: 0.85 }] },
   // Scatters & feature.
-  scatter: { tier: "win", variations: [{ layers: [[P("scatter"), 0, 0]], max: 1.6, fadeOut: 500, hp: 150 }] },
+  // One long clean bell; audio.js climbs it a major triad per scatter (root, 3rd, 5th, octave).
+  scatter: { tier: "win", variations: [{ layers: [[BELLS, 0, 0, 1995]], max: 1.8, fadeOut: 600, hp: 150 }] },
   riser: { tier: "win", onset: false, variations: [{ layers: [[P("riser"), 0, 0]], max: 8, fadeOut: 60, hp: 60 }] },
-  scatter_catch: { tier: "feature", variations: takes(2, { layers: [[P("scatter_catch"), 0, 0, 45], [P("sub_impact"), -10, 0]], max: 3.5, fadeOut: 1200, hp: 30 }) },
-  feature_award: { tier: "feature", variations: [{ layers: [[P("vault_slam"), 0, 0, 40], [P("feature_award"), -1, 120]], max: 3.2, fadeOut: 900, hp: 40, comp: true }] },
-  feature_more: { tier: "feature", variations: [{ layers: [[P("feature_more"), 0, 0]], max: 1.4, fadeOut: 400, hp: 60 }] },
-  fs_intro: { tier: "feature", onset: false, variations: [{ layers: [[P("fs_intro"), 0, 0]], max: 3.2, fadeOut: 900, hp: 30 }] },
-  // Its first note lands at once; the loudest chord comes ~250 ms later (a closing flourish).
-  fs_outro: { tier: "feature", onset: false, variations: [{ layers: [[P("fs_outro"), 0, 0]], max: 3.0, fadeOut: 900, hp: 40 }] },
+  // The gong and choir: two real takes of the same hit (a retrigger is the same, a minor third up).
+  scatter_catch: { tier: "feature", variations: [158, 6156].map((at) => ({ layers: [[LY("scatter_catch_gong"), 0, 0, at], [P("sub_impact"), -10, 0]], max: 3.8, fadeOut: 1200, hp: 30 })) },
+  // Free spins won: the swell into the hit (a rise, so its peak comes late by design).
+  feature_award: { tier: "feature", onset: false, variations: [{ layers: [[LY("winsound_head"), 0, 0, 2260]], max: 2.8, fadeOut: 700, hp: 40 }] },
+  feature_more: { tier: "feature", variations: [{ layers: [[LY("more_free_spins"), 0, 0, 205]], max: 1.7, fadeOut: 500, hp: 60 }] },
+  fs_intro: { tier: "feature", onset: false, variations: [{ layers: [[LY("free_spins_intro"), 0, 0, 10]], max: 3.1, fadeOut: 900, hp: 30 }] },
+  // The final held chord of the same take as the award, fading out.
+  fs_outro: { tier: "feature", onset: false, variations: [{ layers: [[LY("winsound_tail"), 0, 0, 1500]], max: 4.0, fadeOut: 900, hp: 40 }] },
   buy: { tier: "feature", variations: [{ layers: [[P("buy"), 0, 0]], max: 1.3, fadeOut: 400, hp: 120 }] },
-  // Big wins: escalating (Big < Mega < Epic < Max), each a layer bigger.
-  bigwin_open: { tier: "peak", variations: [{ layers: [[P("bigwin_open"), 0, 0], [P("sub_impact"), -6, 0]], max: 1.6, fadeOut: 500, hp: 25, comp: true }] },
-  win_big: { tier: "peak", variations: [{ layers: [[P("win_big"), 0, 0, 25]], max: 3.0, fadeOut: 900, hp: 30 }] },
-  win_mega: { tier: "peak", variations: [{ layers: [[P("win_mega"), 0, 0], [P("sub_impact"), -8, 0]], max: 2.6, fadeOut: 800, hp: 25, comp: true }] },
-  win_epic: { tier: "peak", variations: [{ layers: [[P("win_mega"), 0, 0], [P("choir"), -4, 0], [P("sub_impact"), -6, 0]], max: 3.5, fadeOut: 1000, hp: 25, comp: true }] },
-  max_win: { tier: "peak", variations: [{ layers: [[P("max_win"), 0, 0], [P("choir"), -3, 0], [P("sub_impact"), -4, 0], [P("scatter_catch"), -10, 0]], max: 5, fadeOut: 1500, hp: 25, comp: true }] }
+  // Big wins: escalating (Big < Mega < Epic < Max), each its own stinger, each ending on a phrase break.
+  bigwin_open: { tier: "peak", variations: [{ layers: [[LY("win_stingers_entrance"), 0, 0], [P("sub_impact"), -6, 0]], max: 2.0, fadeOut: 600, hp: 25, comp: true }] },
+  win_big: { tier: "peak", variations: [{ layers: [[LY("big_win"), 0, 0]], max: 3.2, fadeOut: 900, hp: 30 }] },
+  win_mega: { tier: "peak", variations: [{ layers: [[LY("mega_win"), 0, 0], [P("sub_impact"), -8, 0]], max: 2.75, fadeOut: 800, hp: 25, comp: true }] },
+  win_epic: { tier: "peak", variations: [{ layers: [[LY("epic_win"), 0, 0], [P("sub_impact"), -6, 0]], max: 3.15, fadeOut: 1000, hp: 25, comp: true }] },
+  max_win: { tier: "peak", variations: [{ layers: [[LY("max_win"), 0, 0, 50], [P("sub_impact"), -4, 0]], max: 5.0, fadeOut: 1500, hp: 25, comp: true }] }
 };
 // The shared reverb's impulse response.
 const IR = { src: P("reverb_ir"), max: 2.0, fadeOut: 400 };
