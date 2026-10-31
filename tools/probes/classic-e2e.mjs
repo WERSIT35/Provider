@@ -38,7 +38,9 @@ try {
     await page.waitForFunction(() => window.__spinLifecycle.inFlight, { timeout: 5000, polling: 16 }).catch(() => {});
     // the feature run starts right after the trigger round: watch for it while that round lands
     feature = await page.waitForFunction(() => document.querySelector(".lsh.is-feature") !== null, { timeout: 4000, polling: 50 }).then(() => true, () => false);
-    if (!feature) await idle();
+    // A slow machine can land the trigger round after those 4s: its intro panel then waits for a
+    // press and the round never goes idle. Settle on whichever comes first.
+    if (!feature) feature = await page.waitForFunction(() => !window.__spinLifecycle.inFlight || document.querySelector(".lsh.is-feature") !== null, { timeout: 120000, polling: 50 }).then(() => page.evaluate(() => document.querySelector(".lsh.is-feature") !== null));
   }
   check("a Free Spins feature triggered", feature);
   if (feature) {
