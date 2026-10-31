@@ -2540,7 +2540,7 @@ class ReelCanvasRenderer {
       this.particles.length ||
       this.shards.live > 0 ||
       this.art.live > 0 ||
-      this.fx.coinTurns.size > 0
+      this.liveCoinTurns(now) > 0
     );
   }
 
@@ -2979,6 +2979,15 @@ class ReelCanvasRenderer {
     this.wake();
   }
 
+  /** Coin turns still playing at `now`. A finished one is dropped here, by time: a turn
+   *  whose cell no longer shows a scatter (a new spin replaced it mid-turn) is never drawn,
+   *  so it would otherwise keep the loop busy forever (idle zero). */
+  liveCoinTurns(now = performance.now()) {
+    const turns = this.fx.coinTurns;
+    for (const [key, t] of turns) if (now >= t.start + (t.steps * 1000) / COIN_TURN.fps) turns.delete(key);
+    return turns.size;
+  }
+
   /** The coin-turn frame to draw on cell `key` now, or null (no turn, finished, not
    *  started, or the art not loaded yet: the scatter's own sprite then). */
   coinTurnFrame(key, now) {
@@ -3003,97 +3012,6 @@ class ReelCanvasRenderer {
     for (const p of cells) this.turnCoin(p.row, p.col, this.fx.lockOn.start, halfTurns);
     await animationSleep(duration);
     this.fx.lockOn = null;
-  }
-
-  /** Canvas layer for 5a reticles and the 5c/5d lock-on (over the symbols). */
-  // Not drawn since the art effects (ArtFx, syncArtFx); removed with the old spawners next.
-  drawScatterLocks(ctx, radius) {
-    const now = performance.now();
-    const spinOk = !this._reducedMotion;
-    const reticle = (x, y, r, spin, alpha, width) => {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(spin);
-      ctx.globalAlpha = clamp(alpha, 0, 1);
-      ctx.strokeStyle = THEME.color.laserHot;
-      ctx.lineWidth = width;
-      ctx.lineCap = "round";
-      for (let k = 0; k < 4; k += 1) {
-        const a0 = (k * Math.PI) / 2 + 0.28;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, a0, a0 + Math.PI / 2 - 0.56);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      for (let k = 0; k < 4; k += 1) {
-        const a = (k * Math.PI) / 2;
-        ctx.moveTo(Math.cos(a) * r * 1.14, Math.sin(a) * r * 1.14);
-        ctx.lineTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8);
-      }
-      ctx.stroke();
-      ctx.restore();
-    };
-    // 5a: snaps in from slightly wide, holds, fades.
-    this.fx.reticles = this.fx.reticles.filter((q) => now - q.born < q.life);
-    for (const q of this.fx.reticles) {
-      const t = (now - q.born) / q.life;
-      const r = radius * (1.25 - 0.35 * easeOutCubic(Math.min(1, t * 2.5)));
-      const alpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
-      reticle(q.x, q.y, r, spinOk ? t * 1.2 : 0, alpha, Math.max(1.5, radius * 0.06));
-    }
-    // 5c/5d: laser sights sweep in along the row and column of each scatter
-    // while wide reticles converge on it, then the locks pulse.
-    const L = this.fx.lockOn;
-    if (!L) return;
-    const t = clamp((now - L.start) / L.duration, 0, 1);
-    const conv = easeOutCubic(Math.min(1, t / 0.7));
-    const pulse = t > 0.7 ? 0.6 + 0.4 * Math.sin((t - 0.7) * Math.PI * 8) : 1;
-    const { inX, inY, inW, inH } = this.getTableRect();
-    for (const p of L.cells) {
-      if (conv < 1) {
-        ctx.save();
-        ctx.globalAlpha = (1 - conv) * 0.7;
-        ctx.strokeStyle = THEME.color.laser;
-        ctx.lineWidth = Math.max(1, radius * 0.03);
-        ctx.beginPath();
-        ctx.moveTo(inX, p.y); ctx.lineTo(inX + inW, p.y);
-        ctx.moveTo(p.x, inY); ctx.lineTo(p.x, inY + inH);
-        ctx.stroke();
-        ctx.restore();
-      }
-      reticle(p.x, p.y, radius * (2.6 - 1.75 * conv), spinOk ? (1 - conv) * Math.PI : 0,
-        (0.35 + 0.65 * conv) * pulse, Math.max(2, radius * 0.08));
-    }
-  }
-
-  /** 5b: the anticipated lanes glow security-laser red while they wait and
-   *  fall, building with the wait; each lane releases as its column lands. */
-  drawAnticipationLanes(ctx, a, layout) {
-    const now = performance.now();
-    if (!a.landAt || now < a.startAt) return;
-    const { padX, top, laneW, rowStep } = layout;
-    const h = rowStep * this.rows;
-    const build = clamp((now - a.startAt) / Math.max(1, a.endAt - a.startAt), 0, 1);
-    for (let c = a.fromCol; c < this.cols; c += 1) {
-      const land = a.landAt.get(c);
-      if (land == null) continue;
-      const fade = now < land ? 1 : 1 - clamp((now - land) / 220, 0, 1);
-      if (fade <= 0) continue;
-      const x = padX + laneW * c;
-      const strength = (0.35 + 0.45 * build) * fade;
-      const g = ctx.createLinearGradient(x, 0, x + laneW, 0);
-      g.addColorStop(0, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
-      g.addColorStop(0.18, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
-      g.addColorStop(0.82, THEME.alpha(THEME.color.laser, (0.12 * strength).toFixed(3)));
-      g.addColorStop(1, THEME.alpha(THEME.color.laser, (0.55 * strength).toFixed(3)));
-      ctx.fillStyle = g;
-      ctx.fillRect(x, top, laneW, h);
-      if (!this._reducedMotion && now < land) {
-        const sy = top + ((now * 0.55 + c * 90) % h);
-        ctx.fillStyle = THEME.alpha(THEME.color.laserHot, (0.5 * strength).toFixed(3));
-        ctx.fillRect(x + 2, sy, laneW - 4, 2);
-      }
-    }
   }
 
   /** Start the art effects for what the round just did (ArtFx): each event fires

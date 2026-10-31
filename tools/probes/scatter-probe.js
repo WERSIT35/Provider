@@ -72,7 +72,10 @@ async function evaluate(cdp, expression) {
 
 (async () => {
   await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
-  const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
+  const chromePath = [process.env.CHROME_PATH, "C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+    .filter(Boolean).find((p) => fs.existsSync(p));
+  if (!chromePath) { console.error("No Chrome found. Set CHROME_PATH."); process.exit(2); }
+  const chrome = spawn(chromePath, [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${tempProfile("vx-probe-")}`,
     "--no-first-run", "--hide-scrollbars", "--force-device-scale-factor=1", "--mute-audio", "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
@@ -131,13 +134,18 @@ async function evaluate(cdp, expression) {
     window.__ev = [];
     const push = (e) => __ev.push({ t: Math.round(performance.now()), ...e });
     const sp = window.Sound.play.bind(window.Sound);
-    window.Sound.play = (n, o) => { if (n === "reel_stop" && !(o && o.index < 0)) push({ k: "thud", col: o && o.index }); if (n === "win_tick" && o && o.progress !== undefined) push({ k: "tick", p: o.progress }); return sp(n, o); };
+    window.Sound.play = (n, o) => { if (n === "reel_stop" && !(o && o.index < 0)) push({ k: "thud", col: o && o.index }); if (n === "scatter_land") push({ k: "bell", n: o && o.n }); return sp(n, o); };
     const oc = R.onScatterCount; R.onScatterCount = (n, need) => { push({ k: "count", n, need, ticker: null }); oc(n, need); __ev[__ev.length - 1].ticker = el.psTickerText.textContent; };
-    const oa = R.onAnticipation; R.onAnticipation = (ph, ms) => { push({ k: "antic", ph, ms: Math.round(ms || 0) }); oa(ph, ms); push({ k: "drone", on: anticipationDrone.isPlaying() }); };
-    const ol = R.drawAnticipationLanes.bind(R); R.drawAnticipationLanes = (...a) => { window.__lanes = (window.__lanes || 0) + 1; return ol(...a); };
+    const oa = R.onAnticipation; R.onAnticipation = (ph, ms) => { push({ k: "antic", ph, ms: Math.round(ms || 0) }); oa(ph, ms); push({ k: "drone", on: Sound.drone.isPlaying() }); };
+    // Frames with the anticipation state up (the code lanes are gone: effects are art now).
+    const tick = () => { if (R.fx.drop?.antic) window.__lanes = (window.__lanes || 0) + 1; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     window.__realApi = window.__realApi || api;
+    // The drone (the riser) needs an unlocked context and the warm sound set: a real tap
+    // and a settled round do this in play.
+    Sound.setMuted(false); Sound.unlock(); Sound.warmMusic();
     return true;
   })()`);
+  for (let i = 0; i < 300; i++) { if (await evaluate(cdp, `(() => { const m = Sound.debug.manifest(); return !!m && (m.sounds.riser || []).every((f) => Sound.debug.loaded().includes(f)); })()`)) break; await sleep(100); }
   const forceBoard = (cond) => evaluate(cdp, `(() => { window.__tries = 0; api = async (p, payload) => { if (p !== "/api/v1/spin") return __realApi(p, payload);
     for (;;) { window.__tries++; const r = await __realApi(p, { ...payload, spin_id: crypto.randomUUID() }); const m0 = r.tumble_steps?.[0]?.matrix || r.matrix;
       if (r.free_spins_awarded) continue; if ((${cond})(r, m0)) { window.__forced = r; return r; } } }; return true; })()`);
@@ -146,23 +154,27 @@ async function evaluate(cdp, expression) {
   await forceBoard(`(r, m0) => findAnticipation(m0, 4)`);
   await evaluate(cdp, `(__ev.length = 0, window.__lanes = 0, el.spinBtn.click(), true)`);
   await settle();
-  let ev = await evaluate(cdp, `({ ev: __ev.slice(), from: findAnticipation((__forced.tumble_steps?.[0]?.matrix || __forced.matrix), 4).fromCol, tries: __tries, lanes: __lanes, drone: anticipationDrone.isPlaying() })`);
+  let ev = await evaluate(cdp, `({ ev: __ev.slice(), from: findAnticipation((__forced.tumble_steps?.[0]?.matrix || __forced.matrix), 4).fromCol, tries: __tries, lanes: __lanes, drone: Sound.drone.isPlaying() })`);
   const thuds = ev.ev.filter((e) => e.k === "thud").slice(0, 6);
   const gap = (c) => thuds[c].t - thuds[c - 1].t;
   const f = ev.from;
   check(`anticipated columns wait (from col ${f}): gap before col ${f} ≥ 650ms`, thuds.length === 6 && gap(f) >= 650, `gaps ${thuds.slice(1).map((x, i) => x.t - thuds[i].t).join(",")}ms, after ${ev.tries} engine draws`);
-  check("columns before it keep the normal ~65ms waterfall", thuds.slice(1, f).every((x, i) => x.t - thuds[i].t < 90));
+  check("columns before it keep the normal ~100ms waterfall (WATERFALL)", thuds.slice(1, f).every((x, i) => x.t - thuds[i].t < 140), `gaps ${thuds.slice(1, f).map((x, i) => x.t - thuds[i].t).join(",")}ms`);
   const antic = ev.ev.filter((e) => e.k === "antic");
   const droneOn = ev.ev.filter((e) => e.k === "drone");
   check("drone starts with the tension and stops at the last landing", antic.map((a) => a.ph).join() === "start,end" && droneOn[0]?.on === true && droneOn[1]?.on === false && !ev.drone, JSON.stringify(antic));
   check("drone starts when the column before the anticipated ones lands", Math.abs(antic[0].t - thuds[f - 1].t) < 25, `${antic[0].t - thuds[f - 1].t}ms`);
-  check("red lanes drawn while anticipating", ev.lanes > 10, `${ev.lanes} frames`);
-  const counts = ev.ev.filter((e) => e.k === "count");
-  check("scatter count climbs 1, 2, 3… as each lands", counts.length >= 3 && counts.every((c, i) => c.n === i + 1 && c.need === 4), counts.map((c) => `${c.n}/${c.need}`).join(" "));
+  check("anticipation held while the anticipated columns wait", ev.lanes > 10, `${ev.lanes} frames`);
+  // The spin's own landing (a tumble refill announces the count again from its scatters).
+  const allCounts = ev.ev.filter((e) => e.k === "count");
+  const drop = allCounts.findIndex((c, i) => i > 0 && c.n <= allCounts[i - 1].n);
+  const counts = drop < 0 ? allCounts : allCounts.slice(0, drop);
+  // Scatters in one column land together, so a column with two moves the count by two.
+  check("scatter count climbs as each column's scatters land", counts.length >= 2 && counts.every((c, i) => c.need === 4 && (i === 0 ? c.n >= 1 : c.n > counts[i - 1].n)), counts.map((c) => `${c.n}/${c.need}`).join(" "));
   check("HUD readout follows: SCATTERS n/4", counts.every((c) => c.ticker === `Scatters ${c.n}/4`), counts.map((c) => c.ticker).join(" | "));
-  // A scatter ping is the win_tick fired in the same instant as its count.
-  const pings = counts.map((c) => ev.ev.find((e) => e.k === "tick" && Math.abs(e.t - c.t) <= 1)?.p).filter((p) => p !== undefined);
-  check("pings ascend in pitch", pings.length >= 3 && pings.every((p, i) => i === 0 || p > pings[i - 1]), pings.map((p) => p.toFixed(2)).join(" → "));
+  // Each landing rings the scatter bell, pitched by the count (audio.js scatter_land: n).
+  const bells = ev.ev.filter((e) => e.k === "bell").map((e) => e.n).slice(0, counts.length);
+  check("the scatter bell climbs with the count", bells.length === counts.length && bells.every((n, i) => n === counts[i].n), bells.join(" → "));
 
   console.log("\nfast-stop during anticipation");
   await forceBoard(`(r, m0) => { const a = findAnticipation(m0, 4); return a && a.fromCol <= 4; }`);
@@ -170,7 +182,7 @@ async function evaluate(cdp, expression) {
   for (let i = 0; i < 400; i++) { if (await evaluate(cdp, `__ev.some((e) => e.k === "antic" && e.ph === "start")`)) break; await sleep(10); }
   const tPress = await evaluate(cdp, `(el.spinBtn.click(), performance.now())`);
   await sleep(150);
-  ev = await evaluate(cdp, `({ ev: __ev.slice(), drone: anticipationDrone.isPlaying(), antic: !!__reelRenderer.fx.drop?.antic, scat: (__forced.tumble_steps?.[0]?.matrix || __forced.matrix).flat().filter((s) => s === "SCATTER").length })`);
+  ev = await evaluate(cdp, `({ ev: __ev.slice(), drone: Sound.drone.isPlaying(), antic: !!__reelRenderer.fx.drop?.antic, scat: (__forced.tumble_steps?.[0]?.matrix || __forced.matrix).flat().filter((s) => s === "SCATTER").length })`);
   const after = ev.ev.filter((e) => e.t >= tPress - 1);
   check("skip ends the tension at once: drone off, anticipation cleared", !ev.drone && !ev.antic && after.some((e) => e.k === "antic" && e.ph === "end"), `drone ${ev.drone} antic ${ev.antic} events ${JSON.stringify(after.filter((e) => e.k === "antic"))}`);
   const finalCount = ev.ev.filter((e) => e.k === "count").pop();
@@ -184,19 +196,25 @@ async function evaluate(cdp, expression) {
   console.log("\nlock-on (trigger + retrigger)");
   const lock = await evaluate(cdp, `(async () => {
     const R = __reelRenderer; const seen = [];
-    const od = R.drawScatterLocks.bind(R); R.drawScatterLocks = (...a) => { if (R.fx.lockOn) seen.push({ t: performance.now(), n: R.fx.lockOn.cells.length }); return od(...a); };
+    // Sample the lock-on every frame (it is drawn as art: the swirl and each scatter's coin turn).
+    let sampling = true; let keys = [];
+    const tick = () => { if (R.fx.lockOn) seen.push({ t: performance.now(), n: R.fx.lockOn.cells.length, turning: keys.filter((k) => R.fx.coinTurns.has(k)).length }); if (sampling) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     const m = Array.from({ length: 5 }, () => Array(6).fill("RED_GEM")); [[0, 1], [2, 2], [3, 4], [4, 5]].forEach(([r, c]) => (m[r][c] = "SCATTER"));
     const t0 = performance.now();
     let hlAt = 0; const oh = R.highlight.bind(R); R.highlight = (...a) => { hlAt = hlAt || performance.now(); return oh(...a); };
+    R.setBoard(m); // the catch reads the board on screen (displayedScatterCells)
+    keys = ["0-1", "2-2", "3-4", "4-5"];
     await celebrateScatterCatch({ matrix: m, tumble_steps: [{ matrix: m }] }, "Bonus Catch");
-    const r1 = { frames: seen.length, cells: seen[0]?.n, lockedBeforeHighlight: seen.length > 0 && seen[seen.length - 1].t <= hlAt + 20, lockMs: Math.round(hlAt - t0) };
+    const r1 = { frames: seen.length, cells: seen[0]?.n, turning: Math.max(0, ...seen.map((s) => s.turning)), lockedBeforeHighlight: seen.length > 0 && seen[seen.length - 1].t <= hlAt + 20, lockMs: Math.round(hlAt - t0) };
     seen.length = 0; hlAt = 0;
     const m2 = Array.from({ length: 5 }, () => Array(6).fill("RED_GEM")); [[1, 0], [2, 3], [0, 5]].forEach(([r, c]) => (m2[r][c] = "SCATTER"));
+    R.setBoard(m2); keys = ["1-0", "2-3", "0-5"];
     await celebrateScatterCatch({ matrix: m2, tumble_steps: [{ matrix: m2 }], is_free_spin: true }, "Retrigger Catch");
-    return { trigger: r1, retrigger: { frames: seen.length, cells: seen[0]?.n }, cleared: R.fx.lockOn === null };
+    sampling = false;
+    return { trigger: r1, retrigger: { frames: seen.length, cells: seen[0]?.n, turning: Math.max(0, ...seen.map((s) => s.turning)) }, cleared: R.fx.lockOn === null };
   })()`);
-  check("trigger: reticles lock on all 4 scatters before the feature reveal", lock.trigger.cells === 4 && lock.trigger.frames > 10 && lock.trigger.lockedBeforeHighlight, JSON.stringify(lock.trigger));
-  check("retrigger: lock-on on all 3", lock.retrigger.cells === 3 && lock.retrigger.frames > 10, JSON.stringify(lock.retrigger));
+  check("trigger: the lock-on holds all 4 scatters, each turning, before the feature reveal", lock.trigger.cells === 4 && lock.trigger.frames > 10 && lock.trigger.lockedBeforeHighlight && lock.trigger.turning === 4, JSON.stringify(lock.trigger));
+  check("retrigger: lock-on on all 3, each turning", lock.retrigger.cells === 3 && lock.retrigger.frames > 10 && lock.retrigger.turning === 3, JSON.stringify(lock.retrigger));
   check("lock-on state cleared afterwards", lock.cleared);
 
   const relevant = logs.filter((l) => !/AudioContext|autoplay/i.test(l));
