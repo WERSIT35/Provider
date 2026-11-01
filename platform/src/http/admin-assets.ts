@@ -386,10 +386,12 @@ function hideAllViews() { VIEWS.forEach(v => { const s = $(v + "View"); if (s) s
 function show(view) {
   if (!VIEWS.includes(view)) view = VIEWS[0];
   hideAllViews();
-  const s = $(view + "View"); if (s) s.hidden = false;
+  // Game History is the Round Inspector's player search, opened on that tab.
+  const s = $((view === "gameHistory" ? "inspector" : view) + "View"); if (s) s.hidden = false;
+  if (view === "gameHistory") inspectorTab("player");
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   if (view === "dashboard") refreshDashboard();
-  if (view === "inspector") { const i = $("roundRefInput"); if (i) i.focus(); }
+  if (view === "inspector") { inspectorTab("round"); const i = $("roundRefInput"); if (i) i.focus(); }
   if (view === "games") { loadGames(); if (state.scope !== "provider") loadWebhook(); }
   if (view === "disputes") loadDisputes();
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
