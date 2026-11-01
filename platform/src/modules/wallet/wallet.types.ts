@@ -43,6 +43,12 @@ interface MoneyMoveArgs {
  */
 export type FreeRoundDebitType = "FREE_ROUND_BET";
 export type FreeRoundCreditType = "FREE_ROUND_WIN";
+/**
+ * A promotion's cash prize (tournament rank, prize drop): a credit with no round
+ * behind it. `roundRef` names the prize (`promo_<win id>`), `promoType` / `promoId`
+ * name the promotion. Never a round win: the casino books it as a promo payout.
+ */
+export type PromoCreditType = "PROMO_WIN";
 
 export interface DebitArgs extends MoneyMoveArgs {
   txType?: FreeRoundDebitType;
@@ -50,13 +56,20 @@ export interface DebitArgs extends MoneyMoveArgs {
 }
 
 export interface CreditArgs extends MoneyMoveArgs {
-  txType?: FreeRoundCreditType;
+  txType?: FreeRoundCreditType | PromoCreditType;
   campaignId?: string;
+  promoType?: "tournament" | "prize_drop";
+  promoId?: string;
 }
 
 /** A tagged call must be internally consistent; never let a "free" bet move money. */
 export function assertFreeRoundArgs(args: DebitArgs | CreditArgs): void {
   if (!args.txType) return;
+  if (args.txType === "PROMO_WIN") {
+    const a = args as CreditArgs;
+    if (!a.promoId || !a.promoType || !(a.amount > 0)) throw new Error("PROMO_WIN_INVALID");
+    return;
+  }
   if (!args.campaignId) throw new Error("FREE_ROUND_CAMPAIGN_REQUIRED");
   if (args.txType === "FREE_ROUND_BET" && args.amount !== 0) throw new Error("FREE_ROUND_BET_MUST_BE_ZERO");
 }
@@ -103,7 +116,7 @@ export interface WalletAdapter {
  * Errors raised before any request left the RGS: the casino cannot have applied
  * anything, so they are not "outcome unknown".
  */
-const NOT_SENT = new Set(["WEBHOOK_NOT_CONFIGURED", "FREE_ROUND_CAMPAIGN_REQUIRED", "FREE_ROUND_BET_MUST_BE_ZERO"]);
+const NOT_SENT = new Set(["WEBHOOK_NOT_CONFIGURED", "FREE_ROUND_CAMPAIGN_REQUIRED", "FREE_ROUND_BET_MUST_BE_ZERO", "PROMO_WIN_INVALID"]);
 
 /**
  * True when a failed wallet call may still have been applied by the casino (timeout,

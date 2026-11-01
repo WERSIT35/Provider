@@ -13,6 +13,7 @@ import type { DisputeRecord } from "../modules/disputes/dispute.service";
 import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame, OperatorWebhook } from "../modules/management/management.types";
 import type { AdminAccount } from "../modules/admin/admin-account";
 import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
+import type { Tournament, PromoWin } from "../modules/promotions/promotions";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 import type { SigningKeyRecord } from "../lib/security/signing-keyring";
 import type { PlayerGameState } from "../modules/player-state/player-state.store";
@@ -76,6 +77,7 @@ export async function hydrateContainer(c: Container, p: Persistence): Promise<vo
     campaigns: campaigns as unknown as Campaign[],
     grants: playerCampaigns as unknown as PlayerCampaign[]
   });
+  await hydratePromotions(c, p);
 
   // Unfinished write-ahead intents: boot recovery (jobs/round-recovery.ts) finishes them.
   // Stateful games' per-player state (one row per player, game, currency and bet).
@@ -163,6 +165,7 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
   c.disputes.hydrate(disputes as unknown as DisputeRecord[]);
   c.adminAccounts.hydrate(adminAccounts as unknown as AdminAccount[]);
   c.campaigns.hydrate({ campaigns: campaigns as unknown as Campaign[], grants: playerCampaigns as unknown as PlayerCampaign[] });
+  await hydratePromotions(c, p);
   c.intents.hydrate(intents as unknown as RoundIntent[]);
   c.playerStates.hydrate((await p.loadTable("player_game_state")) as unknown as PlayerGameState[]);
 
@@ -179,4 +182,10 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
       debitRefs: debitRefs as unknown as Array<{ operator_tx_ref: string; balance_key: string; amount: number }>
     });
   }
+}
+
+/** Promotions (migration 0016): small tables, loaded whole (open ones and their history). */
+async function hydratePromotions(c: Container, p: Persistence): Promise<void> {
+  const [tournaments, wins] = await Promise.all([p.loadTable("tournaments"), p.loadTable("promo_wins")]);
+  c.promotions.hydrate({ tournaments: tournaments as unknown as Tournament[], wins: wins as unknown as PromoWin[] });
 }

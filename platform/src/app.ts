@@ -8,6 +8,7 @@ import adminRoutes from "./http/admin.routes";
 import adminCampaignRoutes from "./http/admin-campaigns.routes";
 import adminReportsRoutes from "./http/admin-reports.routes";
 import { startCampaignExpiry, type CampaignExpiryJob } from "./jobs/campaign-expiry";
+import { startPromotionsJob, type PromotionsJob } from "./jobs/promotions";
 import { startRoundRecovery, type RoundRecoveryJob } from "./jobs/round-recovery";
 import { startDebitReconciliation, type DebitReconciliationJob } from "./jobs/debit-reconciliation";
 import { installObservability, traceForRaw } from "./http/observability";
@@ -42,6 +43,8 @@ export interface BuildAppDeps {
   container: Container;
   /** Free-round grant expiry sweep interval (default 60s; 0 = start-up sweep only). */
   campaignExpiryIntervalMs?: number;
+  /** Promotions job: close ended tournaments / prize drops, pay prizes (default 30s; 0 = start-up sweep only). */
+  promotionsIntervalMs?: number;
   /** Retry interval for queued lost-debit reversals (default 30s; 0 = start-up sweep only). */
   debitReconcileIntervalMs?: number;
   /** Postgres mode: full ledger integrity sweep interval (default 1 h; 0 = never). */
@@ -98,6 +101,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   // Background expiry of lapsed free-round grants: starts when the app is ready,
   // stops when it closes.
   let expiryJob: CampaignExpiryJob | null = null;
+  let promotionsJob: PromotionsJob | null = null;
   let reconcileJob: DebitReconciliationJob | null = null;
   let recoveryJob: RoundRecoveryJob | null = null;
   const housekeeping: Array<ReturnType<typeof setInterval>> = [];
@@ -107,6 +111,14 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
       persistence: deps.container.persistence,
       logger: app.log,
       intervalMs: deps.campaignExpiryIntervalMs ?? 60_000
+    });
+    promotionsJob = startPromotionsJob({
+      promotions: deps.container.promotions,
+      payouts: deps.container.promoPayouts,
+      history: deps.container.history,
+      persistence: deps.container.persistence,
+      logger: app.log,
+      intervalMs: deps.promotionsIntervalMs ?? 30_000
     });
     // Rounds a crash left between the casino and our ledger (write-ahead intents):
     // reverse a stake whose round never committed, re-credit a committed win.
@@ -152,6 +164,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   });
   app.addHook("onClose", async () => {
     expiryJob?.stop();
+    promotionsJob?.stop();
     reconcileJob?.stop();
     recoveryJob?.stop();
     for (const t of housekeeping) clearInterval(t);

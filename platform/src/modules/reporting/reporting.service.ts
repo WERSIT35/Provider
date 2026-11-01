@@ -249,6 +249,11 @@ export class ReportingService {
     return aggregateBusiness(this.listRounds(operatorId), this.adjustments.voidedRoundRefs(operatorId), ctx, query);
   }
 
+  /** Refs of the rounds whose latest adjustment voids them. */
+  voidedRefs(operatorId?: string): Set<string> {
+    return this.adjustments.voidedRoundRefs(operatorId);
+  }
+
   failedSettlements(operatorId?: string): TxRecord[] {
     return this.transactions.listFailedSettlements(operatorId);
   }

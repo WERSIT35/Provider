@@ -5,11 +5,13 @@ import { currentTrace } from "../../lib/trace-context";
 /** Money-movement ledger (plan §3.3 wallet_transactions). Append-only + idempotent
  * by idempotency_key. Feeds reporting, reconciliation, and the failed-settlement queue. */
 
-export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK" | "ADJUSTMENT" | "FREE_ROUND_BET" | "FREE_ROUND_WIN";
+export type TxType = "DEBIT" | "CREDIT" | "ROLLBACK" | "ADJUSTMENT" | "FREE_ROUND_BET" | "FREE_ROUND_WIN" | "PROMO_WIN";
 
 /** Types that take a round's stake / pay a round's win (cash or operator free round). */
 export const BET_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["DEBIT", "FREE_ROUND_BET"]);
 export const WIN_TX_TYPES: ReadonlySet<TxType> = new Set<TxType>(["CREDIT", "FREE_ROUND_WIN"]);
+// PROMO_WIN (a promotion's prize, promotions/promo-payout.ts) is on purpose in neither
+// set: it is no round's stake or win, so round-vs-wallet reconciliation never counts it.
 export type TxStatus = "confirmed" | "failed" | "rolled_back";
 
 /** error_code of a debit the casino may or may not have applied (see DebitReconciler). */

@@ -64,6 +64,16 @@ describe("SQLite casino ledger", () => {
     expect(rounds.get("f")).toMatchObject({ bet: 0, win: 3, campaignId: "cmp_1" });
   });
 
+  it("a promotion prize (txType PROMO_WIN, no round behind it) is booked as a credit", () => {
+    const s = new PlayerStore();
+    const p = s.register("promo@example.com", "hash", 10);
+    const body = { playerId: p.id, idempotencyKey: "promo:pwin_1:credit", amount: 25, currency: "GEL", roundRef: "promo_pwin_1", txType: "PROMO_WIN" };
+    s.credit(body);
+    s.credit(body); // a replay under the same key pays nothing more
+    expect(s.transactionsFor(p.id).filter((t) => t.roundRef === "promo_pwin_1")).toMatchObject([{ type: "credit", txType: "CREDIT", amount: 25 }]);
+    expect(s.getById(p.id)?.balance).toBe(35);
+  });
+
   it("a debit is rolled back once, at its own amount and currency", () => {
     const s = new PlayerStore();
     const p = s.register("rb@example.com", "hash", 100);

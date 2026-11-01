@@ -76,7 +76,7 @@ async function main(): Promise<void> {
 
   logger.info({ rules_version: container.engine.rulesVersion() }, "container_ready");
 
-  const app = buildApp({ logger, container, campaignExpiryIntervalMs: env.CAMPAIGN_EXPIRY_INTERVAL_MS, debitReconcileIntervalMs: env.DEBIT_RECONCILE_INTERVAL_MS, metricsToken: env.METRICS_TOKEN });
+  const app = buildApp({ logger, container, campaignExpiryIntervalMs: env.CAMPAIGN_EXPIRY_INTERVAL_MS, promotionsIntervalMs: env.PROMOTIONS_INTERVAL_MS, debitReconcileIntervalMs: env.DEBIT_RECONCILE_INTERVAL_MS, metricsToken: env.METRICS_TOKEN });
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "shutting_down");

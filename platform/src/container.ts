@@ -26,6 +26,8 @@ import { RoundExportService } from "./modules/rounds/round-export.service";
 import { SigningKeyring } from "./lib/security/signing-keyring";
 import { DisputeService } from "./modules/disputes/dispute.service";
 import { InMemoryCampaignRepository } from "./modules/campaigns/campaign.repository";
+import { InMemoryPromotionsRepository } from "./modules/promotions/promotions";
+import { PromoPayoutService } from "./modules/promotions/promo-payout";
 import { NonceStore } from "./lib/security/nonce-store";
 import { RateLimiter } from "./lib/security/rate-limiter";
 import { NullPersistence, type Persistence } from "./persistence/persistence";
@@ -90,6 +92,9 @@ export interface Container {
   disputes: DisputeService;
   // Operator-granted Free Rounds (NOT the engine scatter feature).
   campaigns: InMemoryCampaignRepository;
+  /** Tournaments, prize drops and their prizes (modules/promotions). */
+  promotions: InMemoryPromotionsRepository;
+  promoPayouts: PromoPayoutService;
   playerStates: PlayerStateStore;
   adminAuth: AdminAuthService;
   adminAccounts: AdminAccountService;
@@ -140,6 +145,7 @@ export function buildContainer(
   const resolver = new AuthoritativeResolver(games);
   const transactions = new InMemoryTransactionStore(persistence, pg ? { retain: win.transactions, cold: win.coldTransactions } : {});
   const campaigns = new InMemoryCampaignRepository(persistence);
+  const promotions = new InMemoryPromotionsRepository(persistence);
   const debits = new DebitReconciler(wallet, transactions, { audit, retryDelaysMs: overrides.debitRetryDelaysMs });
   // Reality-check stats come from the round ledger (bound late: reporting is built below).
   const regulatory = new RegulatoryService(
@@ -219,6 +225,8 @@ export function buildContainer(
     signingKeyring,
     disputes,
     campaigns,
+    promotions,
+    promoPayouts: new PromoPayoutService(promotions, wallet, transactions),
     playerStates,
     adminAuth: new AdminAuthService(config.adminSecret),
     adminAccounts: new AdminAccountService(audit, persistence, config.totpIssuer ?? "Provider Platform"),
