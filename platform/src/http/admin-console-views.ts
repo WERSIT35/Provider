@@ -556,23 +556,42 @@ async function raiseDisputeAction(kind) {
 `;
 
 export const GAMES_JS = /* js */ `
+let gamesRows = [];
 async function loadGames() {
   const el = $('gamesList'); if (!el) return;
   const go = $('gamesOp'); const opId = go ? go.value.trim() : '';
   const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
-  try { const d = await api('/admin/v1/operator-games' + qs); const rows = d.operator_games || [];
-    if (!rows.length) { el.innerHTML = '<p class="muted">no game assignments</p>'; return; }
-    el.innerHTML = '<table><tr><th>assignment</th><th>game_id</th><th>currency</th><th>bets</th><th>license</th><th>lobby name</th><th>sort</th><th>in lobby</th><th></th></tr>' +
-      rows.map(g => '<tr><td><code>' + g.id.slice(0,8) + '…</code></td><td>' + g.game_id.slice(0,8) + '…</td><td>' + g.currency + '</td><td>' + g.allowed_bets.join(', ') + '</td>' +
-        '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
-        '<td>' + esc(g.display_name || '—') + '</td><td>' + g.sort_order + '</td>' +
-        '<td>' + (g.lobby_enabled ? '<span class="ok">yes</span>' : '<span class="err">no</span>') + '</td>' +
-        '<td><button class="ghost" data-id="' + g.id + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button> ' +
-        '<span data-operator><button class="ghost" data-disp="' + g.id + '">Edit display</button></span></td></tr>').join('') + '</table>';
-    el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
-    el.querySelectorAll('button[data-disp]').forEach(b => b.addEventListener('click', () => editGameDisplay(b.dataset.disp, rows.find(r => r.id === b.dataset.disp))));
-    applyScopeVisibility();
-  } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
+  try { const d = await api('/admin/v1/operator-games' + qs); gamesRows = d.operator_games || []; renderGames(); }
+  catch (e) { el.innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }
+}
+function gamesShown() {
+  const q = ($('gamesName').value || '').trim().toLowerCase(), st = $('gamesStatus').value;
+  return gamesRows.filter(g => (!st || g.status === st) && (!q || [g.game_title, g.game_code, g.display_name].some(v => v && String(v).toLowerCase().includes(q))));
+}
+function renderGames() {
+  const el = $('gamesList'); if (!el) return;
+  const rows = gamesShown(); const multi = state.scope === 'provider';
+  $('gamesCount').textContent = rows.length + ' of ' + gamesRows.length;
+  if (!rows.length) { el.innerHTML = '<p class="muted">' + (gamesRows.length ? 'no games match' : 'no game assignments') + '</p>'; return; }
+  el.innerHTML = '<div class="tbl-wrap tall"><table class="ip-table"><tr><th>Game</th><th>Code</th>' + (multi ? '<th>Casino</th>' : '') + '<th>Currency</th><th>Bets</th><th class="num">RTP %</th><th>Market</th><th>Status</th><th>In lobby</th><th></th></tr>' +
+    rows.map(g => '<tr><td>' + esc(g.display_name || g.game_title || '—') + '</td><td><code>' + esc(g.game_code || g.game_id.slice(0, 8)) + '</code></td>' + (multi ? '<td>' + esc(g.operator_slug || '') + '</td>' : '') +
+      '<td>' + esc(g.currency) + '</td><td>' + esc(g.allowed_bets.join(', ')) + '</td><td class="num">' + (g.theoretical_rtp == null ? '—' : esc(g.theoretical_rtp)) + '</td><td>' + esc(g.market || '') + '</td>' +
+      '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
+      '<td>' + (g.lobby_enabled ? '<span class="ok">yes</span>' : '<span class="err">no</span>') + '</td>' +
+      '<td class="actions"><button class="ghost" data-id="' + esc(g.id) + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button> ' +
+      '<span data-operator><button class="ghost" data-disp="' + esc(g.id) + '">Edit display</button></span></td></tr>').join('') + '</table></div>';
+  el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
+  el.querySelectorAll('button[data-disp]').forEach(b => b.addEventListener('click', () => editGameDisplay(b.dataset.disp, gamesRows.find(r => r.id === b.dataset.disp))));
+  applyScopeVisibility();
+}
+function exportGamesCsv() {
+  const rows = gamesShown(); if (!rows.length) return;
+  const cols = ['game_title', 'game_code', 'operator_slug', 'currency', 'allowed_bets', 'theoretical_rtp', 'market', 'status', 'lobby_enabled', 'display_name', 'id'];
+  const lines = [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(Array.isArray(r[c]) ? r[c].join(' ') : r[c])).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\\r\\n') + '\\r\\n'], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'casino-games.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 async function toggleGame(id, to) { try { await api('/admin/v1/operator-games/' + id + '/status', { method: 'POST', body: { status: to } }); loadGames(); } catch (e) { alert(e.message); } }
 async function editGameDisplay(id, current) {

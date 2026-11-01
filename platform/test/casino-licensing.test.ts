@@ -103,6 +103,22 @@ describe("Casino licensing: onboarding, entitlements, and self-service", () => {
     expect(rows[0].lobby_enabled).toBe(true);
   });
 
+  it("Casino Games list: a provider lists every casino's games with casino, market and RTP; a casino only its own", async () => {
+    const a = onboardCasino(container, { name: "Casino A", slug: "casino-a", domain: "a.example.com" });
+    const b = onboardCasino(container, { name: "Casino B", slug: "casino-b", domain: "b.example.com" });
+    const provider = container.adminAuth.mintToken({ admin_id: "p", scope: "provider", role: "provider_super_admin" });
+    const all = (await app.inject({ method: "GET", url: "/admin/v1/operator-games", headers: { authorization: `Bearer ${provider}` } })).json().operator_games as Array<Record<string, unknown>>;
+    expect(all.map((r) => r.operator_slug).sort()).toEqual(["casino-a", "casino-b"]);
+    expect(all[0]).toMatchObject({ market: "DEFAULT" });
+    expect(typeof all[0].theoretical_rtp).toBe("number");
+    expect(typeof all[0].game_code).toBe("string");
+    const one = (await app.inject({ method: "GET", url: `/admin/v1/operator-games?operator_id=${b.operator.id}`, headers: { authorization: `Bearer ${provider}` } })).json().operator_games;
+    expect(one.map((r: { operator_slug: string }) => r.operator_slug)).toEqual(["casino-b"]);
+    expect((await app.inject({ method: "GET", url: "/admin/v1/operator-games?operator_id=nope", headers: { authorization: `Bearer ${provider}` } })).json().operator_games).toEqual([]);
+    const asA = (await app.inject({ method: "GET", url: `/admin/v1/operator-games?operator_id=${b.operator.id}`, headers: { authorization: `Bearer ${operatorToken(container, a.operator.id)}` } })).json().operator_games;
+    expect(asA.map((r: { operator_slug: string }) => r.operator_slug)).toEqual(["casino-a"]);
+  });
+
   it("casino can configure their own slots-section display for an entitlement", async () => {
     const { operator, entitlement } = onboardCasino(container, { name: "Casino B", slug: "casino-b", domain: "b.example.com" });
     const token = operatorToken(container, operator.id);

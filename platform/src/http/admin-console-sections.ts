@@ -62,11 +62,15 @@ export const SECTION_INSPECTOR = /* html */ `
 export const SECTION_GAMES = /* html */ `
 <section id="gamesView" hidden>
   <div class="panel">
-    <h2>Games — turn on / off</h2>
-    <p class="muted">Disabling an assignment immediately stops new player sessions for that game. <span data-provider>Provide an operator id to view another tenant;</span> <span data-operator>you see only your own games.</span></p>
+    <h2>Casino Games</h2>
+    <p class="muted">Every game assignment, with its market and RTP. Disabling an assignment immediately stops new player sessions for that game. <span data-provider>Leave the operator id blank to list every casino;</span> <span data-operator>you see only your own games.</span></p>
     <div class="toolbar">
-      <input class="search" id="gamesOp" placeholder="operator id (provider only)" data-provider/>
+      <input class="search" id="gamesOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <input id="gamesName" placeholder="game name or code" aria-label="Game name or code" oninput="renderGames()"/>
+      <select id="gamesStatus" aria-label="Status" onchange="renderGames()"><option value="">all statuses</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
       <button class="ghost" onclick="loadGames()">Load</button>
+      <button class="ghost" onclick="exportGamesCsv()">Export CSV</button>
+      <span id="gamesCount" class="muted"></span>
     </div>
     <div id="gamesList">–</div>
     <p class="muted" data-operator>"Edit display" sets how a game appears in YOUR slots section (name, thumbnail, sort order, lobby visibility) — separate from the on/off switch above, which is the provider's license grant.</p>

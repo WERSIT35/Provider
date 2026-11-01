@@ -826,16 +826,24 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "games.read");
     if (!claims) return reply;
     const q = req.query as { operator_id?: string };
+    // A provider admin without operator_id lists every operator's games (Casino Games list).
     const operatorId = resolveOperatorScope(claims, q.operator_id);
-    if (!operatorId) return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
-    // Include each game's code/title so UIs (e.g. the Campaign Manager) can address games by code.
+    const operators = operatorId ? [] : app.container.mgmt.listOperators();
+    if (!operatorId && claims.scope !== "provider") return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
+    // Include each game's code/title so UIs (e.g. the Campaign Manager) can address games by code,
+    // plus the casino, its market (jurisdiction profile) and the configured RTP for the list view.
     const games = new Map(app.container.mgmt.listGames().map((g) => [g.id, g]));
+    const configs = new Map(app.container.mgmt.listMathConfigs().map((m) => [m.id, m]));
+    const ops = operatorId ? app.container.mgmt.listOperators().filter((o) => o.id === operatorId) : operators;
     return {
-      operator_games: app.container.mgmt.listOperatorGames(operatorId).map((og) => ({
+      operator_games: ops.flatMap((op) => app.container.mgmt.listOperatorGames(op.id).map((og) => ({
         ...og,
         game_code: games.get(og.game_id)?.code ?? null,
-        game_title: games.get(og.game_id)?.title ?? null
-      }))
+        game_title: games.get(og.game_id)?.title ?? null,
+        operator_slug: op.slug,
+        market: op.regulatory?.jurisdiction ?? "DEFAULT",
+        theoretical_rtp: configs.get(og.math_config_id)?.theoretical_rtp ?? null
+      })))
     };
   });
 
