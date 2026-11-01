@@ -29,6 +29,7 @@ const PAGE = renderConsolePage({
     { group: "Lobby", items: [{ view: "dashboard", label: "Dashboard" }] },
     { group: "Players", items: [
       { view: "inspector", label: "Round Inspector" },
+      { view: "gameHistory", label: "Game History" },
       { view: "players", label: "Player Lookup" },
       { view: "playerReports", label: "Player Reports" },
       { view: "disputes", label: "Disputes" }

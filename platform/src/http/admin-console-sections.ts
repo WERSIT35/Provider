@@ -25,9 +25,20 @@ export const SECTION_INSPECTOR = /* html */ `
       <div class="toolbar">
         <input class="search" id="ipOp" placeholder="operator id (optional: all operators)" data-provider/>
         <input class="search" id="ipPlayer" placeholder="operator_player_id" onkeydown="if (event.key === 'Enter') searchPlayerRounds()"/>
+        <input id="ipGame" placeholder="game code (all games)" aria-label="Game code" onkeydown="if (event.key === 'Enter') searchPlayerRounds()"/>
+      </div>
+      <div class="toolbar">
+        <label class="muted">From <input type="datetime-local" id="ipFrom"/></label>
+        <label class="muted">To <input type="datetime-local" id="ipTo"/></label>
+        <button class="ghost" onclick="ipRange('today')">Today</button>
+        <button class="ghost" onclick="ipRange('yesterday')">Previous day</button>
+        <button class="ghost" onclick="ipRange('')">Any time</button>
         <button onclick="searchPlayerRounds()">Search</button>
+        <button class="ghost" id="ipByGame" aria-pressed="false" onclick="ipToggleByGame()">Total by games</button>
+        <button class="ghost" onclick="exportPlayerRoundsCsv()">Export CSV</button>
         <span id="ipStatus" class="muted"></span>
       </div>
+      <p class="muted">Times are in your browser's time zone.</p>
       <div id="ipResults"></div>
     </div>
     <span id="inspectorStatus" class="muted"></span>
@@ -51,11 +62,15 @@ export const SECTION_INSPECTOR = /* html */ `
 export const SECTION_GAMES = /* html */ `
 <section id="gamesView" hidden>
   <div class="panel">
-    <h2>Games — turn on / off</h2>
-    <p class="muted">Disabling an assignment immediately stops new player sessions for that game. <span data-provider>Provide an operator id to view another tenant;</span> <span data-operator>you see only your own games.</span></p>
+    <h2>Casino Games</h2>
+    <p class="muted">Every game assignment, with its market and RTP. Disabling an assignment immediately stops new player sessions for that game. <span data-provider>Leave the operator id blank to list every casino;</span> <span data-operator>you see only your own games.</span></p>
     <div class="toolbar">
-      <input class="search" id="gamesOp" placeholder="operator id (provider only)" data-provider/>
+      <input class="search" id="gamesOp" placeholder="operator id (provider only; blank = all)" data-provider/>
+      <input id="gamesName" placeholder="game name or code" aria-label="Game name or code" oninput="renderGames()"/>
+      <select id="gamesStatus" aria-label="Status" onchange="renderGames()"><option value="">all statuses</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
       <button class="ghost" onclick="loadGames()">Load</button>
+      <button class="ghost" onclick="exportGamesCsv()">Export CSV</button>
+      <span id="gamesCount" class="muted"></span>
     </div>
     <div id="gamesList">–</div>
     <p class="muted" data-operator>"Edit display" sets how a game appears in YOUR slots section (name, thumbnail, sort order, lobby visibility) — separate from the on/off switch above, which is the provider's license grant.</p>

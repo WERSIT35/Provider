@@ -345,33 +345,82 @@ function inspectorTab(tab) {
   document.querySelectorAll('#inspectorView [data-ipane]').forEach(p => { p.hidden = p.dataset.ipane !== tab; });
   const focus = tab === 'player' ? $('ipPlayer') : $('roundRefInput'); if (focus) focus.focus();
 }
+// Game History: one player's rounds in a time window, optionally one game.
+let ipLast = null, ipByGame = false;
+function ipLocal(d) { const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+function ipRange(which) {
+  if (!which) { $('ipFrom').value = ''; $('ipTo').value = ''; }
+  else {
+    const a = new Date(); a.setHours(0, 0, 0, 0); if (which === 'yesterday') a.setDate(a.getDate() - 1);
+    const b = new Date(a); b.setHours(23, 59, 0, 0);
+    $('ipFrom').value = ipLocal(a); $('ipTo').value = ipLocal(b);
+  }
+  if ($('ipPlayer').value.trim()) searchPlayerRounds();
+}
+function ipToggleByGame() { ipByGame = !ipByGame; $('ipByGame').setAttribute('aria-pressed', String(ipByGame)); $('ipByGame').classList.toggle('on', ipByGame); if (ipLast) renderPlayerRounds(); }
 async function searchPlayerRounds() {
   const st = $('ipStatus'); const out = $('ipResults');
   const pid = $('ipPlayer').value.trim(); const opEl = $('ipOp'); const opId = opEl ? opEl.value.trim() : '';
   if (!pid) { flash(st, 'enter a player id', false); return; }
   st.hidden = false; st.className = 'muted'; st.textContent = 'searching…';
+  const p = new URLSearchParams({ limit: '1000' });
+  if (opId) p.set('operator_id', opId);
+  // datetime-local is the browser's local time: send it as an instant.
+  if ($('ipFrom').value) p.set('from', new Date($('ipFrom').value).toISOString());
+  if ($('ipTo').value) p.set('to', new Date($('ipTo').value + ':59.999').toISOString());
+  if ($('ipGame').value.trim()) p.set('game', $('ipGame').value.trim());
   try {
-    const d = await api('/admin/v1/players/' + encodeURIComponent(pid) + '/rounds?limit=500' + (opId ? '&operator_id=' + encodeURIComponent(opId) : ''));
-    st.textContent = d.total > d.count ? ('latest ' + d.count + ' of ' + d.total + ' rounds') : (d.count + ' rounds');
-    if (!d.rounds.length) { out.innerHTML = '<p class="muted">no rounds for this player</p>'; return; }
-    const multiOp = new Set(d.rounds.map(x => x.operator_id)).size > 1 || state.scope === 'provider';
-    out.innerHTML = '<div class="tbl-wrap"><table class="ip-table"><tr><th>Timestamp</th>' + (multiOp ? '<th>Operator</th>' : '') + '<th>Game</th><th class="num">Bet</th><th class="num">Win</th><th>Bonus</th><th>Round</th></tr>' +
-      d.rounds.map(x => {
-        const f = x.feature;
-        const tag = !f ? '' : (f.role === 'trigger' ? '<span class="tag trig">Trigger · ' + f.free_spins + ' FS</span>' : '<span class="tag fs">Free spin ' + f.index + '/' + f.free_spins + '</span>');
-        const bet = x.bet_charged > 0 ? fmtMoney(x.bet_charged) : (x.is_free_spin ? '<span class="muted">free</span>' : fmtMoney(0));
-        return '<tr class="clickable' + (f && f.role === 'free_spin' ? ' in-bonus' : '') + '" data-ref="' + esc(x.round_ref) + '">' +
-          '<td>' + esc((x.created_at || '').replace('T', ' ').slice(0, 19)) + '</td>' + (multiOp ? '<td>' + esc(x.operator_slug || x.operator_id) + '</td>' : '') +
-          '<td>' + esc(x.game_code || '—') + '</td><td class="num">' + bet + '</td>' +
-          '<td class="num">' + (x.total_win > 0 ? '<span class="ok">+' + fmtMoney(x.total_win) + '</span>' : fmtMoney(0)) + '</td>' +
-          '<td>' + tag + (x.effective_status !== x.status ? ' <span class="err">' + esc(x.effective_status) + '</span>' : '') + '</td>' +
-          '<td><code>' + esc(x.round_ref) + '</code></td></tr>';
-      }).join('') + '</table></div>';
-    out.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => {
-      out.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel')); tr.classList.add('sel');
-      openSpin(tr.dataset.ref, { fresh: true });
-    }));
-  } catch (e) { flash(st, e.message, false); out.innerHTML = ''; }
+    ipLast = await api('/admin/v1/players/' + encodeURIComponent(pid) + '/rounds?' + p.toString());
+    renderPlayerRounds();
+  } catch (e) { flash(st, e.message, false); out.innerHTML = ''; ipLast = null; }
+}
+function renderPlayerRounds() {
+  const st = $('ipStatus'); const out = $('ipResults'); const d = ipLast;
+  st.textContent = d.total > d.count ? ('latest ' + d.count + ' of ' + d.total + ' rounds') : (d.count + ' rounds');
+  if (!d.rounds.length) { out.innerHTML = '<p class="muted">no rounds for this player in this window</p>'; return; }
+  if (ipByGame) {
+    const by = new Map();
+    for (const x of d.rounds) {
+      const k = (x.game_code || '—') + '|' + (x.currency || '');
+      const t = by.get(k) || { game: x.game_code || '—', currency: x.currency || '', rounds: 0, bet: 0, win: 0, first: x.created_at, last: x.created_at };
+      if (x.effective_status !== 'void') { t.rounds += 1; t.bet += Number(x.bet_charged) || 0; t.win += Number(x.total_win) || 0; }
+      if (x.created_at < t.first) t.first = x.created_at; if (x.created_at > t.last) t.last = x.created_at;
+      by.set(k, t);
+    }
+    out.innerHTML = '<div class="tbl-wrap"><table class="ip-table"><tr><th>Game</th><th>Currency</th><th class="num">Rounds</th><th class="num">Bet</th><th class="num">Win</th><th class="num">Player net</th><th>First</th><th>Last</th></tr>' +
+      [...by.values()].map(t => '<tr><td>' + esc(t.game) + '</td><td>' + esc(t.currency) + '</td><td class="num">' + t.rounds + '</td><td class="num">' + fmtMoney(t.bet) + '</td><td class="num">' + fmtMoney(t.win) + '</td>' +
+        '<td class="num">' + fmtMoney(t.win - t.bet) + '</td><td>' + esc(new Date(t.first).toLocaleString()) + '</td><td>' + esc(new Date(t.last).toLocaleString()) + '</td></tr>').join('') +
+      '</table></div><p class="muted">Over the ' + d.count + ' rounds listed' + (d.total > d.count ? ' (narrow the window to cover all ' + d.total + ')' : '') + '; voided rounds left out.</p>';
+    return;
+  }
+  const multiOp = new Set(d.rounds.map(x => x.operator_id)).size > 1 || state.scope === 'provider';
+  out.innerHTML = '<div class="tbl-wrap"><table class="ip-table"><tr><th>Timestamp</th>' + (multiOp ? '<th>Operator</th>' : '') + '<th>Game</th><th class="num">Bet</th><th class="num">Win</th><th>Bonus</th><th>Round</th></tr>' +
+    d.rounds.map(x => {
+      const f = x.feature;
+      const tag = !f ? '' : (f.role === 'trigger' ? '<span class="tag trig">Trigger · ' + f.free_spins + ' FS</span>' : '<span class="tag fs">Free spin ' + f.index + '/' + f.free_spins + '</span>');
+      const bet = x.bet_charged > 0 ? fmtMoney(x.bet_charged) : (x.is_free_spin ? '<span class="muted">free</span>' : fmtMoney(0));
+      return '<tr class="clickable' + (f && f.role === 'free_spin' ? ' in-bonus' : '') + '" data-ref="' + esc(x.round_ref) + '">' +
+        '<td>' + esc(new Date(x.created_at).toLocaleString()) + '</td>' + (multiOp ? '<td>' + esc(x.operator_slug || x.operator_id) + '</td>' : '') +
+        '<td>' + esc(x.game_code || '—') + '</td><td class="num">' + bet + '</td>' +
+        '<td class="num">' + (x.total_win > 0 ? '<span class="ok">+' + fmtMoney(x.total_win) + '</span>' : fmtMoney(0)) + '</td>' +
+        '<td>' + tag + (x.effective_status !== x.status ? ' <span class="err">' + esc(x.effective_status) + '</span>' : '') + '</td>' +
+        '<td><code>' + esc(x.round_ref) + '</code></td></tr>';
+    }).join('') + '</table></div>';
+  out.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => {
+    out.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel')); tr.classList.add('sel');
+    openSpin(tr.dataset.ref, { fresh: true });
+  }));
+}
+function exportPlayerRoundsCsv() {
+  const d = ipLast; if (!d || !d.rounds.length) return;
+  const cols = ['created_at', 'operator_id', 'game_code', 'currency', 'round_ref', 'bet_amount', 'bet_charged', 'total_win', 'is_free_spin', 'status', 'effective_status'];
+  const cell = (v) => { let s = v == null ? '' : String(v); if (typeof v === 'string' && /^[=+\\-@]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const lines = [cols.join(',')].concat(d.rounds.map(r => cols.map(c => cell(r[c])).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\\r\\n') + '\\r\\n'], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'game-history-' + d.player_id + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 `;
 
@@ -507,23 +556,42 @@ async function raiseDisputeAction(kind) {
 `;
 
 export const GAMES_JS = /* js */ `
+let gamesRows = [];
 async function loadGames() {
   const el = $('gamesList'); if (!el) return;
   const go = $('gamesOp'); const opId = go ? go.value.trim() : '';
   const qs = opId ? ('?operator_id=' + encodeURIComponent(opId)) : '';
-  try { const d = await api('/admin/v1/operator-games' + qs); const rows = d.operator_games || [];
-    if (!rows.length) { el.innerHTML = '<p class="muted">no game assignments</p>'; return; }
-    el.innerHTML = '<table><tr><th>assignment</th><th>game_id</th><th>currency</th><th>bets</th><th>license</th><th>lobby name</th><th>sort</th><th>in lobby</th><th></th></tr>' +
-      rows.map(g => '<tr><td><code>' + g.id.slice(0,8) + '…</code></td><td>' + g.game_id.slice(0,8) + '…</td><td>' + g.currency + '</td><td>' + g.allowed_bets.join(', ') + '</td>' +
-        '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
-        '<td>' + esc(g.display_name || '—') + '</td><td>' + g.sort_order + '</td>' +
-        '<td>' + (g.lobby_enabled ? '<span class="ok">yes</span>' : '<span class="err">no</span>') + '</td>' +
-        '<td><button class="ghost" data-id="' + g.id + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button> ' +
-        '<span data-operator><button class="ghost" data-disp="' + g.id + '">Edit display</button></span></td></tr>').join('') + '</table>';
-    el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
-    el.querySelectorAll('button[data-disp]').forEach(b => b.addEventListener('click', () => editGameDisplay(b.dataset.disp, rows.find(r => r.id === b.dataset.disp))));
-    applyScopeVisibility();
-  } catch (e) { el.innerHTML = '<span class="err">' + e.message + '</span>'; }
+  try { const d = await api('/admin/v1/operator-games' + qs); gamesRows = d.operator_games || []; renderGames(); }
+  catch (e) { el.innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }
+}
+function gamesShown() {
+  const q = ($('gamesName').value || '').trim().toLowerCase(), st = $('gamesStatus').value;
+  return gamesRows.filter(g => (!st || g.status === st) && (!q || [g.game_title, g.game_code, g.display_name].some(v => v && String(v).toLowerCase().includes(q))));
+}
+function renderGames() {
+  const el = $('gamesList'); if (!el) return;
+  const rows = gamesShown(); const multi = state.scope === 'provider';
+  $('gamesCount').textContent = rows.length + ' of ' + gamesRows.length;
+  if (!rows.length) { el.innerHTML = '<p class="muted">' + (gamesRows.length ? 'no games match' : 'no game assignments') + '</p>'; return; }
+  el.innerHTML = '<div class="tbl-wrap tall"><table class="ip-table"><tr><th>Game</th><th>Code</th>' + (multi ? '<th>Casino</th>' : '') + '<th>Currency</th><th>Bets</th><th class="num">RTP %</th><th>Market</th><th>Status</th><th>In lobby</th><th></th></tr>' +
+    rows.map(g => '<tr><td>' + esc(g.display_name || g.game_title || '—') + '</td><td><code>' + esc(g.game_code || g.game_id.slice(0, 8)) + '</code></td>' + (multi ? '<td>' + esc(g.operator_slug || '') + '</td>' : '') +
+      '<td>' + esc(g.currency) + '</td><td>' + esc(g.allowed_bets.join(', ')) + '</td><td class="num">' + (g.theoretical_rtp == null ? '—' : esc(g.theoretical_rtp)) + '</td><td>' + esc(g.market || '') + '</td>' +
+      '<td>' + (g.status === 'enabled' ? '<span class="ok">enabled</span>' : '<span class="err">disabled</span>') + '</td>' +
+      '<td>' + (g.lobby_enabled ? '<span class="ok">yes</span>' : '<span class="err">no</span>') + '</td>' +
+      '<td class="actions"><button class="ghost" data-id="' + esc(g.id) + '" data-to="' + (g.status === 'enabled' ? 'disabled' : 'enabled') + '">' + (g.status === 'enabled' ? 'Turn OFF' : 'Turn ON') + '</button> ' +
+      '<span data-operator><button class="ghost" data-disp="' + esc(g.id) + '">Edit display</button></span></td></tr>').join('') + '</table></div>';
+  el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => toggleGame(b.dataset.id, b.dataset.to)));
+  el.querySelectorAll('button[data-disp]').forEach(b => b.addEventListener('click', () => editGameDisplay(b.dataset.disp, gamesRows.find(r => r.id === b.dataset.disp))));
+  applyScopeVisibility();
+}
+function exportGamesCsv() {
+  const rows = gamesShown(); if (!rows.length) return;
+  const cols = ['game_title', 'game_code', 'operator_slug', 'currency', 'allowed_bets', 'theoretical_rtp', 'market', 'status', 'lobby_enabled', 'display_name', 'id'];
+  const lines = [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(Array.isArray(r[c]) ? r[c].join(' ') : r[c])).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\\r\\n') + '\\r\\n'], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'casino-games.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 async function toggleGame(id, to) { try { await api('/admin/v1/operator-games/' + id + '/status', { method: 'POST', body: { status: to } }); loadGames(); } catch (e) { alert(e.message); } }
 async function editGameDisplay(id, current) {

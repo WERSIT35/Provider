@@ -45,6 +45,13 @@ export interface PlayerRounds {
   currencies: Record<string, string>;
 }
 
+/** Game History filters: a time window and one game (code). */
+export interface PlayerRoundsFilter {
+  from?: string;
+  to?: string;
+  game_code?: string;
+}
+
 export interface Overview {
   distinct_players: number;
   sessions_total: number;
@@ -59,7 +66,7 @@ export interface HistoryReads {
   ggrByDay(operatorId?: string, range?: DateRange): Promise<GgrByDay[]>;
   playerReport(operatorId?: string, query?: PlayerReportQuery): Promise<PlayerReport>;
   playerSummary(operatorId: string, operatorPlayerId: string): Promise<PlayerSummary | null>;
-  playerRounds(operatorId: string | undefined, operatorPlayerId: string, limit: number): Promise<PlayerRounds>;
+  playerRounds(operatorId: string | undefined, operatorPlayerId: string, limit: number, filter?: PlayerRoundsFilter): Promise<PlayerRounds>;
   reconcile(operatorId?: string, range?: DateRange): Promise<Reconciliation>;
   /** Business Summary, Games Profit, Member Business Summary (reporting/business-report.ts). */
   businessReport(operatorId: string | undefined, query: BusinessQuery): Promise<BusinessReport>;
@@ -108,14 +115,16 @@ export class MemoryHistory implements HistoryReads {
     return this.ledger.getRound(`r_${key}`) !== null || this.transactions.getByKey(`${key}:debit`) !== null;
   }
 
-  async playerRounds(op: string | undefined, player: string, limit: number): Promise<PlayerRounds> {
+  async playerRounds(op: string | undefined, player: string, limit: number, f: PlayerRoundsFilter = {}): Promise<PlayerRounds> {
     const all = this.reporting.listRoundsByPlayer(op, player);
     const currencies: Record<string, string> = {};
     for (const r of all) {
       const c = this.sessions.tryGet(r.session_id)?.currency;
       if (c) currencies[r.session_id] = c;
     }
-    return { rounds: all.slice(0, limit), total: all.length, familyRounds: all, currencies };
+    const game = (r: RoundRecord) => this.sessions.tryGet(r.session_id)?.game_code ?? r.pre_state?.game_code ?? r.game_id;
+    const hit = all.filter((r) => (!f.from || r.created_at >= f.from) && (!f.to || r.created_at <= f.to) && (!f.game_code || game(r) === f.game_code));
+    return { rounds: hit.slice(0, limit), total: hit.length, familyRounds: all, currencies };
   }
 
   async overview(op: string): Promise<Overview> {
@@ -243,9 +252,17 @@ export class PgHistory implements HistoryReads {
     return { ...row, voided_rounds: Number(all.n) - Number(fin.n), games_played: Number(all.games) };
   }
 
-  async playerRounds(op: string | undefined, player: string, limit: number): Promise<PlayerRounds> {
-    const where = op ? "operator_id = $1 AND operator_player_id = $2" : "operator_player_id = $1";
-    const params = op ? [op, player] : [player];
+  async playerRounds(op: string | undefined, player: string, limit: number, f: PlayerRoundsFilter = {}): Promise<PlayerRounds> {
+    const params: unknown[] = op ? [op, player] : [player];
+    const conds = [op ? "operator_id = $1 AND operator_player_id = $2" : "operator_player_id = $1"];
+    if (f.from) { params.push(f.from); conds.push(`created_at >= $${params.length}::timestamptz`); }
+    if (f.to) { params.push(f.to); conds.push(`created_at <= $${params.length}::timestamptz`); }
+    if (f.game_code) {
+      params.push(f.game_code);
+      const g = `$${params.length}`;
+      conds.push(`coalesce((SELECT s.game_code FROM player_sessions s WHERE s.id = rounds.session_id), pre_state->>'game_code', game_id) = ${g}`);
+    }
+    const where = conds.join(" AND ");
     const page = (await this.db.loadRows("rounds", { where, params, newestFirst: true, limit })) as unknown as RoundRecord[];
     const total = Number((await this.db.query(`SELECT count(*)::bigint AS n FROM rounds WHERE ${where}`, params)).rows[0].n);
     const sessionIds = [...new Set(page.map((r) => r.session_id))];

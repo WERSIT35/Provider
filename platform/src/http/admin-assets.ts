@@ -20,6 +20,7 @@ a { color: var(--accent-2); text-decoration: none; }
 button { background:var(--accent); border:0; color:#00122e; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; font:inherit; }
 button:hover { filter: brightness(1.08); }
 button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:600; }
+button.ghost.on { border-color:var(--accent); color:var(--accent-2); }
 button.danger { background:#c84455; color:#fff; }
 button:disabled { opacity:.5; cursor:not-allowed; }
 input, select, textarea { background:var(--bg); border:1px solid var(--line); color:var(--text); padding:8px 10px; border-radius:8px; font:inherit; }
@@ -385,10 +386,12 @@ function hideAllViews() { VIEWS.forEach(v => { const s = $(v + "View"); if (s) s
 function show(view) {
   if (!VIEWS.includes(view)) view = VIEWS[0];
   hideAllViews();
-  const s = $(view + "View"); if (s) s.hidden = false;
+  // Game History is the Round Inspector's player search, opened on that tab.
+  const s = $((view === "gameHistory" ? "inspector" : view) + "View"); if (s) s.hidden = false;
+  if (view === "gameHistory") inspectorTab("player");
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   if (view === "dashboard") refreshDashboard();
-  if (view === "inspector") { const i = $("roundRefInput"); if (i) i.focus(); }
+  if (view === "inspector") { inspectorTab("round"); const i = $("roundRefInput"); if (i) i.focus(); }
   if (view === "games") { loadGames(); if (state.scope !== "provider") loadWebhook(); }
   if (view === "disputes") loadDisputes();
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
