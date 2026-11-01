@@ -200,6 +200,17 @@ const TABLES: Record<string, TableSpec> = {
     ["id"],
     { orderBy: "created_at", version: "version" }
   ),
+  // Promotions (migration 0016, modules/promotions).
+  tournaments: spec(
+    ["id", "operator_id", "name", "game_codes", "currency", "metric", "min_bet", "prizes", "starts_at", "ends_at", "status", "created_by", "closed_at", "version", "created_at"],
+    ["id"],
+    { jsonb: ["game_codes", "prizes"], orderBy: "created_at", version: "version" }
+  ),
+  promo_wins: spec(
+    ["id", "operator_id", "promo_type", "promo_id", "promo_name", "operator_player_id", "currency", "amount", "rank", "score", "round_ref", "status", "operator_tx_ref", "error_code", "attempts", "version", "created_at", "paid_at"],
+    ["id"],
+    { orderBy: "created_at", version: "version" }
+  ),
   // Write-ahead record of money-moving rounds (migration 0013, modules/rounds/round-intents.ts).
   round_intents: spec(
     ["idempotency_key", "round_ref", "operator_id", "session_id", "operator_player_id", "currency", "debit_type", "debit_amount", "campaign_id", "credit_type", "win_amount", "game_code", "round_type", "feature_ref", "status", "version", "created_at", "updated_at"],

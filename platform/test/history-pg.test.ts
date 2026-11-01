@@ -24,6 +24,7 @@ import { InMemoryTransactionStore, type TxRecord } from "../src/modules/wallet/t
 import { InMemoryRoundAdjustmentStore, type AdjustmentRecord } from "../src/modules/rounds/round-adjustment.store";
 import { ReportingService } from "../src/modules/reporting/reporting.service";
 import type { RoundRecord } from "../src/modules/ledger/ledger.types";
+import { countsFor, rankBoard } from "../src/modules/promotions/tournament-board";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 const dbName = URL_ ? new URL(URL_).pathname.slice(1) : "";
@@ -141,6 +142,25 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     for (const q of [{ period: "day" as const, tz_offset_min: 240 }, { period: "week" as const }, { period: "total" as const, by_player: true }, { period: "month" as const, by_game: true, operator_player_id: "p1" }]) {
       expect(await c.history.businessReport(opId, q)).toEqual(ref.businessReport(opId, q, ctx));
     }
+    // Tournament boards: SQL equals the in-memory ranking over every row.
+    const sess = new Map(((await persistence.loadRows("player_sessions")) as unknown as Array<{ id: string; currency: string; game_code: string }>).map((x) => [x.id, x]));
+    const voided = ref.voidedRefs(opId);
+    for (const metric of ["max_multiplier", "total_win", "turnover"] as const) {
+      const t = c.promotions.createTournament({ operator_id: opId, name: metric, game_codes: ["bananax"], currency: "GEL", metric, prizes: [5, 3, 1], created_by: "t",
+        starts_at: new Date(Date.now() - 86_400_000).toISOString(), ends_at: new Date(Date.now() + 60_000).toISOString() });
+      const rows = ref.listRounds(opId).filter((r) => countsFor(t, r, voided, { currency: sess.get(r.session_id)?.currency ?? "", game_code: sess.get(r.session_id)?.game_code ?? r.game_id }));
+      expect(await c.history.tournamentBoard(t, 10)).toEqual(rankBoard(metric, rows, 10));
+      c.promotions.closeTournament(t.id, rankBoard(metric, rows, 3));
+    }
+    // Promotions persist (migration 0016's CHECKs accept what the app writes).
+    await persistence.flush();
+    expect(Number((await persistence.query("SELECT count(*) AS n FROM tournaments WHERE status = 'closed'")).rows[0].n)).toBe(3);
+    expect(Number((await persistence.query("SELECT count(*) AS n FROM promo_wins WHERE status = 'pending'")).rows[0].n)).toBe(c.promotions.listWins().length);
+    const pay = await c.promoPayouts.payPending();
+    await persistence.flush();
+    expect(pay.paid).toBe(c.promotions.listWins().length);
+    expect(Number((await persistence.query("SELECT count(*) AS n FROM wallet_transactions WHERE type = 'PROMO_WIN'")).rows[0].n)).toBe(pay.paid);
+    expect(Number((await persistence.query("SELECT count(*) AS n FROM promo_wins WHERE status = 'paid' AND paid_at IS NOT NULL")).rows[0].n)).toBe(pay.paid);
   });
 
   it("after a restart: the chain continues from its tip, the sweep passes, old rounds verify and export, old keys stay refused", async () => {

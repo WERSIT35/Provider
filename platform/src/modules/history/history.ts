@@ -21,6 +21,8 @@ import {
   type RtpReport
 } from "../reporting/reporting.service";
 import { finishRows, emptyRow, tzOffset, type BusinessQuery, type BusinessReport } from "../reporting/business-report";
+import { countsFor, rankBoard, type BoardRow } from "../promotions/tournament-board";
+import type { Tournament } from "../promotions/promotions";
 
 /**
  * Reads over the WHOLE history (reports, single-round views of any age, the integrity
@@ -70,6 +72,8 @@ export interface HistoryReads {
   reconcile(operatorId?: string, range?: DateRange): Promise<Reconciliation>;
   /** Business Summary, Games Profit, Member Business Summary (reporting/business-report.ts). */
   businessReport(operatorId: string | undefined, query: BusinessQuery): Promise<BusinessReport>;
+  /** A tournament's leaderboard from the round ledger (promotions/tournament-board.ts), top `limit`. */
+  tournamentBoard(t: Tournament, limit: number): Promise<BoardRow[]>;
   overview(operatorId: string): Promise<Overview>;
   transactionsForRound(roundRef: string): Promise<TxRecord[]>;
   /** Make one round (and what its views read) available to the synchronous services. False = no such round. */
@@ -106,6 +110,15 @@ export class MemoryHistory implements HistoryReads {
       const s = this.sessions.tryGet(r.session_id);
       return { currency: s?.currency ?? "", game_code: s?.game_code ?? r.pre_state?.game_code ?? r.game_id };
     });
+  }
+
+  async tournamentBoard(t: Tournament, limit: number): Promise<BoardRow[]> {
+    const voided = this.reporting.voidedRefs(t.operator_id);
+    const rounds = this.reporting.listRounds(t.operator_id).filter((r) => {
+      const s = this.sessions.tryGet(r.session_id);
+      return countsFor(t, r, voided, { currency: s?.currency ?? "", game_code: s?.game_code ?? r.pre_state?.game_code ?? r.game_id });
+    });
+    return rankBoard(t.metric, rounds, limit);
   }
   async transactionsForRound(ref: string) { return this.reporting.transactionsForRound(ref); }
   async ensureRound(ref: string) { return this.ledger.getRound(ref) !== null; }
@@ -350,6 +363,25 @@ export class PgHistory implements HistoryReads {
       bets_real: Number(x.bets_real), wins_real: Number(x.wins_real), free_rounds: Number(x.free_rounds),
       free_round_bet: Number(x.free_round_bet), free_round_win: Number(x.free_round_win)
     })), q.limit);
+  }
+
+  async tournamentBoard(t: Tournament, limit: number): Promise<BoardRow[]> {
+    const q = `FROM rounds r LEFT JOIN player_sessions s ON s.id = r.session_id
+       WHERE r.operator_id = $1 AND r.created_at >= $2::timestamptz AND r.created_at < $3::timestamptz AND r.campaign_id IS NULL
+         AND r.bet_amount >= $4 AND coalesce(s.currency, '') = $5 AND coalesce(s.game_code, r.pre_state->>'game_code', r.game_id) = ANY($6::text[])
+         AND r.round_ref NOT IN (SELECT v.round_ref FROM (SELECT DISTINCT ON (a.round_ref) a.round_ref, a.effective_status FROM round_adjustments a ORDER BY a.round_ref, a.seq DESC) v WHERE v.effective_status = 'void')`;
+    const params = [t.operator_id, t.starts_at, t.ends_at, t.min_bet, t.currency, t.game_codes, limit];
+    const sql = t.metric === "max_multiplier"
+      ? `WITH q AS (SELECT r.operator_player_id AS p, r.created_at, CASE WHEN r.bet_amount > 0 THEN round(r.total_win / r.bet_amount, 4) ELSE 0 END AS m ${q}),
+              best AS (SELECT DISTINCT ON (p) p, m AS score, created_at AS achieved_at FROM q ORDER BY p, m DESC, created_at ASC),
+              n AS (SELECT p, count(*)::bigint AS rounds FROM q GROUP BY p)
+         SELECT best.p, best.score, n.rounds, best.achieved_at FROM best JOIN n USING (p)
+          WHERE best.score > 0 ORDER BY best.score DESC, best.achieved_at ASC, best.p ASC LIMIT $7`
+      : `SELECT r.operator_player_id AS p, round(sum(${t.metric === "total_win" ? "r.total_win" : "r.bet_charged"}), 4) AS score, count(*)::bigint AS rounds, max(r.created_at) AS achieved_at ${q}
+          GROUP BY r.operator_player_id HAVING sum(${t.metric === "total_win" ? "r.total_win" : "r.bet_charged"}) > 0
+          ORDER BY 2 DESC, 4 ASC, 1 ASC LIMIT $7`;
+    const rows = (await this.db.query(sql, params)).rows;
+    return rows.map((x, i) => ({ rank: i + 1, operator_player_id: String(x.p), score: Number(x.score), rounds: Number(x.rounds), achieved_at: new Date(x.achieved_at as string).toISOString() }));
   }
 
   async overview(op: string): Promise<Overview> {

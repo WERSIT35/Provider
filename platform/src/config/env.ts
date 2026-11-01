@@ -40,6 +40,7 @@ const EnvSchema = z.object({
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),
   // Background sweep that expires lapsed free-round grants (0 disables it).
   CAMPAIGN_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
+  PROMOTIONS_INTERVAL_MS: z.coerce.number().int().min(0).default(30_000),
   // Retry interval for queued lost-debit reversals (src/jobs/debit-reconciliation.ts).
   DEBIT_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(0).default(30_000),
   // Optional Postgres persistence. When set, state is durably mirrored to Postgres
