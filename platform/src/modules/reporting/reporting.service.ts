@@ -2,6 +2,7 @@ import type { RoundRepository, RoundRecord } from "../ledger/ledger.types";
 import { BET_TX_TYPES, WIN_TX_TYPES, type InMemoryTransactionStore, type TxRecord } from "../wallet/transaction-store";
 import type { EngineService } from "../engine/engine.service";
 import type { InMemoryRoundAdjustmentStore } from "../rounds/round-adjustment.store";
+import { aggregateBusiness, type BusinessQuery, type BusinessReport, type RoundContext } from "./business-report";
 
 /** Reporting + reconciliation over the immutable ledger (plan §10). All queries are
  * tenant-scoped when an operator_id is supplied. */
@@ -241,6 +242,11 @@ export class ReportingService {
       voided_rounds: voidedCount,
       games_played: new Set(all.map((r) => r.game_id)).size
     };
+  }
+
+  /** Business Summary / Games Profit / Member Business Summary (business-report.ts). */
+  businessReport(operatorId: string | undefined, query: BusinessQuery, ctx: (r: RoundRecord) => RoundContext): BusinessReport {
+    return aggregateBusiness(this.listRounds(operatorId), this.adjustments.voidedRoundRefs(operatorId), ctx, query);
   }
 
   failedSettlements(operatorId?: string): TxRecord[] {

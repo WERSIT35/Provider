@@ -128,6 +128,12 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     expect(page.rounds.map((r) => r.round_ref)).toEqual(ref.listRoundsByPlayer(opId, "p2").slice(0, 10).map((r) => r.round_ref));
     expect(page.currencies[page.rounds[0].session_id]).toBe("GEL");
     expect((await c.history.roundsSummary(opId)).rounds).toBe(179); // the voided round is excluded
+    // Business reports: SQL (period cut in Postgres) equals the in-memory aggregate.
+    const sessions = new Map(((await persistence.loadRows("player_sessions")) as unknown as Array<{ id: string; currency: string; game_code: string }>).map((x) => [x.id, x]));
+    const ctx = (r: RoundRecord) => ({ currency: sessions.get(r.session_id)?.currency ?? "", game_code: sessions.get(r.session_id)?.game_code ?? r.game_id });
+    for (const q of [{ period: "day" as const, tz_offset_min: 240 }, { period: "week" as const }, { period: "total" as const, by_player: true }, { period: "month" as const, by_game: true, operator_player_id: "p1" }]) {
+      expect(await c.history.businessReport(opId, q)).toEqual(ref.businessReport(opId, q, ctx));
+    }
   });
 
   it("after a restart: the chain continues from its tip, the sweep passes, old rounds verify and export, old keys stay refused", async () => {

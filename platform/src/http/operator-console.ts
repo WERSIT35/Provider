@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { SECTION_BUSINESS } from "./admin-console-business";
 import {
   renderConsolePage,
   SECTION_DASHBOARD_OPERATOR,
@@ -23,17 +24,24 @@ const PAGE = renderConsolePage({
   brandtag: "Operator · casino admin",
   consoleKind: "operator",
   expectedScope: "operator",
-  // Round Inspector leads the nav: "a player says spin X was wrong" is the
-  // operator's most frequent support task. Dashboard stays the landing view.
   nav: [
-    { view: "inspector", label: "Round Inspector" },
-    { view: "dashboard", label: "Dashboard" },
-    { view: "games", label: "My Games" },
-    { view: "players", label: "Players" },
-    { view: "playerReports", label: "Player Reports" },
-    { view: "campaigns", label: "Campaigns" },
-    { view: "disputes", label: "Disputes" },
-    { view: "reports", label: "Reports" }
+    // Round Inspector leads the nav: "a player says spin X was wrong" is the
+    // operator's most frequent support task. Dashboard stays the landing view.
+    { group: "Players", items: [
+      { view: "inspector", label: "Round Inspector" },
+      { view: "players", label: "Player Lookup" },
+      { view: "playerReports", label: "Player Reports" },
+      { view: "disputes", label: "Disputes" }
+    ] },
+    { group: "Lobby", items: [{ view: "dashboard", label: "Dashboard" }] },
+    { group: "Intelligence", items: [
+      { view: "bizSummary", label: "Business Summary" },
+      { view: "gamesProfit", label: "Games Profit Summary" },
+      { view: "memberBiz", label: "Member Business Summary" },
+      { view: "reports", label: "RTP & Reconciliation" }
+    ] },
+    { group: "Administration", items: [{ view: "games", label: "My Games" }] },
+    { group: "Promotions", items: [{ view: "campaigns", label: "Free Rounds" }] }
   ],
   sections: [
     SECTION_DASHBOARD_OPERATOR,
@@ -43,7 +51,8 @@ const PAGE = renderConsolePage({
     SECTION_PLAYER_REPORTS,
     SECTION_CAMPAIGNS,
     SECTION_DISPUTES,
-    SECTION_REPORTS
+    SECTION_REPORTS,
+    SECTION_BUSINESS
   ].join("\n")
 });
 

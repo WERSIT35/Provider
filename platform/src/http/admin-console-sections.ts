@@ -372,10 +372,13 @@ export function renderConsolePage(opts: {
   brandtag: string;
   consoleKind: "provider" | "operator";
   expectedScope: "provider" | "operator";
-  nav: Array<{ view: string; label: string }>;
+  /** Grouped tools: one heading per group, its views listed under it. */
+  nav: Array<{ group: string; items: Array<{ view: string; label: string }> }>;
   sections: string;
 }): string {
-  const navHtml = opts.nav.map((n) => `<button data-view="${n.view}">${n.label}</button>`).join("\n    ");
+  const navHtml = opts.nav
+    .map((g) => `<div class="navgroup"><p class="navhead">${g.group}</p>${g.items.map((n) => `<button data-view="${n.view}">${n.label}</button>`).join("")}</div>`)
+    .join("\n    ");
   const consoleCfg = JSON.stringify({ kind: opts.consoleKind, expectedScope: opts.expectedScope, title: opts.title });
   return `<!doctype html>
 <html lang="en"><head>
@@ -389,15 +392,17 @@ export function renderConsolePage(opts: {
   <h1>${opts.title}</h1>
   <span class="brandtag">${opts.brandtag}</span>
   <span class="pill" id="scopePill">not signed in</span>
-  <nav id="nav" hidden>
-    ${navHtml}
-    <button class="ghost" id="signOutBtn" hidden>Sign out</button>
-  </nav>
+  <button class="ghost" id="signOutBtn" hidden>Sign out</button>
 </header>
+<div class="layout">
+<nav id="nav" aria-label="Tools" hidden>
+    ${navHtml}
+</nav>
 <main>
   <div id="authRoot"></div>
   ${opts.sections}
 </main>
+</div>
 <script>window.__CONSOLE__ = ${consoleCfg};</script>
 <script src="/console/app.js"></script>
 </body></html>`;

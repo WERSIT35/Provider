@@ -33,10 +33,36 @@ header { display:flex; gap:14px; align-items:center; flex-wrap:wrap; padding:12p
 header h1 { margin:0; font-size:16px; font-weight:700; }
 header .pill { padding:2px 10px; border:1px solid var(--line); border-radius:20px; font-size:12px; color:var(--muted); }
 header .brandtag { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
-nav { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; align-items:center; }
-nav button { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:600; padding:6px 12px; }
-nav button.active { background:var(--accent); color:#00122e; border-color:var(--accent); }
-main { padding:18px; max-width:1240px; margin:0 auto; }
+header #signOutBtn { margin-left:auto; }
+/* Tools: one grouped list down the left (a row of chips on narrow screens). */
+.layout { display:flex; align-items:flex-start; }
+nav { position:sticky; top:57px; flex:0 0 216px; max-height:calc(100vh - 57px); overflow-y:auto; padding:14px 10px 24px; border-right:1px solid var(--line); }
+nav[hidden] { display:none; }
+.navgroup { margin-bottom:14px; }
+.navhead { margin:0 0 4px; padding:0 10px; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+nav button { display:block; width:100%; text-align:left; background:transparent; border:0; border-radius:8px; color:var(--text); font-weight:500; padding:8px 10px; min-height:36px; }
+nav button:hover { background:rgba(79,140,255,.08); }
+nav button.active { background:var(--accent); color:#00122e; font-weight:700; }
+main { flex:1 1 auto; min-width:0; padding:18px; max-width:1240px; margin:0 auto; }
+@media (max-width: 860px) {
+  .layout { display:block; }
+  nav { position:static; max-height:none; display:flex; gap:6px; overflow-x:auto; padding:8px 12px; border-right:0; border-bottom:1px solid var(--line); }
+  .navgroup { display:contents; }
+  .navhead { display:none; }
+  nav button { flex:0 0 auto; width:auto; white-space:nowrap; border:1px solid var(--line); min-height:40px; }
+}
+.kicker { margin:0 0 2px; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+.filters { display:flex; flex-wrap:wrap; gap:10px 12px; align-items:flex-end; margin:10px 0 6px; }
+.filters .quick { display:flex; gap:6px; flex-wrap:wrap; }
+.filters .quick button { padding:7px 10px; min-height:36px; }
+.filters .go { display:flex; gap:8px; margin-left:auto; }
+.tbl-wrap.tall { max-height:none; }
+table.biz tr.total td { font-weight:700; border-top:2px solid var(--line); background:var(--panel-2); }
+details.defs { margin-top:14px; font-size:13px; color:var(--muted); }
+details.defs summary { cursor:pointer; color:var(--text); font-weight:600; }
+details.defs dl { display:grid; grid-template-columns:140px 1fr; gap:4px 12px; margin:8px 0 0; }
+details.defs dt { color:var(--text); }
+details.defs dd { margin:0; }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
 .panel h2 { margin:0 0 10px; font-size:15px; }
 .cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:10px; }
@@ -371,6 +397,7 @@ function show(view) {
   if (view === "onboarding") refreshOnboardingDropdowns();
   if (view === "reports") loadReports();
   if (view === "accounts") loadAccounts();
+  if (view === "bizSummary" || view === "gamesProfit" || view === "memberBiz") { bizInit(view); if (!bizLast[view]) loadBiz(view); }
   history.replaceState(null, "", "#" + view);
 }
 document.querySelectorAll("#nav button[data-view]").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
@@ -441,6 +468,7 @@ __PLAYER_REPORTS__
 __CAMPAIGNS__
 __OPERATORS__
 __ACCOUNTS__
+__BUSINESS__
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
@@ -450,6 +478,7 @@ if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
 // original single console; kept in separate template pieces for readability.
 import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, PLAYER_REPORTS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
 import { CAMPAIGNS_JS } from "./admin-console-campaigns";
+import { BUSINESS_JS } from "./admin-console-business";
 
 function buildAppJs(): string {
   return CONSOLE_JS
@@ -463,7 +492,8 @@ function buildAppJs(): string {
     .replace("__PLAYER_REPORTS__", PLAYER_REPORTS_JS)
     .replace("__CAMPAIGNS__", () => CAMPAIGNS_JS)
     .replace("__OPERATORS__", OPERATORS_JS)
-    .replace("__ACCOUNTS__", ACCOUNTS_JS);
+    .replace("__ACCOUNTS__", ACCOUNTS_JS)
+    .replace("__BUSINESS__", () => BUSINESS_JS);
 }
 
 const adminAssetsRoutes: FastifyPluginAsync = async (app) => {
