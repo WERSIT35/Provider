@@ -25,9 +25,20 @@ export const SECTION_INSPECTOR = /* html */ `
       <div class="toolbar">
         <input class="search" id="ipOp" placeholder="operator id (optional: all operators)" data-provider/>
         <input class="search" id="ipPlayer" placeholder="operator_player_id" onkeydown="if (event.key === 'Enter') searchPlayerRounds()"/>
+        <input id="ipGame" placeholder="game code (all games)" aria-label="Game code" onkeydown="if (event.key === 'Enter') searchPlayerRounds()"/>
+      </div>
+      <div class="toolbar">
+        <label class="muted">From <input type="datetime-local" id="ipFrom"/></label>
+        <label class="muted">To <input type="datetime-local" id="ipTo"/></label>
+        <button class="ghost" onclick="ipRange('today')">Today</button>
+        <button class="ghost" onclick="ipRange('yesterday')">Previous day</button>
+        <button class="ghost" onclick="ipRange('')">Any time</button>
         <button onclick="searchPlayerRounds()">Search</button>
+        <button class="ghost" id="ipByGame" aria-pressed="false" onclick="ipToggleByGame()">Total by games</button>
+        <button class="ghost" onclick="exportPlayerRoundsCsv()">Export CSV</button>
         <span id="ipStatus" class="muted"></span>
       </div>
+      <p class="muted">Times are in your browser's time zone.</p>
       <div id="ipResults"></div>
     </div>
     <span id="inspectorStatus" class="muted"></span>

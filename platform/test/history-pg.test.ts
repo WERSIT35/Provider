@@ -127,6 +127,13 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
     expect(page.total).toBe(60);
     expect(page.rounds.map((r) => r.round_ref)).toEqual(ref.listRoundsByPlayer(opId, "p2").slice(0, 10).map((r) => r.round_ref));
     expect(page.currencies[page.rounds[0].session_id]).toBe("GEL");
+    // Game History filters: SQL equals the same filter in memory.
+    const p2 = ref.listRoundsByPlayer(opId, "p2");
+    const mid = p2[20].created_at;
+    const win = await c.history.playerRounds(opId, "p2", 1000, { from: mid, game_code: "bananax" });
+    expect(win.rounds.map((r) => r.round_ref)).toEqual(p2.filter((r) => r.created_at >= mid).map((r) => r.round_ref));
+    expect((await c.history.playerRounds(opId, "p2", 10, { to: mid })).total).toBe(p2.filter((r) => r.created_at <= mid).length);
+    expect((await c.history.playerRounds(opId, "p2", 10, { game_code: "classic-5x3" })).total).toBe(0);
     expect((await c.history.roundsSummary(opId)).rounds).toBe(179); // the voided round is excluded
     // Business reports: SQL (period cut in Postgres) equals the in-memory aggregate.
     const sessions = new Map(((await persistence.loadRows("player_sessions")) as unknown as Array<{ id: string; currency: string; game_code: string }>).map((x) => [x.id, x]));

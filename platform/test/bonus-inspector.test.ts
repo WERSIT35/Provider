@@ -196,6 +196,24 @@ describe("Round Inspector: bonus families, forensics and player search", () => {
     expect(limited.rounds.map((r: { round_ref: string }) => r.round_ref)).toEqual(rounds.slice(0, 3).map((r) => r.round_ref));
   });
 
+  it("Game History filters: a time window and a game", async () => {
+    const body = (await get(`/admin/v1/players/shared/rounds?operator_id=${opA}`, provider)).json();
+    const rounds = body.rounds as Array<{ round_ref: string; created_at: string }>;
+    const mid = rounds[Math.floor(rounds.length / 2)].created_at;
+    const after = (await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&from=${encodeURIComponent(mid)}`, provider)).json();
+    expect(after.total).toBe(rounds.filter((r) => r.created_at >= mid).length);
+    expect(after.rounds.every((r: { created_at: string }) => r.created_at >= mid)).toBe(true);
+    const before = (await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&to=${encodeURIComponent(mid)}`, provider)).json();
+    expect(before.total).toBe(rounds.filter((r) => r.created_at <= mid).length);
+    // Another offset names the same instant.
+    const local = new Date(Date.parse(mid) + 4 * 3600_000).toISOString().replace("Z", "+04:00");
+    expect((await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&from=${encodeURIComponent(local)}`, provider)).json().total).toBe(after.total);
+    expect((await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&game=bananax`, provider)).json().total).toBe(body.total);
+    expect((await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&game=classic-5x3`, provider)).json().total).toBe(0);
+    expect((await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&from=2000-01-01&to=2000-01-02`, provider)).json().rounds).toEqual([]);
+    expect((await get(`/admin/v1/players/shared/rounds?operator_id=${opA}&from=yesterday`, provider)).statusCode).toBe(422);
+  });
+
   it("player search scoping: provider may search all operators; operators only ever see their own", async () => {
     const all = (await get(`/admin/v1/players/shared/rounds`, provider)).json();
     expect(new Set(all.rounds.map((r: { operator_slug: string }) => r.operator_slug))).toEqual(new Set(["alpha", "beta"]));

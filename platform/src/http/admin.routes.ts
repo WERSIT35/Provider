@@ -572,15 +572,23 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     const claims = guard(req, reply, "players.read");
     if (!claims) return reply;
     const { playerId } = req.params as { playerId: string };
-    const q = req.query as { operator_id?: string; limit?: string };
+    const q = req.query as { operator_id?: string; limit?: string; from?: string; to?: string; game?: string };
     // Operator admins are pinned to their own operator. A provider admin may omit
     // operator_id to search every operator (support often has only the player id).
     const operatorId = resolveOperatorScope(claims, q.operator_id) || undefined;
     if (claims.scope === "operator" && !operatorId) {
       return reply.code(422).send(envelope("VALIDATION", "operator_id required", req.id));
     }
+    // Game History filters: a time window (ISO, any offset) and one game code.
+    for (const k of ["from", "to"] as const) {
+      if (q[k] && !Number.isFinite(Date.parse(q[k]!))) return reply.code(422).send(envelope("VALIDATION", `${k} must be an ISO date-time`, req.id));
+    }
     const limit = Math.min(Math.max(Number(q.limit) || 200, 1), 1000);
-    const page = await app.container.history.playerRounds(operatorId, playerId, limit);
+    const page = await app.container.history.playerRounds(operatorId, playerId, limit, {
+      from: q.from ? new Date(q.from).toISOString() : undefined,
+      to: q.to ? new Date(q.to).toISOString() : undefined,
+      game_code: q.game || undefined
+    });
 
     // Bonus tags: derive each session's families from ALL of its rounds (a player's
     // session holds only that player's rounds), so a family cut off by the limit is
@@ -603,7 +611,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
         round_ref: r.round_ref,
         operator_id: r.operator_id,
         operator_slug: slugOf(r.operator_id),
-        game_code: r.pre_state?.game_code ?? null,
+        game_code: r.pre_state?.game_code ?? app.container.sessions.tryGet(r.session_id)?.game_code ?? null,
         currency: page.currencies[r.session_id] ?? app.container.sessions.tryGet(r.session_id)?.currency ?? null,
         bet_amount: r.bet_amount,
         bet_charged: r.bet_charged,
