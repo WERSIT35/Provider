@@ -206,6 +206,11 @@ const TABLES: Record<string, TableSpec> = {
     ["id"],
     { jsonb: ["game_codes", "prizes"], orderBy: "created_at", version: "version" }
   ),
+  prize_drops: spec(
+    ["id", "operator_id", "name", "game_codes", "currency", "min_bet", "odds", "prizes", "prizes_left", "cursor_seq", "starts_at", "ends_at", "status", "created_by", "closed_at", "version", "created_at"],
+    ["id"],
+    { jsonb: ["game_codes", "prizes"], orderBy: "created_at", version: "version" }
+  ),
   promo_wins: spec(
     ["id", "operator_id", "promo_type", "promo_id", "promo_name", "operator_player_id", "currency", "amount", "rank", "score", "round_ref", "status", "operator_tx_ref", "error_code", "attempts", "version", "created_at", "paid_at"],
     ["id"],
