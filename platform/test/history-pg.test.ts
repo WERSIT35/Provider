@@ -152,6 +152,16 @@ describe.skipIf(!run)("history from Postgres (bounded memory)", () => {
       expect(await c.history.tournamentBoard(t, 10)).toEqual(rankBoard(metric, rows, 10));
       c.promotions.closeTournament(t.id, rankBoard(metric, rows, 3));
     }
+    // Prize-drop candidates: SQL equals the in-memory filter, page by page.
+    const d = c.promotions.createPrizeDrop({ operator_id: opId, name: "drops", game_codes: ["bananax"], currency: "GEL", odds: 3, prizes: [{ amount: 2, count: 5 }], created_by: "t",
+      starts_at: new Date(Date.now() - 86_400_000).toISOString(), ends_at: new Date(Date.now() + 60_000).toISOString() });
+    const all = ref.listRounds(opId).filter((r) => countsFor(d, r, voided, { currency: sess.get(r.session_id)?.currency ?? "", game_code: sess.get(r.session_id)?.game_code ?? r.game_id })).sort((a, b) => a.seq - b.seq);
+    const p1 = await c.history.dropCandidates(d, -1, 50);
+    expect(p1.rounds.map((r) => r.round_ref)).toEqual(all.slice(0, 50).map((r) => r.round_ref));
+    expect(p1.last_seq).toBe(all[49].seq);
+    const rest = await c.history.dropCandidates(d, p1.last_seq, 10_000);
+    expect(rest.rounds.map((r) => r.round_ref)).toEqual(all.slice(50).map((r) => r.round_ref));
+    expect(rest.last_seq).toBe(Math.max(...ref.listRounds(opId).map((r) => r.seq)));
     // Promotions persist (migration 0016's CHECKs accept what the app writes).
     await persistence.flush();
     expect(Number((await persistence.query("SELECT count(*) AS n FROM tournaments WHERE status = 'closed'")).rows[0].n)).toBe(3);

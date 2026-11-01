@@ -13,7 +13,7 @@ import type { DisputeRecord } from "../modules/disputes/dispute.service";
 import type { Operator, OperatorDomain, ApiCredential, Game, MathConfig, OperatorGame, OperatorWebhook } from "../modules/management/management.types";
 import type { AdminAccount } from "../modules/admin/admin-account";
 import type { Campaign, PlayerCampaign } from "../modules/campaigns/campaign.repository";
-import type { Tournament, PromoWin } from "../modules/promotions/promotions";
+import type { Tournament, PrizeDrop, PromoWin } from "../modules/promotions/promotions";
 import type { WalletTxResult, WalletRollbackResult } from "../modules/wallet/wallet.types";
 import type { SigningKeyRecord } from "../lib/security/signing-keyring";
 import type { PlayerGameState } from "../modules/player-state/player-state.store";
@@ -186,6 +186,6 @@ async function hydrateWindowed(c: Container, p: PostgresPersistence, win: typeof
 
 /** Promotions (migration 0016): small tables, loaded whole (open ones and their history). */
 async function hydratePromotions(c: Container, p: Persistence): Promise<void> {
-  const [tournaments, wins] = await Promise.all([p.loadTable("tournaments"), p.loadTable("promo_wins")]);
-  c.promotions.hydrate({ tournaments: tournaments as unknown as Tournament[], wins: wins as unknown as PromoWin[] });
+  const [tournaments, drops, wins] = await Promise.all([p.loadTable("tournaments"), p.loadTable("prize_drops"), p.loadTable("promo_wins")]);
+  c.promotions.hydrate({ tournaments: tournaments as unknown as Tournament[], drops: drops as unknown as PrizeDrop[], wins: wins as unknown as PromoWin[] });
 }

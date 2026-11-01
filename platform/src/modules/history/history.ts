@@ -22,7 +22,14 @@ import {
 } from "../reporting/reporting.service";
 import { finishRows, emptyRow, tzOffset, type BusinessQuery, type BusinessReport } from "../reporting/business-report";
 import { countsFor, rankBoard, type BoardRow } from "../promotions/tournament-board";
-import type { Tournament } from "../promotions/promotions";
+import type { Tournament, PrizeDrop } from "../promotions/promotions";
+
+/** Prize-drop sweep page: qualifying rounds after a ledger seq, and how far it looked. */
+export interface DropCandidates {
+  rounds: Array<{ seq: number; round_ref: string; operator_player_id: string }>;
+  /** Highest ledger seq examined: the drop's next cursor. */
+  last_seq: number;
+}
 
 /**
  * Reads over the WHOLE history (reports, single-round views of any age, the integrity
@@ -74,6 +81,8 @@ export interface HistoryReads {
   businessReport(operatorId: string | undefined, query: BusinessQuery): Promise<BusinessReport>;
   /** A tournament's leaderboard from the round ledger (promotions/tournament-board.ts), top `limit`. */
   tournamentBoard(t: Tournament, limit: number): Promise<BoardRow[]>;
+  /** Rounds after `afterSeq` that count for a prize drop (same rules as a tournament), oldest first. */
+  dropCandidates(d: PrizeDrop, afterSeq: number, limit: number): Promise<DropCandidates>;
   overview(operatorId: string): Promise<Overview>;
   transactionsForRound(roundRef: string): Promise<TxRecord[]>;
   /** Make one round (and what its views read) available to the synchronous services. False = no such round. */
@@ -119,6 +128,17 @@ export class MemoryHistory implements HistoryReads {
       return countsFor(t, r, voided, { currency: s?.currency ?? "", game_code: s?.game_code ?? r.pre_state?.game_code ?? r.game_id });
     });
     return rankBoard(t.metric, rounds, limit);
+  }
+  async dropCandidates(d: PrizeDrop, afterSeq: number, limit: number): Promise<DropCandidates> {
+    const voided = this.reporting.voidedRefs(d.operator_id);
+    const after = this.reporting.listRounds(d.operator_id).filter((r) => r.seq > afterSeq).sort((a, b) => a.seq - b.seq);
+    const tip = after.length ? after[after.length - 1].seq : afterSeq;
+    const hits = after.filter((r) => {
+      const s = this.sessions.tryGet(r.session_id);
+      return countsFor(d, r, voided, { currency: s?.currency ?? "", game_code: s?.game_code ?? r.pre_state?.game_code ?? r.game_id });
+    });
+    const page = hits.slice(0, limit);
+    return { rounds: page.map((r) => ({ seq: r.seq, round_ref: r.round_ref, operator_player_id: r.operator_player_id })), last_seq: hits.length > limit ? page[page.length - 1].seq : tip };
   }
   async transactionsForRound(ref: string) { return this.reporting.transactionsForRound(ref); }
   async ensureRound(ref: string) { return this.ledger.getRound(ref) !== null; }
@@ -382,6 +402,22 @@ export class PgHistory implements HistoryReads {
           ORDER BY 2 DESC, 4 ASC, 1 ASC LIMIT $7`;
     const rows = (await this.db.query(sql, params)).rows;
     return rows.map((x, i) => ({ rank: i + 1, operator_player_id: String(x.p), score: Number(x.score), rounds: Number(x.rounds), achieved_at: new Date(x.achieved_at as string).toISOString() }));
+  }
+
+  async dropCandidates(d: PrizeDrop, afterSeq: number, limit: number): Promise<DropCandidates> {
+    const tip = Number((await this.db.query("SELECT coalesce(max(seq), -1) AS s FROM rounds WHERE operator_id = $1 AND seq > $2", [d.operator_id, afterSeq])).rows[0].s);
+    if (tip <= afterSeq) return { rounds: [], last_seq: afterSeq };
+    const rows = (await this.db.query(
+      `SELECT r.seq, r.round_ref, r.operator_player_id FROM rounds r LEFT JOIN player_sessions s ON s.id = r.session_id
+        WHERE r.operator_id = $1 AND r.seq > $2 AND r.seq <= $3 AND r.created_at >= $4::timestamptz AND r.created_at < $5::timestamptz
+          AND r.campaign_id IS NULL AND r.bet_amount >= $6 AND coalesce(s.currency, '') = $7
+          AND coalesce(s.game_code, r.pre_state->>'game_code', r.game_id) = ANY($8::text[])
+          AND r.round_ref NOT IN (SELECT v.round_ref FROM (SELECT DISTINCT ON (a.round_ref) a.round_ref, a.effective_status FROM round_adjustments a ORDER BY a.round_ref, a.seq DESC) v WHERE v.effective_status = 'void')
+        ORDER BY r.seq LIMIT $9`,
+      [d.operator_id, afterSeq, tip, d.starts_at, d.ends_at, d.min_bet, d.currency, d.game_codes, limit + 1]
+    )).rows;
+    const page = rows.slice(0, limit).map((x) => ({ seq: Number(x.seq), round_ref: String(x.round_ref), operator_player_id: String(x.operator_player_id) }));
+    return { rounds: page, last_seq: rows.length > limit ? page[page.length - 1].seq : tip };
   }
 
   async overview(op: string): Promise<Overview> {

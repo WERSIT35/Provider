@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { InMemoryPromotionsRepository } from "../modules/promotions/promotions";
 import type { PromoPayoutService } from "../modules/promotions/promo-payout";
@@ -9,7 +10,10 @@ import type { Persistence } from "../persistence/persistence";
  *  1. closes tournaments whose window ended more than `graceMs` ago: ranks the board from
  *     the round ledger (after a flush, so every round played in the window is there)
  *     and records a prize per rank;
- *  2. pays every prize not yet paid (promo-payout.ts: fixed key per prize, retried).
+ *  2. sweeps every running prize drop: each round played since its cursor that counts
+ *     wins with chance 1/odds (CSPRNG) while prizes are left; a drop whose window ended
+ *     gets a last sweep and closes;
+ *  3. pays every prize not yet paid (promo-payout.ts: fixed key per prize, retried).
  * Runs outside a request, so it flushes its own writes (like campaign-expiry.ts).
  */
 export interface PromotionsJob {
@@ -28,7 +32,10 @@ export function startPromotionsJob(deps: {
   intervalMs: number;
   graceMs?: number;
   now?: () => Date;
+  /** Uniform integer in [0, n) — crypto.randomInt; tests inject their own. */
+  random?: (n: number) => number;
 }): PromotionsJob {
+  const random = deps.random ?? ((n: number) => randomInt(n));
   const now = deps.now ?? (() => new Date());
   const grace = deps.graceMs ?? PROMO_CLOSE_GRACE_MS;
   let current: Promise<{ closed: number; paid: number; failed: number }> | null = null;
@@ -48,7 +55,26 @@ export function startPromotionsJob(deps: {
         closed += 1;
         deps.logger.info({ tournament_id: tour.id, winners: wins.length }, "tournament_closed");
       }
-      if (closed) await deps.persistence.flush(); // winners are durable before any money moves
+      const drops = deps.promotions.openPrizeDrops().filter((d) => d.starts_at <= t.toISOString());
+      if (drops.length && !due.length) await deps.persistence.flush();
+      let dropped = 0;
+      for (const d of drops) {
+        let cursor = d.cursor_seq;
+        for (let page = 0; page < 20; page++) {
+          const { rounds, last_seq } = await deps.history.dropCandidates(d, cursor, 2_000);
+          for (const r of rounds) {
+            if (random(d.odds) !== 0) continue;
+            if (deps.promotions.awardDrop(d.id, { operator_player_id: r.operator_player_id, round_ref: r.round_ref }, random, t.toISOString())) dropped += 1;
+            if (deps.promotions.getPrizeDrop(d.id)?.status !== "open") break;
+          }
+          deps.promotions.advanceDrop(d.id, last_seq);
+          if (last_seq === cursor || deps.promotions.getPrizeDrop(d.id)?.status !== "open") break;
+          cursor = last_seq;
+        }
+        if (d.ends_at <= t.toISOString() && deps.promotions.getPrizeDrop(d.id)?.status === "open") { deps.promotions.closePrizeDrop(d.id, t.toISOString()); closed += 1; }
+      }
+      if (dropped) deps.logger.info({ dropped }, "prize_drops_awarded");
+      if (closed || dropped || drops.length) await deps.persistence.flush(); // winners are durable before any money moves
       const pay = deps.promotions.unpaidWins().length ? await deps.payouts.payPending() : { paid: 0, failed: 0 };
       if (pay.paid || pay.failed) {
         await deps.persistence.flush();

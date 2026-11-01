@@ -5,7 +5,7 @@ import { createLogger } from "../src/lib/logger";
 import { SandboxWallet } from "../src/modules/wallet/sandbox-wallet";
 import { startPromotionsJob } from "../src/jobs/promotions";
 import { rankBoard } from "../src/modules/promotions/tournament-board";
-import type { CreateTournamentInput } from "../src/modules/promotions/promotions";
+import type { CreatePrizeDropInput, CreateTournamentInput } from "../src/modules/promotions/promotions";
 import type { CreditArgs } from "../src/modules/wallet/wallet.types";
 
 const CONFIG = { launchSecret: "s1", sessionSecret: "s2", adminSecret: "s3", hmacSkewSeconds: 30, rateLimitPerMin: 100_000 };
@@ -46,7 +46,11 @@ const tournament = (over: Partial<CreateTournamentInput> = {}) => c.promotions.c
   operator_id: opA, name: "Race", game_codes: ["bananax"], currency: "GEL", metric: "turnover", prizes: [40], created_by: "x",
   starts_at: new Date(Date.now() - 60_000).toISOString(), ends_at: new Date(Date.now() + 60_000).toISOString(), ...over
 });
-const job = () => startPromotionsJob({ promotions: c.promotions, payouts: c.promoPayouts, history: c.history, persistence: c.persistence, logger, intervalMs: 0, graceMs: 0, now: () => new Date(Date.now() + 120_000) });
+const job = (opts: { afterMs?: number; random?: (n: number) => number } = {}) => startPromotionsJob({ promotions: c.promotions, payouts: c.promoPayouts, history: c.history, persistence: c.persistence, logger, intervalMs: 0, graceMs: 0, now: () => new Date(Date.now() + (opts.afterMs ?? 120_000)), random: opts.random });
+const drop = (over: Partial<CreatePrizeDropInput> = {}) => c.promotions.createPrizeDrop({
+  operator_id: opA, name: "Drops", game_codes: ["bananax"], currency: "GEL", odds: 1, prizes: [{ amount: 10, count: 2 }, { amount: 5, count: 1 }], created_by: "x",
+  starts_at: new Date(Date.now() - 60_000).toISOString(), ends_at: new Date(Date.now() + 3600_000).toISOString(), ...over
+});
 
 describe("Tournaments", () => {
   beforeEach(setup);
@@ -140,6 +144,59 @@ describe("Tournaments", () => {
 
   it("a prize credit must name its promotion", async () => {
     await expect(wallet.credit({ operatorId: opA }, { idempotencyKey: "x", roundRef: "promo_x", operatorPlayerId: "p", amount: 5, currency: "GEL", txType: "PROMO_WIN" })).rejects.toThrow("PROMO_WIN_INVALID");
+  });
+});
+
+describe("Prize Drops", () => {
+  beforeEach(setup);
+
+  it("validates; tiers of the same amount merge", () => {
+    for (const bad of [{ odds: 0 }, { odds: 1.5 }, { prizes: [] }, { prizes: [{ amount: 0, count: 1 }] }, { prizes: [{ amount: 5, count: 0 }] }, { prizes: [{ amount: 5, count: 501 }] }]) {
+      expect(() => drop(bad)).toThrow();
+    }
+    expect(drop({ prizes: [{ amount: 5, count: 1 }, { amount: 10, count: 1 }, { amount: 5, count: 2 }] })).toMatchObject({ prizes: [{ amount: 10, count: 1 }, { amount: 5, count: 3 }], prizes_left: 4, cursor_seq: -1 });
+  });
+
+  it("drops on qualifying rounds in ledger order until the prizes are gone, and pays them", async () => {
+    const d = drop({ min_bet: 5 });
+    await play(opA, "small", 5, 1);  // below min_bet
+    await play(opB, "other", 5, 5);  // another operator
+    await play(opA, "p1", 2, 5);
+    await play(opA, "p2", 3, 5);
+    const qualifying = c.reporting.listRounds(opA).filter((r) => r.bet_amount >= 5).sort((a, b) => a.seq - b.seq);
+    const before = { p1: await balance("p1"), p2: await balance("p2") };
+    expect(await job({ afterMs: 0, random: () => 0 }).runOnce()).toMatchObject({ paid: 3 });
+    const wins = c.promotions.listWins({ promo_id: d.id }).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    expect(wins.map((w) => w.round_ref).sort()).toEqual(qualifying.slice(0, 3).map((r) => r.round_ref).sort());
+    expect(wins.map((w) => w.amount).sort((a, b) => b - a)).toEqual([10, 10, 5]);
+    expect(c.promotions.getPrizeDrop(d.id)).toMatchObject({ status: "closed", prizes_left: 0 });
+    const paid = Number(((await balance("p1")) - before.p1 + (await balance("p2")) - before.p2).toFixed(2));
+    expect(paid).toBe(25);
+    expect(c.reporting.reconcile(opA).ok).toBe(true);
+    expect(await job({ afterMs: 0, random: () => 0 }).runOnce()).toMatchObject({ paid: 0 });
+  });
+
+  it("long odds drop nothing; the cursor moves on; the drop closes when its window ends", async () => {
+    const d = drop({ odds: 1_000_000 });
+    await play(opA, "p1", 4, 5);
+    expect(await job({ afterMs: 0, random: () => 1 }).runOnce()).toMatchObject({ paid: 0 });
+    const tip = Math.max(...c.reporting.listRounds(opA).map((r) => r.seq));
+    expect(c.promotions.getPrizeDrop(d.id)).toMatchObject({ status: "open", cursor_seq: tip, prizes_left: 3 });
+    // Rounds already examined are never drawn again, even with a sure win now.
+    expect(await job({ afterMs: 0, random: () => 0 }).runOnce()).toMatchObject({ paid: 0 });
+    await play(opA, "p2", 1, 5);
+    expect(await job({ afterMs: 0, random: () => 0 }).runOnce()).toMatchObject({ paid: 1 });
+    expect(c.promotions.listWins({ promo_id: d.id })[0].operator_player_id).toBe("p2");
+    await job({ afterMs: 7200_000, random: () => 1 }).runOnce();
+    expect(c.promotions.getPrizeDrop(d.id)?.status).toBe("closed");
+  });
+
+  it("a cancelled drop draws nothing", async () => {
+    const d = drop();
+    c.promotions.cancelPrizeDrop(d.id);
+    await play(opA, "p1", 3, 5);
+    expect(await job({ afterMs: 0, random: () => 0 }).runOnce()).toMatchObject({ paid: 0 });
+    expect(c.promotions.getPrizeDrop(d.id)?.status).toBe("cancelled");
   });
 });
 

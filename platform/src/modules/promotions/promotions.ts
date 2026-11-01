@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { NullPersistence, type Persistence } from "../../persistence/persistence";
 
 /**
- * Operator promotions: Tournaments and the cash prizes they pay (promo wins).
- * Migration 0016 mirrors every invariant below.
+ * Operator promotions: Tournaments and Prize Drops, and the cash prizes they pay
+ * (promo wins). Migrations 0016 / 0017 mirror every invariant below.
  *
  * A promotion never changes a game's math or a round. A tournament ranks players on
- * rounds they already played (read from the round ledger when it closes,
- * jobs/promotions.ts). The prize is the operator's money, credited through the casino
+ * rounds they already played (read from the round ledger when it closes); a prize drop
+ * picks qualifying rounds after they were played (jobs/promotions.ts). The prize is the operator's money, credited through the casino
  * wallet as PROMO_WIN (promo-payout.ts).
  *
  * Like every store here, this in-memory repository is the arbiter (Postgres is a
@@ -41,6 +41,15 @@ export interface Tournament extends PromoBase {
   prizes: number[];
 }
 
+
+export interface PrizeDrop extends PromoBase {
+  /** Each qualifying round wins with chance 1 / odds. */
+  odds: number;
+  prizes: Array<{ amount: number; count: number }>;
+  prizes_left: number;
+  /** Last round ledger seq examined (the drop sweep resumes after it). */
+  cursor_seq: number;
+}
 
 export type PromoWinStatus = "pending" | "paid" | "failed";
 
@@ -81,6 +90,7 @@ export interface PromoInputBase {
   created_by: string;
 }
 export interface CreateTournamentInput extends PromoInputBase { metric: TournamentMetric; prizes: number[] }
+export interface CreatePrizeDropInput extends PromoInputBase { odds: number; prizes: Array<{ amount: number; count: number }> }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const round2 = (n: number): number => Number(n.toFixed(2));
@@ -123,12 +133,14 @@ function base(input: PromoInputBase, now: string, prefix: string): PromoBase {
 
 export class InMemoryPromotionsRepository {
   private readonly tournaments = new Map<string, Tournament>();
+  private readonly drops = new Map<string, PrizeDrop>();
   private readonly wins = new Map<string, PromoWin>();
 
   constructor(private readonly persistence: Persistence = NullPersistence) {}
 
-  hydrate(rows: { tournaments: Tournament[]; wins: PromoWin[] }): void {
+  hydrate(rows: { tournaments: Tournament[]; drops?: PrizeDrop[]; wins: PromoWin[] }): void {
     for (const t of rows.tournaments) this.tournaments.set(t.id, { ...t, min_bet: Number(t.min_bet), prizes: t.prizes.map(Number) });
+    for (const d of rows.drops ?? []) this.drops.set(d.id, { ...d, min_bet: Number(d.min_bet), cursor_seq: Number(d.cursor_seq) });
     for (const w of rows.wins) this.wins.set(w.id, { ...w, amount: Number(w.amount), score: w.score === null ? null : Number(w.score) });
   }
 
@@ -156,6 +168,90 @@ export class InMemoryPromotionsRepository {
   /** Open tournaments whose window has ended (the close job ranks and pays them). */
   dueTournaments(now: string): Tournament[] {
     return [...this.tournaments.values()].filter((t) => t.status === "open" && t.ends_at <= now).map(clone);
+  }
+
+  // ── prize drops ────────────────────────────────────────────────────────────
+
+  createPrizeDrop(input: CreatePrizeDropInput, now = new Date().toISOString()): PrizeDrop {
+    if (!Number.isInteger(input.odds) || input.odds < 1 || input.odds > 1_000_000) throw new Error("PRIZE_DROP_ODDS_INVALID");
+    const prizes = (input.prizes ?? []).map((p) => ({ amount: p?.amount, count: p?.count }));
+    const total = prizes.reduce((s, p) => s + (Number.isInteger(p.count) ? p.count : NaN), 0);
+    if (!prizes.length || !prizes.every((p) => isMoney(p.amount) && Number.isInteger(p.count) && p.count >= 1) || !(total <= MAX_PRIZES)) {
+      throw new Error("PROMO_PRIZES_INVALID");
+    }
+    // One tier per amount (awardDrop counts what is left by amount).
+    const tiers = new Map<number, number>();
+    for (const p of prizes as PrizeDrop["prizes"]) tiers.set(p.amount, (tiers.get(p.amount) ?? 0) + p.count);
+    const merged = [...tiers].map(([amount, count]) => ({ amount, count })).sort((a, b) => b.amount - a.amount);
+    const d: PrizeDrop = { ...base(input, now, "drp"), odds: input.odds, prizes: merged, prizes_left: total, cursor_seq: -1 };
+    this.drops.set(d.id, d);
+    this.persistence.save("prize_drops", d);
+    return clone(d);
+  }
+
+  getPrizeDrop(id: string): PrizeDrop | null {
+    const d = this.drops.get(id);
+    return d ? clone(d) : null;
+  }
+
+  listPrizeDrops(operatorId?: string): PrizeDrop[] {
+    return [...this.drops.values()].filter((d) => !operatorId || d.operator_id === operatorId).sort((a, b) => b.created_at.localeCompare(a.created_at)).map(clone);
+  }
+
+  openPrizeDrops(): PrizeDrop[] {
+    return [...this.drops.values()].filter((d) => d.status === "open").map(clone);
+  }
+
+  /** Move a drop's sweep cursor forward (never back). */
+  advanceDrop(id: string, cursorSeq: number): void {
+    const d = this.drops.get(id);
+    if (!d || cursorSeq <= d.cursor_seq) return;
+    d.cursor_seq = cursorSeq;
+    d.version += 1;
+    this.persistence.save("prize_drops", d);
+  }
+
+  /**
+   * Award the next prize of an open drop to a round: synchronous check-and-decrement,
+   * so two sweeps can never hand out the same prize. Which prize is random among those
+   * left, weighted by how many remain. Null when none are left or the round already won.
+   */
+  awardDrop(id: string, win: { operator_player_id: string; round_ref: string }, pick: (n: number) => number, now = new Date().toISOString()): PromoWin | null {
+    const d = this.drops.get(id);
+    if (!d || d.status !== "open" || d.prizes_left < 1) return null;
+    if ([...this.wins.values()].some((w) => w.promo_id === id && w.round_ref === win.round_ref)) return null;
+    const given = new Map<number, number>();
+    for (const w of this.wins.values()) if (w.promo_id === id) given.set(w.amount, (given.get(w.amount) ?? 0) + 1);
+    const left = d.prizes.flatMap((p) => Array<number>(Math.max(0, p.count - (given.get(p.amount) ?? 0))).fill(p.amount));
+    if (!left.length) return null;
+    const amount = left[pick(left.length)];
+    d.prizes_left -= 1;
+    d.version += 1;
+    if (d.prizes_left === 0) { d.status = "closed"; d.closed_at = now; }
+    this.persistence.save("prize_drops", d);
+    return this.addWin({ operator_id: d.operator_id, promo_type: "prize_drop", promo_id: d.id, promo_name: d.name, operator_player_id: win.operator_player_id, currency: d.currency, amount, rank: null, score: null, round_ref: win.round_ref }, now);
+  }
+
+  /** Cancel an open prize drop. Prizes already won stand. */
+  cancelPrizeDrop(id: string, now = new Date().toISOString()): PrizeDrop {
+    return this.endDrop(id, "cancelled", now);
+  }
+
+  /** Close a drop whose window is over. */
+  closePrizeDrop(id: string, now = new Date().toISOString()): PrizeDrop {
+    return this.endDrop(id, "closed", now);
+  }
+
+  private endDrop(id: string, status: "closed" | "cancelled", now: string): PrizeDrop {
+    const d = this.drops.get(id);
+    if (!d) throw new Error("PROMO_NOT_FOUND");
+    if (d.status === "open") {
+      d.status = status;
+      d.closed_at = now;
+      d.version += 1;
+      this.persistence.save("prize_drops", d);
+    }
+    return clone(d);
   }
 
   /** Cancel an open tournament. Prizes already won stand (they are owed). */
