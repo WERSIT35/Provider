@@ -18,6 +18,7 @@
     "smoke:rtp": "tsx scripts/rtp-smoke.ts",
     "migrate": "tsx scripts/migrate.ts",
     "check:campaigns": "tsx scripts/campaign-console-check.ts",
+    "check:promotions": "tsx scripts/promotions-console-check.ts",
     "check:inspector": "tsx scripts/inspector-console-check.ts",
     "check:resume": "tsx scripts/resume-check.ts",
     "check:embed": "tsx scripts/embed-check.ts",

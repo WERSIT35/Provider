@@ -14,8 +14,11 @@ let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`  ${ok ? "ok  " : "FAIL"} - ${name}${!ok && detail ? `  [${detail}]` : ""}`); if (!ok) failed++; };
 const srv = await startServer({ BENCH_PORT: process.env.BENCH_PORT || "8193" });
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
+let crashed = null;
 try {
   const page = await browser.newPage();
+  // A crashed tab detaches the page: name that, instead of a bare "detached Frame".
+  page.on("error", (e) => { crashed = e.message || "renderer crashed"; });
   await page.setViewport({ width: 1280, height: 800 });
   const spins = [];
   page.on("request", (r) => { if (r.url().includes("/game/v1/spin")) spins.push(Date.now()); });
@@ -64,8 +67,12 @@ try {
 
   // 4. no buy, no ante
   check("no buy or ante control", await page.evaluate(() => [...document.querySelectorAll("#buyFreeBtn, #anteToggle")].every((e) => !e.getClientRects().length)));
+} catch (e) {
+  check("the probe ran to the end", false, crashed ? `the tab crashed (${crashed}) during: ${e.message}` : e.message);
 } finally {
-  await browser.close();
+  // Never hang on a dead tab: close with a deadline, then kill Chrome and the server.
+  await Promise.race([browser.close().catch(() => {}), sleep(10000)]);
+  browser.process()?.kill("SIGKILL");
   srv.child.kill();
 }
 console.log(`\nclassic-e2e: ${failed ? `FAIL (${failed})` : "PASS"}`);

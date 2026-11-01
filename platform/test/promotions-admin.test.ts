@@ -40,7 +40,12 @@ async function play(op: string, player: string, spins: number, bet: number) {
   wallet.setBalance(player, "GEL", 10_000);
   const lt = c.sessions.createLaunchToken({ operator_id: op, game_code: "bananax", operator_player_id: player, currency: "GEL", origin: "casino.example.com" });
   const s = c.sessions.initSession(lt);
-  for (let i = 0; i < spins; i++) await c.orchestrator.spin(s.id, { bet_amount: bet, idempotency_key: `h${n++}` });
+  // `spins` PAID rounds: a bonus the engine triggers plays its free spins (no stake) in between.
+  for (let paid = 0; paid < spins; ) {
+    const free = c.sessions.get(s.id).free_spins_left > 0;
+    await c.orchestrator.spin(s.id, { bet_amount: bet, idempotency_key: `h${n++}` });
+    if (!free) paid++;
+  }
 }
 const operator = (id: string) => c.adminAuth.mintToken({ admin_id: "op-admin", scope: "operator", operator_id: id, role: "operator_admin" });
 const provider = () => c.adminAuth.mintToken({ admin_id: "prov", scope: "provider", role: "provider_super_admin" });

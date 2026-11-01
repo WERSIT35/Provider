@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { SECTION_BUSINESS } from "./admin-console-business";
+import { SECTION_PROMOTIONS } from "./admin-console-promotions";
 import {
   renderConsolePage,
   SECTION_DASHBOARD_PROVIDER,
@@ -45,7 +46,12 @@ const PAGE = renderConsolePage({
       { view: "onboarding", label: "Onboarding" },
       { view: "accounts", label: "Admin Accounts" }
     ] },
-    { group: "Promotions", items: [{ view: "campaigns", label: "Free Rounds" }] }
+    { group: "Promotions", items: [
+      { view: "campaigns", label: "Free Rounds" },
+      { view: "tournaments", label: "Tournaments" },
+      { view: "prizeDrops", label: "Prize Drops" },
+      { view: "promoWins", label: "Promo Win Search" }
+    ] }
   ],
   sections: [
     SECTION_DASHBOARD_PROVIDER,
@@ -58,7 +64,8 @@ const PAGE = renderConsolePage({
     SECTION_ONBOARDING,
     SECTION_REPORTS,
     SECTION_ACCOUNTS,
-    SECTION_BUSINESS
+    SECTION_BUSINESS,
+    SECTION_PROMOTIONS
   ].join("\n")
 });
 
