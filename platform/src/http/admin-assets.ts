@@ -171,6 +171,7 @@ pre.code { background:#070b1a; border:1px solid var(--line); padding:8px 10px; b
 .num { text-align:right; font-variant-numeric: tabular-nums; }
 td.actions { text-align:right; white-space:nowrap; }
 td.nowrap { white-space:nowrap; }
+.ip-table td.wrap { white-space:normal; overflow-wrap:anywhere; min-width:8ch; }
 td.actions button { padding:5px 10px; font-size:12px; }
 dialog.modal { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:14px; padding:0; width:min(560px, calc(100vw - 32px)); box-shadow:0 20px 60px rgba(0,0,0,.5); }
 dialog.modal::backdrop { background:rgba(3,6,18,.65); }
@@ -397,6 +398,7 @@ function show(view) {
   if (view === "players") { const i = $("plPlayer"); if (i) i.focus(); }
   if (view === "playerReports") loadPlayerReport();
   if (view === "campaigns") loadCampaigns();
+  if (view === "tournaments" || view === "prizeDrops") { $(view + "Drawer").hidden = true; loadPromos(view); }
   if (view === "onboarding") refreshOnboardingDropdowns();
   if (view === "reports") loadReports();
   if (view === "accounts") loadAccounts();
@@ -472,6 +474,7 @@ __CAMPAIGNS__
 __OPERATORS__
 __ACCOUNTS__
 __BUSINESS__
+__PROMOTIONS__
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
@@ -482,6 +485,7 @@ if (state.token && state.scope) { afterSignIn(); } else { renderAuth(); }
 import { INSPECTOR_JS, ONBOARDING_JS, REPORTS_JS, ROUNDACTIONS_JS, GAMES_JS, DISPUTES_JS, PLAYERS_JS, PLAYER_REPORTS_JS, OPERATORS_JS, ACCOUNTS_JS } from "./admin-console-views";
 import { CAMPAIGNS_JS } from "./admin-console-campaigns";
 import { BUSINESS_JS } from "./admin-console-business";
+import { PROMOTIONS_JS } from "./admin-console-promotions";
 
 function buildAppJs(): string {
   return CONSOLE_JS
@@ -496,7 +500,8 @@ function buildAppJs(): string {
     .replace("__CAMPAIGNS__", () => CAMPAIGNS_JS)
     .replace("__OPERATORS__", OPERATORS_JS)
     .replace("__ACCOUNTS__", ACCOUNTS_JS)
-    .replace("__BUSINESS__", () => BUSINESS_JS);
+    .replace("__BUSINESS__", () => BUSINESS_JS)
+    .replace("__PROMOTIONS__", () => PROMOTIONS_JS);
 }
 
 const adminAssetsRoutes: FastifyPluginAsync = async (app) => {
