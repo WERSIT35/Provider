@@ -6,6 +6,7 @@ import operatorRoutes from "./http/operator.routes";
 import gameRoutes from "./http/game.routes";
 import adminRoutes from "./http/admin.routes";
 import adminCampaignRoutes from "./http/admin-campaigns.routes";
+import adminReportsRoutes from "./http/admin-reports.routes";
 import { startCampaignExpiry, type CampaignExpiryJob } from "./jobs/campaign-expiry";
 import { startRoundRecovery, type RoundRecoveryJob } from "./jobs/round-recovery";
 import { startDebitReconciliation, type DebitReconciliationJob } from "./jobs/debit-reconciliation";
@@ -205,6 +206,7 @@ export function buildApp(deps: BuildAppDeps): FastifyInstance {
   app.register(adminAccountRoutes);
   app.register(adminRoutes);
   app.register(adminCampaignRoutes);
+  app.register(adminReportsRoutes);
 
   return app;
 }

@@ -20,6 +20,7 @@ import {
   type RoundsSummary,
   type RtpReport
 } from "../reporting/reporting.service";
+import { finishRows, emptyRow, tzOffset, type BusinessQuery, type BusinessReport } from "../reporting/business-report";
 
 /**
  * Reads over the WHOLE history (reports, single-round views of any age, the integrity
@@ -60,6 +61,8 @@ export interface HistoryReads {
   playerSummary(operatorId: string, operatorPlayerId: string): Promise<PlayerSummary | null>;
   playerRounds(operatorId: string | undefined, operatorPlayerId: string, limit: number): Promise<PlayerRounds>;
   reconcile(operatorId?: string, range?: DateRange): Promise<Reconciliation>;
+  /** Business Summary, Games Profit, Member Business Summary (reporting/business-report.ts). */
+  businessReport(operatorId: string | undefined, query: BusinessQuery): Promise<BusinessReport>;
   overview(operatorId: string): Promise<Overview>;
   transactionsForRound(roundRef: string): Promise<TxRecord[]>;
   /** Make one round (and what its views read) available to the synchronous services. False = no such round. */
@@ -91,6 +94,12 @@ export class MemoryHistory implements HistoryReads {
   async playerReport(op?: string, q: PlayerReportQuery = {}) { return this.reporting.playerReport(op, q); }
   async playerSummary(op: string, player: string) { return this.reporting.playerSummary(op, player); }
   async reconcile(op?: string, range: DateRange = {}) { return this.reporting.reconcile(op, range); }
+  async businessReport(op: string | undefined, q: BusinessQuery) {
+    return this.reporting.businessReport(op, q, (r) => {
+      const s = this.sessions.tryGet(r.session_id);
+      return { currency: s?.currency ?? "", game_code: s?.game_code ?? r.pre_state?.game_code ?? r.game_id };
+    });
+  }
   async transactionsForRound(ref: string) { return this.reporting.transactionsForRound(ref); }
   async ensureRound(ref: string) { return this.ledger.getRound(ref) !== null; }
   async ensureSessionStats() { /* memory mode holds every round */ }
@@ -127,6 +136,7 @@ export class MemoryHistory implements HistoryReads {
 }
 
 const round2 = (n: unknown): number => Number(Number(n ?? 0).toFixed(2));
+const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 const BET_TYPES = ["DEBIT", "FREE_ROUND_BET"];
 const WIN_TYPES = ["CREDIT", "FREE_ROUND_WIN"];
 
@@ -280,6 +290,49 @@ export class PgHistory implements HistoryReads {
       ok: Math.abs(bet_vs_debit_diff) < 0.01 && win_vs_credit_diff > -0.01,
       rounds_total_bet, rounds_total_win, tx_debits, tx_credits, tx_rollbacks, bet_vs_debit_diff, win_vs_credit_diff
     };
+  }
+
+  async businessReport(op: string | undefined, q: BusinessQuery): Promise<BusinessReport> {
+    const params: unknown[] = [];
+    const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
+    const period = q.period ?? "day";
+    const periodSql = period === "total" ? "NULL::text"
+      : `to_char(date_trunc('${period}', r.created_at AT TIME ZONE 'UTC' + make_interval(mins => ${p(tzOffset(q.tz_offset_min))}::int)), 'YYYY-MM-DD')`;
+    const gameSql = "coalesce(s.game_code, r.pre_state->>'game_code', r.game_id)";
+    const conds: string[] = [];
+    const firstConds: string[] = [];
+    if (op) { const o = p(op); conds.push(`r.operator_id = ${o}`); firstConds.push(`operator_id = ${o}`); }
+    if (q.from) conds.push(`r.created_at >= ${p(q.from)}::timestamptz`);
+    if (q.to) conds.push(`r.created_at <= ${p(q.to)}::timestamptz`);
+    if (q.operator_player_id) { const pl = p(q.operator_player_id); conds.push(`r.operator_player_id = ${pl}`); firstConds.push(`operator_player_id = ${pl}`); }
+    if (q.game_code) conds.push(`${gameSql} = ${p(q.game_code)}`);
+    conds.push(`r.round_ref NOT IN (SELECT v.round_ref FROM (SELECT DISTINCT ON (a.round_ref) a.round_ref, a.effective_status FROM round_adjustments a ORDER BY a.round_ref, a.seq DESC) v WHERE v.effective_status = 'void')`);
+    const keys = [`${periodSql} AS period`, q.by_game ? `${gameSql} AS game_code` : "NULL::text AS game_code",
+      q.by_player ? "r.operator_id AS operator_id, r.operator_player_id AS operator_player_id" : "NULL::text AS operator_id, NULL::text AS operator_player_id",
+      "coalesce(s.currency, '') AS currency"];
+    const rows = (await this.db.query(
+      `WITH first AS (SELECT operator_id, operator_player_id, min(created_at) AS first_at FROM rounds ${firstConds.length ? "WHERE " + firstConds.join(" AND ") : ""} GROUP BY 1, 2)
+       SELECT ${keys.join(", ")}, count(*)::bigint AS rounds,
+              count(DISTINCT r.operator_id || ':' || r.operator_player_id) FILTER (WHERE r.created_at = f.first_at)::bigint AS new_players,
+              count(DISTINCT r.session_id)::bigint AS play_sessions,
+              coalesce(sum(r.bet_charged) FILTER (WHERE r.campaign_id IS NULL), 0) AS bets_real,
+              coalesce(sum(r.total_win) FILTER (WHERE r.campaign_id IS NULL), 0) AS wins_real,
+              count(*) FILTER (WHERE r.campaign_id IS NOT NULL)::bigint AS free_rounds,
+              coalesce(sum(r.bet_amount) FILTER (WHERE r.campaign_id IS NOT NULL), 0) AS free_round_bet,
+              coalesce(sum(r.total_win) FILTER (WHERE r.campaign_id IS NOT NULL), 0) AS free_round_win
+         FROM rounds r
+         LEFT JOIN player_sessions s ON s.id = r.session_id
+         JOIN first f ON f.operator_id = r.operator_id AND f.operator_player_id = r.operator_player_id
+        WHERE ${conds.join(" AND ")}
+        GROUP BY 1, 2, 3, 4, 5`,
+      params
+    )).rows;
+    return finishRows(rows.map((x) => ({
+      ...emptyRow({ period: str(x.period), game_code: str(x.game_code), operator_id: str(x.operator_id), operator_player_id: str(x.operator_player_id), currency: String(x.currency) }),
+      rounds: Number(x.rounds), new_players: Number(x.new_players), play_sessions: Number(x.play_sessions),
+      bets_real: Number(x.bets_real), wins_real: Number(x.wins_real), free_rounds: Number(x.free_rounds),
+      free_round_bet: Number(x.free_round_bet), free_round_win: Number(x.free_round_win)
+    })), q.limit);
   }
 
   async overview(op: string): Promise<Overview> {

@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { SECTION_BUSINESS } from "./admin-console-business";
 import {
   renderConsolePage,
   SECTION_DASHBOARD_PROVIDER,
@@ -25,16 +26,25 @@ const PAGE = renderConsolePage({
   consoleKind: "provider",
   expectedScope: "provider",
   nav: [
-    { view: "dashboard", label: "Dashboard" },
-    { view: "inspector", label: "Round Inspector" },
-    { view: "games", label: "Games" },
-    { view: "disputes", label: "Disputes" },
-    { view: "players", label: "Players" },
-    { view: "playerReports", label: "Player Reports" },
-    { view: "campaigns", label: "Campaigns" },
-    { view: "onboarding", label: "Onboarding" },
-    { view: "reports", label: "Reports" },
-    { view: "accounts", label: "Admin Accounts" }
+    { group: "Lobby", items: [{ view: "dashboard", label: "Dashboard" }] },
+    { group: "Players", items: [
+      { view: "inspector", label: "Round Inspector" },
+      { view: "players", label: "Player Lookup" },
+      { view: "playerReports", label: "Player Reports" },
+      { view: "disputes", label: "Disputes" }
+    ] },
+    { group: "Intelligence", items: [
+      { view: "bizSummary", label: "Business Summary" },
+      { view: "gamesProfit", label: "Games Profit Summary" },
+      { view: "memberBiz", label: "Member Business Summary" },
+      { view: "reports", label: "RTP & Reconciliation" }
+    ] },
+    { group: "Administration", items: [
+      { view: "games", label: "Games" },
+      { view: "onboarding", label: "Onboarding" },
+      { view: "accounts", label: "Admin Accounts" }
+    ] },
+    { group: "Promotions", items: [{ view: "campaigns", label: "Free Rounds" }] }
   ],
   sections: [
     SECTION_DASHBOARD_PROVIDER,
@@ -46,7 +56,8 @@ const PAGE = renderConsolePage({
     SECTION_CAMPAIGNS,
     SECTION_ONBOARDING,
     SECTION_REPORTS,
-    SECTION_ACCOUNTS
+    SECTION_ACCOUNTS,
+    SECTION_BUSINESS
   ].join("\n")
 });
 
